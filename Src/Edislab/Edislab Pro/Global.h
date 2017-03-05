@@ -9,6 +9,7 @@
 #define GLOBAL_H
 #include <set>
 #include <vector>
+
 #define SET std::set
 #define VECTOR std::vector 
 #include <afx.h>		//此引用，待删除（没必要的引用）

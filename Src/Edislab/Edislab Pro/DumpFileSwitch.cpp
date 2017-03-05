@@ -12,6 +12,7 @@ Histroy:
 #include <ImageHlp.h>
 #include <Windows.h>
 #include <string>
+#pragma warning(push)
 #pragma warning(disable:4996)
 #pragma warning(disable:4267)
 #pragma comment(lib,"dbghelp.lib")
@@ -200,3 +201,4 @@ LONG __stdcall CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionInfo
     CreateMiniDump(pExceptionInfo,A2T(s_DumpFilePath.c_str()));
     return EXCEPTION_EXECUTE_HANDLER;
 }
+#pragma warning(pop)
