@@ -1,0 +1,434 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="源文件">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="头文件">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="ErrorCode">
+      <UniqueIdentifier>{7e783e51-c927-4efd-9c2d-de27c1948d5e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Msg">
+      <UniqueIdentifier>{f3f2c8d6-ce49-4166-9ca7-31a4f47bfa87}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Log">
+      <UniqueIdentifier>{389e5a45-d1c2-4e09-b33c-c5fec0e27e50}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utility">
+      <UniqueIdentifier>{a0458e7f-19e1-472d-86e9-60910cdcb6a1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UIExtend">
+      <UniqueIdentifier>{9efe94e5-c9fd-449b-88a7-1e4897479ed0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Macro">
+      <UniqueIdentifier>{83159d66-654f-4217-902e-eb43fc525530}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Com">
+      <UniqueIdentifier>{f560ee04-2207-4484-98fc-c7ea92bb378b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ChartFigure">
+      <UniqueIdentifier>{b6778026-e210-459c-bbbc-772454d10e25}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Global">
+      <UniqueIdentifier>{62fd49f0-42b9-4b2d-a336-37edbfdc9848}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GridCtrl">
+      <UniqueIdentifier>{0cf5a2a8-d687-43d1-9b21-2c7a6c31d6f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ObserverModal">
+      <UniqueIdentifier>{4e430663-4baf-483e-a281-2c8cb59f9f0a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Device">
+      <UniqueIdentifier>{e6540318-8b9a-4f54-be10-f8f370770e7e}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ReadMe.txt" />
+    <None Include="UserImages.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\EdislabPro.rc2">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\Edislab ProDoc.ico">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\Edislab Pro.ico">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\Toolbar.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\Toolbar256.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\Ribbon_Logo.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonButtonLarge.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonButtonSmall.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonStartLarge.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonStartSmall.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonPageElementLarge .bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonPageElementSmall.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonDeviceLarge.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonDeviceSmall.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonGridLarge .bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonGridSmall.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonDiagramLarge.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="res\RibbonDiagramSmall.bmp">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="GlobalDataManager.h">
+      <Filter>Global</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Edislab Pro.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="stdafx.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="MainFrm.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Edislab ProDoc.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Edislab ProView.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Resource.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Msg.h">
+      <Filter>Msg</Filter>
+    </ClInclude>
+    <ClInclude Include="DumpFileSwitch.h">
+      <Filter>Utility</Filter>
+    </ClInclude>
+    <ClInclude Include="Utility.h">
+      <Filter>Utility</Filter>
+    </ClInclude>
+    <ClInclude Include="ErrorCode.h">
+      <Filter>ErrorCode</Filter>
+    </ClInclude>
+    <ClInclude Include="ErrorCodeManager.h">
+      <Filter>ErrorCode</Filter>
+    </ClInclude>
+    <ClInclude Include="BaseDialog.h">
+      <Filter>UIExtend</Filter>
+    </ClInclude>
+    <ClInclude Include="BaseDockingBar.h">
+      <Filter>UIExtend</Filter>
+    </ClInclude>
+    <ClInclude Include="BaseTabWnd.h">
+      <Filter>UIExtend</Filter>
+    </ClInclude>
+    <ClInclude Include="ConcreteTabWnd.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="BaseRibbonBar.h">
+      <Filter>UIExtend</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgDevicePanel.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgDiagramPanel.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgGridPanel.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DeviceView.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DiagramView.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="GridView.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SplitBar.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="WidgetLayout.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="AbstractSplitAlgorithm.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Type.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ConcreteSplitAlgorithm.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgTabPanel.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CommandEntry.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgAddPage.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPageNameConfig.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Macro.h">
+      <Filter>Macro</Filter>
+    </ClInclude>
+    <ClInclude Include="ChartXY.h">
+      <Filter>ChartFigure</Filter>
+    </ClInclude>
+    <ClInclude Include="DataDefine.h">
+      <Filter>ChartFigure</Filter>
+    </ClInclude>
+    <ClInclude Include="ChartFigureDlg.h">
+      <Filter>ChartFigure</Filter>
+    </ClInclude>
+    <ClInclude Include="ChartManager.h">
+      <Filter>ChartFigure</Filter>
+    </ClInclude>
+    <ClInclude Include="ComImple.h">
+      <Filter>Com</Filter>
+    </ClInclude>
+    <ClInclude Include="Global.h">
+      <Filter>Global</Filter>
+    </ClInclude>
+    <ClInclude Include="Observer.h">
+      <Filter>ObserverModal</Filter>
+    </ClInclude>
+    <ClInclude Include="Observable.h">
+      <Filter>ObserverModal</Filter>
+    </ClInclude>
+    <ClInclude Include="GridControlFactory.h">
+      <Filter>GridCtrl</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrlBase.h">
+      <Filter>GridCtrl</Filter>
+    </ClInclude>
+    <ClInclude Include="GridDataManager.h">
+      <Filter>GridCtrl</Filter>
+    </ClInclude>
+    <ClInclude Include="GridDefine.h">
+      <Filter>GridCtrl</Filter>
+    </ClInclude>
+    <ClInclude Include="GridViewManager.h">
+      <Filter>GridCtrl</Filter>
+    </ClInclude>
+    <ClInclude Include="CustomLabGridCtrl.h">
+      <Filter>GridCtrl</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgDeviceSet.h">
+      <Filter>Device</Filter>
+    </ClInclude>
+    <ClInclude Include="DoubleEdit.h">
+      <Filter>Device</Filter>
+    </ClInclude>
+    <ClInclude Include="GaugeDlg.h">
+      <Filter>Device</Filter>
+    </ClInclude>
+    <ClInclude Include="GaugeManager.h">
+      <Filter>Device</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgChartSet.h">
+      <Filter>ChartFigure</Filter>
+    </ClInclude>
+    <ClInclude Include="Lock.h">
+      <Filter>Global</Filter>
+    </ClInclude>
+    <ClInclude Include="Log.h">
+      <Filter>Log</Filter>
+    </ClInclude>
+    <ClInclude Include="LogLock.h">
+      <Filter>Log</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Edislab Pro.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="stdafx.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="MainFrm.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Edislab ProDoc.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Edislab ProView.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DumpFileSwitch.cpp">
+      <Filter>Utility</Filter>
+    </ClCompile>
+    <ClCompile Include="Utility.cpp">
+      <Filter>Utility</Filter>
+    </ClCompile>
+    <ClCompile Include="ErrorCodeManager.cpp">
+      <Filter>ErrorCode</Filter>
+    </ClCompile>
+    <ClCompile Include="BaseDialog.cpp">
+      <Filter>UIExtend</Filter>
+    </ClCompile>
+    <ClCompile Include="BaseDockingBar.cpp">
+      <Filter>UIExtend</Filter>
+    </ClCompile>
+    <ClCompile Include="BaseTabWnd.cpp">
+      <Filter>UIExtend</Filter>
+    </ClCompile>
+    <ClCompile Include="ConcreteTabWnd.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="BaseRibbonBar.cpp">
+      <Filter>UIExtend</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgDevicePanel.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgDiagramPanel.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgGridPanel.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DeviceView.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DiagramView.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GridView.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SplitBar.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="WidgetLayout.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="AbstractSplitAlgorithm.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ConcreteSplitAlgorithm.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgTabPanel.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="CommandEntry.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgAddPage.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPageNameConfig.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ChartFigureDlg.cpp">
+      <Filter>ChartFigure</Filter>
+    </ClCompile>
+    <ClCompile Include="ComImple.cpp">
+      <Filter>Com</Filter>
+    </ClCompile>
+    <ClCompile Include="Global.cpp">
+      <Filter>Global</Filter>
+    </ClCompile>
+    <ClCompile Include="Observer.cpp">
+      <Filter>ObserverModal</Filter>
+    </ClCompile>
+    <ClCompile Include="Observable.cpp">
+      <Filter>ObserverModal</Filter>
+    </ClCompile>
+    <ClCompile Include="GridControlFactory.cpp">
+      <Filter>GridCtrl</Filter>
+    </ClCompile>
+    <ClCompile Include="GridCtrlBase.cpp">
+      <Filter>GridCtrl</Filter>
+    </ClCompile>
+    <ClCompile Include="GridDataManager.cpp">
+      <Filter>GridCtrl</Filter>
+    </ClCompile>
+    <ClCompile Include="GridViewManager.cpp">
+      <Filter>GridCtrl</Filter>
+    </ClCompile>
+    <ClCompile Include="CustomLabGridCtrl.cpp">
+      <Filter>GridCtrl</Filter>
+    </ClCompile>
+    <ClCompile Include="ChartXY.cpp">
+      <Filter>ChartFigure</Filter>
+    </ClCompile>
+    <ClCompile Include="ChartManager.cpp">
+      <Filter>ChartFigure</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgDeviceSet.cpp">
+      <Filter>Device</Filter>
+    </ClCompile>
+    <ClCompile Include="DoubleEdit.cpp">
+      <Filter>Device</Filter>
+    </ClCompile>
+    <ClCompile Include="GaugeDlg.cpp">
+      <Filter>Device</Filter>
+    </ClCompile>
+    <ClCompile Include="GaugeManager.cpp">
+      <Filter>Device</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgChartSet.cpp">
+      <Filter>ChartFigure</Filter>
+    </ClCompile>
+    <ClCompile Include="Lock.cpp">
+      <Filter>Global</Filter>
+    </ClCompile>
+    <ClCompile Include="GlobalDataManager.cpp">
+      <Filter>Global</Filter>
+    </ClCompile>
+    <ClCompile Include="Log.cpp">
+      <Filter>Log</Filter>
+    </ClCompile>
+    <ClCompile Include="LogLock.cpp">
+      <Filter>Log</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Edislab Pro.rc">
+      <Filter>资源文件</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+</Project>

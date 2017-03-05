@@ -1,0 +1,123 @@
+﻿生成启动时间为 2017/3/5 14:10:03。
+     1>项目“C:\Users\Administrator\Desktop\Edislab+Pro0304\Edislab Pro\Edislab Pro.vcxproj”在节点 2 上(build 个目标)。
+     1>InitializeBuildStatus:
+         正在创建“C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.unsuccessfulbuild”，因为已指定“AlwaysCreate”。
+       ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin\CL.exe /c /Zi /nologo /W3 /WX- /Od /Oi /Oy- /GL /D WIN32 /D _WINDOWS /D NDEBUG /D _UNICODE /D UNICODE /D _AFXDLL /D _CRT_SECURE_NO_WARNINGS /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Yc"StdAfx.h" /Fp"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.pch" /Fo"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\\" /Fd"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\vc100.pdb" /Gd /TP /analyze- /errorReport:prompt stdafx.cpp
+         stdafx.cpp
+         Automatically linking with BCGCBPRO2210U100.lib
+         C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin\CL.exe /c /Zi /nologo /W3 /WX- /Od /Oi /Oy- /GL /D WIN32 /D _WINDOWS /D NDEBUG /D _UNICODE /D UNICODE /D _AFXDLL /D _CRT_SECURE_NO_WARNINGS /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Yu"StdAfx.h" /Fp"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.pch" /Fo"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\\" /Fd"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\vc100.pdb" /Gd /TP /analyze- /errorReport:prompt AbstractSplitAlgorithm.cpp BaseDialog.cpp BaseDockingBar.cpp BaseRibbonBar.cpp BaseTabWnd.cpp ChartManager.cpp ChartXY.cpp CommandEntry.cpp ComImple.cpp ChartFigureDlg.cpp ConcreteSplitAlgorithm.cpp ConcreteTabWnd.cpp CustomLabGridCtrl.cpp DeviceView.cpp DiagramView.cpp DlgAddPage.cpp DlgChartSet.cpp DlgDevicePanel.cpp DlgDeviceSet.cpp DlgDiagramPanel.cpp DlgGridPanel.cpp DlgPageNameConfig.cpp DlgTabPanel.cpp DoubleEdit.cpp DumpFileSwitch.cpp "Edislab Pro.cpp" "Edislab ProDoc.cpp" "Edislab ProView.cpp" ErrorCodeManager.cpp GaugeDlg.cpp GaugeManager.cpp Global.cpp GlobalDataManager.cpp GridControlFactory.cpp GridCtrlBase.cpp GridDataManager.cpp GridView.cpp GridViewManager.cpp Lock.cpp Log.cpp LogLock.cpp MainFrm.cpp Observable.cpp Observer.cpp SplitBar.cpp Utility.cpp WidgetLayout.cpp
+         AbstractSplitAlgorithm.cpp
+         BaseDialog.cpp
+         BaseDockingBar.cpp
+         BaseRibbonBar.cpp
+         BaseTabWnd.cpp
+         ChartManager.cpp
+         ChartXY.cpp
+         CommandEntry.cpp
+         ComImple.cpp
+         ChartFigureDlg.cpp
+         ConcreteSplitAlgorithm.cpp
+         ConcreteTabWnd.cpp
+         CustomLabGridCtrl.cpp
+         DeviceView.cpp
+         DiagramView.cpp
+         DlgAddPage.cpp
+         DlgChartSet.cpp
+         DlgDevicePanel.cpp
+         DlgDeviceSet.cpp
+         DlgDiagramPanel.cpp
+         正在编译...
+         DlgGridPanel.cpp
+         DlgPageNameConfig.cpp
+         DlgTabPanel.cpp
+         DoubleEdit.cpp
+         DumpFileSwitch.cpp
+         Edislab Pro.cpp
+         Edislab ProDoc.cpp
+         Edislab ProView.cpp
+         ErrorCodeManager.cpp
+         GaugeDlg.cpp
+         GaugeManager.cpp
+         Global.cpp
+         GlobalDataManager.cpp
+         GridControlFactory.cpp
+         GridCtrlBase.cpp
+         GridDataManager.cpp
+         GridView.cpp
+         GridViewManager.cpp
+         Lock.cpp
+         Log.cpp
+         正在编译...
+         LogLock.cpp
+         MainFrm.cpp
+         Observable.cpp
+         Observer.cpp
+         SplitBar.cpp
+         Utility.cpp
+         WidgetLayout.cpp
+       ResourceCompile:
+         C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin\rc.exe /D NDEBUG /D _UNICODE /D UNICODE /D _AFXDLL /l"0x0804" /IC:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\ /nologo /fo"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.res" "Edislab Pro.rc" 
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Edislab Pro.exe" /INCREMENTAL:NO /NOLOGO /MANIFEST /ManifestFile:"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.exe.intermediate.manifest" /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /DEBUG /PDB:"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Edislab Pro.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG /TLBID:1 /ENTRY:"wWinMainCRTStartup" /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Edislab Pro.lib" /MACHINE:X86 "C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.res"
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\AbstractSplitAlgorithm.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\BaseDialog.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\BaseDockingBar.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\BaseRibbonBar.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\BaseTabWnd.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\ChartManager.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\ChartXY.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\CommandEntry.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\ComImple.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\ChartFigureDlg.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\ConcreteSplitAlgorithm.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\ConcreteTabWnd.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\CustomLabGridCtrl.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DeviceView.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DiagramView.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DlgAddPage.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DlgChartSet.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DlgDevicePanel.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DlgDeviceSet.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DlgDiagramPanel.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DlgGridPanel.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DlgPageNameConfig.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DlgTabPanel.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DoubleEdit.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\DumpFileSwitch.obj
+         "C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.obj"
+         "C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab ProDoc.obj"
+         "C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab ProView.obj"
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\ErrorCodeManager.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\GaugeDlg.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\GaugeManager.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Global.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\GlobalDataManager.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\GridControlFactory.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\GridCtrlBase.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\GridDataManager.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\GridView.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\GridViewManager.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Lock.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Log.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\LogLock.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\MainFrm.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Observable.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Observer.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\SplitBar.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\stdafx.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Utility.obj
+         C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\WidgetLayout.obj
+         正在生成代码
+         已完成代码的生成
+         Edislab Pro.vcxproj -> C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Edislab Pro.exe
+       Manifest:
+         C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin\mt.exe /nologo /verbose /outputresource:"C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Edislab Pro.exe;#1" /manifest "C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.exe.intermediate.manifest" "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\Include\Manifest\dpiaware.manifest"
+       FinalizeBuildStatus:
+         正在删除文件“C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.unsuccessfulbuild”。
+         正在对“C:\Users\Administrator\Desktop\Edislab+Pro0304\Bin_x86\Release\Edislab Pro.lastbuildstate”执行 Touch 任务。
+     1>已完成生成项目“C:\Users\Administrator\Desktop\Edislab+Pro0304\Edislab Pro\Edislab Pro.vcxproj”(build 个目标)的操作。
+
+生成成功。
+
+已用时间 00:00:15.92
