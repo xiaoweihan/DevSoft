@@ -232,6 +232,7 @@
     <ClInclude Include="DataDefine.h" />
     <ClInclude Include="DeviceView.h" />
     <ClInclude Include="DiagramView.h" />
+    <ClInclude Include="DlgAcquirationPara.h" />
     <ClInclude Include="DlgAddPage.h" />
     <ClInclude Include="DlgChartSet.h" />
     <ClInclude Include="DlgDevicePanel.h" />
@@ -239,6 +240,7 @@
     <ClInclude Include="DlgDiagramPanel.h" />
     <ClInclude Include="DlgGridPanel.h" />
     <ClInclude Include="DlgPageNameConfig.h" />
+    <ClInclude Include="DlgSensorChoose.h" />
     <ClInclude Include="DlgTabPanel.h" />
     <ClInclude Include="DoubleEdit.h" />
     <ClInclude Include="DumpFileSwitch.h" />
@@ -288,6 +290,7 @@
     <ClCompile Include="CustomLabGridCtrl.cpp" />
     <ClCompile Include="DeviceView.cpp" />
     <ClCompile Include="DiagramView.cpp" />
+    <ClCompile Include="DlgAcquirationPara.cpp" />
     <ClCompile Include="DlgAddPage.cpp" />
     <ClCompile Include="DlgChartSet.cpp" />
     <ClCompile Include="DlgDevicePanel.cpp" />
@@ -295,6 +298,7 @@
     <ClCompile Include="DlgDiagramPanel.cpp" />
     <ClCompile Include="DlgGridPanel.cpp" />
     <ClCompile Include="DlgPageNameConfig.cpp" />
+    <ClCompile Include="DlgSensorChoose.cpp" />
     <ClCompile Include="DlgTabPanel.cpp" />
     <ClCompile Include="DoubleEdit.cpp" />
     <ClCompile Include="DumpFileSwitch.cpp" />
