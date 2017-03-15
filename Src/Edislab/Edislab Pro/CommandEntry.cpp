@@ -50,6 +50,8 @@ void UpdateHandleDelElement(CEdislabProView* pView,CCmdUI* pCmdUI);
 void HandleStart(CEdislabProView* pView);
 //自动识别
 void HandleAutoSelect(CEdislabProView* pView);
+//输出实验报告
+void HandleOutputTestReport(CEdislabProView* pView);
 
 CCommandEntry& CCommandEntry::CreateInstance( void )
 {
@@ -131,6 +133,7 @@ void CCommandEntry::InitCommandEntry( void )
 	m_CommandEntryMap[ID_ADD_DEVICE] = HandleAddDevice;
 	m_CommandEntryMap[ID_AUTO_SELECT] = HandleAutoSelect;
 	m_CommandEntryMap[ID_START] = HandleStart;
+	m_CommandEntryMap[ID_OUTPUT_TEST_REPORT] = HandleOutputTestReport;
 }
 
 /*****************************************************************************
@@ -537,4 +540,10 @@ void HandleAutoSelect(CEdislabProView* pView)
 
 		COMIPLE.StartCom(pWnd);
 	}
+}
+
+//输出实验报告
+void HandleOutputTestReport( CEdislabProView* pView )
+{
+	TRACE("HandleOutputTestReport!\r\n");
 }

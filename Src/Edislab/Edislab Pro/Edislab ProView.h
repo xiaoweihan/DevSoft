@@ -93,6 +93,9 @@ public:
 	void AddDevice(void);
 public:
 	static CEdislabProView* GetCurrentView(void);
+
+
+
 };
 
 #ifndef _DEBUG  // Edislab ProView.cpp 中的调试版本
