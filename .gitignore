@@ -1,2 +1,9 @@
 *.obj
 Debug/
+*.sdf
+ipch/
+*.aps
+*.exe
+*.ilk
+*.pdb
+*.suo

@@ -221,6 +221,9 @@
     <ClInclude Include="BaseDockingBar.h" />
     <ClInclude Include="BaseRibbonBar.h" />
     <ClInclude Include="BaseTabWnd.h" />
+    <ClInclude Include="CApplication.h" />
+    <ClInclude Include="CDocuments.h" />
+    <ClInclude Include="CFont0.h" />
     <ClInclude Include="CommandEntry.h" />
     <ClInclude Include="ComImple.h" />
     <ClInclude Include="ChartFigureDlg.h" />
@@ -228,6 +231,8 @@
     <ClInclude Include="ChartXY.h" />
     <ClInclude Include="ConcreteSplitAlgorithm.h" />
     <ClInclude Include="ConcreteTabWnd.h" />
+    <ClInclude Include="CParagraphFormat.h" />
+    <ClInclude Include="CSelection.h" />
     <ClInclude Include="CustomLabGridCtrl.h" />
     <ClInclude Include="DataDefine.h" />
     <ClInclude Include="DeviceView.h" />
