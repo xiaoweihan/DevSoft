@@ -8,6 +8,11 @@
 #include "DlgPageNameConfig.h"
 #include "Utility.h"
 #include "ComImple.h"
+#include "CApplication.h"
+#include "CDocuments.h"
+#include "CFont0.h"
+#include "CSelection.h"
+#include "CParagraphFormat.h"
 //最大页面数
 const int MAX_PAGE_NUM = 4;
 //表格的最大个数
@@ -545,5 +550,69 @@ void HandleAutoSelect(CEdislabProView* pView)
 //输出实验报告
 void HandleOutputTestReport( CEdislabProView* pView )
 {
-	TRACE("HandleOutputTestReport!\r\n");
+	CApplication app;  
+	COleVariant vTrue((short)TRUE), vFalse((short)FALSE);  
+	app.CreateDispatch(_T("Word.Application"));
+	app.put_Visible(FALSE); 
+	//Create New Doc  
+	CDocuments docs = app.get_Documents();  
+	CComVariant tpl(_T("")),Visble,DocType(0),NewTemplate(false);  
+	docs.Add(&tpl,&NewTemplate,&DocType,&Visble);  
+	//Add Content:Text  
+	CSelection sel = app.get_Selection(); 
+
+	CParagraphFormat ParaFormat = sel.get_ParagraphFormat();
+	CFont0 SelFont = sel.get_Font();
+	SelFont.put_Bold(1);
+	SelFont.put_Size(16);
+	SelFont.put_Name(_T("宋体"));
+	sel.TypeText(_T("无标题试验"));
+	ParaFormat.put_Alignment(1);
+	sel.TypeParagraph();
+	sel.TypeParagraph();
+	SelFont.put_Size(12);
+	SelFont.put_Bold(0);
+	ParaFormat.put_Alignment(0);
+	sel.TypeText(_T("实验班级_____________实验日期_____________姓名_____________"));
+	sel.TypeParagraph();
+	sel.TypeParagraph();
+	SelFont.put_Bold(1);
+	sel.TypeText(_T("实验目的:"));
+	for (int i = 0; i < 5; ++i)
+	{
+		sel.TypeParagraph();
+	}
+	sel.TypeText(_T("实验目的:"));
+	for (int i = 0; i < 5; ++i)
+	{
+		sel.TypeParagraph();
+	}
+	sel.TypeText(_T("实验原理:"));
+	for (int i = 0; i < 5; ++i)
+	{
+		sel.TypeParagraph();
+	}
+
+	sel.TypeText(_T("实验器材:"));
+	for (int i = 0; i < 5; ++i)
+	{
+		sel.TypeParagraph();
+	}
+
+	sel.TypeText(_T("实验步骤:"));
+	for (int i = 0; i < 5; ++i)
+	{
+		sel.TypeParagraph();
+	}
+
+	sel.TypeText(_T("实验结果与分析"));
+	for (int i = 0; i < 5; ++i)
+	{
+		sel.TypeParagraph();
+	}
+	sel.ReleaseDispatch();  
+	ParaFormat.ReleaseDispatch();
+	docs.ReleaseDispatch();  
+	app.put_Visible(TRUE);  
+	app.ReleaseDispatch();  
 }

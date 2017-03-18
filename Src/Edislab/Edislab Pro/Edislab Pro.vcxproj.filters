@@ -285,6 +285,21 @@
     <ClInclude Include="DlgAcquirationPara.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="CApplication.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CFont0.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CParagraphFormat.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CSelection.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CDocuments.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
