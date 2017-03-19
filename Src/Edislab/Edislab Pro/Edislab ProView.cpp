@@ -40,6 +40,9 @@ BEGIN_MESSAGE_MAP(CEdislabProView, CView)
 	ON_WM_CREATE()
 	ON_WM_SIZE()
 	ON_WM_DESTROY()
+	ON_COMMAND(ID_FILE_OPEN, &CEdislabProView::OnFileOpen)
+	ON_COMMAND(ID_FILE_SAVE, &CEdislabProView::OnFileSave)
+	ON_COMMAND(ID_FILE_SAVE_AS, &CEdislabProView::OnFileSaveAs)
 END_MESSAGE_MAP()
 
 // CEdislabProView 构造/析构
@@ -80,8 +83,10 @@ void CEdislabProView::OnDraw(CDC* /*pDC*/)
 
 void CEdislabProView::OnFilePrintPreview()
 {
+#if 0
 #ifndef SHARED_HANDLERS
 	AFXPrintPreview(this);
+#endif
 #endif
 }
 
@@ -475,4 +480,35 @@ void CEdislabProView::AddDevice( void )
 	{
 		pWnd->AddGauge();
 	}
+}
+
+
+void CEdislabProView::OnFileOpen()
+{
+	// TODO: 在此添加命令处理程序代码
+	CFileDialog OpenDlg(TRUE,NULL,NULL,OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,_T("Editlab实验文件(*.edisp;*.edis)|*.edisp; *.edis||"),this);
+
+	if (IDOK == OpenDlg.DoModal())
+	{
+
+	}
+}
+
+
+void CEdislabProView::OnFileSave()
+{
+	// TODO: 在此添加命令处理程序代码
+	CFileDialog SaveDlg(FALSE,_T("edisp"),_T("无标题实验.edisp"),OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,_T("Editlab实验文件(*.edisp;*.edis)|*.edisp; *.edis||"),this);
+
+	if (IDOK == SaveDlg.DoModal())
+	{
+	}
+}
+
+
+void CEdislabProView::OnFileSaveAs()
+{
+	// TODO: 在此添加命令处理程序代码
+
+	OnFileSave();
 }

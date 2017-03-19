@@ -96,6 +96,9 @@ public:
 
 
 
+	afx_msg void OnFileOpen();
+	afx_msg void OnFileSave();
+	afx_msg void OnFileSaveAs();
 };
 
 #ifndef _DEBUG  // Edislab ProView.cpp 中的调试版本

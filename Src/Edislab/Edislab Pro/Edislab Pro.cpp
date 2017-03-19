@@ -23,8 +23,8 @@ using std::string;
 BEGIN_MESSAGE_MAP(CEdislabProApp, CBCGPWinApp)
 	ON_COMMAND(ID_APP_ABOUT, &CEdislabProApp::OnAppAbout)
 	// 基于文件的标准文档命令
-	ON_COMMAND(ID_FILE_NEW, &CBCGPWinApp::OnFileNew)
-	ON_COMMAND(ID_FILE_OPEN, &CBCGPWinApp::OnFileOpen)
+	//ON_COMMAND(ID_FILE_NEW, &CBCGPWinApp::OnFileNew)
+	//ON_COMMAND(ID_FILE_OPEN, &CBCGPWinApp::OnFileOpen)
 	// 标准打印设置命令
 	ON_COMMAND(ID_FILE_PRINT_SETUP, &CBCGPWinApp::OnFilePrintSetup)
 END_MESSAGE_MAP()

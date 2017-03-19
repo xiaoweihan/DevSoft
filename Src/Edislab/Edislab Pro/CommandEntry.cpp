@@ -57,7 +57,6 @@ void HandleStart(CEdislabProView* pView);
 void HandleAutoSelect(CEdislabProView* pView);
 //输出实验报告
 void HandleOutputTestReport(CEdislabProView* pView);
-
 CCommandEntry& CCommandEntry::CreateInstance( void )
 {
 	static CCommandEntry s_Entry;
@@ -550,6 +549,11 @@ void HandleAutoSelect(CEdislabProView* pView)
 //输出实验报告
 void HandleOutputTestReport( CEdislabProView* pView )
 {
+	if (nullptr == pView)
+	{
+		return;
+	}
+
 	CApplication app;  
 	COleVariant vTrue((short)TRUE), vFalse((short)FALSE);  
 	app.CreateDispatch(_T("Word.Application"));
@@ -578,35 +582,37 @@ void HandleOutputTestReport( CEdislabProView* pView )
 	sel.TypeParagraph();
 	SelFont.put_Bold(1);
 	sel.TypeText(_T("实验目的:"));
-	for (int i = 0; i < 5; ++i)
+
+	int nTimes = 5;
+	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
 	sel.TypeText(_T("实验目的:"));
-	for (int i = 0; i < 5; ++i)
+	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
 	sel.TypeText(_T("实验原理:"));
-	for (int i = 0; i < 5; ++i)
+	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
 
 	sel.TypeText(_T("实验器材:"));
-	for (int i = 0; i < 5; ++i)
+	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
 
 	sel.TypeText(_T("实验步骤:"));
-	for (int i = 0; i < 5; ++i)
+	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
 
 	sel.TypeText(_T("实验结果与分析"));
-	for (int i = 0; i < 5; ++i)
+	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
@@ -616,3 +622,5 @@ void HandleOutputTestReport( CEdislabProView* pView )
 	app.put_Visible(TRUE);  
 	app.ReleaseDispatch();  
 }
+
+
