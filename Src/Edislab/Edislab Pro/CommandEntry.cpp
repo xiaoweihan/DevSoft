@@ -2,6 +2,7 @@
 #include "Edislab Pro.h"
 #include "Edislab ProView.h"
 #include "CommandEntry.h"
+#include <boost/crc.hpp>
 #include "Msg.h"
 #include "DlgAddPage.h"
 #include "DlgTabPanel.h"
@@ -13,12 +14,17 @@
 #include "CFont0.h"
 #include "CSelection.h"
 #include "CParagraphFormat.h"
+#include "Global.h"
+#include "SensorConfig.h"
+#include "Log.h"
 //最大页面数
 const int MAX_PAGE_NUM = 4;
 //表格的最大个数
 const int MAX_GRID_NUM = 9;
 const int MAX_DEVICE_NUM = 9;
 const int MAX_DIAGRAM_NUM = 9;
+//是否开始采集
+static bool s_bStartCapture = false;
 //处理添加页面
 static void HandleAddPage(CEdislabProView* pView);
 //更新添加页面
@@ -53,10 +59,16 @@ void HandleDelElement(CEdislabProView* pView);
 void UpdateHandleDelElement(CEdislabProView* pView,CCmdUI* pCmdUI);
 //开始采集
 void HandleStart(CEdislabProView* pView);
+void UpdateHandleStart(CEdislabProView* pView,CCmdUI* pCmdUI);
 //自动识别
 void HandleAutoSelect(CEdislabProView* pView);
+void UpdateHandleAutoSelect(CEdislabProView* pView,CCmdUI* pCmdUI);
+//手动识别
+void HandleManualSelect(CEdislabProView* pView);
+void UpdateHandleManualSelect(CEdislabProView* pView,CCmdUI* pCmdUI);
 //输出实验报告
 void HandleOutputTestReport(CEdislabProView* pView);
+
 CCommandEntry& CCommandEntry::CreateInstance( void )
 {
 	static CCommandEntry s_Entry;
@@ -137,6 +149,7 @@ void CCommandEntry::InitCommandEntry( void )
 	m_CommandEntryMap[ID_ADD_DEVICE] = HandleAddDevice;
 	m_CommandEntryMap[ID_AUTO_SELECT] = HandleAutoSelect;
 	m_CommandEntryMap[ID_START] = HandleStart;
+	m_CommandEntryMap[ID_MANUAL_SELECT] = HandleManualSelect;
 	m_CommandEntryMap[ID_OUTPUT_TEST_REPORT] = HandleOutputTestReport;
 }
 
@@ -158,6 +171,9 @@ void CCommandEntry::InitUpdateCommandEntry( void )
 	m_UpdateCommandEntryMap[ID_DEL_ELEMENT] = UpdateHandleDelElement;
 	m_UpdateCommandEntryMap[ID_ADD_IMAGE] = UpdateHandleAddImage;
 	m_UpdateCommandEntryMap[ID_ADD_DEVICE] = UpdateHandleAddDevice;
+	//m_UpdateCommandEntryMap[ID_START] = UpdateHandleStart;
+	m_UpdateCommandEntryMap[ID_MANUAL_SELECT] = UpdateHandleManualSelect;
+	m_UpdateCommandEntryMap[ID_AUTO_SELECT] = UpdateHandleAutoSelect;
 
 }
 
@@ -521,11 +537,52 @@ void HandleStart(CEdislabProView* pView)
 	{
 		return;
 	}
-	if(pView)
+	//获取第一个传感器
+	SENSOR_CONFIG_ELEMENT TempSensor;
+	if (!CSensorConfig::CreateInstance().GetFirstSensorConfig(&TempSensor))
 	{
-		BYTE sendMsg[3] = {0xAA,0x03,0xFF};
-		COMIPLE.SendComData(sendMsg,3);
+		ERROR_LOG("GetFirstSensorConfig failed.");
+		return;
 	}
+
+	//使用CRC-32算法
+	int nNameLength = TempSensor.strSensorName.length();
+
+	int nTotalLength = 1 + 1 + 1 + nNameLength + 1 + 1;
+
+	BYTE* pBuffer = new BYTE[nTotalLength];
+
+	if (nullptr == pBuffer)
+	{
+		return;
+	}
+	ZeroMemory(pBuffer,nTotalLength);
+
+	//发送开始采集
+	pBuffer[0] = 0xAB;
+	pBuffer[1] = nTotalLength - 1 - 1;
+	pBuffer[2] = nNameLength;
+	memcpy(pBuffer + 3,TempSensor.strSensorName.c_str(),nNameLength);
+	//停止采集
+	if (s_bStartCapture)
+	{
+		pBuffer[nTotalLength - 2] = 0x01;
+	}
+	//开始采集
+	else
+	{
+		pBuffer[nTotalLength - 2] = 0x00;
+	}
+	
+	pBuffer[nTotalLength - 1] = Utility::CalCRC8(pBuffer,nTotalLength - 1);
+
+	COMIPLE.SendComData(pBuffer,nTotalLength);
+
+	delete []pBuffer;
+	pBuffer = nullptr;
+
+	s_bStartCapture = !s_bStartCapture;
+	
 }
 //自动识别
 void HandleAutoSelect(CEdislabProView* pView)
@@ -534,16 +591,16 @@ void HandleAutoSelect(CEdislabProView* pView)
 	{
 		return;
 	}
-	if(pView)
+	
+	CWnd* pWnd = AfxGetMainWnd();
+	if(NULL == pWnd)
 	{
-		CWnd* pWnd = AfxGetMainWnd();
-		if(NULL == pWnd)
-		{
-			return;
-		}
-
-		COMIPLE.StartCom(pWnd);
+		return;
 	}
+
+	g_bAutoSelect = TRUE;
+	COMIPLE.StartCom(pWnd);
+	
 }
 
 //输出实验报告
@@ -621,6 +678,40 @@ void HandleOutputTestReport( CEdislabProView* pView )
 	docs.ReleaseDispatch();  
 	app.put_Visible(TRUE);  
 	app.ReleaseDispatch();  
+}
+
+void HandleManualSelect( CEdislabProView* pView )
+{
+	g_bAutoSelect = FALSE;
+
+}
+
+void UpdateHandleAutoSelect( CEdislabProView* pView,CCmdUI* pCmdUI)
+{
+	if (NULL == pView || NULL == pCmdUI)
+	{
+		return;
+	}
+
+	pCmdUI->SetCheck(g_bAutoSelect);
+}
+
+void UpdateHandleManualSelect( CEdislabProView* pView,CCmdUI* pCmdUI )
+{
+	if (NULL == pView || NULL == pCmdUI)
+	{
+		return;
+	}
+	pCmdUI->SetCheck(!g_bAutoSelect);
+}
+
+void UpdateHandleStart( CEdislabProView* pView,CCmdUI* pCmdUI )
+{
+	if (NULL == pView || NULL == pCmdUI)
+	{
+		return;
+	}
+	pCmdUI->SetText(_T("停止"));
 }
 
 

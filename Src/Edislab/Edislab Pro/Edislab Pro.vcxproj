@@ -231,6 +231,7 @@
     <ClInclude Include="ChartXY.h" />
     <ClInclude Include="ConcreteSplitAlgorithm.h" />
     <ClInclude Include="ConcreteTabWnd.h" />
+    <ClInclude Include="ConverEncode.h" />
     <ClInclude Include="CParagraphFormat.h" />
     <ClInclude Include="CSelection.h" />
     <ClInclude Include="CustomLabGridCtrl.h" />
@@ -272,6 +273,8 @@
     <ClInclude Include="Observable.h" />
     <ClInclude Include="Observer.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="SensorConfig.h" />
+    <ClInclude Include="SensorIDGenerator.h" />
     <ClInclude Include="SplitBar.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
@@ -292,6 +295,7 @@
     <ClCompile Include="ChartFigureDlg.cpp" />
     <ClCompile Include="ConcreteSplitAlgorithm.cpp" />
     <ClCompile Include="ConcreteTabWnd.cpp" />
+    <ClCompile Include="ConverEncode.cpp" />
     <ClCompile Include="CustomLabGridCtrl.cpp" />
     <ClCompile Include="DeviceView.cpp" />
     <ClCompile Include="DiagramView.cpp" />
@@ -326,6 +330,8 @@
     <ClCompile Include="MainFrm.cpp" />
     <ClCompile Include="Observable.cpp" />
     <ClCompile Include="Observer.cpp" />
+    <ClCompile Include="SensorConfig.cpp" />
+    <ClCompile Include="SensorIDGenerator.cpp" />
     <ClCompile Include="SplitBar.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

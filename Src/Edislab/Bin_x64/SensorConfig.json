@@ -1,6 +1,13 @@
 {
- "SensorConfig":[
-   {"SensorName":"Ñ¹Ç¿","PortName":1},
-   {"SensorName":"ÉùÕñ¶¯","PortName":2}
-   ]
+  "SensorConfig": [
+    {
+      "SensorName": "å¤§æ°”åŽ‹",
+      "PortName": 1,
+      "Pairty": 0,
+      "StopBits": 0,
+      "DataBits": 8,
+      "BaudRate": 9600,
+      "UseFlowControl":false
+    }
+  ]
 }

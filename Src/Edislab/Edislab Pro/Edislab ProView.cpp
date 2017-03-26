@@ -202,6 +202,8 @@ void CEdislabProView::OnInitialUpdate()
 
 	// TODO: 在此添加专用代码和/或调用基类
 	AddNewTabWnd(DEFAULT_PAGE_NAME,1,1,1);
+
+
 }
 
 /*****************************************************************************

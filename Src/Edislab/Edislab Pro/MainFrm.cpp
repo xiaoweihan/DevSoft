@@ -9,7 +9,7 @@
 #include "Msg.h"
 #include "Utility.h"
 #include "GlobalDataManager.h"
-
+#include "ComImple.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -172,6 +172,13 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	//´´½¨RibbonBar
 	CreateRibbonBar();
 	SetTimer(TIMER_ID,TIMER_GAP,NULL);
+
+
+	if (g_bAutoSelect)
+	{	
+		COMIPLE.StartCom(this);
+	}
+
 	return 0;
 }
 

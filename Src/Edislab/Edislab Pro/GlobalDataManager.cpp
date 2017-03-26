@@ -265,6 +265,30 @@ void CGlobalDataManager::AppendColumn(int nSensorID,int nSensorChanel)
 	m_cs.UnLock();
 }
 
+//begin add by xiaowei.han 2017-3-25
+//添加传感器数据列
+void CGlobalDataManager::AppendColumn(int nSensorID,int nSensorChanel,const std::string& strUnit)
+{
+	m_cs.Lock();
+	//取得当前组
+	if(m_allData.size())
+	{
+		COLUMNDATA _column;
+
+		_column.nColumnID = IDManager::CreateInstance()->generateID();
+		_column.strColumnName = CString(strUnit.c_str());
+		_column.nSensorID = nSensorID;
+		_column.nSensorChanel = nSensorChanel;
+		_column.emType = TYPE_SENSOR;
+		_column.emEdit = COLUMN_EDIT_FORBID;
+
+		m_allData[0].vecColData.push_back(_column);
+	}
+
+	m_cs.UnLock();
+}
+//end add by xiaowei.han 2017-3-25
+
 //添加时间数据列
 void CGlobalDataManager::AppendTimeColumn()
 {
@@ -362,6 +386,43 @@ void CGlobalDataManager::PushData(int nSensorChan,short nValue)
 	m_cs.UnLock();
 }
 
+//begin add by xiaowei.han 2017-3-25
+void CGlobalDataManager::PushData(int nSensorChan,float fValue)
+{
+	m_cs.Lock();
+
+	//通过通到号找数据列ID
+	//int nSensorID = FindColumnID(nSensorChan);
+
+	//if(nSensorID == -1)
+	//	return;
+
+	CString strValue;
+	strValue.Format(_T("%.2f"),fValue);
+
+	int nSensorID;
+
+	//遍历所有的组中的列 找到ID一样的列
+	for(int i=0; i<m_allData.size(); ++i)
+	{
+		if(m_allData[i].bDefault)
+		{
+			for(unsigned int j  = 0; j < m_allData[i].vecColData.size();++j )
+			{
+				if(m_allData[i].vecColData[j].nSensorChanel == nSensorChan)
+				{
+					nSensorID =  m_allData[i].vecColData[j].nColumnID;
+
+					m_allData[i].vecColData[j].data.push_back(strValue);
+
+					break;
+				}
+			}
+		}
+	}
+	m_cs.UnLock();
+}
+//end add by xiaowei.han 2017-3-25
 
 //一列添加多行 没有此功能 一次只能增加一行
 //void CGlobalDataManager::PushData(int nColID ,int nStartRowPos ,int nEndRowPos ,VEC_STRING vecValue)

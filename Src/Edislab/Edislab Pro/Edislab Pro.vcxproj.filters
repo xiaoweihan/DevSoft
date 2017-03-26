@@ -300,6 +300,15 @@
     <ClInclude Include="CDocuments.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="SensorConfig.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SensorIDGenerator.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ConverEncode.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -450,6 +459,15 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="DlgSensorChoose.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorConfig.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorIDGenerator.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ConverEncode.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

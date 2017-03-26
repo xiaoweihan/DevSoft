@@ -18,3 +18,4 @@
 //
 ////实验数据行数
 //int						g_LabDataRowCount;
+BOOL g_bAutoSelect = FALSE;
