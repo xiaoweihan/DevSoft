@@ -5,6 +5,7 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include <string>
+#include <boost/filesystem.hpp>
 #include "MainFrm.h"
 #include "Edislab ProDoc.h"
 #include "Edislab ProView.h"
@@ -189,7 +190,11 @@ void CEdislabProApp::Init( void )
 {
 
 	//初始化打印日志
-	std::string strLogDir = Utility::GetExeDirecory() + std::string("\\");
+	std::string strLogDir = Utility::GetExeDirecory() + std::string("\\log\\");
+
+	boost::filesystem::create_directories(strLogDir);
+
+
 	CLog::CreateInstance().SetLogPath(strLogDir.c_str());
 	CLog::CreateInstance().SetLogNamePrefix("Edislab");
 #ifdef _DEBUG
