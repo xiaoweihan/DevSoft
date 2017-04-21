@@ -72,29 +72,29 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)Bin_x86\</OutDir>
-    <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)Lib_x86\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(SolutionDir)Include\boost\include\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)Lib_x86\;$(SolutionDir)Include\boost\lib_x86\;$(LibraryPath)</LibraryPath>
     <IntDir>$(SolutionDir)Bin_x86\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)Bin_x64\</OutDir>
-    <LibraryPath>$(SolutionDir)Lib_x64\;$(LibraryPath)</LibraryPath>
-    <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)Lib_x64\;$(SolutionDir)Include\boost\lib_x64\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(SolutionDir)Include\boost\include\;$(IncludePath)</IncludePath>
     <IntDir>$(SolutionDir)Bin_x64\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)Bin_x86\</OutDir>
-    <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)Lib_x86\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(SolutionDir)Include\boost\include\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)Lib_x86\;$(SolutionDir)Include\boost\lib_x86\;$(LibraryPath)</LibraryPath>
     <IntDir>$(SolutionDir)Bin_x86\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)Bin_x64\</OutDir>
-    <LibraryPath>$(SolutionDir)Lib_x64\;$(LibraryPath)</LibraryPath>
-    <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)Lib_x64\;$(SolutionDir)Include\boost\lib_x64\;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(SolutionDir)Include\boost\include\;$(IncludePath)</IncludePath>
     <IntDir>$(SolutionDir)Bin_x64\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -266,7 +266,6 @@
     <ClInclude Include="GridViewManager.h" />
     <ClInclude Include="Lock.h" />
     <ClInclude Include="Log.h" />
-    <ClInclude Include="LogLock.h" />
     <ClInclude Include="Macro.h" />
     <ClInclude Include="MainFrm.h" />
     <ClInclude Include="Msg.h" />
@@ -326,7 +325,6 @@
     <ClCompile Include="GridViewManager.cpp" />
     <ClCompile Include="Lock.cpp" />
     <ClCompile Include="Log.cpp" />
-    <ClCompile Include="LogLock.cpp" />
     <ClCompile Include="MainFrm.cpp" />
     <ClCompile Include="Observable.cpp" />
     <ClCompile Include="Observer.cpp" />

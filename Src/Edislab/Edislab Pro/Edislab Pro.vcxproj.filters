@@ -276,9 +276,6 @@
     <ClInclude Include="Log.h">
       <Filter>Log</Filter>
     </ClInclude>
-    <ClInclude Include="LogLock.h">
-      <Filter>Log</Filter>
-    </ClInclude>
     <ClInclude Include="DlgSensorChoose.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -450,9 +447,6 @@
       <Filter>Global</Filter>
     </ClCompile>
     <ClCompile Include="Log.cpp">
-      <Filter>Log</Filter>
-    </ClCompile>
-    <ClCompile Include="LogLock.cpp">
       <Filter>Log</Filter>
     </ClCompile>
     <ClCompile Include="DlgAcquirationPara.cpp">
