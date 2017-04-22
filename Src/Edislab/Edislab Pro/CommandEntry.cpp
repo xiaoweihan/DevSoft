@@ -13,6 +13,8 @@
 #include "CFont0.h"
 #include "CSelection.h"
 #include "CParagraphFormat.h"
+#include "DlgAcquirationPara.h"
+#include "DlgSensorChoose.h"
 //最大页面数
 const int MAX_PAGE_NUM = 4;
 //表格的最大个数
@@ -57,6 +59,15 @@ void HandleStart(CEdislabProView* pView);
 void HandleAutoSelect(CEdislabProView* pView);
 //输出实验报告
 void HandleOutputTestReport(CEdislabProView* pView);
+//删除元素
+void HandleChooseDevice(CEdislabProView* pView);
+//更新删除元素
+void UpdateHandleChooseDevice(CEdislabProView* pView,CCmdUI* pCmdUI);
+//删除元素
+void HandleAcquirePara(CEdislabProView* pView);
+//更新删除元素
+void UpdateHandleAcquirePara(CEdislabProView* pView,CCmdUI* pCmdUI);
+
 
 CCommandEntry& CCommandEntry::CreateInstance( void )
 {
@@ -139,6 +150,9 @@ void CCommandEntry::InitCommandEntry( void )
 	m_CommandEntryMap[ID_AUTO_SELECT] = HandleAutoSelect;
 	m_CommandEntryMap[ID_START] = HandleStart;
 	m_CommandEntryMap[ID_OUTPUT_TEST_REPORT] = HandleOutputTestReport;
+
+	m_CommandEntryMap[ID_SELECT_SENSOR] = HandleChooseDevice;
+	m_CommandEntryMap[ID_COLLECT_PARAM] = HandleAcquirePara;
 }
 
 /*****************************************************************************
@@ -159,7 +173,8 @@ void CCommandEntry::InitUpdateCommandEntry( void )
 	m_UpdateCommandEntryMap[ID_DEL_ELEMENT] = UpdateHandleDelElement;
 	m_UpdateCommandEntryMap[ID_ADD_IMAGE] = UpdateHandleAddImage;
 	m_UpdateCommandEntryMap[ID_ADD_DEVICE] = UpdateHandleAddDevice;
-
+	m_UpdateCommandEntryMap[ID_SELECT_SENSOR] = UpdateHandleChooseDevice;
+	m_UpdateCommandEntryMap[ID_COLLECT_PARAM] = UpdateHandleAcquirePara;
 }
 
 /*****************************************************************************
@@ -615,4 +630,45 @@ void HandleOutputTestReport( CEdislabProView* pView )
 	docs.ReleaseDispatch();  
 	app.put_Visible(TRUE);  
 	app.ReleaseDispatch();  
+}
+
+
+// 选择仪器
+void HandleChooseDevice(CEdislabProView* pView)
+{
+	if (NULL == pView)
+	{
+		return;
+	}
+
+    CDlgSensorChoose dlgChooseSensor;
+	dlgChooseSensor.DoModal();
+}
+
+void UpdateHandleChooseDevice( CEdislabProView* pView,CCmdUI* pCmdUI )
+{
+	if (NULL == pView || NULL == pCmdUI)
+	{
+		return;
+	}
+}
+
+// 获取参数
+void HandleAcquirePara(CEdislabProView* pView)
+{
+	if (NULL == pView)
+	{
+		return;
+	}
+
+	CDlgAcquirationPara dlgSelectPara;
+	dlgSelectPara.DoModal();
+}
+
+void UpdateHandleAcquirePara( CEdislabProView* pView,CCmdUI* pCmdUI )
+{
+	if (NULL == pView || NULL == pCmdUI)
+	{
+		return;
+	}
 }
