@@ -25,7 +25,7 @@ CDlgAcquirationPara::~CDlgAcquirationPara()
 
 void CDlgAcquirationPara::DoDataExchange(CDataExchange* pDX)
 {
-	CDialog::DoDataExchange(pDX);
+	CBaseDialog::DoDataExchange(pDX);
 	DDX_Radio(pDX, IDC_RADIO_FIXED_FREQUENCY, m_nGroupRadioValue);
 	DDX_Control(pDX, IDC_STATIC_FREQUENCY, m_staticFrequency);
 	DDX_Control(pDX, IDC_SCRBAR_FREQUENCY, m_barFrequency);
@@ -40,7 +40,7 @@ void CDlgAcquirationPara::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CDlgAcquirationPara, CDialog)
+BEGIN_MESSAGE_MAP(CDlgAcquirationPara, CBaseDialog)
 	ON_BN_CLICKED(IDC_RADIO_FIXED_FREQUENCY, &CDlgAcquirationPara::OnBnClickedRadioFixedFrequency)
 	ON_BN_CLICKED(IDC_CHECK_SAMPLE_START, &CDlgAcquirationPara::OnBnClickedCheckSampleStart)
 	ON_BN_CLICKED(IDC_CHECK_MULTI_SAMPLE, &CDlgAcquirationPara::OnBnClickedCheckMultiSample)
@@ -196,6 +196,7 @@ void CDlgAcquirationPara::InitLimitTimeMap()
 
 int CDlgAcquirationPara::CalSampleNum()
 {
+	using namespace std;
 	if (BST_CHECKED != m_checkLimitTime.GetCheck())
 	{
 		return MAX_SAMPLE_NUM;
@@ -231,6 +232,7 @@ int CDlgAcquirationPara::CalSampleNum()
 
 void CDlgAcquirationPara::RefreshCtrl()
 {
+	using namespace std;
 	int nSampleNum = CalSampleNum();
 	CString strText;
 	// 采样数目
@@ -388,7 +390,7 @@ void CDlgAcquirationPara::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScroll
 	// 设置滚动块位置   
 	pScrollBar->SetScrollPos(pos);   
 
-
+	using namespace std;
     CString strStatic;
 	map<int, float>::iterator iter = m_mapFrequency.find(m_barFrequency.GetScrollPos());
 	if (iter != m_mapFrequency.end())

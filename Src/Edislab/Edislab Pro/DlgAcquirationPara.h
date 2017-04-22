@@ -2,7 +2,6 @@
 #include "BaseDialog.h"
 #include <map>
 
-using namespace std;
 // CDlgAcquirationPara 对话框
 
 class CDlgAcquirationPara : public CBaseDialog
@@ -43,7 +42,7 @@ private:
 	int m_nGroupRadioValue;
 
 	// 频率显示
-	CStatic m_staticFrequency;
+	CBCGPStatic m_staticFrequency;
 
 	// 频率选择滑动条
 	/*  单位：点/秒
@@ -55,10 +54,10 @@ private:
 	CScrollBar m_barFrequency;
 
 	// 是否限定时间
-	CButton m_checkLimitTime;
+	CBCGPButton m_checkLimitTime;
 
 	// 显示限定的时间
-	CStatic m_staticLimitTime;
+	CBCGPStatic m_staticLimitTime;
 
 	// 限定时间选择滚动条
 	/* 数值选择范围
@@ -75,25 +74,25 @@ private:
 	CScrollBar m_barLimitTime;
 
 	// 是否在零时采样
-	CButton m_checkSampleAtStart;
+	CBCGPButton m_checkSampleAtStart;
 
 	// 多采样
-	CButton m_checkMultiSample;
+	CBCGPButton m_checkMultiSample;
 
 	// 多采样方式
-	CStatic m_staticMultiSample;
+	CBCGPStatic m_staticMultiSample;
 
 	// 采样数目
-	CStatic m_staticSampleNum;
+	CBCGPStatic m_staticSampleNum;
 
 	//提示信息
-	CStatic m_staticWarningInfo;
+	CBCGPStatic m_staticWarningInfo;
 
 	// 频率滚动条，位置与对应的信息
-	map<int, float> m_mapFrequency;
+	std::map<int, float> m_mapFrequency;
 
 	// 限定时间滚动条，位置与对应的信息
-	map<int, float> m_mapLimitTime;
+	std::map<int, float> m_mapLimitTime;
 public:
 // 	afx_msg void OnNMThemeChangedScrbarFrequency(NMHDR *pNMHDR, LRESULT *pResult);
 // 	afx_msg void OnNMThemeChangedScrbarLimitTime(NMHDR *pNMHDR, LRESULT *pResult);
