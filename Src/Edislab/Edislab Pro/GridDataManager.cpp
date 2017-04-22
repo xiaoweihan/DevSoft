@@ -55,7 +55,7 @@ void CGridDataManager::SetGroupInfo(GROUPDATA GroupData)
 
 void CGridDataManager::SetColumnInfo(int nColIndex,COLUMNDATA ColData)
 {
-	int nCount = m_vecGridColumnInfo.size();
+	int nCount = static_cast<int>(m_vecGridColumnInfo.size());
 	if(nColIndex < 0||nColIndex >= nCount)
 		return;
 

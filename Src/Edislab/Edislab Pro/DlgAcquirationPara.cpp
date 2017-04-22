@@ -4,7 +4,7 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "DlgAcquirationPara.h"
-#include "afxdialogex.h"
+#pragma warning(disable:4267)
 
 
 // CDlgAcquirationPara 对话框
@@ -216,7 +216,7 @@ int CDlgAcquirationPara::CalSampleNum()
 	}
 
 	// 小于1时强制设为1，但是“在0时采样”勾选时
-	int nSampleNum = (int)fTime*fFrequency;
+	int nSampleNum = (int)(fTime*fFrequency);
 	if (nSampleNum < 1)
 	{
 		nSampleNum = 1;
