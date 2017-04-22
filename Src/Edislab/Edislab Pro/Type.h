@@ -1,6 +1,10 @@
 #ifndef TYPE_H
 #define TYPE_H
 #include <vector>
+#include <string>
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/lock_guard.hpp>
+#include <boost/thread/shared_lock_guard.hpp>
 #include "Macro.h"
 class CSplitBar;
 class CEdislabProView;
@@ -96,7 +100,55 @@ typedef struct _add_page_element
 
 }ADD_PAGE_ELEMENT,* LP_ADD_PAGE_ELEMENT;
 
+//传感器信息定义
+typedef struct _sensor_config_element
+{
+	//传感器名称
+	std::string strSensorName;
+	//COM口索引
+	int nComIndex;
+	//波特率
+	unsigned int nBaudRate;
+	//通信字节位数
+	int nDataBits;
+	//停止位
+	int nStopBits;//(0:1个停止位 1:1.5个停止位(Linux暂不支持1.5个停止位) 2:2个停止位)
+	//校验类型
+	int nPairty;//(0:不使用校验  1:奇数校验 2:偶数校验 3:标记校验（Linux下没有此项） 4:空格校验)
+	//是否使用流控
+	bool bUseFlowControl;
 
+	_sensor_config_element(void)
+	{
+		strSensorName = "";
+		nBaudRate = 9600;
+		nDataBits = 8;
+		nStopBits = 0;
+		nPairty = 0;
+		nComIndex = -1;
+		bUseFlowControl = false;
+	}
+}SENSOR_CONFIG_ELEMENT,* LP_SENSOR_CONFIG_ELEMENT;
+
+//读锁
+typedef boost::shared_lock_guard<boost::mutex> ReadLock;
+
+//写锁
+typedef boost::lock_guard<boost::mutex> WriteLock;
+
+
+//传感器类型
+typedef struct _sensor_type_info_element
+{
+	std::string strSensorName;
+	int nSensorID;
+
+	_sensor_type_info_element(void)
+	{
+		strSensorName = "";
+		nSensorID = -1;
+	}
+}SENSOR_TYPE_INFO_ELEMENT,* LP_SENSOR_TYPE_INFO_ELEMENT;
 
 //函数指针定义
 typedef void (*pCommandEntry)(CEdislabProView* pView);

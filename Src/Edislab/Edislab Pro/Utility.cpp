@@ -1,5 +1,5 @@
 /************************************************************************************
-Copyright(C):Envision. Co., Ltd.
+Copyright(C):
 FileName:Utility.cpp
 Description:公共接口
 Author:xiaowei.han
@@ -9,6 +9,7 @@ Histroy:
 ************************************************************************************/
 #include "stdafx.h"
 #include "Utility.h"
+#include "ConverEncode.h"
 /*****************************************************************************
 FunctionName:GetExeDirecory
 FunctionDescription:获取可执行文件所在的目录
@@ -113,4 +114,24 @@ int Utility::AfxBCGPMessageBox( const CString& strText,UINT nType )
 {
 
 	return BCGPMessageBox(strText,nType);
+}
+
+BYTE Utility::CalCRC8( BYTE* pBuf,int nsize )
+{
+	BYTE crc = 0;
+	while(nsize--)
+	{
+		crc ^= *pBuf;
+		pBuf++;	
+	}	
+	return crc;
+}
+
+std::string Utility::ConverUTF8ToGB2312( const std::string& strContent )
+{
+	char szContent[MAX_PATH] = {0};
+	memcpy(szContent,strContent.c_str(),strContent.length());
+	std::string strGB2312Content;
+	ConverEncode::UTF_8ToGB2312(strGB2312Content,szContent,strContent.length());
+	return strGB2312Content;
 }

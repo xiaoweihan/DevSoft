@@ -276,9 +276,6 @@
     <ClInclude Include="Log.h">
       <Filter>Log</Filter>
     </ClInclude>
-    <ClInclude Include="LogLock.h">
-      <Filter>Log</Filter>
-    </ClInclude>
     <ClInclude Include="DlgSensorChoose.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -298,6 +295,15 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="CDocuments.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SensorConfig.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SensorIDGenerator.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ConverEncode.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -443,13 +449,19 @@
     <ClCompile Include="Log.cpp">
       <Filter>Log</Filter>
     </ClCompile>
-    <ClCompile Include="LogLock.cpp">
-      <Filter>Log</Filter>
-    </ClCompile>
     <ClCompile Include="DlgAcquirationPara.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="DlgSensorChoose.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorConfig.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorIDGenerator.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ConverEncode.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

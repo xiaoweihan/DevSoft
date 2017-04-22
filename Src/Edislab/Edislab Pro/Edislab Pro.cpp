@@ -5,6 +5,7 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include <string>
+#include <boost/filesystem.hpp>
 #include "MainFrm.h"
 #include "Edislab ProDoc.h"
 #include "Edislab ProView.h"
@@ -12,6 +13,8 @@
 #include "Utility.h"
 #include "BaseDialog.h"
 #include "ComImple.h"
+#include "Log.h"
+#include "SensorConfig.h"
 using std::string;
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -23,8 +26,8 @@ using std::string;
 BEGIN_MESSAGE_MAP(CEdislabProApp, CBCGPWinApp)
 	ON_COMMAND(ID_APP_ABOUT, &CEdislabProApp::OnAppAbout)
 	// 基于文件的标准文档命令
-	ON_COMMAND(ID_FILE_NEW, &CBCGPWinApp::OnFileNew)
-	ON_COMMAND(ID_FILE_OPEN, &CBCGPWinApp::OnFileOpen)
+	//ON_COMMAND(ID_FILE_NEW, &CBCGPWinApp::OnFileNew)
+	//ON_COMMAND(ID_FILE_OPEN, &CBCGPWinApp::OnFileOpen)
 	// 标准打印设置命令
 	ON_COMMAND(ID_FILE_PRINT_SETUP, &CBCGPWinApp::OnFilePrintSetup)
 END_MESSAGE_MAP()
@@ -185,12 +188,30 @@ void CEdislabProApp::SaveCustomState()
 
 void CEdislabProApp::Init( void )
 {
-	std::string strLogDir = Utility::GetExeDirecory();
-	strLogDir += std::string("\\");
+
+	//初始化打印日志
+	std::string strLogDir = Utility::GetExeDirecory() + std::string("\\log\\");
+
+	boost::filesystem::create_directories(strLogDir);
+
+
+	CLog::CreateInstance().SetLogPath(strLogDir.c_str());
+	CLog::CreateInstance().SetLogNamePrefix("Edislab");
+#ifdef _DEBUG
+	CLog::CreateInstance().SetLogLevel(LOG_DEBUG);
+#else
+	CLog::CreateInstance().SetLogLevel(LOG_ERROR);
+#endif
 	//设置生成的dump文件路径
-	std::string strDumpFilePath = strLogDir + std::string("KbseDisplayer.dmp");
+	std::string strDumpFilePath = strLogDir + std::string("Edislab.dmp");
 	CDumpFileSwitch::CreateInstance().SetDumpFilePath(strDumpFilePath.c_str());
 	CDumpFileSwitch::CreateInstance().OpenSwitch();
+
+	//加载传感器配置文件
+	if (!CSensorConfig::CreateInstance().LoadSensorConfig())
+	{
+		ERROR_LOG("LoadSensorConfig failed!");
+	}
 }
 
 // CEdislabProApp 消息处理程序

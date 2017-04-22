@@ -250,5 +250,5 @@ typedef struct _PairIndex
 ////Êý¾ÝÍ·
 //extern vector<PAIRINDEX>		g_LabDataIndex;
 
-
+extern BOOL g_bAutoSelect;
 #endif

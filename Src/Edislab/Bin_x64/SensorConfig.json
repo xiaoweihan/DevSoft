@@ -1,0 +1,13 @@
+{
+  "SensorConfig": [
+    {
+      "SensorName": "大气压",
+      "PortName": 1,
+      "Pairty": 0,
+      "StopBits": 0,
+      "DataBits": 8,
+      "BaudRate": 9600,
+      "UseFlowControl":false
+    }
+  ]
+}

@@ -7,8 +7,8 @@
 **************************************************************************************************************************************************/
 #include "stdafx.h"
 #include "log.h"
-#include "LogLock.h"
-
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/lock_guard.hpp>
 #ifdef _WIN32
 #pragma warning(disable:4996)
 #pragma warning(disable:4251)
@@ -22,7 +22,7 @@
 #define  LOG_MAX_SIZE                 (100 * 1024 * 1024)
 
 //用于同步的类
-static CLogLock s_Lock;
+static boost::mutex s_Lock;
 
 //记录文件达到日志的等级的次数
 static unsigned int s_nTimes = 1;
@@ -297,9 +297,6 @@ void CLog::WriteLog( LOGLEVEL loglevel,const char* szFormat,... )
 	{
 		return;
 	}
-
-	//进入同步
-	s_Lock.Lock();
 	char szLogContent[BUFFER_MAX_SIZE] = {0};
 	va_list varg;
 	va_start(varg,szFormat);
@@ -350,6 +347,8 @@ void CLog::WriteLog( LOGLEVEL loglevel,const char* szFormat,... )
 	}
 	//查看是否存在
 	char szLogName[MAX_PATH] = {0};
+	//进入同步
+	boost::lock_guard<boost::mutex> Lock(s_Lock);
 	while (1)
 	{
 		memset(szLogName,0,sizeof(szLogName));
@@ -401,7 +400,6 @@ void CLog::WriteLog( LOGLEVEL loglevel,const char* szFormat,... )
 		Writefile.Write(szContent,(unsigned int)strContent.length(),nWriteLength);
 		Writefile.Close();
 	}
-	s_Lock.UnLock();
 }
 
 CLog::CLog( void )

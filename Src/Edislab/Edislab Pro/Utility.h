@@ -1,5 +1,5 @@
 /************************************************************************************
-Copyright(C):Envision. Co., Ltd.
+Copyright(C):
 FileName:Utility.h
 Description:公共接口
 Author:xiaowei.han
@@ -25,6 +25,11 @@ namespace Utility
 	HBITMAP LoadBitmapFromFile(const char* szBitmapFile);
 
 	int AfxBCGPMessageBox(const CString& strText,UINT nType);
+
+	BYTE CalCRC8(BYTE* pBuf,int nsize);
+
+	//UTF-8->GBK
+	std::string ConverUTF8ToGB2312( const std::string& strContent );
 }
 
 //删除数组的宏

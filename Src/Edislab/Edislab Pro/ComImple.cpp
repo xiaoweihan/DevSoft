@@ -7,9 +7,14 @@
 
 #include "stdafx.h"
 #include "ComImple.h"
-#include "Utility.h"
 #include <process.h>
+#include "Utility.h"
 #include "GlobalDataManager.h"
+#include "Log.h"
+//begin add by xiaowei.han 2017-3-25
+#include "SensorConfig.h"
+#include "SensorIDGenerator.h"
+//end add by xiaowei.han 2017-3-25
 #pragma warning(push)
 #pragma warning(disable:4018)
 /*************************************************************************************************
@@ -21,7 +26,7 @@
 ***************************************************************************************************/
 CComImple& CComImple::CreateInstance()
 {
-	static CComImple s_ComImple;
+	//static CComImple s_ComImple;
 	return s_ComImple;
 }
 
@@ -58,16 +63,27 @@ CComImple::~CComImple(void)
 ***************************************************************************************************/
 void CComImple::StartCom(CWnd* pWnd)
 {
-	//判断窗口句柄是否有效
-	//if (NULL == pWnd)
+
+	//begin add by xiaowei.han 2017-3-25
+	//获取配置文件中的传感器信息
+	SENSOR_CONFIG_ELEMENT SensorInfo;
+	if (!CSensorConfig::CreateInstance().GetFirstSensorConfig(&SensorInfo))
 	{
-	//	return;
-	}
-
-	//初始化串口通信
-	if(!m_SerialPort.InitPort(pWnd,4))
+		ERROR_LOG("GetFirstSensorConfig failed.");
 		return;
-
+	}
+	//end add by xiaowei.han 2017-3-25
+	UINT nComPort = static_cast<UINT>(SensorInfo.nComIndex);
+	UINT nBandRate = static_cast<UINT>(SensorInfo.nBaudRate);
+	UINT nDataBits = static_cast<UINT>(SensorInfo.nDataBits);
+	UINT nStopBits = static_cast<UINT>(SensorInfo.nStopBits);
+	UINT nPairty = static_cast<UINT>(SensorInfo.nPairty);
+	//初始化串口通信
+	if(FALSE == m_SerialPort.InitPort(pWnd,nComPort,nBandRate,nPairty,nDataBits,nStopBits,SensorInfo.bUseFlowControl))
+	{
+		ERROR_LOG("InitPort failed!");
+		return;
+	}
 	//开启控制串口监视线程
 	m_SerialPort.StartMonitoring();
 }
@@ -121,6 +137,8 @@ void CComImple::SendComData(BYTE* Buffer, int nLength)
 	m_SerialPort.WriteToPort(Buffer,nLength);
 }
 
+CComImple CComImple::s_ComImple;
+
 /*******************************************************************************************************************************
 //串口通信类实现
 /*******************************************************************************************************************************
@@ -134,6 +152,9 @@ void CComImple::SendComData(BYTE* Buffer, int nLength)
 ***************************************************************************************************/
 CSerialPort::CSerialPort(void)
 {
+	//初始化临界资源
+	InitializeCriticalSection(&m_csCommunicationSync);
+
 	//初始化串口句柄
 	m_hComm = NULL;
 
@@ -205,6 +226,9 @@ CSerialPort::~CSerialPort(void)
 	//结束线程
 
 	delete [] m_szWriteBuffer;
+
+	//初始化临界资源
+	DeleteCriticalSection(&m_csCommunicationSync);
 }
 
 /*************************************************************************************************
@@ -214,6 +238,8 @@ CSerialPort::~CSerialPort(void)
 输出参数:无
 返回值: TRUE/成功 FALSE/失败
 ***************************************************************************************************/
+//begin delete by xiaowei.han 2017-3-25
+#if 0
 BOOL CSerialPort::InitPort(CWnd* pPortOwner,	//父窗口串口句柄（用于接收消息用）
 						   UINT  portnr,		// 端口号
 						   UINT  baud,			// 波特率
@@ -222,6 +248,9 @@ BOOL CSerialPort::InitPort(CWnd* pPortOwner,	//父窗口串口句柄（用于接收消息用）
 						   UINT  stopbits,		// 停止位 
 						   DWORD dwCommEvents,	// 事件 EV_RXCHAR, EV_CTS 等
 						   UINT  writebuffersize)	// 写缓存大小
+#endif
+//end delete by xiaowei.han 2017-3-25
+BOOL CSerialPort::InitPort( CWnd* pPortOwner, /*串口句柄 */ UINT portnr /*= 1*/, /*端口号 */ UINT baud /*= 9600*/, /*波特率 */ UINT parity /*= 'N'*/, /*奇偶校验 */ UINT databits /*= 8*/, /*数据位 */ UINT stopbits /*= 1*/, /*停止位 */ bool bUseFlowControl /*= false*/,/*是否使用流控 */ DWORD dwCommEvents /*= EV_RXCHAR*/, /*消息类型 */ UINT writebuffersize /*= WRITE_BUFFER_SIZE/*写缓存 */ )
 {
 	//判断端口 （最多 支持20个）
 	if(portnr < 0 || portnr > MaxSerialPortNum + 1)
@@ -229,11 +258,6 @@ BOOL CSerialPort::InitPort(CWnd* pPortOwner,	//父窗口串口句柄（用于接收消息用）
 		return FALSE;
 	}
 	
-	//if(pPortOwner == NULL)
-	{
-		//return FALSE;
-	}
-
 	//如果线程存在，则关掉进程
 	if (m_bThreadAlive)
 	{
@@ -279,9 +303,6 @@ BOOL CSerialPort::InitPort(CWnd* pPortOwner,	//父窗口串口句柄（用于接收消息用）
 	m_hEventArray[1] = m_ov.hEvent;
 	m_hEventArray[2] = m_hWriteEvent;
 
-	//初始化临界资源
-	InitializeCriticalSection(&m_csCommunicationSync);
-	
 	//父窗口
 	m_pOwner = pPortOwner;
 
@@ -311,9 +332,9 @@ BOOL CSerialPort::InitPort(CWnd* pPortOwner,	//父窗口串口句柄（用于接收消息用）
 		m_hComm = NULL;
 	}
 
-	//串口参数
-	wsprintf(szPort, _T("COM%d"), portnr);
-	wsprintf(szBaud, _T("baud=%d parity=%c data=%d stop=%d"), baud, parity, databits, stopbits);
+	//串口参数兼容COM10以上的
+	wsprintf(szPort, _T("\\\\.\\COM%d"), portnr);
+	//wsprintf(szBaud, _T("baud=%d parity=%c data=%d stop=%d"), baud, parity, databits, stopbits);
 
 	//打开串口
 	m_hComm = CreateFile((LPCTSTR)szPort,				// 串口名称
@@ -364,23 +385,60 @@ BOOL CSerialPort::InitPort(CWnd* pPortOwner,	//父窗口串口句柄（用于接收消息用）
 			if (GetCommState(m_hComm, &m_dcb))
 			{
 				//设置字件字符
-				m_dcb.EvtChar = 'q';
-				//设置RTS高位
-				m_dcb.fRtsControl = RTS_CONTROL_ENABLE;
+				//m_dcb.EvtChar = 'q';
 
-				//填写DCB结构
-				if (BuildCommDCB((LPCWSTR)szBaud, &m_dcb))
+				if (bUseFlowControl)
 				{
+					//设置RTS高位
+					m_dcb.fRtsControl = RTS_CONTROL_ENABLE;
+					m_dcb.fOutxCtsFlow = 1;
+					m_dcb.fOutxDsrFlow = 0;
+					m_dcb.fDsrSensitivity = 0;
+					//m_dcb.fRtsControl = RTS_CONTROL_ENABLE;
+					m_dcb.fDtrControl = 0;
+					m_dcb.fInX = 0; 
+					m_dcb.fOutX = 0;
+					m_dcb.XoffChar = 0;
+					m_dcb.XonChar = 0;
+					m_dcb.XoffLim = 0;
+					m_dcb.XonLim = 0;
+				}
+				else
+				{
+					m_dcb.fOutxCtsFlow = 0;
+					m_dcb.fOutxDsrFlow = 0;
+					m_dcb.fDsrSensitivity = 0;
+					m_dcb.fRtsControl = 0;
+					m_dcb.fDtrControl = 0;
+					m_dcb.fInX = 0; 
+					m_dcb.fOutX = 0;
+					m_dcb.XoffChar = 0;
+					m_dcb.XonChar = 0;
+					m_dcb.XoffLim = 0;
+					m_dcb.XonLim = 0;
+				}
+
+				//设置波特率
+				m_dcb.BaudRate = baud;
+				//设置数据位
+				m_dcb.ByteSize = databits;
+				//设置停止位
+				m_dcb.StopBits = stopbits;
+				//设置校验位
+				m_dcb.Parity = parity;
+				//填写DCB结构
+				//if (BuildCommDCB((LPCWSTR)szBaud, &m_dcb))
+				//{
 					//配置DCB
 					if (!SetCommState(m_hComm, &m_dcb))
 					{
 						ProcessErrorMessage("SetCommState()");
 					}
-				}
-				else
-				{
-					ProcessErrorMessage("BuildCommDCB()");
-				}
+				//}
+				//else
+				//{
+				//	ProcessErrorMessage("BuildCommDCB()");
+				//}
 			}
 			else
 			{
@@ -409,6 +467,7 @@ BOOL CSerialPort::InitPort(CWnd* pPortOwner,	//父窗口串口句柄（用于接收消息用）
 
 	return TRUE;
 }
+
 
 /*************************************************************************************************
 函数名称:CommThread
@@ -840,7 +899,13 @@ void CSerialPort::ReceiveChar(CSerialPort* pCom, COMSTAT comstat)
 		//memcpy(pCom->m_recvBuffer,RXBuff,BytesRead);
 
 		//pCom->m_nWritePos += BytesRead >= WRITE_BUFFER_SIZE? pCom->m_nWritePos - WRITE_BUFFER_SIZE : pCom->m_nWritePos;
+		//begin add by xiaowei.han 2017-3-25
+		ReceiveReportData(RXBuff,(int)BytesRead);
+		ReceiveIdentifyData(RXBuff,(int)BytesRead);
+		//end add by xiaowei.han 2017-3-25
 
+		//begin modify by xiaowei.han 2017-3-25
+#if 0
 		if(BytesRead==6)
 		{
 			if(RXBuff[0] == 0xAA)
@@ -881,6 +946,8 @@ void CSerialPort::ReceiveChar(CSerialPort* pCom, COMSTAT comstat)
 				}
 			}
 		}
+#endif
+		//end modify by xiaowei.han 2017-3-25
 	}
 
 }
@@ -1430,4 +1497,145 @@ DWORD WINAPI CSerialPort::DecodeComDataProc( LPVOID lpParam )
 	//DELETE_POINTER(pArg);
 	return dwResult;
 }
+
+void CSerialPort::ReceiveReportData( BYTE* pData,int nDataLength )
+{
+	if (nullptr == pData || 0 == nDataLength)
+	{
+		return;
+	}
+
+	if (nDataLength < 8)
+	{
+		ERROR_LOG("[report msg] the report msg is not valid.");
+		return;
+	}
+	//如果是上报数据
+	if (pData[0] == 0xBD)
+	{
+
+		//获取数据长度
+		int nTempDataLength = pData[1];
+
+		if (nTempDataLength + 2 == nDataLength)
+		{
+			//获取传感器名称长度
+			int nSensorNameLength = pData[2];
+			char szSensorName[MAX_PATH] = {0};
+			memcpy(szSensorName,pData + 3,nSensorNameLength);
+			NECESSARY_LOG("[report msg] the sensor name is [%s].",szSensorName);
+			//判断CRC是否合法
+			if (pData[nDataLength - 1] == Utility::CalCRC8(pData,nDataLength - 1))
+			{
+				//取数据
+				float fValue = 0.0f;
+				memcpy(&fValue,pData + 1 + 1 + 1 + nSensorNameLength,4);
+
+				NECESSARY_LOG("receive valud data [%.2f kpa].",fValue);
+
+				GLOBAL_DATA.PushData(0,fValue);
+				CString strTemp;
+				strTemp.Format(_T("%d"),nTime);
+				GLOBAL_DATA.ModifyData(GLOBAL_DATA.FindTimeID(),nTime++,strTemp);
+			}
+			else
+			{
+				ERROR_LOG("[report msg] the crc sum is not match!");
+			}
+		}
+		else
+		{
+			ERROR_LOG("[report msg] the msg length is not valid.");
+		}
+	}
+
+}
+
+void CSerialPort::ReceiveIdentifyData( BYTE* pData,int nDataLength )
+{
+	if (nullptr == pData || 0 == nDataLength)
+	{
+		return;
+	}
+
+	if (nDataLength < 5)
+	{
+		ERROR_LOG("[identify msg] the identify msg is not valid.");
+		return;
+	}
+	//如果是上报数据
+	if (pData[0] == 0xBA)
+	{
+
+		//获取数据长度
+		int nTempDataLength = pData[1];
+
+		if (nTempDataLength + 2 == nDataLength)
+		{
+			//获取传感器名称长度
+			int nSensorNameLength = pData[2];
+			char szSensorName[MAX_PATH] = {0};
+			memcpy(szSensorName,pData + 3,nSensorNameLength);
+			NECESSARY_LOG("[identify msg] the sensor name is [%s].",szSensorName);
+			//判断CRC是否合法
+			if (pData[nDataLength - 1] == Utility::CalCRC8(pData,nDataLength - 1))
+			{
+				//判断上线还是下线
+				if (0x01 == pData[nDataLength - 2])
+				{
+					NECESSARY_LOG("[identify msg] [%s] is onLine!",szSensorName);
+
+					//添加时间列
+					GLOBAL_DATA.AppendTimeColumn();
+					//添加单位列
+					GLOBAL_DATA.AppendColumn(CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(std::string(szSensorName)),0,"p(kpa)\n压强");
+
+					//设置采样周期
+					int nMsgLength = 6 + nSensorNameLength;
+
+					BYTE* pSendBuffer = new BYTE[nMsgLength];
+					if (nullptr != pSendBuffer)
+					{
+						ZeroMemory(pSendBuffer,nMsgLength);
+						pSendBuffer[0] = 0xAF;
+						pSendBuffer[1] = nMsgLength - 2;
+						pSendBuffer[2] = nSensorNameLength;
+						memcpy(pSendBuffer + 3,szSensorName,nSensorNameLength);
+						pSendBuffer[nMsgLength - 3] = 0x0A;
+						pSendBuffer[nMsgLength - 2] = 0x00;
+						pSendBuffer[nMsgLength - 1] = Utility::CalCRC8(pSendBuffer,nMsgLength - 1);
+
+						COMIPLE.SendComData(pSendBuffer,nMsgLength);
+
+						delete []pSendBuffer;
+						pSendBuffer = nullptr;
+
+						GLOBAL_DATA.SetChanged();
+						GLOBAL_DATA.Notify((void*)1);
+
+					}
+
+				}
+				else if (0x00 == pData[nDataLength - 2])
+				{
+					NECESSARY_LOG("[identify msg] [%s] is offLine!",szSensorName);
+				}
+				else
+				{
+
+				}
+			}
+			else
+			{
+				ERROR_LOG("[identify msg] the crc sum is not match!");
+			}
+		}
+		else
+		{
+			ERROR_LOG("[identify msg] the msg length is not valid.");
+		}
+	}
+
+}
+
 #pragma warning(pop)

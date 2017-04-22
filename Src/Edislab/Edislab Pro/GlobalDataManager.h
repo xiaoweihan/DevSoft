@@ -33,7 +33,7 @@ public:
 
 	//添加传感器数据列
 	void AppendColumn(int nSensorID,int nSensorChanel);
-
+	void AppendColumn(int nSensorID,int nSensorChanel,const std::string& strUnit);
 	//添加时间数据列
 	void AppendTimeColumn();
 
@@ -42,7 +42,7 @@ public:
 	void PushData(int nSensorChan,short nValue);
 	//void PushData(int nColID ,int nStartRowPos ,int nEndRowPos ,VEC_STRING vecValue);
 	void PushData(int nRowPos );
-
+	void PushData(int nSensorChan,float fValue);
 	//修改数据
 	void ModifyData(int nColID ,int nRowPos ,CString szValue);
 	void ModifyData(int nColID ,int nStartRowPos ,int nEndRowPos ,VEC_STRING vecValue);
