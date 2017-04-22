@@ -2,7 +2,7 @@
 #include "Edislab Pro.h"
 #include "Edislab ProView.h"
 #include "CommandEntry.h"
-#include <boost/crc.hpp>
+#include "boost/crc.hpp"
 #include "Msg.h"
 #include "DlgAddPage.h"
 #include "DlgTabPanel.h"
@@ -742,7 +742,7 @@ void HandleManualSelect( CEdislabProView* pView )
 {
 	g_bAutoSelect = FALSE;
 
-	pCmdUI->SetCheck(g_bAutoSelect);
+	//pCmdUI->SetCheck(g_bAutoSelect);
 }
 
 void UpdateHandleManualSelect( CEdislabProView* pView,CCmdUI* pCmdUI )
