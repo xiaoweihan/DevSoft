@@ -244,7 +244,7 @@ void CDlgAcquirationPara::RefreshCtrl()
 	{
 		strText.Format(_T("%d"), nSampleNum);
 	}
-	m_staticSampleNum,SetWindowTextW(strText);
+	m_staticSampleNum.SetWindowText(strText);
 
 	// 多采样
 	map<int, float>::iterator iter = m_mapFrequency.find(m_barFrequency.GetScrollPos());
@@ -349,6 +349,7 @@ BOOL CDlgAcquirationPara::OnInitDialog()
 
 void CDlgAcquirationPara::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 {
+
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
 	int pos = pScrollBar->GetScrollPos();    // 获取水平滚动条当前位置   
 
@@ -435,8 +436,6 @@ void CDlgAcquirationPara::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScroll
 	}
 
 	m_staticLimitTime.SetWindowText(strStatic);
-
 	RefreshCtrl();
-
 	CBaseDialog::OnHScroll(nSBCode, nPos, pScrollBar);
 }
