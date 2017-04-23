@@ -17,6 +17,7 @@
 //end add by xiaowei.han 2017-3-25
 #pragma warning(push)
 #pragma warning(disable:4018)
+#pragma warning(disable:4267)
 /*************************************************************************************************
 函数名称:CreateInstance
 功能描述:串口通信接口类实例化

@@ -132,6 +132,6 @@ std::string Utility::ConverUTF8ToGB2312( const std::string& strContent )
 	char szContent[MAX_PATH] = {0};
 	memcpy(szContent,strContent.c_str(),strContent.length());
 	std::string strGB2312Content;
-	ConverEncode::UTF_8ToGB2312(strGB2312Content,szContent,strContent.length());
+	ConverEncode::UTF_8ToGB2312(strGB2312Content,szContent,static_cast<int>(strContent.length()));
 	return strGB2312Content;
 }

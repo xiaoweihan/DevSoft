@@ -24,7 +24,7 @@
 #include "encodedstream.h"
 #include <new>      // placement new
 #include <limits>
-
+#pragma warning(disable:4003)
 RAPIDJSON_DIAG_PUSH
 #ifdef _MSC_VER
 RAPIDJSON_DIAG_OFF(4127) // conditional expression is constant

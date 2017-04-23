@@ -8,6 +8,7 @@
 #include "GlobalDataManager.h"
 #pragma warning(push)
 #pragma warning(disable:4018)
+#pragma warning(disable:4244)
 // DlgChartSet dialog
 
 IMPLEMENT_DYNAMIC(DlgChartSet, CDialog)
@@ -97,7 +98,7 @@ BOOL DlgChartSet::OnInitDialog()
 		HTREEITEM hCol = m_treeY.GetChildItem(hGroup);
 		while(hCol)
 		{
-			int id = m_treeY.GetItemData(hCol);
+			int id = static_cast<int>(m_treeY.GetItemData(hCol));
 			if(m_setShowID.find(id)!=m_setShowID.end())
 			{
 				m_treeY.SetCheck(hCol, TRUE);//选择
@@ -115,7 +116,7 @@ BOOL DlgChartSet::OnInitDialog()
 	m_combMoveStyle.SetItemData(index, E_Y_HANDLE);
 	for(int i=0; i<m_combMoveStyle.GetCount(); ++i)
 	{
-		if(m_eMoveStyle==m_combMoveStyle.GetItemData(i))
+		if(m_eMoveStyle==static_cast<int>(m_combMoveStyle.GetItemData(i)))
 		{
 			m_combMoveStyle.SetCurSel(i);
 			break;
@@ -126,7 +127,7 @@ BOOL DlgChartSet::OnInitDialog()
 	m_combChartType.SetItemData(index, E_CHART_LINE);
 	for(int i=0; i<m_combChartType.GetCount(); ++i)
 	{
-		if(m_eChartType==m_combChartType.GetItemData(i))
+		if(m_eChartType==static_cast<int>(m_combChartType.GetItemData(i)))
 		{
 			m_combChartType.SetCurSel(i);
 			break;
@@ -141,7 +142,7 @@ BOOL DlgChartSet::OnInitDialog()
 	m_combLineStyle.SetItemData(index, E_LINE_DOT_LINE);
 	for(int i=0; i<m_combLineStyle.GetCount(); ++i)
 	{
-		if(m_eLineStyle==m_combLineStyle.GetItemData(i))
+		if(m_eLineStyle==static_cast<int>(m_combLineStyle.GetItemData(i)))
 		{
 			m_combLineStyle.SetCurSel(i);
 			break;
@@ -169,21 +170,21 @@ void DlgChartSet::OnBnClickedOk()
 	m_eMoveStyle = E_Y_SCROLL;
 	if(index>=0)
 	{
-		m_eMoveStyle = MoveStyle(m_combMoveStyle.GetItemData(index));
+		m_eMoveStyle = MoveStyle(static_cast<int>(m_combMoveStyle.GetItemData(index)));
 	}
 	//显示类型
 	index = m_combChartType.GetCurSel();
 	m_eChartType = E_CHART_LINE;
 	if(index>=0)
 	{
-		m_eChartType = ChartType(m_combChartType.GetItemData(index));
+		m_eChartType = ChartType(static_cast<int>(m_combChartType.GetItemData(index)));
 	}
 	//线型
 	index = m_combLineStyle.GetCurSel();
 	m_eLineStyle = E_LINE_LINE;
 	if(index>=0)
 	{
-		m_eLineStyle = LineStyle(m_combLineStyle.GetItemData(index));
+		m_eLineStyle = LineStyle(static_cast<int>(m_combLineStyle.GetItemData(index)));
 	}
 	//Y轴
 	m_setShowID.clear();
@@ -195,7 +196,7 @@ void DlgChartSet::OnBnClickedOk()
 		{
 			if(m_treeY.GetCheck(hCol))
 			{
-				m_setShowID.insert(m_treeY.GetItemData(hCol));
+				m_setShowID.insert(static_cast<int>(m_treeY.GetItemData(hCol)));
 			}
 			hCol = m_treeY.GetNextSiblingItem(hCol);
 		}

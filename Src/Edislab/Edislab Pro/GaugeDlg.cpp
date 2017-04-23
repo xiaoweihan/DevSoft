@@ -11,7 +11,7 @@
 #include "DlgTabPanel.h"
 #include "Msg.h"
 // GaugeDlg dialog
-
+#pragma warning(disable:4267)
 IMPLEMENT_DYNAMIC(GaugeDlg, CBaseDialog)
 
 GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)

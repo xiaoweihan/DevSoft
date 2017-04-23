@@ -20,64 +20,64 @@
 #include "SensorConfig.h"
 #include "Log.h"
 
-//æœ€å¤§é¡µé¢æ•°
+//×î´óÒ³ÃæÊı
 const int MAX_PAGE_NUM = 4;
-//è¡¨æ ¼çš„æœ€å¤§ä¸ªæ•°
+//±í¸ñµÄ×î´ó¸öÊı
 const int MAX_GRID_NUM = 9;
 const int MAX_DEVICE_NUM = 9;
 const int MAX_DIAGRAM_NUM = 9;
-//æ˜¯å¦å¼€å§‹é‡‡é›†
+//ÊÇ·ñ¿ªÊ¼²É¼¯
 static bool s_bStartCapture = false;
-//å¤„ç†æ·»åŠ é¡µé¢
+//´¦ÀíÌí¼ÓÒ³Ãæ
 static void HandleAddPage(CEdislabProView* pView);
-//æ›´æ–°æ·»åŠ é¡µé¢
+//¸üĞÂÌí¼ÓÒ³Ãæ
 static void UpdateHandleAddPage(CEdislabProView* pView,CCmdUI* pCmdUI);
-//åˆ é™¤é¡µé¢
+//É¾³ıÒ³Ãæ
 static void HandleDelPage(CEdislabProView* pView);
-//æ›´æ–°åˆ é™¤é¡µé¢
+//¸üĞÂÉ¾³ıÒ³Ãæ
 static void UpdateHandleDelPage(CEdislabProView* pView,CCmdUI* pCmdUI);
-//é¡µé¢åç§°
+//Ò³ÃæÃû³Æ
 static void HandlePageName(CEdislabProView* pView);
-//æ›´æ–°é¡µé¢åç§°
+//¸üĞÂÒ³ÃæÃû³Æ
 static void UpdateHandlePageName(CEdislabProView* pView,CCmdUI* pCmdUI);
-//è·³è½¬é¡µé¢
+//Ìø×ªÒ³Ãæ
 static void HandleJumpPage(CEdislabProView* pView);
-//æ›´æ–°è·³è½¬åç§°
+//¸üĞÂÌø×ªÃû³Æ
 static void UpdateHandleJumpPage(CEdislabProView* pView,CCmdUI* pCmdUI);
-//æ·»åŠ è¡¨æ ¼
+//Ìí¼Ó±í¸ñ
 void HandleAddTable(CEdislabProView* pView);
-//æ›´æ–°æ·»åŠ è¡¨æ ¼
+//¸üĞÂÌí¼Ó±í¸ñ
 void UpdateHandleAddTable(CEdislabProView* pView,CCmdUI* pCmdUI);
-//æ·»åŠ å›¾
+//Ìí¼ÓÍ¼
 void HandleAddImage(CEdislabProView* pView);
-//æ›´æ–°æ·»åŠ å›¾
+//¸üĞÂÌí¼ÓÍ¼
 void UpdateHandleAddImage(CEdislabProView* pView,CCmdUI* pCmdUI);
-//æ·»åŠ ä»ªè¡¨
+//Ìí¼ÓÒÇ±í
 void HandleAddDevice(CEdislabProView* pView);
-//æ›´æ–°æ·»åŠ ä»ªè¡¨
+//¸üĞÂÌí¼ÓÒÇ±í
 void UpdateHandleAddDevice(CEdislabProView* pView,CCmdUI* pCmdUI);
-//åˆ é™¤å…ƒç´ 
+//É¾³ıÔªËØ
 void HandleDelElement(CEdislabProView* pView);
-//æ›´æ–°åˆ é™¤å…ƒç´ 
+//¸üĞÂÉ¾³ıÔªËØ
 void UpdateHandleDelElement(CEdislabProView* pView,CCmdUI* pCmdUI);
-//å¼€å§‹é‡‡é›†
+//¿ªÊ¼²É¼¯
 void HandleStart(CEdislabProView* pView);
 void UpdateHandleStart(CEdislabProView* pView,CCmdUI* pCmdUI);
-//è‡ªåŠ¨è¯†åˆ«
+//×Ô¶¯Ê¶±ğ
 void HandleAutoSelect(CEdislabProView* pView);
 void UpdateHandleAutoSelect(CEdislabProView* pView,CCmdUI* pCmdUI);
-//æ‰‹åŠ¨è¯†åˆ«
+//ÊÖ¶¯Ê¶±ğ
 void HandleManualSelect(CEdislabProView* pView);
 void UpdateHandleManualSelect(CEdislabProView* pView,CCmdUI* pCmdUI);
-//è¾“å‡ºå®éªŒæŠ¥å‘Š
+//Êä³öÊµÑé±¨¸æ
 void HandleOutputTestReport(CEdislabProView* pView);
-//åˆ é™¤å…ƒç´ 
+//É¾³ıÔªËØ
 void HandleChooseDevice(CEdislabProView* pView);
-//æ›´æ–°åˆ é™¤å…ƒç´ 
+//¸üĞÂÉ¾³ıÔªËØ
 void UpdateHandleChooseDevice(CEdislabProView* pView,CCmdUI* pCmdUI);
-//åˆ é™¤å…ƒç´ 
+//É¾³ıÔªËØ
 void HandleAcquirePara(CEdislabProView* pView);
-//æ›´æ–°åˆ é™¤å…ƒç´ 
+//¸üĞÂÉ¾³ıÔªËØ
 void UpdateHandleAcquirePara(CEdislabProView* pView,CCmdUI* pCmdUI);
 
 
@@ -102,10 +102,10 @@ CCommandEntry::~CCommandEntry(void)
 
 /*****************************************************************************
 @FunctionName : GetCommandEntryByCommanID
-@FunctionDescription : è·å–å‘½ä»¤å¤„ç†å‡½æ•°æ¥å£
-@inparam  : nCommandID:å‘½ä»¤ID
+@FunctionDescription : »ñÈ¡ÃüÁî´¦Àíº¯Êı½Ó¿Ú
+@inparam  : nCommandID:ÃüÁîID
 @outparam :  
-@return : å‘½ä»¤å¤„ç†å‡½æ•°åœ°å€
+@return : ÃüÁî´¦Àíº¯ÊıµØÖ·
 *****************************************************************************/
 pCommandEntry CCommandEntry::GetCommandEntryByCommanID( unsigned int nCommandID )
 {
@@ -123,10 +123,10 @@ pCommandEntry CCommandEntry::GetCommandEntryByCommanID( unsigned int nCommandID 
 
 /*****************************************************************************
 @FunctionName : GetUpdateCommandEntryByCommanID
-@FunctionDescription : è·å–å‘½ä»¤æ›´æ–°å¤„ç†å‡½æ•°æ¥å£
-@inparam  : nCommandID:å‘½ä»¤ID
+@FunctionDescription : »ñÈ¡ÃüÁî¸üĞÂ´¦Àíº¯Êı½Ó¿Ú
+@inparam  : nCommandID:ÃüÁîID
 @outparam :  
-@return : å‘½ä»¤æ›´æ–°å¤„ç†å‡½æ•°åœ°å€
+@return : ÃüÁî¸üĞÂ´¦Àíº¯ÊıµØÖ·
 *****************************************************************************/
 pUpdateCommandEntry CCommandEntry::GetUpdateCommandEntryByCommanID( unsigned int nCommandID )
 {
@@ -142,7 +142,7 @@ pUpdateCommandEntry CCommandEntry::GetUpdateCommandEntryByCommanID( unsigned int
 
 /*****************************************************************************
 @FunctionName : InitCommandEntry
-@FunctionDescription : åˆå§‹åŒ–å‘½ä»¤å¤„ç†æ¥å£æ•°ç»„
+@FunctionDescription : ³õÊ¼»¯ÃüÁî´¦Àí½Ó¿ÚÊı×é
 @inparam  : 
 @outparam :  
 @return : 
@@ -170,7 +170,7 @@ void CCommandEntry::InitCommandEntry( void )
 
 /*****************************************************************************
 @FunctionName : InitUpdateCommandEntry
-@FunctionDescription : åˆå§‹åŒ–æ›´æ–°å‘½ä»¤å¤„ç†æ¥å£æ•°ç»„
+@FunctionDescription : ³õÊ¼»¯¸üĞÂÃüÁî´¦Àí½Ó¿ÚÊı×é
 @inparam  : 
 @outparam :  
 @return : 
@@ -197,7 +197,7 @@ void CCommandEntry::InitUpdateCommandEntry( void )
 
 /*****************************************************************************
 @FunctionName : UnInitCommandEntry
-@FunctionDescription : æ¸…ç©ºå‘½ä»¤å¤„ç†æ¥å£æ•°ç»„
+@FunctionDescription : Çå¿ÕÃüÁî´¦Àí½Ó¿ÚÊı×é
 @inparam  : 
 @outparam :  
 @return : 
@@ -209,7 +209,7 @@ void CCommandEntry::UnInitCommandEntry( void )
 
 /*****************************************************************************
 @FunctionName : UnInitUpdateCommandEntry
-@FunctionDescription : æ¸…ç©ºæ›´æ–°å‘½ä»¤å¤„ç†æ¥å£æ•°ç»„
+@FunctionDescription : Çå¿Õ¸üĞÂÃüÁî´¦Àí½Ó¿ÚÊı×é
 @inparam  : 
 @outparam :  
 @return : 
@@ -221,8 +221,8 @@ void CCommandEntry::UnInitUpdateCommandEntry( void )
 
 /*****************************************************************************
 @FunctionName : HandleAddPage
-@FunctionDescription : å¤„ç†å¢åŠ é¡µé¢çš„å“åº”
-@inparam  : pView:è§†å›¾æŒ‡é’ˆ
+@FunctionDescription : ´¦ÀíÔö¼ÓÒ³ÃæµÄÏìÓ¦
+@inparam  : pView:ÊÓÍ¼Ö¸Õë
 @outparam :  
 @return : 
 *****************************************************************************/
@@ -238,7 +238,7 @@ void HandleAddPage( CEdislabProView* pView )
 	if (IDOK == AddDlg.DoModal())
 	{
 
-		//è·å–æ·»åŠ çš„åŠ¨ä½œ
+		//»ñÈ¡Ìí¼ÓµÄ¶¯×÷
 		ADD_PAGE_ELEMENT AddPageElement = AddDlg.GetAddPageElement();
 		if (NEW_PAGE_COPY == AddPageElement.eumOpt)
 		{
@@ -254,7 +254,7 @@ void HandleAddPage( CEdislabProView* pView )
 
 		if (pView->AddNewTabWnd(AddPageElement.strPageName,AddPageElement.nGridNum,AddPageElement.nDiagramNum,AddPageElement.nDeviceNum))
 		{
-			//è®¾ç½®æœ€åä¸€ä¸ªTabä¸ºæ´»åŠ¨çš„Tab
+			//ÉèÖÃ×îºóÒ»¸öTabÎª»î¶¯µÄTab
 			int nPageNum = pView->GetPageNum();
 			pView->SetActivePage(nPageNum - 1);
 		}
@@ -263,8 +263,8 @@ void HandleAddPage( CEdislabProView* pView )
 
 /*****************************************************************************
 @FunctionName : UpdateHandleAddPage
-@FunctionDescription : æ›´æ–°å¤„ç†å¢åŠ é¡µé¢çš„å“åº”
-@inparam  : pView:è§†å›¾æŒ‡é’ˆ
+@FunctionDescription : ¸üĞÂ´¦ÀíÔö¼ÓÒ³ÃæµÄÏìÓ¦
+@inparam  : pView:ÊÓÍ¼Ö¸Õë
 @outparam :  
 @return : 
 *****************************************************************************/
@@ -290,8 +290,8 @@ void UpdateHandleAddPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 
 /*****************************************************************************
 @FunctionName : HandleDelPage
-@FunctionDescription : å¤„ç†åˆ é™¤é¡µé¢çš„å“åº”
-@inparam  : pView:è§†å›¾æŒ‡é’ˆ
+@FunctionDescription : ´¦ÀíÉ¾³ıÒ³ÃæµÄÏìÓ¦
+@inparam  : pView:ÊÓÍ¼Ö¸Õë
 @outparam :  
 @return : 
 *****************************************************************************/
@@ -303,7 +303,7 @@ void HandleDelPage( CEdislabProView* pView )
 	}
 
 
-	if (IDYES == Utility::AfxBCGPMessageBox(_T("ç¡®å®šè¦åˆ é™¤é¡µé¢?"),MB_YESNO))
+	if (IDYES == Utility::AfxBCGPMessageBox(_T("È·¶¨ÒªÉ¾³ıÒ³Ãæ?"),MB_YESNO))
 	{
 		pView->DeleteCurrentPage();
 	}
@@ -312,8 +312,8 @@ void HandleDelPage( CEdislabProView* pView )
 
 /*****************************************************************************
 @FunctionName : UpdateHandleDelPage
-@FunctionDescription : æ›´æ–°å¤„ç†åˆ é™¤é¡µé¢çš„å“åº”
-@inparam  : pView:è§†å›¾æŒ‡é’ˆ
+@FunctionDescription : ¸üĞÂ´¦ÀíÉ¾³ıÒ³ÃæµÄÏìÓ¦
+@inparam  : pView:ÊÓÍ¼Ö¸Õë
 @outparam :  
 @return : 
 *****************************************************************************/
@@ -339,8 +339,8 @@ void UpdateHandleDelPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 
 /*****************************************************************************
 @FunctionName : HandlePageName
-@FunctionDescription : å¤„ç†é¡µé¢åç§°è®¾ç½®çš„å“åº”
-@inparam  : pView:è§†å›¾æŒ‡é’ˆ
+@FunctionDescription : ´¦ÀíÒ³ÃæÃû³ÆÉèÖÃµÄÏìÓ¦
+@inparam  : pView:ÊÓÍ¼Ö¸Õë
 @outparam :  
 @return : 
 *****************************************************************************/
@@ -359,7 +359,7 @@ void HandlePageName( CEdislabProView* pView )
 	if (IDOK == PageNameConfigDlg.DoModal())
 	{
 		strPageName = PageNameConfigDlg.GetPageName();
-		//è®¾ç½®åç§°
+		//ÉèÖÃÃû³Æ
 		pView->SetCurrentPageName(strPageName);
 	}
 
@@ -367,8 +367,8 @@ void HandlePageName( CEdislabProView* pView )
 
 /*****************************************************************************
 @FunctionName : UpdateHandlePageName
-@FunctionDescription : å¤„ç†é¡µé¢åç§°è®¾ç½®çš„å“åº”
-@inparam  : pView:è§†å›¾æŒ‡é’ˆ
+@FunctionDescription : ´¦ÀíÒ³ÃæÃû³ÆÉèÖÃµÄÏìÓ¦
+@inparam  : pView:ÊÓÍ¼Ö¸Õë
 @outparam :  
 @return : 
 *****************************************************************************/
@@ -394,8 +394,8 @@ void UpdateHandlePageName( CEdislabProView* pView,CCmdUI* pCmdUI )
 
 /*****************************************************************************
 @FunctionName : HandleJumpPage
-@FunctionDescription : å¤„ç†è·³è½¬é¡µé¢çš„å“åº”
-@inparam  : pView:è§†å›¾æŒ‡é’ˆ
+@FunctionDescription : ´¦ÀíÌø×ªÒ³ÃæµÄÏìÓ¦
+@inparam  : pView:ÊÓÍ¼Ö¸Õë
 @outparam :  
 @return : 
 *****************************************************************************/
@@ -409,8 +409,8 @@ void HandleJumpPage( CEdislabProView* pView )
 
 /*****************************************************************************
 @FunctionName : UpdateHandleJumpPage
-@FunctionDescription : å¤„ç†è·³è½¬é¡µé¢çš„å“åº”
-@inparam  : pView:è§†å›¾æŒ‡é’ˆ
+@FunctionDescription : ´¦ÀíÌø×ªÒ³ÃæµÄÏìÓ¦
+@inparam  : pView:ÊÓÍ¼Ö¸Õë
 @outparam :  
 @return : 
 *****************************************************************************/
@@ -432,7 +432,7 @@ void UpdateHandleJumpPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 		pCmdUI->Enable(TRUE);
 	}
 }
-//æ·»åŠ è¡¨æ ¼
+//Ìí¼Ó±í¸ñ
 void HandleAddTable(CEdislabProView* pView)
 {
 	if (NULL == pView)
@@ -442,7 +442,7 @@ void HandleAddTable(CEdislabProView* pView)
 
 	pView->AddGrid();
 }
-//æ·»åŠ å›¾
+//Ìí¼ÓÍ¼
 void HandleAddImage(CEdislabProView* pView)
 {
 	if (NULL == pView)
@@ -453,7 +453,7 @@ void HandleAddImage(CEdislabProView* pView)
 	pView->AddDiagram();
 	
 }
-//æ·»åŠ ä»ªè¡¨
+//Ìí¼ÓÒÇ±í
 void HandleAddDevice(CEdislabProView* pView)
 {
 	if (NULL == pView)
@@ -463,7 +463,7 @@ void HandleAddDevice(CEdislabProView* pView)
 
 	pView->AddDevice();
 }
-//åˆ é™¤å…ƒç´ 
+//É¾³ıÔªËØ
 void HandleDelElement(CEdislabProView* pView)
 {
 	if (NULL == pView)
@@ -548,14 +548,14 @@ void UpdateHandleDelElement( CEdislabProView* pView,CCmdUI* pCmdUI )
 	}
 }
 
-//å¼€å§‹é‡‡é›†
+//¿ªÊ¼²É¼¯
 void HandleStart(CEdislabProView* pView)
 {
 	if (NULL == pView)
 	{
 		return;
 	}
-	//è·å–ç¬¬ä¸€ä¸ªä¼ æ„Ÿå™¨
+	//»ñÈ¡µÚÒ»¸ö´«¸ĞÆ÷
 	SENSOR_CONFIG_ELEMENT TempSensor;
 	if (!CSensorConfig::CreateInstance().GetFirstSensorConfig(&TempSensor))
 	{
@@ -563,8 +563,8 @@ void HandleStart(CEdislabProView* pView)
 		return;
 	}
 
-	//ä½¿ç”¨CRC-32ç®—æ³•
-	int nNameLength = TempSensor.strSensorName.length();
+	//Ê¹ÓÃCRC-32Ëã·¨
+	int nNameLength = static_cast<int>(TempSensor.strSensorName.length());
 
 	int nTotalLength = 1 + 1 + 1 + nNameLength + 1 + 1;
 
@@ -576,17 +576,17 @@ void HandleStart(CEdislabProView* pView)
 	}
 	ZeroMemory(pBuffer,nTotalLength);
 
-	//å‘é€å¼€å§‹é‡‡é›†
+	//·¢ËÍ¿ªÊ¼²É¼¯
 	pBuffer[0] = 0xAB;
 	pBuffer[1] = nTotalLength - 1 - 1;
 	pBuffer[2] = nNameLength;
 	memcpy(pBuffer + 3,TempSensor.strSensorName.c_str(),nNameLength);
-	//åœæ­¢é‡‡é›†
+	//Í£Ö¹²É¼¯
 	if (s_bStartCapture)
 	{
 		pBuffer[nTotalLength - 2] = 0x01;
 	}
-	//å¼€å§‹é‡‡é›†
+	//¿ªÊ¼²É¼¯
 	else
 	{
 		pBuffer[nTotalLength - 2] = 0x00;
@@ -602,7 +602,7 @@ void HandleStart(CEdislabProView* pView)
 	s_bStartCapture = !s_bStartCapture;
 	
 }
-//è‡ªåŠ¨è¯†åˆ«
+//×Ô¶¯Ê¶±ğ
 void HandleAutoSelect(CEdislabProView* pView)
 {
 	if (NULL == pView)
@@ -621,7 +621,7 @@ void HandleAutoSelect(CEdislabProView* pView)
 	
 }
 
-//è¾“å‡ºå®éªŒæŠ¥å‘Š
+//Êä³öÊµÑé±¨¸æ
 void HandleOutputTestReport( CEdislabProView* pView )
 {
 	if (nullptr == pView)
@@ -644,49 +644,49 @@ void HandleOutputTestReport( CEdislabProView* pView )
 	CFont0 SelFont = sel.get_Font();
 	SelFont.put_Bold(1);
 	SelFont.put_Size(16);
-	SelFont.put_Name(_T("å®‹ä½“"));
-	sel.TypeText(_T("æ— æ ‡é¢˜è¯•éªŒ"));
+	SelFont.put_Name(_T("ËÎÌå"));
+	sel.TypeText(_T("ÎŞ±êÌâÊÔÑé"));
 	ParaFormat.put_Alignment(1);
 	sel.TypeParagraph();
 	sel.TypeParagraph();
 	SelFont.put_Size(12);
 	SelFont.put_Bold(0);
 	ParaFormat.put_Alignment(0);
-	sel.TypeText(_T("å®éªŒç­çº§_____________å®éªŒæ—¥æœŸ_____________å§“å_____________"));
+	sel.TypeText(_T("ÊµÑé°à¼¶_____________ÊµÑéÈÕÆÚ_____________ĞÕÃû_____________"));
 	sel.TypeParagraph();
 	sel.TypeParagraph();
 	SelFont.put_Bold(1);
-	sel.TypeText(_T("å®éªŒç›®çš„:"));
+	sel.TypeText(_T("ÊµÑéÄ¿µÄ:"));
 
 	int nTimes = 5;
 	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
-	sel.TypeText(_T("å®éªŒç›®çš„:"));
+	sel.TypeText(_T("ÊµÑéÄ¿µÄ:"));
 	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
-	sel.TypeText(_T("å®éªŒåŸç†:"));
-	for (int i = 0; i < nTimes; ++i)
-	{
-		sel.TypeParagraph();
-	}
-
-	sel.TypeText(_T("å®éªŒå™¨æ:"));
+	sel.TypeText(_T("ÊµÑéÔ­Àí:"));
 	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
 
-	sel.TypeText(_T("å®éªŒæ­¥éª¤:"));
+	sel.TypeText(_T("ÊµÑéÆ÷²Ä:"));
 	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
 	}
 
-	sel.TypeText(_T("å®éªŒç»“æœä¸åˆ†æ"));
+	sel.TypeText(_T("ÊµÑé²½Öè:"));
+	for (int i = 0; i < nTimes; ++i)
+	{
+		sel.TypeParagraph();
+	}
+
+	sel.TypeText(_T("ÊµÑé½á¹ûÓë·ÖÎö"));
 	for (int i = 0; i < nTimes; ++i)
 	{
 		sel.TypeParagraph();
@@ -698,7 +698,7 @@ void HandleOutputTestReport( CEdislabProView* pView )
 	app.ReleaseDispatch();  
 }
 
-// é€‰æ‹©ä»ªå™¨
+// Ñ¡ÔñÒÇÆ÷
 void HandleChooseDevice(CEdislabProView* pView)
 {
 	if (NULL == pView)
@@ -718,7 +718,7 @@ void UpdateHandleChooseDevice( CEdislabProView* pView,CCmdUI* pCmdUI )
 	}
 }
 
-// è·å–å‚æ•°
+// »ñÈ¡²ÎÊı
 void HandleAcquirePara(CEdislabProView* pView)
 {
 	if (NULL == pView)
@@ -741,8 +741,6 @@ void UpdateHandleAcquirePara( CEdislabProView* pView,CCmdUI* pCmdUI )
 void HandleManualSelect( CEdislabProView* pView )
 {
 	g_bAutoSelect = FALSE;
-
-	//pCmdUI->SetCheck(g_bAutoSelect);
 }
 
 void UpdateHandleManualSelect( CEdislabProView* pView,CCmdUI* pCmdUI )
@@ -754,6 +752,13 @@ void UpdateHandleManualSelect( CEdislabProView* pView,CCmdUI* pCmdUI )
 	pCmdUI->SetCheck(!g_bAutoSelect);
 }
 
-	
+void UpdateHandleAutoSelect(CEdislabProView* pView,CCmdUI* pCmdUI)
+{
+	if (NULL == pView || NULL == pCmdUI)
+	{
+		return;
+	}
+	pCmdUI->SetCheck(g_bAutoSelect);
+}
 
 
