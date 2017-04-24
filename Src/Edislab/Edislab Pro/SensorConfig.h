@@ -9,7 +9,7 @@ Histroy:
 ************************************************************************************/
 #pragma once
 #include <vector>
-#include <boost/thread/shared_mutex.hpp>
+#include <boost/thread/mutex.hpp>
 #include <string>
 #include "Type.h"
 #define COM_TEST (1)
@@ -35,7 +35,7 @@ public:
 #endif
 private:
 	//锁
-	boost::shared_mutex m_RWLock;
+	boost::mutex m_RWLock;
 	//保存传感器的配置信息
 	std::vector<SENSOR_CONFIG_ELEMENT> m_SensorConfigArray;
 
