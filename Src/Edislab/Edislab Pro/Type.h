@@ -5,6 +5,7 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
 #include <boost/thread/shared_lock_guard.hpp>
+#include <boost/function.hpp>
 #include "Macro.h"
 class CSplitBar;
 class CEdislabProView;
@@ -151,6 +152,8 @@ typedef struct _sensor_range_info_element
 	std::string strUnitName;
 	//转化公式
 	std::string strConverformula;
+	//转化回调函数
+	boost::function<float(float,float,float)> pConverformulaFunc;
 
 }SENSOR_RANGE_INFO_ELEMENT,* LP_SENSOR_RANGE_INFO_ELEMENT;
 
