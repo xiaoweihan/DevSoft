@@ -74,13 +74,13 @@ void CComImple::StartCom(CWnd* pWnd)
 		return;
 	}
 	//end add by xiaowei.han 2017-3-25
-	UINT nComPort = static_cast<UINT>(SensorInfo.nComIndex);
-	UINT nBandRate = static_cast<UINT>(SensorInfo.nBaudRate);
-	UINT nDataBits = static_cast<UINT>(SensorInfo.nDataBits);
-	UINT nStopBits = static_cast<UINT>(SensorInfo.nStopBits);
-	UINT nPairty = static_cast<UINT>(SensorInfo.nPairty);
+	UINT nComPort = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nComIndex);
+	UINT nBandRate = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nBaudRate);
+	UINT nDataBits = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nDataBits);
+	UINT nStopBits = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nStopBits);
+	UINT nPairty = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nPairty);
 	//初始化串口通信
-	if(FALSE == m_SerialPort.InitPort(pWnd,nComPort,nBandRate,nPairty,nDataBits,nStopBits,SensorInfo.bUseFlowControl))
+	if(FALSE == m_SerialPort.InitPort(pWnd,nComPort,nBandRate,nPairty,nDataBits,nStopBits,SensorInfo.SensorComConfigInfo.bUseFlowControl))
 	{
 		ERROR_LOG("InitPort failed!");
 		return;

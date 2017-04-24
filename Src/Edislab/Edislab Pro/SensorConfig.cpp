@@ -72,6 +72,7 @@ CSensorConfig& CSensorConfig::CreateInstance( void )
 bool CSensorConfig::LoadSensorConfig( void )
 {
 
+#if 0
 	std::string strConfigPath = Utility::GetExeDirecory() + std::string("\\SensorConfig.json");
 
 	//判断文件是否存在
@@ -165,6 +166,7 @@ bool CSensorConfig::LoadSensorConfig( void )
 
 		return false;
 	}
+#endif
 
 	return true;
 }
@@ -183,6 +185,7 @@ bool CSensorConfig::GetSensorConfigBySensorName( const std::string& strSensorNam
 {
 
 	bool bResult = false;
+#if 0
 	if (nullptr == pConfig || strSensorName.empty())
 	{
 		return bResult;
@@ -197,13 +200,15 @@ bool CSensorConfig::GetSensorConfigBySensorName( const std::string& strSensorNam
 			break;
 		}
 	}
-
+#endif
 	return bResult;
+
 }
 
 #ifdef COM_TEST
 bool CSensorConfig::GetFirstSensorConfig( LP_SENSOR_CONFIG_ELEMENT pConfig )
 {
+#if 0
 	if (nullptr == pConfig)
 	{
 		return false;
@@ -215,6 +220,7 @@ bool CSensorConfig::GetFirstSensorConfig( LP_SENSOR_CONFIG_ELEMENT pConfig )
 	}
 
 	*pConfig = m_SensorConfigArray[0];
+#endif
 	return true;
 }
 #endif

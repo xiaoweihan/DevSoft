@@ -5,6 +5,7 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
 #include <boost/thread/shared_lock_guard.hpp>
+#include <boost/function.hpp>
 #include "Macro.h"
 class CSplitBar;
 class CEdislabProView;
@@ -101,7 +102,7 @@ typedef struct _add_page_element
 }ADD_PAGE_ELEMENT,* LP_ADD_PAGE_ELEMENT;
 
 //传感器信息定义
-typedef struct _sensor_config_element
+typedef struct _sensor_com_config_element
 {
 	//传感器名称
 	std::string strSensorName;
@@ -118,7 +119,7 @@ typedef struct _sensor_config_element
 	//是否使用流控
 	bool bUseFlowControl;
 
-	_sensor_config_element(void)
+	_sensor_com_config_element(void)
 	{
 		strSensorName = "";
 		nBaudRate = 9600;
@@ -127,6 +128,74 @@ typedef struct _sensor_config_element
 		nPairty = 0;
 		nComIndex = -1;
 		bUseFlowControl = false;
+	}
+}SENSOR_COM_CONFIG_ELEMENT,* LP_SENSOR_COM_CONFIG_ELEMENT;
+
+//传感器量程信息
+typedef struct _sensor_range_info_element
+{
+	//量程名称
+	std::string strRangeName;
+	//校准值
+	std::string strCalibrationvalue;
+	//默认值
+	int nDefaultvalue;
+	//最大值
+	int nMaxvalue;
+	//最小值
+	int nMinvalue;
+	//monitor值
+	std::string strMonitorvalue;
+	//精度
+	int nAccuracy;
+	//单位
+	std::string strUnitName;
+	//转化公式
+	std::string strConverformula;
+	//转化回调函数
+	boost::function<float(float,float,float)> pConverformulaFunc;
+
+}SENSOR_RANGE_INFO_ELEMENT,* LP_SENSOR_RANGE_INFO_ELEMENT;
+
+//传感器配置结构体定义
+typedef struct _sensor_config_element
+{
+	//传感器的ID
+	unsigned int nSensorID;
+	//传感器类别 (1:物理 2:化学 4:生物 7:所有)
+	int nSensorCategory;
+	//传感器型号
+	std::string strSensorModelName;
+	//传感器名称
+	std::string strSensorName;
+	//传感器符号
+	std::string strSensorSymbol;
+	//传感器说明
+	std::string strSensorDescription;
+	//传感器的COM通信配置信息
+	SENSOR_COM_CONFIG_ELEMENT SensorComConfigInfo;
+	//量程信息
+	std::vector<SENSOR_RANGE_INFO_ELEMENT> SensorRangeInfoArray;
+	//默认频率
+	int nSensorDefaultfrequency;
+	//最大频率
+	float nSensorMaxfrequency;
+	//最小频率
+	float nSensorMinfrequency;
+	//时间长度
+	int nSensorTimeLength;
+	//多采样
+	bool bMultiSample;
+	//传感器类型
+	std::string strSensorTypeName;
+	//是否需要添加到列表中
+	bool bAddtoSensorlist;
+
+	_sensor_config_element(void)
+	{
+		nSensorID = 0;
+		bAddtoSensorlist = true;
+		SensorRangeInfoArray.clear();
 	}
 }SENSOR_CONFIG_ELEMENT,* LP_SENSOR_CONFIG_ELEMENT;
 
