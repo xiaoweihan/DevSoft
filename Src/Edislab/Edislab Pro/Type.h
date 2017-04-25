@@ -104,6 +104,8 @@ typedef struct _add_page_element
 //传感器信息定义
 typedef struct _sensor_com_config_element
 {
+	//传感器ID
+	int nSensorID;
 	//传感器名称
 	std::string strSensorName;
 	//COM口索引
@@ -121,6 +123,7 @@ typedef struct _sensor_com_config_element
 
 	_sensor_com_config_element(void)
 	{
+		nSensorID = -1;
 		strSensorName = "";
 		nBaudRate = 9600;
 		nDataBits = 8;
@@ -173,7 +176,7 @@ typedef struct _sensor_config_element
 	//传感器说明
 	std::string strSensorDescription;
 	//传感器的COM通信配置信息
-	SENSOR_COM_CONFIG_ELEMENT SensorComConfigInfo;
+	//SENSOR_COM_CONFIG_ELEMENT SensorComConfigInfo;
 	//量程信息
 	std::vector<SENSOR_RANGE_INFO_ELEMENT> SensorRangeInfoArray;
 	//默认频率
