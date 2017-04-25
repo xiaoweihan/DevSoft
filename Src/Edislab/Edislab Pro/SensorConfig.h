@@ -38,7 +38,8 @@ private:
 	boost::mutex m_RWLock;
 	//保存传感器的配置信息
 	std::vector<SENSOR_CONFIG_ELEMENT> m_SensorConfigArray;
-
+	//保存传感器的COM通信配置
+	std::vector<SENSOR_COM_CONFIG_ELEMENT> m_SensorComConfigArray;
 private:
 	static CSensorConfig s_SensorConfig;
 };
