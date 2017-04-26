@@ -73,18 +73,18 @@ void CComImple::StartCom(CWnd* pWnd)
 		ERROR_LOG("GetFirstSensorConfig failed.");
 		return;
 	}
-	//end add by xiaowei.han 2017-3-25
-	UINT nComPort = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nComIndex);
-	UINT nBandRate = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nBaudRate);
-	UINT nDataBits = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nDataBits);
-	UINT nStopBits = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nStopBits);
-	UINT nPairty = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nPairty);
-	//初始化串口通信
-	if(FALSE == m_SerialPort.InitPort(pWnd,nComPort,nBandRate,nPairty,nDataBits,nStopBits,SensorInfo.SensorComConfigInfo.bUseFlowControl))
-	{
-		ERROR_LOG("InitPort failed!");
-		return;
-	}
+// 	//end add by xiaowei.han 2017-3-25
+// 	UINT nComPort = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nComIndex);
+// 	UINT nBandRate = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nBaudRate);
+// 	UINT nDataBits = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nDataBits);
+// 	UINT nStopBits = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nStopBits);
+// 	UINT nPairty = static_cast<UINT>(SensorInfo.SensorComConfigInfo.nPairty);
+// 	//初始化串口通信
+// 	if(FALSE == m_SerialPort.InitPort(pWnd,nComPort,nBandRate,nPairty,nDataBits,nStopBits,SensorInfo.SensorComConfigInfo.bUseFlowControl))
+// 	{
+// 		ERROR_LOG("InitPort failed!");
+// 		return;
+// 	}
 	//开启控制串口监视线程
 	m_SerialPort.StartMonitoring();
 }
