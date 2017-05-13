@@ -140,7 +140,8 @@ typedef struct _sensor_range_info_element
 	//量程名称
 	std::string strRangeName;
 	//校准值
-	std::string strCalibrationvalue;
+	//std::string strCalibrationvalue;
+	int nCalibrationvalue;
 	//默认值
 	int nDefaultvalue;
 	//最大值
@@ -180,7 +181,8 @@ typedef struct _sensor_config_element
 	//量程信息
 	std::vector<SENSOR_RANGE_INFO_ELEMENT> SensorRangeInfoArray;
 	//默认频率
-	int nSensorDefaultfrequency;
+	//int nSensorDefaultfrequency;
+	float fSensorDefaultfrequency;
 	//最大频率
 	float nSensorMaxfrequency;
 	//最小频率

@@ -1,5 +1,5 @@
 {
-  "SensorConfig": [
+  "ComConfig": [
     {
       "SensorName": "大气压",
       "PortName": 1,
@@ -8,6 +8,522 @@
       "DataBits": 8,
       "BaudRate": 9600,
       "UseFlowControl":false
+    }
+  ],
+
+  "SensorConfig": [
+    {
+      "SensorID": 1,
+      "AddtoSensorlist": true,
+      "SensorName": "静力",
+      "TypeName": "1-普通",
+      "MultiSample": true,
+      "SensorModelName": "FS400",
+      "Symbol": "F",
+      "Description": "力",
+      "SensorCategory": 1,
+      "RangeInfo": [
+        {
+          "Name": "±50N(0.01N)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -50,
+          "Maxvalue": 50,
+          "Monitor": "meter",
+          "Accuracy": 2,
+          "Unit": "N",
+          "Converformula": "-60+120*@var/4096.0"
+        },
+        {
+          "Name": "±10N(0.001N)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -10,
+          "Maxvalue": 10,
+          "Monitor": "meter",
+          "Accuracy": 3,
+          "Unit": "N",
+          "Converformula": "-12+24*@var/4096.0"
+        }
+      ],
+      "Defaultfrequency": 50.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 15
+    },
+    {
+      "SensorID": 2,
+      "AddtoSensorlist": true,
+      "SensorName": "光电门",
+      "TypeName": "4-光电门",
+      "MultiSample": true,
+      "SensorModelName": "LTS400",
+      "Symbol": "t",
+      "Description": "计时",
+      "SensorCategory": 1,
+      "RangeInfo": [
+        {
+          "Name": "10us~70s(10us)",
+          "Calibrationvalue": -1,
+          "Defaultvalue": 0,
+          "Minvalue": 0,
+          "Maxvalue": 70,
+          "Monitor": "value",
+          "Accuracy": 6,
+          "Unit": "s",
+          "Converformula": "@var"
+        },
+        {
+          "Name": "±10N(0.001N)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": 0,
+          "Maxvalue": 100,
+          "Monitor": "value",
+          "Accuracy": 0,
+          "Unit": "D",
+          "Converformula": "@var"
+        }
+      ],
+      "Defaultfrequency": 50.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 20
+    },
+    {
+      "SensorID": 3,
+      "AddtoSensorlist": true,
+      "SensorName": "单体位移",
+      "TypeName": "2-位移",
+      "MultiSample": true,
+      "SensorModelName": "SDC400",
+      "Symbol": "s",
+      "Description": "位移",
+      "SensorCategory": 1,
+      "RangeInfo": [
+        {
+          "Name": "0.2~10m(1mm)",
+          "Calibrationvalue": "0.5,1.0",
+          "Defaultvalue": 0,
+          "Minvalue": 0,
+          "Maxvalue": 10,
+          "Monitor": "value",
+          "Accuracy": 3,
+          "Unit": "m",
+          "Converformula": "@var/2000.0"
+        }
+      ],
+      "Defaultfrequency": 50.0,
+      "Minfrequency": 50.0,
+      "Maxfrequency": 50.0,
+      "Timelength": 20
+    },
+    {
+      "SensorID": 4,
+      "AddtoSensorlist": true,
+      "SensorName": "加速度",
+      "TypeName": "1-普通",
+      "MultiSample": false,
+      "SensorModelName": "ACS400",
+      "Symbol": "a",
+      "Description": "加速度",
+      "SensorCategory": 1,
+      "RangeInfo": [
+        {
+          "Name": "±6g(0.01g)",
+          "Calibrationvalue": 1,
+          "Defaultvalue": 1,
+          "Minvalue": -6,
+          "Maxvalue": 6,
+          "Monitor": "g",
+          "Accuracy": 1,
+          "Unit": "g",
+          "Converformula": "(@var-1352)/168.8"
+        },
+        {
+          "Name": "±1.5g(0.01g)",
+          "Calibrationvalue": 1,
+          "Defaultvalue": 1,
+          "Minvalue": -1.5,
+          "Maxvalue": 1.5,
+          "Monitor": "meter",
+          "Accuracy": 2,
+          "Unit": "g",
+          "Converformula": "(@var-1352)/655.4"
+        },
+        {
+          "Name": "±6g旧(0.01g)",
+          "Calibrationvalue": 1,
+          "Defaultvalue": 1,
+          "Minvalue": -6,
+          "Maxvalue": 6,
+          "Monitor": "meter",
+          "Accuracy": 1,
+          "Unit": "g",
+          "Converformula": "(@var-1250)/606.0"
+        },
+        {
+          "Name": "±1.5g旧(0.01g)",
+          "Calibrationvalue": 1,
+          "Defaultvalue": 1,
+          "Minvalue": -1.5,
+          "Maxvalue": 1.5,
+          "Monitor": "meter",
+          "Accuracy": 2,
+          "Unit": "g",
+          "Converformula": "(@var-1290)/160.0"
+        }
+      ],
+      "Defaultfrequency": 100.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 15
+    },
+    {
+      "SensorID": 5,
+      "AddtoSensorlist": true,
+      "SensorName": "微力",
+      "TypeName": "1-普通",
+      "MultiSample": true,
+      "SensorModelName": "MS300",
+      "Symbol": "F",
+      "Description": "力",
+      "SensorCategory": 1,
+      "RangeInfo": [
+        {
+          "Name": "±10N(0.006N)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -10,
+          "Maxvalue": 10,
+          "Monitor": "meter",
+          "Accuracy": 3,
+          "Unit": "N",
+          "Converformula": "-12+24*@var/4096.0"
+        },
+        {
+          "Name": "±2N(0.001N)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -2,
+          "Maxvalue": 2,
+          "Monitor": "meter",
+          "Accuracy": 3,
+          "Unit": "N",
+          "Converformula": "-2.5+5*@var/4096.0"
+        }
+      ],
+      "Defaultfrequency": 50.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 15
+    },
+    {
+      "SensorID": 6,
+      "AddtoSensorlist": true,
+      "SensorName": "普通温度",
+      "TypeName": "1-普通",
+      "MultiSample": true,
+      "SensorModelName": "GTS400",
+      "Symbol": "T",
+      "Description": "温度",
+      "SensorCategory": 7,
+      "RangeInfo": [
+        {
+          "Name": "-50~150℃(0.1℃)",
+          "Calibrationvalue": 25,
+          "Defaultvalue": 0,
+          "Minvalue": -50,
+          "Maxvalue": 150,
+          "Monitor": "meter",
+          "Accuracy": 1,
+          "Unit": "℃",
+          "Converformula": "if(@var<950,-50+@var*0.0526,if(@var<1875,@var*0.054-51.35,if(@var<2770,0.05586*@var-54.7486,if(@var<3630,0.0581*@var-61.0465,@var*0.0595-65.985))))"
+        }
+      ],
+      "Defaultfrequency": 1.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 180
+    },
+    {
+      "SensorID": 7,
+      "AddtoSensorlist": true,
+      "SensorName": "高温",
+      "TypeName": "1-普通",
+      "MultiSample": true,
+      "SensorModelName": "HTS400",
+      "Symbol": "T",
+      "Description": "温度",
+      "SensorCategory": 6,
+      "RangeInfo": [
+        {
+          "Name": "0~1000℃(1℃)",
+          "Calibrationvalue": 25,
+          "Defaultvalue": 0,
+          "Minvalue": 0,
+          "Maxvalue": 1000,
+          "Monitor": "value",
+          "Accuracy": 0,
+          "Unit": "℃",
+          "Converformula": "(@var-20)/3.6"
+        }
+      ],
+      "Defaultfrequency": 50.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 20
+    },
+    {
+      "SensorID": 8,
+      "AddtoSensorlist": true,
+      "SensorName": "压强",
+      "TypeName": "1-普通",
+      "MultiSample": true,
+      "SensorModelName": "PAS400",
+      "Symbol": "p",
+      "Description": "压强",
+      "SensorCategory": 3,
+      "RangeInfo": [
+        {
+          "Name": "0~700kpa(0.1kpa)",
+          "Calibrationvalue": 101.3,
+          "Defaultvalue": 0,
+          "Minvalue": 0,
+          "Maxvalue": 700,
+          "Monitor": "value",
+          "Accuracy": 0,
+          "Unit": "kpa",
+          "Converformula": "(@var-327)*360/3770.0"
+        }
+      ],
+      "Defaultfrequency": 1.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 960
+    },
+    {
+      "SensorID": 9,
+      "AddtoSensorlist": true,
+      "SensorName": "声振动",
+      "TypeName": "1-普通",
+      "MultiSample": false,
+      "SensorModelName": "SS400",
+      "Symbol": "L",
+      "Description": "声振动",
+      "SensorCategory": 5,
+      "RangeInfo": [
+        {
+          "Name": "±100%(1%)",
+          "Calibrationvalue": -1,
+          "Defaultvalue": 0,
+          "Minvalue": -100,
+          "Maxvalue": 100,
+          "Monitor": "value",
+          "Accuracy": 0,
+          "Unit": "%",
+          "Converformula": "@min+(@max-@min)*@var/4096.0"
+        },
+        {
+          "Name": "30~130dB(1dB)",
+          "Calibrationvalue": -1,
+          "Defaultvalue": 0,
+          "Minvalue": 30,
+          "Maxvalue": 130,
+          "Monitor": "value",
+          "Accuracy": 1,
+          "Unit": "dB",
+          "Converformula": "@min+(@max-@min)*@var/2048.0"
+        }
+      ],
+      "Defaultfrequency": 5000.0,
+      "Minfrequency": 1000.0,
+      "Maxfrequency": 100000.0,
+      "Timelength": 5
+    },
+    {
+      "SensorID": 10,
+      "AddtoSensorlist": true,
+      "SensorName": "光强分布",
+      "TypeName": "6-专用实验",
+      "MultiSample": false,
+      "SensorModelName": "LSS400",
+      "Symbol": "A",
+      "Description": "光的衍射实验",
+      "SensorCategory": 1,
+      "RangeInfo": [
+        {
+          "Name": "512pixel(64mm)",
+          "Calibrationvalue": -1,
+          "Defaultvalue": 0,
+          "Minvalue": 0,
+          "Maxvalue": 512,
+          "Monitor": "value",
+          "Accuracy": 1,
+          "Unit": "Lux",
+          "Converformula": "@min+(@max-@min)*@var/4096.0"
+        }
+      ],
+      "Defaultfrequency": 50.0,
+      "Minfrequency": -1.0,
+      "Maxfrequency": -1.0,
+      "Timelength": 10
+    },
+    {
+      "SensorID": 11,
+      "AddtoSensorlist": true,
+      "SensorName": "光照度",
+      "TypeName": "1-普通",
+      "MultiSample": false,
+      "SensorModelName": "LIS400",
+      "Symbol": "E",
+      "Description": "光照度",
+      "SensorCategory": 3,
+      "RangeInfo": [
+        {
+          "Name": "0~10000Lux(2Lux)",
+          "Calibrationvalue": -1,
+          "Defaultvalue": 0,
+          "Minvalue": 0,
+          "Maxvalue": 10000,
+          "Monitor": "value",
+          "Accuracy": 3,
+          "Unit": "Lux",
+          "Converformula": "@var*2.5*100000/4095/24"
+        },
+        {
+          "Name": "0~2000Lux(1Lux)",
+          "Calibrationvalue": -1,
+          "Defaultvalue": 0,
+          "Minvalue": 0,
+          "Maxvalue": 2000,
+          "Monitor": "value",
+          "Accuracy": 3,
+          "Unit": "Lux",
+          "Converformula": "@var*2.5*100000/4095/120"
+        }
+      ],
+      "Defaultfrequency": 20.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 10
+    },
+    {
+      "SensorID": 12,
+      "AddtoSensorlist": true,
+      "SensorName": "电流",
+      "TypeName": "1-普通",
+      "MultiSample": true,
+      "SensorModelName": "CS400",
+      "Symbol": "I",
+      "Description": "电流",
+      "SensorCategory": 7,
+      "RangeInfo": [
+        {
+          "Name": "±3A(0.01A)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -3,
+          "Maxvalue": 3,
+          "Monitor": "meter",
+          "Accuracy": 2,
+          "Unit": "A",
+          "Converformula": "@var*0.0015625-3.2"
+        },
+        {
+          "Name": "±0.6A(0.002A)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -0.6,
+          "Maxvalue": 0.6,
+          "Monitor": "meter",
+          "Accuracy": 3,
+          "Unit": "A",
+          "Converformula": "@var*0.0003125-0.64"
+        }
+      ],
+      "Defaultfrequency": 10.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 20
+    },
+    {
+      "SensorID": 13,
+      "AddtoSensorlist": true,
+      "SensorName": "电压",
+      "TypeName": "1-普通",
+      "MultiSample": true,
+      "SensorModelName": "VS400",
+      "Symbol": "U",
+      "Description": "电压",
+      "SensorCategory": 7,
+      "RangeInfo": [
+        {
+          "Name": "±15V(0.01V)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -15,
+          "Maxvalue": 15,
+          "Monitor": "meter",
+          "Accuracy": 2,
+          "Unit": "V",
+          "Converformula": "16-@var*0.0078125"
+        },
+        {
+          "Name": "±3V(0.002V)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -3,
+          "Maxvalue": 3,
+          "Monitor": "meter",
+          "Accuracy": 3,
+          "Unit": "V",
+          "Converformula": "3.2-@var*0.0015625"
+        }
+      ],
+      "Defaultfrequency": 10.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 15
+    },
+    {
+      "SensorID": 14,
+      "AddtoSensorlist": true,
+      "SensorName": "磁感应强度",
+      "TypeName": "1-普通",
+      "MultiSample": true,
+      "SensorModelName": "MIS400",
+      "Symbol": "B",
+      "Description": "磁场",
+      "SensorCategory": 1,
+      "RangeInfo": [
+        {
+          "Name": "±20mT(0.02mT)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -20,
+          "Maxvalue": 20,
+          "Monitor": "meter",
+          "Accuracy": 2,
+          "Unit": "mT",
+          "Converformula": "-25+50*@var/4096.0"
+        },
+        {
+          "Name": "±1mT(0.001mT)",
+          "Calibrationvalue": 0,
+          "Defaultvalue": 0,
+          "Minvalue": -1,
+          "Maxvalue": 1,
+          "Monitor": "meter",
+          "Accuracy": 3,
+          "Unit": "mT",
+          "Converformula": "-1.25+2.5*@var/4096.0"
+        }
+      ],
+      "Defaultfrequency": 20.0,
+      "Minfrequency": 0.001,
+      "Maxfrequency": 100000.0,
+      "Timelength": 10
     }
   ]
 }
