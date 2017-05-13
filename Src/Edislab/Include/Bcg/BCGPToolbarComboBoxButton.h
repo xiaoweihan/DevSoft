@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -81,6 +81,13 @@ public:
 	{
 		return m_clrPrompt;
 	}
+
+	void SetCustomFont(CFont* pFont);
+
+	CFont* GetCustomFont()
+	{
+		return m_pFont;
+	}
 	
 // Overrides:
 	virtual CComboBox* CreateCombo (CWnd* pWndParent, const CRect& rect);
@@ -145,7 +152,7 @@ public:
 			return TRUE;
 		}
 
-		return TRUE;
+		return FALSE;
 	}
 
 	virtual BOOL NotifyCommand (int iNotifyCode);
@@ -211,6 +218,16 @@ public:
 		return m_bCenterVert;
 	}
 
+	static void SetDropListVisualManagerTheme(BOOL bSet = TRUE)
+	{
+		m_bIsDropListVisualManagerTheme = bSet;
+	}
+
+	static BOOL IsDropListVisualManagerTheme()
+	{
+		return m_bIsDropListVisualManagerTheme;
+	}
+
 	CComboBox* GetComboBox () const
 	{
 		return m_pWndCombo;
@@ -263,6 +280,9 @@ public:
 	virtual void SetOnGlass (BOOL bOnGlass);
 
 protected:
+	CBCGPToolBar* GetParentToolbar();
+
+protected:
 	DWORD				m_dwStyle;
 	CComboBox*			m_pWndCombo;
 	CEdit*				m_pWndEdit;
@@ -282,6 +302,7 @@ protected:
 
 	static BOOL			m_bFlat;
 	static BOOL			m_bCenterVert;
+	static BOOL			m_bIsDropListVisualManagerTheme;
 
 	UINT				m_uiMenuResID;
 
@@ -291,6 +312,9 @@ protected:
 
 	CString				m_strPrompt;
 	COLORREF			m_clrPrompt;
+
+	CFont*				m_pFont;
+	int					m_nTextHeight;
 };
 
 /////////////////////////////////////////////////////////////////////////////

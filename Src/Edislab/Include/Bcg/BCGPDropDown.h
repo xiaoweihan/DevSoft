@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -43,6 +43,7 @@ public:
 	virtual ~CBCGPDropDownToolBar() {}
    
 	virtual BOOL OnSendCommand (const CBCGPToolbarButton* pButton);
+	virtual void GetMessageString(UINT nID, CString& strMessageString) const;
 
 	virtual BOOL LoadBitmap (UINT uiResID, UINT uiColdResID = 0, 
 					UINT uiMenuResID = 0, BOOL /*bLocked*/ = FALSE,
@@ -99,7 +100,7 @@ public:
 
 protected:
 	CBCGPDropDownToolbarButton*	m_pParentBtn;
-	CBCGPDropDownToolBar			m_wndToolBar;
+	CBCGPDropDownToolBar*		m_pWndToolBar;
 	CBCGPDropDownToolBar*		m_pWndOriginToolbar;
 
 	int							m_x;
@@ -107,9 +108,6 @@ protected:
 	BOOL						m_bAutoDestroy;
 
 	CString						m_strCaption;
-
-protected:
-	static CString	m_strClassName;
 
 // Operations
 public:

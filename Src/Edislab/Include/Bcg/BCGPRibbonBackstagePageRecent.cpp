@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -38,10 +38,11 @@ CBCGPRibbonBackstagePageRecent::CBCGPRibbonBackstagePageRecent(CWnd* pParent /*=
 	//}}AFX_DATA_INIT
 
 	EnableLayout();
+	
 	m_wndRecentFolders.SetFoldersMode();
 
 	m_bIsLocal = TRUE;
-	m_nFlags = 0xFFFF;
+	m_nFlags = BCGP_BACKSTAGE_RECENT_VIEW_DEFAULT_FLAGS;
 }
 
 void CBCGPRibbonBackstagePageRecent::SetFlags(UINT nFlags)
@@ -163,7 +164,7 @@ void CBCGPRibbonBackstagePageRecent::OnDraw(CDC* pDC)
 	pDC->SetBkMode(TRANSPARENT);
 	
 	CFont* pOldFont = pDC->SelectObject(&globalData.fontCaption);
-	pDC->SetTextColor(CBCGPVisualManager::GetInstance ()->GetRibbonBackstageTextColor());
+	pDC->SetTextColor(CBCGPVisualManager::GetInstance()->GetRibbonBackstageInfoTextColor());
 
 	BOOL bShowFolders = (m_nFlags & BCGP_SHOW_FOLDERS_LIST) != 0;
 	int nSteps = bShowFolders ? 2 : 1;

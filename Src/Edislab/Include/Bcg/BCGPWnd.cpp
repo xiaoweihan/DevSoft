@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -59,6 +59,7 @@ CBCGPWnd::CBCGPWnd()
 	m_bVisualManagerStyle	= FALSE;
 	m_bOnGlass				= FALSE;
 	m_pStdObject			= NULL;
+	m_hFont					= NULL;
 }
 
 CBCGPWnd::~CBCGPWnd()
@@ -88,6 +89,8 @@ BEGIN_MESSAGE_MAP(CBCGPWnd, CWnd)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLAERO, OnBCGSetControlAero)
 	ON_MESSAGE(WM_GESTURE, OnGestureEvent)
 	ON_MESSAGE(WM_TABLET_QUERYSYSTEMGESTURESTATUS, OnTabletQuerySystemGestureStatus)
+	ON_MESSAGE(WM_SETFONT, OnSetFont)
+	ON_MESSAGE(WM_GETFONT, OnGetFont)
 END_MESSAGE_MAP()
 
 #if _MSC_VER < 1300
@@ -101,6 +104,26 @@ IMPLEMENT_OLECREATE(CBCGPWnd, "BCGPOleAcc.BCGPPopupMenuAcc2", 0xd4082021, 0x53de
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPWnd message handlers
 
+LRESULT CBCGPWnd::OnSetFont(WPARAM wParam, LPARAM lParam)
+{
+	BOOL bRedraw = (BOOL) LOWORD (lParam);
+
+	m_hFont = (HFONT) wParam;
+
+	if (bRedraw)
+	{
+		Invalidate ();
+		UpdateWindow ();
+	}
+
+	return 0;
+}
+//*****************************************************************************
+LRESULT CBCGPWnd::OnGetFont(WPARAM, LPARAM)
+{
+	return (LRESULT)m_hFont;
+}
+//*****************************************************************************
 LRESULT CBCGPWnd::OnGetObject(WPARAM wParam, LPARAM lParam)
 {
 	if (globalData.IsAccessibilitySupport () &&

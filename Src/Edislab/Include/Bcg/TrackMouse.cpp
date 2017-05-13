@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,10 +28,9 @@ VOID CALLBACK BCGPTrackMouseTimerProc (HWND hWnd,
 	RECT	rect;
 	POINT	pt;
 	
-	::GetClientRect (hWnd, &rect);
-	::MapWindowPoints (hWnd, NULL, (LPPOINT)&rect, 2);
-
+	::GetWindowRect (hWnd, &rect);
 	::GetCursorPos (&pt);
+
 	if (!::PtInRect (&rect, pt) || (WindowFromPoint(pt) != hWnd)) 
 	{
 		if (!::KillTimer (hWnd, idEvent))

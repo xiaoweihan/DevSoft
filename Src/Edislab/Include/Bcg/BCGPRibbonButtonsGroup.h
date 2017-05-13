@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -75,6 +75,8 @@ public:
 
 	int GetButtonIndex(const CBCGPBaseRibbonElement* pButton) const;
 
+	HICON ExtractIcon(int nImageIndex);
+	
 // Operations
 public:
 	void AddButton (CBCGPBaseRibbonElement* pButton);
@@ -87,10 +89,10 @@ public:
 public:
 	virtual CSize GetRegularSize (CDC* pDC);
 
-	virtual void OnDrawImage (CDC* pDC, CRect rectImage, 
-		CBCGPBaseRibbonElement* pButton, int nImageIndex);
+	virtual void OnDrawImage (CDC* pDC, CRect rectImage, CBCGPBaseRibbonElement* pButton, int nImageIndex);
 
 	virtual void SetParentCategory (CBCGPRibbonCategory* pCategory);
+	virtual void SetApplicationModes(UINT nAppModes, BOOL bIncludeSubItems = TRUE);
 
 protected:
 	virtual void OnDraw (CDC* pDC);
@@ -141,6 +143,8 @@ protected:
 	virtual void GetElementsByName (LPCTSTR lpszName, 
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, DWORD dwFlags = 0);
 
+	virtual BOOL QueryElements(const CStringArray& arWords, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, int nMaxResults, BOOL bDescription, BOOL bAll);
+
 	virtual void GetVisibleElements (
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons);
 
@@ -153,6 +157,7 @@ protected:
 	virtual void OnRTLChanged(BOOL bIsRTL);
 
 	virtual void CleanUpSizes ();
+	virtual void OnChangeRibbonFont();
 
 	virtual void SetParentRibbonBar (CBCGPRibbonBar* pRibbonBar);
 
@@ -170,6 +175,8 @@ protected:
 
 	virtual BOOL CanBePlacedOnNonCollapsiblePanel() const;
 
+	virtual void OnUpdateToolTips();
+
 // Attributes
 protected:
 	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>	m_arButtons;
@@ -177,6 +184,7 @@ protected:
 	CBCGPToolBarImages		m_Images;
 	CBCGPToolBarImages		m_HotImages;
 	CBCGPToolBarImages		m_DisabledImages;
+	BOOL					m_bAutoGrayedDisabledImages;
 	BOOL					m_bIsRibbonTabElements;
 };
 

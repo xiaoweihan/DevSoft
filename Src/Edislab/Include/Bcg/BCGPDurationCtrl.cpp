@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 #include "BCGPDlgImpl.h"
 #include "BCGPCalendarBar.h"
 #include "BCGPEdit.h"
+#include "BCGPGlobalUtils.h"
 
 #ifndef _BCGPCALENDAR_STANDALONE
 	#include "BCGPVisualManager.h"
@@ -146,13 +147,6 @@ void CBCGPDurationCtrl::AdjustControl (CRect rectClient, BOOL bRedraw/* = TRUE)*
 		return;
 	}
 
-	int nSpinWidthCurr = iSpinWidth;
-	
-	if (globalData.GetRibbonImageScale() != 1.0)
-	{
-		nSpinWidthCurr = (int)(.5 + globalData.GetRibbonImageScale() * nSpinWidthCurr);
-	}
-
 	CClientDC dc (this);
 
 	CFont* pPrevFont = m_hFont == NULL ?
@@ -173,6 +167,8 @@ void CBCGPDurationCtrl::AdjustControl (CRect rectClient, BOOL bRedraw/* = TRUE)*
 	}
 
 	dc.SelectObject (pPrevFont);
+
+	int nSpinWidthCurr = m_iControlHeight - 4;
 
 	int x = rectClient.left;
 	for (int i = 0; i < PARTS_NUM; i ++)
@@ -266,7 +262,7 @@ void CBCGPDurationCtrl::AdjustControl (CRect rectClient, BOOL bRedraw/* = TRUE)*
 	if (m_bAutoResize)
 	{
 		SetWindowPos (NULL, -1, -1, m_iControlWidth + 2, m_iControlHeight + 2,
-			SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+			SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER | SWP_FRAMECHANGED);
 	}
 
 	// Adjust spin button:

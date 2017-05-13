@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -35,6 +35,7 @@ CBCGPGroup::CBCGPGroup()
 	m_bVisualManagerStyle = FALSE;
 	m_bOnGlass = FALSE;
 	m_hFont	= NULL;
+	m_clrText = (COLORREF)-1;
 }
 
 CBCGPGroup::~CBCGPGroup()
@@ -83,7 +84,7 @@ void CBCGPGroup::OnPaint()
 	}
 #endif
 
-	if (!m_bVisualManagerStyle && !m_bOnGlass)
+	if (!m_bVisualManagerStyle && !m_bOnGlass && m_clrText == (COLORREF)-1)
 	{
 		Default();
 		return;
@@ -124,9 +125,17 @@ void CBCGPGroup::OnDraw(CDC* pDCIn)
 	ASSERT(pOldFont != NULL);
 	
 	pDC->SetBkMode (TRANSPARENT);
-	pDC->SetTextColor (globalData.clrBarText);
-	
-	CBCGPVisualManager::GetInstance ()->OnDrawGroup (pDC, this, rectClient, strName);
+
+	if (m_bVisualManagerStyle)
+	{
+		pDC->SetTextColor (m_clrText == (COLORREF)-1 ? CBCGPVisualManager::GetInstance()->GetDlgTextColor(GetParent()) : m_clrText);
+		CBCGPVisualManager::GetInstance ()->OnDrawGroup(pDC, this, rectClient, strName);
+	}
+	else
+	{
+		pDC->SetTextColor (m_clrText == (COLORREF)-1 ? CBCGPVisualManager::GetInstance()->CBCGPVisualManager::GetDlgTextColor(GetParent()) : m_clrText);
+		CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::OnDrawGroup(pDC, this, rectClient, strName);
+	}
 	
 	pDC->SelectObject (pOldFont);
 	

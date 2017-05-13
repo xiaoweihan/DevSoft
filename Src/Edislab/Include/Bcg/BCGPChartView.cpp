@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -34,7 +34,7 @@ static char THIS_FILE[] = __FILE__;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPChartView
 
-IMPLEMENT_DYNCREATE(CBCGPChartView, CScrollView)
+IMPLEMENT_DYNCREATE(CBCGPChartView, CBCGPScrollView)
 
 CBCGPChartView::CBCGPChartView()
 {
@@ -47,7 +47,7 @@ CBCGPChartView::~CBCGPChartView()
 }
 
 
-BEGIN_MESSAGE_MAP(CBCGPChartView, CScrollView)
+BEGIN_MESSAGE_MAP(CBCGPChartView, CBCGPScrollView)
 	//{{AFX_MSG_MAP(CBCGPChartView)
 	ON_WM_CREATE()
 	ON_WM_SIZE()
@@ -62,6 +62,7 @@ BEGIN_MESSAGE_MAP(CBCGPChartView, CScrollView)
 #ifndef _BCGSUITE_
 	ON_REGISTERED_MESSAGE(BCGM_ON_PREPARE_TASKBAR_PREVIEW, OnPrepareTaskBarPreview)
 #endif
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -69,14 +70,14 @@ END_MESSAGE_MAP()
 
 void CBCGPChartView::OnInitialUpdate()
 {
-	CScrollView::OnInitialUpdate();
+	CBCGPScrollView::OnInitialUpdate();
 	CSize szDefault(100, 100);
 	SetScrollSizes(MM_TEXT, szDefault);
 }
 
 BOOL CBCGPChartView::OnScrollBy(CSize sizeScroll, BOOL bDoScroll)
 {
-	BOOL bRes = CScrollView::OnScrollBy(sizeScroll, bDoScroll);
+	BOOL bRes = CBCGPScrollView::OnScrollBy(sizeScroll, bDoScroll);
 
 	if (bDoScroll)
 	{
@@ -98,12 +99,12 @@ void CBCGPChartView::OnDraw(CDC* /*pDC*/)
 #ifdef _DEBUG
 void CBCGPChartView::AssertValid() const
 {
-	CScrollView::AssertValid();
+	CBCGPScrollView::AssertValid();
 }
 
 void CBCGPChartView::Dump(CDumpContext& dc) const
 {
-	CScrollView::Dump(dc);
+	CBCGPScrollView::Dump(dc);
 }
 #endif //_DEBUG
 
@@ -177,7 +178,7 @@ CBCGPChartLegendCtrl* CBCGPChartView::EnableAdvancedLegend(BOOL bEnable,
 //*******************************************************************************
 int CBCGPChartView::OnCreate(LPCREATESTRUCT lpCreateStruct) 
 {
-	if (CScrollView::OnCreate(lpCreateStruct) == -1)
+	if (CBCGPScrollView::OnCreate(lpCreateStruct) == -1)
 		return -1;
 	
 	m_pWndChartCtrl = CreateChart ();
@@ -201,7 +202,7 @@ int CBCGPChartView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 //*******************************************************************************
 void CBCGPChartView::OnSize(UINT nType, int cx, int cy) 
 {
-	CScrollView::OnSize(nType, cx, cy);
+	CBCGPScrollView::OnSize(nType, cx, cy);
 	AdjustLayout(cx, cy);
 }
 //*******************************************************************************
@@ -269,7 +270,7 @@ BOOL CBCGPChartView::OnEraseBkgnd(CDC* /*pDC*/)
 //*******************************************************************************
 void CBCGPChartView::OnSetFocus(CWnd* pOldWnd) 
 {
-	CScrollView::OnSetFocus(pOldWnd);
+	CBCGPScrollView::OnSetFocus(pOldWnd);
 	
 	if (m_pWndChartCtrl != NULL)
 	{
@@ -298,7 +299,7 @@ void CBCGPChartView::OnDestroy()
 		m_pWndLegendCtrl = NULL;
 	}
 
-	CScrollView::OnDestroy();
+	CBCGPScrollView::OnDestroy();
 }
 //*******************************************************************************
 BOOL CBCGPChartView::OnPreparePrinting(CPrintInfo* pInfo) 
@@ -327,7 +328,7 @@ void CBCGPChartView::OnPrint(CDC* pDC, CPrintInfo* pInfo)
 //*******************************************************************************
 void CBCGPChartView::OnPrepareDC(CDC* pDC, CPrintInfo* pInfo) 
 {
-	CScrollView::OnPrepareDC(pDC, pInfo);
+	CBCGPScrollView::OnPrepareDC(pDC, pInfo);
 }
 //*******************************************************************************
 void CBCGPChartView::OnFilePrintPreview()
@@ -375,4 +376,14 @@ LRESULT CBCGPChartView::OnPrepareTaskBarPreview(WPARAM wp, LPARAM /*lp*/)
 
 	m_pWndChartCtrl->DoPaint(pDC);
 	return 1;
+}
+//****************************************************************************
+LRESULT CBCGPChartView::OnChangeVisualManager (WPARAM wp, LPARAM lp)
+{
+	if (m_pWndChartCtrl->GetSafeHwnd() != NULL)
+	{
+		m_pWndChartCtrl->OnChangeVisualManager(wp, lp);
+	}
+
+	return 0;
 }

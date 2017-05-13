@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -55,8 +55,6 @@ public:
 		return GetLink ();
 	}
 
-	virtual void OnMouseMove (CPoint point);
-
 	virtual void OnSetIcon ();
 	virtual BOOL IsDrawTooltipImage () const	{	return FALSE;	}
 	virtual BOOL IsCustomIconAllowed() const	{	return FALSE;	}
@@ -68,9 +66,12 @@ public:
 	
 	void SetLink (LPCTSTR lpszLink);
 
+	virtual HCURSOR GetCursor() const;
+
 protected:
 	virtual BOOL SetACCData(CWnd* pParent, CBCGPAccessibilityData& data);
 	virtual void OnAccDefaultAction();
+	virtual BOOL QueryElements(const CStringArray& /*arWords*/, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& /*arButtons*/, int /*nMaxResults*/, BOOL /*bDescription*/, BOOL /*bAll*/) { return FALSE; }
 
 // Attributes:
 protected:

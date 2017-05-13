@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -15,6 +15,7 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
+#include "BCGPGridCtrl.h"
 #include "BCGPMath.h"
 #include "BCGPVisualContainer.h"
 #include "BCGPVisualCtrl.h"
@@ -38,12 +39,12 @@ static char THIS_FILE[]=__FILE__;
 
 UINT BCGM_POSTREDRAW = ::RegisterWindowMessage (_T("BCGM_POSTREDRAW"));
 UINT BCGM_CONTAINER_SELCHANGED = ::RegisterWindowMessage (_T("BCGM_CONTAINER_SELCHANGED"));
+UINT BCGM_CONTAINER_SCALE_CHANGED = ::RegisterWindowMessage (_T("BCGM_CONTAINER_SCALE_CHANGED"));
+UINT BCGM_CONTAINER_OBJECT_MOVED = ::RegisterWindowMessage (_T("BCGM_CONTAINER_OBJECT_MOVED"));
+UINT BCGM_CONTAINER_BEFORE_OBJECT_MOVE = ::RegisterWindowMessage (_T("BCGM_CONTAINER_BEFORE_OBJECT_MOVE"));
 
 IMPLEMENT_DYNCREATE(CBCGPVisualContainer, CBCGPBaseAccessibleObject)
 IMPLEMENT_DYNAMIC(CBCGPVisualDataObject, CObject)
-
-CMap<UINT,UINT,CBCGPBaseVisualObject*,CBCGPBaseVisualObject*> CBCGPBaseVisualObject::m_mapAnimations;
-CCriticalSection CBCGPBaseVisualObject::g_cs;
 
 IMPLEMENT_DYNAMIC(CBCGPBaseVisualObject, CBCGPBaseAccessibleObject)
 
@@ -95,11 +96,40 @@ static BOOL SaveBitmapToFile(HBITMAP hbmp, const CString& strFilePath)
 		CBCGPToolBarImages img;
 #endif
 		img.AddImage(hbmp, TRUE);
+
+#ifndef _BCGSUITE_
+		img.SetSingleImage(FALSE);
+#else
 		img.SetSingleImage();
+#endif
 
 		return img.Save(strFilePath);
 	}
 }
+
+//////////////////////////////////////////////////////////////////////
+// CBCGPVisualDataObject
+
+void CBCGPVisualDataObject::OnAnimationValueChanged(double /*dblOldValue*/, double dblNewValue)
+{
+	m_dblAnimatedValue = dblNewValue;
+	
+	if (m_pParentVisual != NULL)
+	{
+		m_pParentVisual->OnAnimation(this);
+		m_pParentVisual->Redraw();
+	}
+}
+
+void CBCGPVisualDataObject::OnAnimationFinished()
+{
+	if (m_pParentVisual != NULL)
+	{
+		m_pParentVisual->OnAnimationFinished(this);
+		m_pParentVisual->Redraw();
+	}
+}
+
 
 //////////////////////////////////////////////////////////////////////
 // CBCGPBaseVisualObject
@@ -112,22 +142,13 @@ CBCGPBaseVisualObject::CBCGPBaseVisualObject(CBCGPVisualContainer* pContainer)
 {
 	m_pParentContainer = NULL;
 
-	if (pContainer != NULL)
-	{
-		ASSERT_VALID(pContainer);
-		pContainer->Add(this);
-	}
-	else
-	{
-		m_pWndOwner = NULL;
-	}
-
 	m_nID = 0;
 	m_dwUserData = 0;
 	m_bIsVisible = TRUE;
 	m_rect.SetRectEmpty();
 	m_bIsAutoDestroy = TRUE;
 	m_bIsDirty = TRUE;
+	m_bIsRedrawEnabled = TRUE;
 	m_bCacheImage = FALSE;
 	m_bIsSelected = FALSE;
 	m_uiEditFlags = 0;
@@ -137,6 +158,17 @@ CBCGPBaseVisualObject::CBCGPBaseVisualObject(CBCGPVisualContainer* pContainer)
 	m_nClickAndHoldID = 0;
 	m_bDontResetRect = FALSE;
 	m_bIsInteractiveMode = FALSE;
+	m_bIsEnabled = TRUE;
+
+	if (pContainer != NULL)
+	{
+		ASSERT_VALID(pContainer);
+		pContainer->Add(this);
+	}
+	else
+	{
+		m_pWndOwner = NULL;
+	}
 
 #if _MSC_VER < 1300
 	m_pStdObject = NULL;
@@ -157,7 +189,6 @@ CBCGPBaseVisualObject::CBCGPBaseVisualObject(const CBCGPBaseVisualObject& src)
 //*******************************************************************************
 CBCGPBaseVisualObject::~CBCGPBaseVisualObject()
 {
-	StopAllAnimations();
 	RemoveAllData();
 
 #if _MSC_VER < 1300
@@ -380,6 +411,11 @@ void CBCGPBaseVisualObject::CopyFrom(const CBCGPBaseVisualObject& src)
 	}
 }
 //*******************************************************************************
+void CBCGPBaseVisualObject::OnWndEnabled(BOOL bEnable)
+{
+	m_bIsEnabled = bEnable;
+}
+//*******************************************************************************
 int CBCGPBaseVisualObject::AddData(CBCGPVisualDataObject* pObject)
 {
 	if (pObject == NULL)
@@ -419,8 +455,6 @@ CWnd* CBCGPBaseVisualObject::SetOwner(CWnd* pWndOwner, BOOL bRedraw/* = TRUE*/)
 
 		m_pWndOwner = pWndOwner;
 
-		StopAllAnimations(bRedraw);
-
 		if (bRedraw)
 		{
 			Redraw ();
@@ -444,6 +478,7 @@ void CBCGPBaseVisualObject::SetRect(const CBCGPRect& rect, BOOL bRedraw)
 			m_rectOriginal = CBCGPRect(-1., -1., 0., 0.);
 		}
 
+		OnRectChanged(rectOld);
 		SetDirty();
 	}
 
@@ -512,24 +547,17 @@ BOOL CBCGPBaseVisualObject::SetValue(double dblVal, int nIndex, UINT uiAnimation
 		return TRUE;
 	}
 
-	pData->SetAnimatedValue(pData->GetValue());
+	double dblOldValue = pData->GetValue();
+
 	pData->SetValue(dblVal);
 
-	if (pData->GetAnimationID() > 0)
+	if (!pData->StartAnimation(dblOldValue, dblVal, 0.0001 * uiAnimationTime * dblRange, CBCGPAnimationManager::BCGPANIMATION_Cubic))
 	{
-		::KillTimer(NULL, pData->GetAnimationID());
+		if (bRedraw)
+		{
+			Redraw();
+		}
 	}
-
-	pData->SetAnimationStep(fabs((pData->GetValue() - pData->GetAnimatedValue()) / 10));
-
-	double dblSteps = fabs((dblRange) / (pData->GetValue() - pData->GetAnimatedValue()));
-
-	pData->SetAnimationID ((UINT) ::SetTimer (NULL, 0, 
-		(int)(.5 + (double)uiAnimationTime / dblSteps), AnimTimerProc));
-
-	g_cs.Lock ();
-	m_mapAnimations.SetAt (pData->GetAnimationID(), this);
-	g_cs.Unlock ();
 
 	return TRUE;
 }
@@ -544,126 +572,15 @@ double CBCGPBaseVisualObject::GetValue(int nIndex) const
 
 	return m_arData[nIndex]->GetValue();
 }
-//*******************************************************************************
-VOID CALLBACK CBCGPBaseVisualObject::AnimTimerProc (HWND /*hwnd*/, UINT /*uMsg*/,
-													   UINT_PTR idEvent, DWORD /*dwTime*/)
-{
-	CBCGPBaseVisualObject* pObject = NULL;
-
-	g_cs.Lock ();
-
-	if (!m_mapAnimations.Lookup ((UINT) idEvent, pObject))
-	{
-		g_cs.Unlock ();
-		return;
-	}
-
-	ASSERT_VALID(pObject);
-
-	g_cs.Unlock ();
-
-	BOOL bStopAnimation = pObject->OnAnimation((UINT)idEvent);
-
-	if (bStopAnimation)
-	{
-		pObject->StopAnimation((UINT)idEvent, TRUE);
-	}
-	else
-	{
-		pObject->Redraw();
-	}
-}
-//*******************************************************************************
-CBCGPVisualDataObject* CBCGPBaseVisualObject::GetAnimated(UINT uiID) const
-{
-	for (int i = 0; i < m_arData.GetSize(); i++)
-	{
-		CBCGPVisualDataObject* pData = m_arData[i];
-		ASSERT_VALID(pData);
-
-		if (pData->GetAnimationID() == uiID)
-		{
-			return pData;
-		}
-	}
-
-	return NULL;
-}
-//*******************************************************************************
-BOOL CBCGPBaseVisualObject::OnAnimation(UINT idEvent)
-{
-	CBCGPVisualDataObject* pData = GetAnimated(idEvent);
-	if (pData == NULL)
-	{
-		ASSERT(FALSE);
-		return TRUE;
-	}
-
-	BOOL bStopAnimation = FALSE;
-
-	if (pData->GetAnimatedValue() < pData->GetValue())
-	{
-		pData->SetAnimatedValue(pData->GetAnimatedValue() + pData->GetAnimationStep());
-		bStopAnimation = pData->GetAnimatedValue() >= pData->GetValue();
-	}
-	else
-	{
-		pData->SetAnimatedValue(pData->GetAnimatedValue() - pData->GetAnimationStep());
-		bStopAnimation = pData->GetAnimatedValue() <= pData->GetValue();
-	}
-
-	return bStopAnimation;
-}
-//*******************************************************************************
-void CBCGPBaseVisualObject::StopAnimation(UINT id, BOOL bRedraw)
-{
-	ASSERT_VALID (this);
-
-	if (id == 0)
-	{
-		return;
-	}
-
-	::KillTimer (NULL, id);
-
-	g_cs.Lock ();
-	m_mapAnimations.RemoveKey (id);
-	g_cs.Unlock ();
-
-	CBCGPVisualDataObject* pData = GetAnimated(id);
-	if (pData == NULL)
-	{
-		ASSERT(FALSE);
-	}
-	else
-	{
-		pData->SetAnimationID(0);
-		pData->SetAnimatedValue(0.);
-		pData->SetAnimationStep(0.);
-	}
-
-	if (bRedraw)
-	{
-		Redraw();
-	}
-}
-//*******************************************************************************
-void CBCGPBaseVisualObject::StopAllAnimations(BOOL bRedraw)
-{
-	ASSERT_VALID (this);
-
-	for (int i = 0; i < m_arData.GetSize(); i++)
-	{
-		CBCGPVisualDataObject* pData = m_arData[i];
-		ASSERT_VALID(pData);
-
-		StopAnimation(pData->GetAnimationID(), bRedraw);
-	}
-}
-//*******************************************************************************
+// *******************************************************************************
 void CBCGPBaseVisualObject::Redraw()
 {
 	ASSERT_VALID (this);
+
+	if (!m_bIsRedrawEnabled)
+	{
+		return;
+	}
 
 	if (m_pWndOwner->GetSafeHwnd() != NULL)
 	{
@@ -677,7 +594,10 @@ void CBCGPBaseVisualObject::Redraw()
 			}
 		}
 
-		m_pWndOwner->RedrawWindow();
+		CBCGPRect rect = m_rect;
+		rect.OffsetRect(-m_ptScrollOffset);
+
+		m_pWndOwner->RedrawWindow((CRect)rect, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
 	}
 }
 //*******************************************************************************
@@ -701,7 +621,7 @@ void CBCGPBaseVisualObject::RedrawRect(const CBCGPRect& rect)
 	}
 
 	CRect rectGDI = rect;
-	m_pWndOwner->RedrawWindow(rectGDI);
+	m_pWndOwner->RedrawWindow(rectGDI, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 //*******************************************************************************
 void CBCGPBaseVisualObject::Invalidate()
@@ -880,7 +800,12 @@ BOOL CBCGPBaseVisualObject::CopyToClipboard(CBCGPGraphicsManager* pGM)
 
 	CBCGPToolBarImages img;
 	img.AddImage(hbmp, TRUE);
+
+#ifndef _BCGSUITE_
+	img.SetSingleImage(FALSE);
+#else
 	img.SetSingleImage();
+#endif
 
 	return img.CopyImageToClipboard(0);
 }
@@ -903,7 +828,7 @@ void CBCGPBaseVisualObject::EnableImageCache(BOOL bEnable)
 CBCGPRect CBCGPBaseVisualObject::MakeTrackMarker(double x, double y) const
 {
 	CBCGPRect rect(x, y, x, y);
-	rect.InflateRect(SEL_MARKER_SIZE * m_sizeScaleRatio.cx, SEL_MARKER_SIZE * m_sizeScaleRatio.cy);
+	rect.InflateRect(SEL_MARKER_SIZE, SEL_MARKER_SIZE);
 
 	return rect;
 }
@@ -937,6 +862,8 @@ void CBCGPBaseVisualObject::SetTrackingRect(const CBCGPRect& rect)
 {
 	const CBCGPSize sizeMin = GetMinSize();
 
+	m_mapTrackRects.RemoveAll();
+
 	if (!sizeMin.IsEmpty())
 	{
 		if (rect.Width() < sizeMin.cx || rect.Height() < sizeMin.cy)
@@ -952,15 +879,45 @@ void CBCGPBaseVisualObject::SetTrackingRect(const CBCGPRect& rect)
 		return;
 	}
 
-	m_mapTrackRects[HTTOPLEFT] = MakeTrackMarker(m_rectTrack.TopLeft());
-	m_mapTrackRects[HTBOTTOMRIGHT] = MakeTrackMarker(m_rectTrack.BottomRight());
-	m_mapTrackRects[HTTOPRIGHT] = MakeTrackMarker(m_rectTrack.right, m_rectTrack.top);
-	m_mapTrackRects[HTBOTTOMLEFT] = MakeTrackMarker(m_rectTrack.left, m_rectTrack.bottom);
+	if ((m_uiEditFlags & (BCGP_EDIT_SIZE_NO_LEFT | BCGP_EDIT_SIZE_NO_TOP)) == 0)
+	{
+		m_mapTrackRects[HTTOPLEFT] = MakeTrackMarker(m_rectTrack.TopLeft());
+	}
 
-	m_mapTrackRects[HTLEFT] = MakeTrackMarker(m_rectTrack.left, m_rectTrack.CenterPoint().y);
-	m_mapTrackRects[HTRIGHT] = MakeTrackMarker(m_rectTrack.right, m_rectTrack.CenterPoint().y);
-	m_mapTrackRects[HTTOP] = MakeTrackMarker(m_rectTrack.CenterPoint().x, m_rectTrack.top);
-	m_mapTrackRects[HTBOTTOM] = MakeTrackMarker(m_rectTrack.CenterPoint().x, m_rectTrack.bottom);
+	if ((m_uiEditFlags & (BCGP_EDIT_SIZE_NO_RIGHT | BCGP_EDIT_SIZE_NO_BOTTOM)) == 0)
+	{
+		m_mapTrackRects[HTBOTTOMRIGHT] = MakeTrackMarker(m_rectTrack.BottomRight());
+	}
+
+	if ((m_uiEditFlags & (BCGP_EDIT_SIZE_NO_RIGHT | BCGP_EDIT_SIZE_NO_TOP)) == 0)
+	{
+		m_mapTrackRects[HTTOPRIGHT] = MakeTrackMarker(m_rectTrack.right, m_rectTrack.top);
+	}
+
+	if ((m_uiEditFlags & (BCGP_EDIT_SIZE_NO_LEFT | BCGP_EDIT_SIZE_NO_BOTTOM)) == 0)
+	{
+		m_mapTrackRects[HTBOTTOMLEFT] = MakeTrackMarker(m_rectTrack.left, m_rectTrack.bottom);
+	}
+
+	if ((m_uiEditFlags & BCGP_EDIT_SIZE_NO_LEFT) == 0)
+	{
+		m_mapTrackRects[HTLEFT] = MakeTrackMarker(m_rectTrack.left, m_rectTrack.CenterPoint().y);
+	}
+
+	if ((m_uiEditFlags & BCGP_EDIT_SIZE_NO_RIGHT) == 0)
+	{
+		m_mapTrackRects[HTRIGHT] = MakeTrackMarker(m_rectTrack.right, m_rectTrack.CenterPoint().y);
+	}
+
+	if ((m_uiEditFlags & BCGP_EDIT_SIZE_NO_TOP) == 0)
+	{
+		m_mapTrackRects[HTTOP] = MakeTrackMarker(m_rectTrack.CenterPoint().x, m_rectTrack.top);
+	}
+
+	if ((m_uiEditFlags & BCGP_EDIT_SIZE_NO_BOTTOM) == 0)
+	{
+		m_mapTrackRects[HTBOTTOM] = MakeTrackMarker(m_rectTrack.CenterPoint().x, m_rectTrack.bottom);
+	}
 }
 //*******************************************************************************
 BOOL CBCGPBaseVisualObject::IsEditMode() const
@@ -1016,8 +973,7 @@ void CBCGPBaseVisualObject::DrawTrackingRect(CBCGPGraphicsManager* pGM,
 	CBCGPRect rectTrack = m_rectTrack;
 	rectTrack.OffsetRect(-m_ptScrollOffset);
 
-	double scaleRatio = GetScaleRatioMid();
-	pGM->DrawRectangle(rectTrack, brOutline, scaleRatio);
+	pGM->DrawRectangle(rectTrack, brOutline);
 
 	for (POSITION pos = m_mapTrackRects.GetStartPosition (); pos != NULL;)
 	{
@@ -1035,12 +991,12 @@ void CBCGPBaseVisualObject::DrawTrackingRect(CBCGPGraphicsManager* pGM,
 		case HTTOPRIGHT:
 		case HTBOTTOMLEFT:
 			pGM->FillEllipse(rect, brFill);
-			pGM->DrawEllipse(rect, brOutline, scaleRatio);
+			pGM->DrawEllipse(rect, brOutline);
 			break;
 
 		default:
 			pGM->FillRectangle(rect, brFill);
-			pGM->DrawRectangle(rect, brOutline, scaleRatio);
+			pGM->DrawRectangle(rect, brOutline);
 		}
 	}
 }
@@ -1077,6 +1033,17 @@ void CBCGPVisualLayout::AdjustLayout ()
 	if (count == 0)
 	{
 		return;
+	}
+
+	CSize szMin(GetMinSize());
+	if (szMin != CSize(0, 0))
+	{
+		CRect rtCur;
+		GetHostWndRect(rtCur);
+		if (rtCur.Width() < szMin.cx || rtCur.Height() < szMin.cy)
+		{
+			return;
+		}
 	}
 
 	POSITION pos = m_listWnd.GetHeadPosition ();
@@ -1125,6 +1092,20 @@ BOOL CBCGPVisualLayout::AddAnchor(CBCGPBaseVisualObject* pObject, XMoveType type
 void CBCGPVisualLayout::GetHostWndRect(CRect& rect) const
 {
 	rect = m_container.GetRect();
+
+	CSize szMin(GetMinSize());
+	if (szMin != CSize(0, 0))
+	{
+		if (rect.Width() < szMin.cx)
+		{
+			rect.right = rect.left + szMin.cx;
+		}
+
+		if (rect.Height() < szMin.cy)
+		{
+			rect.bottom = rect.top + szMin.cy;
+		}
+	}
 }
 
 #endif
@@ -1151,14 +1132,16 @@ CBCGPVisualContainer::CBCGPVisualContainer(CWnd* pWndOwner)
 	m_dwEditFlags = 0;
 	m_nDragMode = HTNOWHERE;
 	m_bDrawScrollBars = TRUE;
+	m_bNCScrollBars = FALSE;
 
 	m_bHitTestSelected = FALSE;
-	m_ptDragStart = m_ptDragFinish = CBCGPPoint(-1, -1);
+	m_ptClick = m_ptDragStart = m_ptDragFinish = CBCGPPoint(-1, -1);
 	m_szDrag = CBCGPSize(::GetSystemMetrics(SM_CXDRAG), ::GetSystemMetrics(SM_CYDRAG));
 
 	m_brSelFill = CBCGPBrush(CBCGPColor::LightBlue, .5);
 	m_brSelOutline = CBCGPBrush(CBCGPColor::SteelBlue);
 	m_brGrid = CBCGPBrush(CBCGPColor::WhiteSmoke);
+	m_brGridDots = CBCGPBrush(CBCGPColor::CornflowerBlue);
 
 	m_sizeGrid = CBCGPSize(10., 10.);
 
@@ -1173,6 +1156,12 @@ CBCGPVisualContainer::CBCGPVisualContainer(CWnd* pWndOwner)
 
 	m_ScrollBarVert.SetHorizontal(FALSE);
 	m_ScrollBarHorz.SetHorizontal(TRUE);
+
+	m_bScaleByMouseWheel = FALSE;
+	m_dblMinScaleRatio = 0.01;
+	m_dblMaxScaleRatio = 4.0;
+
+	m_styleGrid = BCGP_VISUAL_CONTAINER_GRID_LINES;
 
 #if _MSC_VER < 1300
 	m_pStdObject = NULL;
@@ -1242,14 +1231,20 @@ void CBCGPVisualContainer::EnableImageCache(BOOL bEnable)
 	}
 }
 //*******************************************************************************
-void CBCGPVisualContainer::EnableScrollBars(BOOL bEnable, CBCGPVisualScrollBarColorTheme* pColorTheme)
+void CBCGPVisualContainer::EnableScrollBars(BOOL bEnable, CBCGPVisualScrollBarColorTheme* pColorTheme, CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE style)
 {
 	m_bScrollBars = bEnable;
 
-	if (bEnable && pColorTheme != NULL)
+	if (bEnable)
 	{
-		m_ScrollBarVert.SetColorTheme(*pColorTheme);
-		m_ScrollBarHorz.SetColorTheme(*pColorTheme);
+		if (pColorTheme != NULL)
+		{
+			m_ScrollBarVert.SetColorTheme(*pColorTheme);
+			m_ScrollBarHorz.SetColorTheme(*pColorTheme);
+		}
+
+		m_ScrollBarVert.SetStyle(style);
+		m_ScrollBarHorz.SetStyle(style);
 	}
 
 	AdjustLayout();
@@ -1298,12 +1293,42 @@ BOOL CBCGPVisualContainer::InsertAt(CBCGPBaseVisualObject* pObject, int nIndex, 
 
 	OnAdd (pObject);
 
+	pObject->OnAddToContainer(this);
+
 	AdjustLayout();
 	return TRUE;
 }
 //*******************************************************************************
-void CBCGPVisualContainer::OnAdd (CBCGPBaseVisualObject* /*pObject*/)
+void CBCGPVisualContainer::OnAdd (CBCGPBaseVisualObject* pObject)
 {
+	ASSERT_VALID(this);
+	ASSERT_VALID(pObject);
+
+	CBCGPSize sizeScaleRatioOld = pObject->GetScaleRatio();
+
+	pObject->SetScaleRatio(GetScaleRatio());
+
+	if ((m_sizeScaleRatio != CBCGPSize(1., 1.) || !pObject->ResetRect()))
+	{
+		const double dblAspectRatioX = m_sizeScaleRatio.cx / sizeScaleRatioOld.cx;
+		const double dblAspectRatioY = m_sizeScaleRatio.cy / sizeScaleRatioOld.cy;
+	
+		BOOL bDontResetRectSaved = pObject->m_bDontResetRect;
+		pObject->m_bDontResetRect = TRUE;
+			
+		CBCGPRect rect = pObject->GetRect();
+
+		if (rect.IsRectEmpty())
+		{
+			return;
+		}
+
+		rect.Scale (dblAspectRatioX, dblAspectRatioY, rect.TopLeft());
+			
+		pObject->SetRect(rect);
+			
+		pObject->m_bDontResetRect = bDontResetRectSaved;
+	}
 }
 //*******************************************************************************
 BOOL CBCGPVisualContainer::Remove(int nIndex)
@@ -1328,6 +1353,7 @@ BOOL CBCGPVisualContainer::Remove(int nIndex)
 
 	m_arObjects.RemoveAt(nIndex);
 	AdjustLayout();
+
 	return TRUE;
 }
 //*******************************************************************************
@@ -1403,6 +1429,32 @@ void CBCGPVisualContainer::RemoveAll()
 	AdjustLayout();
 }
 //*******************************************************************************
+void CBCGPVisualContainer::RemoveSelected()
+{
+	for (POSITION pos = m_lstSel.GetHeadPosition(); pos != NULL;)
+	{
+		CBCGPBaseVisualObject* pObject = m_lstSel.GetNext(pos);
+		ASSERT_VALID(pObject);
+
+		int nIndex = FindIndex(pObject);
+		if (nIndex == -1)
+		{
+			ASSERT(FALSE);
+			continue;
+		}
+
+		m_arObjects.RemoveAt(nIndex);
+
+		if (pObject->m_bIsAutoDestroy)
+		{
+			delete pObject;
+		}
+	}
+
+	m_lstSel.RemoveAll();
+	AdjustLayout();
+}
+//*******************************************************************************
 int CBCGPVisualContainer::GetCount() const
 {
 	return (int)m_arObjects.GetSize();
@@ -1460,11 +1512,14 @@ const CBCGPBaseVisualObject* CBCGPVisualContainer::operator[](int nIndex) const
 //*******************************************************************************
 CBCGPBaseVisualObject* CBCGPVisualContainer::GetFromPoint(const CPoint& point)
 {
-	if (m_ScrollBarVert.GetRect().PtInRect(point) ||
-		m_ScrollBarHorz.GetRect().PtInRect(point) ||
-		m_rectBottomRight.PtInRect(point))
+	if (!m_bNCScrollBars)
 	{
-		return NULL;
+		if (m_ScrollBarVert.GetRect().PtInRect(point) ||
+			m_ScrollBarHorz.GetRect().PtInRect(point) ||
+			m_rectBottomRight.PtInRect(point))
+		{
+			return NULL;
+		}
 	}
 
 	if (m_bHitTestSelected)
@@ -1500,7 +1555,9 @@ CBCGPBaseVisualObject* CBCGPVisualContainer::GetFromPoint(const CPoint& point)
 
 			rect.OffsetRect(-m_ptScrollOffset);
 
-			if (rect.PtInRect (point) && pObject->HitTest (point) != HTNOWHERE)
+			BOOL bCheckForObjectRect = pObject->m_mapTrackRects.IsEmpty();
+
+			if ((!bCheckForObjectRect || rect.PtInRect(point)) && pObject->HitTest (point) != HTNOWHERE)
 			{
 				return pObject;
 			}
@@ -1718,6 +1775,16 @@ void CBCGPVisualContainer::EnableEditMode(BOOL bEnable, DWORD dwFlags)
 {
 	m_bIsEditMode = bEnable;
 	m_dwEditFlags = dwFlags;
+
+	if ((m_dwEditFlags & BCGP_CONTAINER_GRID) == BCGP_CONTAINER_GRID &&
+		(m_dwEditFlags & BCGP_CONTAINER_SNAP_TO_GRID) == BCGP_CONTAINER_SNAP_TO_GRID)
+	{
+		m_szDrag = CBCGPSize(m_sizeGrid.cx / 2, m_sizeGrid.cy / 2);
+	}
+	else
+	{
+		m_szDrag = CBCGPSize(::GetSystemMetrics(SM_CXDRAG), ::GetSystemMetrics(SM_CYDRAG));
+	}
 }
 //*******************************************************************************
 void CBCGPVisualContainer::SetDirty(BOOL bSet) const
@@ -1772,7 +1839,30 @@ void CBCGPVisualContainer::Redraw()
 		}
 	}
 
-	m_pWndOwner->RedrawWindow();
+	m_pWndOwner->RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
+}
+//*******************************************************************************
+void CBCGPVisualContainer::RedrawRect(const CBCGPRect& rect)
+{
+	ASSERT_VALID (this);
+
+	if (m_pWndOwner->GetSafeHwnd() == NULL || m_rect.IsRectEmpty())
+	{
+		return;
+	}
+
+	if (m_pWndOwner->GetExStyle() & WS_EX_LAYERED)
+	{
+		CBCGPBaseVisualCtrl* pCtrl = DYNAMIC_DOWNCAST(CBCGPBaseVisualCtrl, m_pWndOwner);
+		if (pCtrl != NULL)
+		{
+			pCtrl->OnDrawLayeredPopup();
+			return;
+		}
+	}
+
+	CRect rectGDI = rect;
+	m_pWndOwner->RedrawWindow(rectGDI, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 //*******************************************************************************
 void CBCGPVisualContainer::DrawObjects(CBCGPGraphicsManager* pGM, CBCGPRect rectClip, DWORD dwFlags, const CBCGPPoint& ptOffset)
@@ -1934,21 +2024,24 @@ void CBCGPVisualContainer::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& re
 			OnDrawBorder(pGM);
 		}
 
-		CBCGPRect rectInter;
-
-		if (!m_rectBottomRight.IsRectEmpty() && !rectClip.IsRectEmpty() && rectInter.IntersectRect (m_rectBottomRight, rectClip))
+		if (!m_bNCScrollBars)
 		{
-			pGM->FillRectangle(m_rectBottomRight, m_ScrollBarVert.GetColorTheme().m_brFace);
-		}
+			CBCGPRect rectInter;
 
-		if (!rectClip.IsRectEmpty() && rectInter.IntersectRect (m_ScrollBarVert.GetRect(), rectClip))
-		{
-			m_ScrollBarVert.DoDraw(pGM);
-		}
+			if (!m_rectBottomRight.IsRectEmpty() && !rectClip.IsRectEmpty() && rectInter.IntersectRect (m_rectBottomRight, rectClip))
+			{
+				pGM->FillRectangle(m_rectBottomRight, m_ScrollBarVert.GetColorTheme().m_brFace);
+			}
 
-		if (!rectClip.IsRectEmpty() && rectInter.IntersectRect (m_ScrollBarHorz.GetRect(), rectClip))
-		{
-			m_ScrollBarHorz.DoDraw(pGM);
+			if (!rectClip.IsRectEmpty() && rectInter.IntersectRect (m_ScrollBarVert.GetRect(), rectClip))
+			{
+				m_ScrollBarVert.DoDraw(pGM);
+			}
+
+			if (!rectClip.IsRectEmpty() && rectInter.IntersectRect (m_ScrollBarHorz.GetRect(), rectClip))
+			{
+				m_ScrollBarHorz.DoDraw(pGM);
+			}
 		}
 	}
 }
@@ -1957,7 +2050,10 @@ void CBCGPVisualContainer::OnFillBackground(CBCGPGraphicsManager* pGM)
 {
 	if (!m_brFill.IsEmpty())
 	{
-		pGM->FillRectangle(m_rect, m_brFill);
+		CBCGPRect rect = m_rect;
+		rect.Scale(GetScaleRatioMid());
+
+		pGM->FillRectangle(rect, m_brFill);
 	}
 
 	if (m_bIsEditMode && (m_dwEditFlags & BCGP_CONTAINER_GRID) == BCGP_CONTAINER_GRID)
@@ -1968,16 +2064,44 @@ void CBCGPVisualContainer::OnFillBackground(CBCGPGraphicsManager* pGM)
 //*******************************************************************************
 void CBCGPVisualContainer::OnDrawBorder(CBCGPGraphicsManager* pGM)
 {
+	if (m_bNCScrollBars && m_bScrollBars)
+	{
+		return;
+	}
+
+	CBCGPRect rect(m_rect);
+	if (pGM->GetType() != CBCGPGraphicsManager::BCGP_GRAPHICS_MANAGER_GDI)
+	{
+		rect.right -= 1;
+		rect.bottom -= 1;
+	}
+
 	if (!m_brOutline.IsEmpty())
 	{
-		CBCGPRect rect(m_rect);
-		if (pGM->GetType() != CBCGPGraphicsManager::BCGP_GRAPHICS_MANAGER_GDI)
+		pGM->DrawRectangle(rect, m_brOutline, 1);
+		
+		if (m_brOutline.GetOpacity() == 1.0)
 		{
-			rect.right -= 1;
-			rect.bottom -= 1;
+			return;
+		}
+	}
+
+	if (!m_ScrollBarHorz.GetRect().IsRectEmpty() || !m_ScrollBarVert.GetRect().IsRectEmpty())
+	{
+		CBCGPColor color = CBCGPColor::White;
+
+		if (!m_brFill.IsEmpty())
+		{
+			color = m_brFill.GetColor();
+		}
+		else if (!m_brOutline.IsEmpty())
+		{
+			color = m_brOutline.GetColor();
 		}
 
-		pGM->DrawRectangle(rect, m_brOutline, 1);
+		color.a = 1.0;
+
+		pGM->DrawRectangle(rect, CBCGPBrush(color, 1.0), 1);
 	}
 }
 //*******************************************************************************
@@ -1989,7 +2113,8 @@ void CBCGPVisualContainer::DrawSelectedArea(CBCGPGraphicsManager* pGM, const CBC
 //*******************************************************************************
 void CBCGPVisualContainer::OnDrawGrid(CBCGPGraphicsManager* pGM)
 {
-	if (m_brGrid.IsEmpty())
+	const CBCGPBrush& br = GetGridBrush();
+	if (br.IsEmpty())
 	{
 		return;
 	}
@@ -1997,14 +2122,31 @@ void CBCGPVisualContainer::OnDrawGrid(CBCGPGraphicsManager* pGM)
 	double scaleRatio = GetScaleRatioMid();
 	CBCGPSize sizeGrid(m_sizeGrid.cx * m_sizeScaleRatio.cx, m_sizeGrid.cy * m_sizeScaleRatio.cy);
 
-	for (double x = m_rect.left + sizeGrid.cx; x < m_rect.right; x += sizeGrid.cx)
-	{
-		pGM->DrawLine(x, m_rect.top, x, m_rect.bottom, m_brGrid, scaleRatio);
-	}
+	CBCGPRect rect = m_rect;
+	rect.Scale(scaleRatio);
 
-	for (double y = m_rect.top + sizeGrid.cy; y < m_rect.bottom; y += sizeGrid.cy)
+	if (m_styleGrid == BCGP_VISUAL_CONTAINER_GRID_LINES)
 	{
-		pGM->DrawLine(m_rect.left, y, m_rect.right, y, m_brGrid, scaleRatio);
+		for (double x = rect.left + sizeGrid.cx; x < rect.right; x += sizeGrid.cx)
+		{
+			pGM->DrawLine(x, rect.top, x, rect.bottom, br, scaleRatio);
+		}
+
+		for (double y = rect.top + sizeGrid.cy; y < rect.bottom; y += sizeGrid.cy)
+		{
+			pGM->DrawLine(rect.left, y, rect.right, y, br, scaleRatio);
+		}
+	}
+	else	// BCGP_VISUAL_CONTAINER_GRID_DOTS
+	{
+		for (double x = rect.left; x <= rect.right; x += sizeGrid.cx)
+		{
+			for (double y = rect.top; y <= rect.bottom; y += sizeGrid.cy)
+			{
+				CBCGPEllipse dot(CBCGPPoint(x, y), CBCGPSize(2.0 * scaleRatio, 2.0 * scaleRatio));
+				pGM->FillEllipse(dot, br);
+			}
+		}
 	}
 }
 //*******************************************************************************
@@ -2124,6 +2266,12 @@ void CBCGPVisualContainer::AdjustLayout()
 
 	if (m_pLayout == NULL)
 	{
+		if (GetOwner()->GetSafeHwnd() != NULL && m_bNCScrollBars)
+		{
+			GetOwner()->SetWindowPos (NULL, -1, -1, -1, -1, 
+				SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		}
+
 		AdjustScrollBars();
 		return;
 	}
@@ -2135,7 +2283,7 @@ void CBCGPVisualContainer::AdjustLayout()
 	AdjustScrollBars();
 }
 //*******************************************************************************
-void CBCGPVisualContainer::AdjustScrollBars()
+void CBCGPVisualContainer::AdjustScrollBars(BOOL bRedraw)
 {
 	m_ScrollBarVert.SetParentVisualContainer(this);
 	m_ScrollBarHorz.SetParentVisualContainer(this);
@@ -2159,6 +2307,21 @@ void CBCGPVisualContainer::AdjustScrollBars()
 	CBCGPRect rectScrollHorz;
 
 	int i = 0;
+
+	CBCGPRect rectWindow;
+	if (m_bNCScrollBars)
+	{
+		CWnd* pWndOwner = GetOwner();
+		if (pWndOwner->GetSafeHwnd() != NULL)
+		{
+			CRect rectOwner;
+
+			pWndOwner->GetWindowRect(rectOwner);
+			rectOwner.OffsetRect(-rectOwner.TopLeft());
+
+			rectWindow = rectOwner;
+		}
+	}
 
 	if (m_bScrollBars)
 	{
@@ -2184,7 +2347,7 @@ void CBCGPVisualContainer::AdjustScrollBars()
 	{
 		m_sizeScrollTotal.cx = dblMaxX;
 
-		rectScrollHorz = m_rect;
+		rectScrollHorz = m_bNCScrollBars ? rectWindow : m_rect;
 		rectScrollHorz.DeflateRect(1, 1);
 
 		rectScrollHorz.top = rectScrollHorz.bottom - cyScrollBar;
@@ -2199,7 +2362,7 @@ void CBCGPVisualContainer::AdjustScrollBars()
 	{
 		m_sizeScrollTotal.cy = dblMaxY;
 
-		rectScrollVert = m_rect;
+		rectScrollVert = m_bNCScrollBars ? rectWindow : m_rect;
 		rectScrollVert.DeflateRect(1, 1);
 
 		rectScrollVert.left = rectScrollVert.right - cxScrollBar;
@@ -2239,7 +2402,7 @@ void CBCGPVisualContainer::AdjustScrollBars()
 
 		if (!m_ScrollBarVert.GetRect().IsRectEmpty() && !m_ScrollBarHorz.GetRect().IsRectEmpty())
 		{
-			m_rectBottomRight = m_rect;
+			m_rectBottomRight = m_bNCScrollBars ? rectWindow : m_rect;
 			m_rectBottomRight.DeflateRect(1, 1);
 
 			m_rectBottomRight.top = m_rectBottomRight.bottom - m_ScrollBarHorz.GetRect().Height() - 1;
@@ -2247,7 +2410,11 @@ void CBCGPVisualContainer::AdjustScrollBars()
 		}
 
 		SetDirty();
-		Redraw();
+
+		if (bRedraw)
+		{
+			Redraw();
+		}
 	}
 }
 //*******************************************************************************
@@ -2261,9 +2428,43 @@ void CBCGPVisualContainer::SetFillBrush(const CBCGPBrush& br)
 	m_brFill = br;
 }
 //*******************************************************************************
-void CBCGPVisualContainer::SetGridBrush(const CBCGPBrush& br)
+void CBCGPVisualContainer::SetGridBrush(const CBCGPBrush& br, BCGP_VISUAL_CONTAINER_GRID_STYLE style)
 {
-	m_brGrid = br;
+	if (style == BCGP_VISUAL_CONTAINER_GRID_STYLE_CURRENT)
+	{
+		style = m_styleGrid;
+	}
+
+	if (style == BCGP_VISUAL_CONTAINER_GRID_LINES)
+	{
+		m_brGrid = br;
+	}
+	else
+	{
+		m_brGridDots = br;
+	}
+}
+//*******************************************************************************
+void CBCGPVisualContainer::SetGridSize(const CBCGPSize& size)
+{
+	if (size.cx < 2.0 || size.cy < 2.0)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	m_sizeGrid = size;
+
+	if ((m_dwEditFlags & BCGP_CONTAINER_GRID) == BCGP_CONTAINER_GRID &&
+		(m_dwEditFlags & BCGP_CONTAINER_SNAP_TO_GRID) == BCGP_CONTAINER_SNAP_TO_GRID)
+	{
+		m_szDrag = CBCGPSize(m_sizeGrid.cx / 2, m_sizeGrid.cy / 2);
+	}
+}
+//*******************************************************************************
+void CBCGPVisualContainer::SetGridStyle(BCGP_VISUAL_CONTAINER_GRID_STYLE style)
+{
+	m_styleGrid = style;
 }
 //*******************************************************************************
 void CBCGPVisualContainer::SetDrawDynamicObjectsOnTop(BOOL bSet)
@@ -2272,8 +2473,23 @@ void CBCGPVisualContainer::SetDrawDynamicObjectsOnTop(BOOL bSet)
 	SetDirty();
 }
 //*******************************************************************************
+void CBCGPVisualContainer::OnChangeVisualManager()
+{
+	for (int i = 0; i < m_arObjects.GetSize(); i++)
+	{
+		CBCGPBaseVisualObject* pObject = m_arObjects[i];
+		if (pObject != NULL)
+		{
+			ASSERT_VALID(pObject);		
+			pObject->OnChangeVisualManager();
+		}
+	}
+}
+//*******************************************************************************
 BOOL CBCGPVisualContainer::OnMouseDown(int nButton, const CBCGPPoint& pt)
 {
+	m_ptClick = pt;
+
 	CBCGPBaseVisualObject* pObject = GetFromPoint(pt);
 	if (pObject != NULL)
 	{
@@ -2284,9 +2500,12 @@ BOOL CBCGPVisualContainer::OnMouseDown(int nButton, const CBCGPPoint& pt)
 		}
 	}
 
-	if (m_ScrollBarVert.OnMouseDown(pt) || m_ScrollBarHorz.OnMouseDown(pt))
+	if (!m_bNCScrollBars)
 	{
-		return TRUE;
+		if (m_ScrollBarVert.OnMouseDown(pt) || m_ScrollBarHorz.OnMouseDown(pt))
+		{
+			return TRUE;
+		}
 	}
 
 	BOOL bSelChanged = FALSE;
@@ -2320,7 +2539,11 @@ BOOL CBCGPVisualContainer::OnMouseDown(int nButton, const CBCGPPoint& pt)
 			}
 			else
 			{
+				const int nSelCount = GetSelCount();
+
 				ClearSelection();
+
+				bSelChanged = (nSelCount != GetSelCount());
 
 				if (IsSingleSel() && !m_bAddNewObjectMode)
 				{
@@ -2375,6 +2598,18 @@ BOOL CBCGPVisualContainer::OnGetToolTip(const CBCGPPoint& pt, CString& strToolTi
 	}
 
 	return FALSE;
+}
+//*******************************************************************************
+COLORREF CBCGPVisualContainer::GetInfoTipColor(const CBCGPPoint& pt, int nColor)
+{
+	CBCGPBaseVisualObject* pObject = GetFromPoint(pt);
+	if (pObject != NULL)
+	{
+		ASSERT_VALID(pObject);
+		return pObject->GetInfoTipColor(pt, nColor);
+	}
+	
+	return (COLORREF)-1;
 }
 //*******************************************************************************
 void CBCGPVisualContainer::Select(CBCGPBaseVisualObject* pObject, BOOL bAddToSel)
@@ -2523,6 +2758,7 @@ void CBCGPVisualContainer::OnMouseUp(int nButton, const CBCGPPoint& pt)
 
 	if (m_ptDragStart == CBCGPPoint(-1, -1))
 	{
+		m_ptClick = CBCGPPoint(-1, -1);
 		return;	
 	}
 
@@ -2581,53 +2817,93 @@ void CBCGPVisualContainer::OnMouseUp(int nButton, const CBCGPPoint& pt)
 	}
 	else
 	{
-		for (POSITION pos = m_lstSel.GetHeadPosition(); pos != NULL;)
+		if (fabs(m_ptClick.x - pt.x) > m_szDrag.cx || fabs(m_ptClick.y - pt.y) > m_szDrag.cy || m_ptClick != m_ptDragStart)
 		{
-			CBCGPBaseVisualObject* pObject = m_lstSel.GetNext(pos);
-			ASSERT_VALID(pObject);
+			BOOL bObjectLocationWasChanged = FALSE;
 
-			if (!pObject->m_rectTrack.IsRectEmpty())
+			if (!m_lstSel.IsEmpty())
 			{
-				CBCGPRect rect = pObject->m_rectTrack;
+				FireObjectMoveEvent(FALSE, FALSE);
+			}
 
-				if ((pObject->GetEditFlags() & BCGP_EDIT_NO_NORMALIZE_RECT) == 0)
+ 			for (POSITION pos = m_lstSel.GetHeadPosition(); pos != NULL;)
+			{
+				CBCGPBaseVisualObject* pObject = m_lstSel.GetNext(pos);
+				ASSERT_VALID(pObject);
+
+				if (!pObject->m_rectTrack.IsRectEmpty())
 				{
-					rect.Normalize();
-				}
+					CBCGPRect rect = pObject->m_rectTrack;
 
-				if (pObject->GetRect() != rect)
-				{
-					CBCGPRect rectArea = m_rect;
-					rectArea.Scale (m_sizeScaleRatio);
-
-					if (rect.bottom <= rectArea.top)
+					if ((pObject->GetEditFlags() & BCGP_EDIT_NO_NORMALIZE_RECT) == 0)
 					{
-						rect.OffsetRect(0, rectArea.top - rect.bottom + 2);
+						rect.Normalize();
 					}
 
-					if (rect.right <= rectArea.left)
-					{
-						rect.OffsetRect(rectArea.left - rect.right + 2, 0);
-					}
+					BOOL bSnapToGrid = pObject->IsSnapTpGridAvailable() ? SnapToGrid(rect) : FALSE;
 
-					BOOL bCtrlIsPressed = GetAsyncKeyState (VK_CONTROL);
+					if (pObject->GetRect() != rect)
+					{
+						CBCGPRect rectArea = m_rect;
+						rectArea.Scale (m_sizeScaleRatio);
 
-					if (bCtrlIsPressed && (m_dwEditFlags & BCGP_CONTAINER_ENABLE_COPY) == BCGP_CONTAINER_ENABLE_COPY)
-					{
-						OnCopyObject(pObject, rect);
+						if (rect.bottom <= rectArea.top)
+						{
+							rect.OffsetRect(0, rectArea.top - rect.bottom + 2);
+						}
+
+						if (rect.right <= rectArea.left)
+						{
+							rect.OffsetRect(rectArea.left - rect.right + 2, 0);
+						}
+
+						BOOL bCtrlIsPressed = GetAsyncKeyState (VK_CONTROL);
+
+						if (bCtrlIsPressed && (m_dwEditFlags & BCGP_CONTAINER_ENABLE_COPY) == BCGP_CONTAINER_ENABLE_COPY)
+						{
+							if (OnCopyObject(pObject, rect))
+							{
+								if (bSnapToGrid)
+								{
+									pObject->SetTrackingRect(rect);
+								}
+							}
+						}
+						else
+						{
+							CBCGPRect rectOld = pObject->GetRect();
+
+							pObject->SetRect(rect);
+
+							if (!bObjectLocationWasChanged)
+							{
+								bObjectLocationWasChanged = rectOld != pObject->GetRect();
+							}
+						}
 					}
-					else
+					else if (bSnapToGrid && pObject->m_rectTrack != rect)
 					{
-						pObject->SetRect(rect);
+						pObject->SetTrackingRect(rect);
 					}
 				}
 			}
+
+			if (!m_lstSel.IsEmpty())
+			{
+				FireObjectMoveEvent(TRUE, bObjectLocationWasChanged);
+			}
+		}
+
+		if (GetOwner()->GetSafeHwnd() != NULL && m_bNCScrollBars)
+		{
+			GetOwner()->SetWindowPos (NULL, -1, -1, -1, -1, 
+				SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 		}
 
 		AdjustScrollBars();
 	}
 
-	m_ptDragStart = m_ptDragFinish = CBCGPPoint(-1, -1);
+	m_ptClick = m_ptDragStart = m_ptDragFinish = CBCGPPoint(-1, -1);
 
 	Redraw();
 
@@ -2693,9 +2969,27 @@ void CBCGPVisualContainer::OnMouseMove(const CBCGPPoint& pt)
 		return;	
 	}
 
+	if (m_ptDragStart == m_ptClick && fabs(m_ptClick.x - pt.x) <= m_szDrag.cx && fabs(m_ptClick.y - pt.y) <= m_szDrag.cy)
+	{
+		return;
+	}
+
 	if (m_nDragMode != HTNOWHERE)
 	{
 		MoveTrackingRects (pt);
+
+		if (m_bScrollBars)
+		{
+			if ((pt.y > m_rect.bottom || pt.y < m_rect.top) && !m_ScrollBarVert.GetRect().IsRectEmpty())
+			{
+				m_ScrollBarVert.OnScrollStep(pt.y > m_rect.bottom);
+			}
+
+			if ((pt.x > m_rect.right || pt.x < m_rect.left) && !m_ScrollBarHorz.GetRect().IsRectEmpty())
+			{
+				m_ScrollBarHorz.OnScrollStep(pt.x > m_rect.right);
+			}
+		}
 
 		m_ptDragStart = pt;
 	}
@@ -2714,7 +3008,7 @@ void CBCGPVisualContainer::OnMouseMove(const CBCGPPoint& pt)
 
 	m_ptDragFinish = pt;
 
-	if (m_nDragMode != HTCAPTION)
+	if (m_nDragMode == HTNOWHERE)
 	{
 		SetCursor (AfxGetApp ()->LoadStandardCursor (IDC_CROSS));
 	}
@@ -2834,6 +3128,130 @@ void CBCGPVisualContainer::MoveTrackingRects (CBCGPPoint pt)
 	}
 }
 //*******************************************************************************
+static int _SnapToGrid(double dbVal, int nGridStep)
+{
+	int val = ((int)dbVal) / nGridStep * nGridStep;
+	if (dbVal - val > val + nGridStep - dbVal)
+	{
+		val += nGridStep;
+	}
+
+	return val;
+}
+//*******************************************************************************
+BOOL CBCGPVisualContainer::SnapToGrid(CBCGPRect& rect)
+{
+	if ((m_dwEditFlags & BCGP_CONTAINER_GRID) == BCGP_CONTAINER_GRID &&
+		(m_dwEditFlags & BCGP_CONTAINER_SNAP_TO_GRID) == BCGP_CONTAINER_SNAP_TO_GRID)
+	{
+		CBCGPRect rectOld = rect;
+
+		BOOL bKeepX = FALSE;
+		int nX1Action = 1;	// -1 keep left, 0 - snap to grid, 1 - keep width
+		int nX2Action = 1;	// -1 keep right, 0 - snap to grid, 1 - keep width
+
+		BOOL bKeepY = FALSE;
+		int nY1Action = 1;	// -1 keep top, 0 - snap to grid, 1 - keep height
+		int nY2Action = 1;	// -1 keep bottom, 0 - snap to grid, 1 - keep height
+
+		switch (m_nDragMode)
+		{
+		case HTLEFT:
+			nX1Action = 0;
+			nX2Action = -1;
+
+			bKeepY = TRUE;
+			break;
+
+		case HTRIGHT:
+			nX1Action = -1;
+			nX2Action = 0;
+
+			bKeepY = TRUE;
+			break;
+
+		case HTTOP:
+			bKeepX = TRUE;
+
+			nY1Action = 0;
+			nY2Action = -1;
+			break;
+				
+		case HTTOPLEFT:
+			nX1Action = 0;
+			nX2Action = -1;
+
+			nY1Action = 0;
+			nY2Action = -1;
+			break;
+
+		case HTTOPRIGHT:
+			nX1Action = -1;
+			nX2Action = 0;
+
+			nY1Action = 0;
+			nY2Action = -1;
+			break;
+
+		case HTBOTTOM:
+			bKeepX = TRUE;
+
+			nY1Action = -1;
+			nY2Action = 0;
+			break;
+
+		case HTBOTTOMLEFT:
+			nX1Action = 0;
+			nX2Action = -1;
+
+			nY1Action = -1;
+			nY2Action = 0;
+			break;
+
+		case HTBOTTOMRIGHT:
+			nX1Action = -1;
+			nX2Action = 0;
+
+			nY1Action = -1;
+			nY2Action = 0;
+			break;
+		}
+
+		int x1 = (int)rectOld.left;
+		int x2 = (int)rectOld.right;
+
+		if (!bKeepX)
+		{
+			x1 = nX1Action < 0 ? (int)rectOld.left : _SnapToGrid(rect.left, (int) m_sizeGrid.cx);
+			x2 = nX2Action < 0 ? (int)rectOld.right : nX2Action == 0 ? _SnapToGrid(rect.right, (int) m_sizeGrid.cx) : (int)rectOld.Width() + x1;
+
+			if (nX1Action > 0)
+			{
+				x1 = (int)(x2 - rectOld.Width());
+			}
+		}
+
+		int y1 = (int)rectOld.top;
+		int y2 = (int)rectOld.bottom;
+
+		if (!bKeepY)
+		{
+			y1 = nY1Action < 0 ? (int)rectOld.top : _SnapToGrid(rect.top, (int) m_sizeGrid.cy);
+			y2 = nY2Action < 0 ? (int)rectOld.bottom : nY2Action == 0 ? _SnapToGrid(rect.bottom, (int) m_sizeGrid.cy) : (int)rectOld.Height() + y1;
+
+			if (nY1Action > 0)
+			{
+				y1 = (int)(y2 - rectOld.Height());
+			}
+		}
+
+		rect = CBCGPRect(x1, y1, x2, y2);
+		return rect != rectOld;
+	}
+
+	return FALSE;
+}
+//*******************************************************************************
 void CBCGPVisualContainer::OnMouseLeave()
 {
 	for (int i = 0; i < m_arObjects.GetSize(); i++)
@@ -2891,9 +3309,33 @@ BOOL CBCGPVisualContainer::OnSetMouseCursor(const CBCGPPoint& pt)
 //*******************************************************************************
 BOOL CBCGPVisualContainer::OnMouseWheel(const CBCGPPoint& pt, short zDelta)
 {
+	if (m_bScaleByMouseWheel && (::GetAsyncKeyState (VK_CONTROL) & 0x8000))	// Ctrl is pressed
+	{
+		const double dblDelta = zDelta > 0 ? 0.1 : -0.1;
+		double dblScale = bcg_clamp(GetScaleRatioMid() + dblDelta, m_dblMinScaleRatio, m_dblMaxScaleRatio);
+
+		CBCGPSize szScaleNew = CBCGPSize(dblScale, dblScale);
+
+		if (m_sizeScaleRatio != szScaleNew)
+		{
+			SetScaleRatio(szScaleNew);
+			Redraw();
+
+			CWnd* pWndOwner = m_pWndOwner->GetOwner();
+			if (pWndOwner->GetSafeHwnd() != NULL)
+			{
+				pWndOwner->SendMessage(BCGM_CONTAINER_SCALE_CHANGED, 0, (LPARAM)this);
+			}
+		}
+
+		return TRUE;
+	}
+
 	if (m_bScrollBars)
 	{
-		if (!m_ScrollBarVert.GetRect().IsRectEmpty())
+		BOOL bShiftIsPressed = (::GetAsyncKeyState (VK_SHIFT) & 0x8000);
+
+		if (!m_ScrollBarVert.GetRect().IsRectEmpty() && (!bShiftIsPressed || m_ScrollBarHorz.GetRect().IsRectEmpty()))
 		{
 			const int nSteps = abs(zDelta) / WHEEL_DELTA;
 			for (int i = 0; i < nSteps; i++)
@@ -2961,6 +3403,11 @@ BOOL CBCGPVisualContainer::OnKeyboardDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 			if (ptOffset != CBCGPPoint())
 			{
+				if (!m_lstSel.IsEmpty())
+				{
+					FireObjectMoveEvent(FALSE, FALSE);
+				}
+
 				POSITION pos = m_lstSel.GetHeadPosition ();
 				while (pos != NULL)
 				{
@@ -3027,6 +3474,11 @@ BOOL CBCGPVisualContainer::OnKeyboardDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 						pObject->SetRect (rect);
 						bChanged = TRUE;
 					}
+				}
+
+				if (!m_lstSel.IsEmpty())
+				{
+					FireObjectMoveEvent(TRUE, bChanged);
 				}
 			}
 
@@ -3185,6 +3637,27 @@ HBITMAP CBCGPVisualContainer::ExportToBitmap(CBCGPGraphicsManager* pGM, BOOL bFu
 
 	OnDraw(pGM, m_rect);
 
+	for (int i = 0; i < m_arObjects.GetSize(); i++)
+	{
+		CBCGPWndHostVisualObject* pObject = DYNAMIC_DOWNCAST(CBCGPWndHostVisualObject, m_arObjects[i]);
+		if (pObject == NULL)
+		{
+			continue;
+		}
+		
+		ASSERT_VALID(pObject);
+		
+		if (pObject->GetWnd()->GetSafeHwnd() != NULL)
+		{
+			CBitmap bmpScreenshot;
+			if (globalUtils.CreateScreenshot(bmpScreenshot, pObject->GetWnd()))
+			{
+				CBCGPImage image((HBITMAP)bmpScreenshot.GetSafeHandle(), TRUE);
+				pGM->DrawImage(image, pObject->GetRect().TopLeft());
+			}
+		}
+	}
+
 	pGM->EndDraw();
 
 	dcMem.SelectObject (hbmpOld);
@@ -3223,7 +3696,12 @@ BOOL CBCGPVisualContainer::CopyToClipboard(CBCGPGraphicsManager* pGM, BOOL bFull
 
 	CBCGPToolBarImages img;
 	img.AddImage(hbmp, TRUE);
+
+#ifndef _BCGSUITE_
+	img.SetSingleImage(FALSE);
+#else
 	img.SetSingleImage();
+#endif
 
 	return img.CopyImageToClipboard(0);
 }
@@ -3264,8 +3742,22 @@ void CBCGPVisualContainer::SetScaleRatio(const CBCGPSize& sizeScaleRatio)
 
 	if (m_bScrollBars)
 	{
-		AdjustScrollBars();
+		if (GetOwner()->GetSafeHwnd() != NULL && m_bNCScrollBars)
+		{
+			GetOwner()->SetWindowPos (NULL, -1, -1, -1, -1, 
+				SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		}
+
+		AdjustScrollBars(FALSE);
 	}
+}
+//*******************************************************************************
+void CBCGPVisualContainer::EnableScalingByMouseWheel(BOOL bEnable, double dblMinScaleRatio/* = 0.1*/, double dblMaxScaleRatio/* = 4.0*/)
+{
+	m_bScaleByMouseWheel = bEnable;
+
+	m_dblMinScaleRatio = max(0.01, dblMinScaleRatio);
+	m_dblMaxScaleRatio = max(0.01, dblMaxScaleRatio);;
 }
 //*******************************************************************************
 void CBCGPVisualContainer::OnScaleRatioChanged(const CBCGPSize& sizeScaleRatioOld)
@@ -3339,6 +3831,24 @@ void CBCGPVisualContainer::FireSelectionChangedEvent()
 	}
 
 	pWndOwner->SendMessage(BCGM_CONTAINER_SELCHANGED, 0, (LPARAM)this);
+}
+//*******************************************************************************
+void CBCGPVisualContainer::FireObjectMoveEvent(BOOL bAfter, BOOL bHasMoved)
+{
+	if (m_pWndOwner->GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	CWnd* pWndOwner = m_pWndOwner->GetOwner();
+	if (pWndOwner->GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	WPARAM wp = bAfter ? (WPARAM)bHasMoved : 0;
+
+	pWndOwner->SendMessage(bAfter ? BCGM_CONTAINER_OBJECT_MOVED : BCGM_CONTAINER_BEFORE_OBJECT_MOVE, wp, (LPARAM)this);
 }
 //*******************************************************************************
 UINT CBCGPVisualContainer::GetClickAndHoldID() const
@@ -3932,6 +4442,112 @@ HRESULT CBCGPVisualContainer::accDoDefaultAction(VARIANT varChild)
 
     return S_FALSE;
 }
+//******************************************************************************
+void CBCGPVisualContainer::OnCalcBorderSize(CBCGPRect& rectNCArea)
+{
+	if (!m_bNCScrollBars || !m_bScrollBars)
+	{
+		return;
+	}
+
+	AdjustScrollBars(FALSE);
+
+	double cxScroll = m_ScrollBarVert.GetRect().Width();
+	double cyScroll = m_ScrollBarHorz.GetRect().Height();
+
+	rectNCArea.left = 1;
+	rectNCArea.top = 1;
+	rectNCArea.right = cxScroll == 0 ? 1 : cxScroll + 2;
+	rectNCArea.bottom = cyScroll == 0 ? 1 : cyScroll + 2;
+}
+//******************************************************************************
+void CBCGPVisualContainer::OnNcDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectIn)
+{
+	if (!m_bNCScrollBars || !m_bScrollBars)
+	{
+		return;
+	}
+
+	ASSERT_VALID(pGM);
+
+	if (!m_rectBottomRight.IsRectEmpty())
+	{
+		pGM->FillRectangle(m_rectBottomRight, m_ScrollBarVert.GetColorTheme().m_brFace);
+	}
+	
+	m_ScrollBarVert.DoDraw(pGM);
+	m_ScrollBarHorz.DoDraw(pGM);
+
+	CBCGPRect rect(rectIn);
+	if (pGM->GetType() != CBCGPGraphicsManager::BCGP_GRAPHICS_MANAGER_GDI)
+	{
+		rect.right -= 1;
+		rect.bottom -= 1;
+	}
+
+	if (!m_brOutline.IsEmpty() && m_brOutline.GetOpacity() == 1.0)
+	{
+		pGM->DrawRectangle(rect, m_brOutline, 1);
+	}
+	else
+	{
+		CBCGPColor color = CBCGPColor::White;
+		
+		if (!m_brOutline.IsEmpty())
+		{
+			color = m_brOutline.GetColor();
+		}
+		else if (!m_brFill.IsEmpty())
+		{
+			color = m_brFill.GetColor();
+		}
+		
+		color.a = 1.0;
+		
+		pGM->DrawRectangle(rect, CBCGPBrush(color, 1.0), 1);
+	}
+}
+//******************************************************************************
+BOOL CBCGPVisualContainer::OnNcMouseDown(int nButton, const CBCGPPoint& pt)
+{
+	if (nButton == 0 && m_bNCScrollBars)
+	{
+		if (m_ScrollBarVert.OnMouseDown(pt) || m_ScrollBarHorz.OnMouseDown(pt))
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+//******************************************************************************
+void CBCGPVisualContainer::OnNcMouseUp(int /*nButton*/, const CBCGPPoint& /*pt*/)
+{
+	BOOL bNeedToRedraw = m_ScrollBarVert.IsInAction() || m_ScrollBarHorz.IsInAction();
+
+	m_ScrollBarVert.OnCancelMode();
+	m_ScrollBarHorz.OnCancelMode();
+
+	if (bNeedToRedraw)
+	{
+		Redraw();
+	}
+}
+//*******************************************************************************
+void CBCGPVisualContainer::OnWndEnabled(BOOL bEnable)
+{
+	for (int i = 0; i < m_arObjects.GetSize(); i++)
+	{
+		CBCGPBaseVisualObject* pObject = m_arObjects[i];
+		if (pObject == NULL)
+		{
+			continue;
+		}
+		
+		ASSERT_VALID(pObject);
+		pObject->m_bIsEnabled = bEnable;
+	}
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPVisualScrollBar
@@ -3946,29 +4562,40 @@ CBCGPVisualScrollBarColorTheme::CBCGPVisualScrollBarColorTheme(const CBCGPColor&
 		// Set default colors:
 		m_brFace = CBCGPBrush(CBCGPColor::WhiteSmoke);
 		m_brBorder = CBCGPBrush(CBCGPColor::Gray);
-		m_brButton = CBCGPBrush(CBCGPColor::LightGray);
+		m_brButton = CBCGPBrush(CBCGPColor::Gainsboro);
+		m_brButtonPressed = CBCGPBrush(CBCGPColor::Silver);
 	}
 	else
 	{
 		CBCGPColor colorFace = color;
 		CBCGPColor colorBorder = color;
 		CBCGPColor colorButton = color;
+		CBCGPColor colorPressed = color;
 
 		if (color.IsPale())
 		{
-			colorBorder.MakeDarker(.2);
-			colorButton.MakeDarker(.02);
+			colorBorder.MakeDarker(.3);
+			colorButton.MakeDarker(.05);
+			colorPressed = colorBorder;
+		}
+		else if (color.IsDark())
+		{
+			colorBorder.MakeLighter();
+			colorButton.MakeLighter(.2);
+			colorPressed = colorBorder;
 		}
 		else
 		{
 			colorFace.MakeLighter(.4);
 			colorBorder.MakeDarker(.2);
-			colorButton.MakeLighter(.2);
+			colorButton.MakeLighter(.03);
+			colorPressed.MakeDarker();
 		}
 
 		m_brFace = CBCGPBrush(colorFace);
 		m_brBorder = CBCGPBrush(colorBorder);
 		m_brButton = CBCGPBrush(colorButton);
+		m_brButtonPressed = CBCGPBrush(colorPressed);
 	}
 }
 //*******************************************************************************
@@ -3980,7 +4607,18 @@ CBCGPVisualScrollBar::CBCGPVisualScrollBar()
 	m_bIsHorizontal = TRUE;
 	m_dblStep = 0.0;
 
+	m_Style = BCGP_VISUAL_SCROLLBAR_FLAT;
+
 	Reset();
+}
+//*******************************************************************************
+CBCGPVisualScrollBar::~CBCGPVisualScrollBar()
+{
+	if (m_hBitmap != NULL)
+	{
+		::DeleteObject(m_hBitmap);
+		m_hBitmap = NULL;
+	}
 }
 //*******************************************************************************
 void CBCGPVisualScrollBar::SetParentVisualObject(CBCGPBaseVisualObject* pOwner)
@@ -3991,6 +4629,18 @@ void CBCGPVisualScrollBar::SetParentVisualObject(CBCGPBaseVisualObject* pOwner)
 void CBCGPVisualScrollBar::SetParentVisualContainer(CBCGPVisualContainer* pOwnerContainer)
 {
 	m_pOwnerContainer = pOwnerContainer;
+}
+//*******************************************************************************
+void CBCGPVisualScrollBar::Redraw()
+{
+	if (m_pOwner != NULL)
+	{
+		m_pOwner->RedrawRect(m_rect);
+	}
+	else if (m_pOwnerContainer != NULL)
+	{
+		m_pOwnerContainer->RedrawRect(m_rect);
+	}
 }
 //*******************************************************************************
 BOOL CBCGPVisualScrollBar::OnMouseDown(const CBCGPPoint& pt)
@@ -4004,6 +4654,7 @@ BOOL CBCGPVisualScrollBar::OnMouseDown(const CBCGPPoint& pt)
 	{
 		m_bIsDraggingThumb = TRUE;
 		m_ptDragThumbLast = pt;
+		Redraw();
 
 		return TRUE;
 	}
@@ -4024,6 +4675,10 @@ BOOL CBCGPVisualScrollBar::OnMouseDown(const CBCGPPoint& pt)
 		{
 			m_pOwnerContainer->SetClickAndHoldEvent(m_rectPrev, nIDScrollPrev);
 		}
+
+		m_bPrevIsClicked = TRUE;
+		Redraw();
+
 		return TRUE;
 	}
 			
@@ -4039,6 +4694,10 @@ BOOL CBCGPVisualScrollBar::OnMouseDown(const CBCGPPoint& pt)
 		{
 			m_pOwnerContainer->SetClickAndHoldEvent(m_rectNext, nIDScrollNext);
 		}
+
+		m_bNextIsClicked = TRUE;
+		Redraw();
+
 		return TRUE;
 	}
 	
@@ -4088,6 +4747,10 @@ BOOL CBCGPVisualScrollBar::OnMouseDown(const CBCGPPoint& pt)
 void CBCGPVisualScrollBar::OnCancelMode()
 {
 	m_bIsDraggingThumb = FALSE;
+	m_bPrevIsClicked = FALSE;
+	m_bNextIsClicked = FALSE;
+
+	Redraw();
 }
 //*******************************************************************************
 void CBCGPVisualScrollBar::ReposThumb()
@@ -4103,17 +4766,29 @@ void CBCGPVisualScrollBar::ReposThumb()
 	double size = m_bIsHorizontal ? m_rectScroll.Width() : m_rectScroll.Height();
 
 	double dblScrollRatio = size / m_dblTotal;
-	double dblThumbSize = max(2.0, dblScrollRatio * size);
+	double dblThumbSize = max(globalUtils.ScaleByDPI(7.0), dblScrollRatio * size);
 
 	if (m_bIsHorizontal)
 	{
 		m_rectThumb.left += m_dblOffset * dblScrollRatio;
 		m_rectThumb.right = m_rectThumb.left + dblThumbSize;
+
+		if (m_rectThumb.right > m_rectScroll.right)
+		{
+			m_rectThumb.right = m_rectScroll.right;
+			m_rectThumb.left = m_rectThumb.right - dblThumbSize;
+		}
 	}
 	else
 	{
 		m_rectThumb.top += m_dblOffset * dblScrollRatio;
 		m_rectThumb.bottom = m_rectThumb.top + dblThumbSize;
+
+		if (m_rectThumb.bottom > m_rectScroll.bottom)
+		{
+			m_rectThumb.bottom = m_rectScroll.bottom;
+			m_rectThumb.top = m_rectThumb.bottom - dblThumbSize;
+		}
 	}
 }
 //*******************************************************************************
@@ -4128,6 +4803,12 @@ void CBCGPVisualScrollBar::SetRect(const CBCGPRect& rectIn)
 	{
 		Reset();
 		return;
+	}
+
+	if (m_hBitmap != NULL)
+	{
+		::DeleteObject(m_hBitmap);
+		m_hBitmap = NULL;
 	}
 
 	CBCGPRect rect = rectIn;
@@ -4156,6 +4837,9 @@ void CBCGPVisualScrollBar::SetRect(const CBCGPRect& rectIn)
 void CBCGPVisualScrollBar::Reset()
 {
 	m_bIsDraggingThumb = FALSE;
+	m_bPrevIsClicked = FALSE;
+	m_bNextIsClicked = FALSE;
+
 	m_dblTotal = 0.;
 	m_dblOffset = 0.;
 
@@ -4164,6 +4848,12 @@ void CBCGPVisualScrollBar::Reset()
 	m_rectNext.SetRectEmpty();
 	m_rectPrev.SetRectEmpty();
 	m_rectThumb.SetRectEmpty();
+
+	if (m_hBitmap != NULL)
+	{
+		::DeleteObject(m_hBitmap);
+		m_hBitmap = NULL;
+	}
 }
 //*******************************************************************************
 void CBCGPVisualScrollBar::DoDraw(CBCGPGraphicsManager* pGM)
@@ -4173,13 +4863,125 @@ void CBCGPVisualScrollBar::DoDraw(CBCGPGraphicsManager* pGM)
 		return;
 	}
 
-	pGM->FillRectangle(m_rect, m_ColorTheme.m_brFace);
+	if (m_Style == BCGP_VISUAL_SCROLLBAR_VISUAL_MANAGER && CBCGPVisualManager::GetInstance()->IsOwnerDrawScrollBar())
+	{
+		CBCGPScrollBar dummy;
+
+		CRect rect = m_rect;
+		CPoint ptOffset = -rect.TopLeft();
+		
+		rect.OffsetRect(ptOffset);
+
+		CRect rectButton1 = m_rectPrev;
+		rectButton1.OffsetRect(ptOffset);
+
+		CRect rectButton2 = m_rectNext;
+		rectButton2.OffsetRect(ptOffset);
+
+		CRect rectThumb = m_rectThumb;
+		rectThumb.OffsetRect(ptOffset);
+
+		CDC dc;
+		if (dc.CreateCompatibleDC(NULL))
+		{
+			if (m_hBitmap == NULL)
+			{
+				m_hBitmap = CBCGPDrawManager::CreateBitmap_32(rect.Size(), NULL);
+			}
+			
+			if (m_hBitmap != NULL)
+			{
+				HBITMAP hBitmapOld = (HBITMAP)dc.SelectObject(m_hBitmap);
+				if (hBitmapOld != NULL)
+				{
+					CBCGPVisualManager::GetInstance ()->OnScrollBarFillBackground(&dc, &dummy, rect, m_bIsHorizontal, FALSE, FALSE, TRUE, FALSE);
+					CBCGPVisualManager::GetInstance ()->OnScrollBarDrawButton(&dc, &dummy, rectButton1, m_bIsHorizontal, FALSE, m_bPrevIsClicked, TRUE, FALSE);
+					CBCGPVisualManager::GetInstance ()->OnScrollBarDrawButton(&dc, &dummy, rectButton2, m_bIsHorizontal, FALSE, m_bNextIsClicked, FALSE, FALSE);
+					CBCGPVisualManager::GetInstance ()->OnScrollBarDrawThumb(&dc, &dummy, rectThumb, m_bIsHorizontal, FALSE, m_bIsDraggingThumb, FALSE);
+
+					dc.SelectObject(hBitmapOld);
+
+					pGM->DrawImage(CBCGPImage(m_hBitmap), m_rect.TopLeft());
+					return;
+				}					
+			}
+		}
+	}
+
+	double dblLineWidth = 2.0;
+	
+	BOOL bRoundedCorners = m_Style == BCGP_VISUAL_SCROLLBAR_FLAT_ROUNDED || m_Style == BCGP_VISUAL_SCROLLBAR_3D_ROUNDED;
+	BOOL bIs3D = m_Style == BCGP_VISUAL_SCROLLBAR_3D || m_Style == BCGP_VISUAL_SCROLLBAR_3D_ROUNDED;
+
+	if (bIs3D)
+	{
+		if (m_ColorTheme.m_brFace3D.IsEmpty())
+		{
+			CBCGPColor color1 = m_ColorTheme.m_brFace.GetColor();
+			CBCGPColor color2 = color1;
+			
+			color2.IsDark() ? color2.MakeLighter() : color2.MakeDarker();
+
+			if (m_bIsHorizontal)
+			{
+				color1 = color2;
+				color2 = m_ColorTheme.m_brFace.GetColor();
+			}
+
+			m_ColorTheme.m_brFace3D = CBCGPBrush(color1, color2, m_bIsHorizontal ? CBCGPBrush::BCGP_GRADIENT_HORIZONTAL : CBCGPBrush::BCGP_GRADIENT_VERTICAL);
+		}
+
+		if (m_ColorTheme.m_brButton3D.IsEmpty())
+		{
+			CBCGPColor color1 = m_ColorTheme.m_brButton.GetColor();
+			CBCGPColor color2 = color1;
+			color1.MakeDarker();
+			color2.MakePale();
+			
+			m_ColorTheme.m_brButton3D = CBCGPBrush(color1, color2, m_bIsHorizontal ? CBCGPBrush::BCGP_GRADIENT_PIPE_HORIZONTAL : CBCGPBrush::BCGP_GRADIENT_PIPE_VERTICAL);
+		}
+
+		if (m_ColorTheme.m_brButtonPressed3D.IsEmpty())
+		{
+			m_ColorTheme.m_brButtonPressed3D = m_ColorTheme.m_brButton3D;
+
+			if (m_ColorTheme.m_brButtonPressed3D.GetColor().IsDark())
+			{
+				m_ColorTheme.m_brButtonPressed3D.MakeLighter();
+			}
+			else
+			{
+				m_ColorTheme.m_brButtonPressed3D.MakeDarker(.07);
+			}
+		}
+	}
+
+	pGM->FillRectangle(m_rect, bIs3D ? m_ColorTheme.m_brFace3D : m_ColorTheme.m_brFace);
 	pGM->DrawRectangle(m_rect, m_ColorTheme.m_brBorder);
 
-	pGM->FillRectangle(m_rectThumb, m_ColorTheme.m_brButton);
-	pGM->DrawRectangle(m_rectThumb, m_ColorTheme.m_brBorder);
+	const CBCGPBrush& brThumb = bIs3D ? (m_bIsDraggingThumb ? m_ColorTheme.m_brButtonPressed3D : m_ColorTheme.m_brButton3D) : (m_bIsDraggingThumb ? m_ColorTheme.m_brButtonPressed : m_ColorTheme.m_brButton);
 
-	pGM->FillRectangle(m_rectPrev, m_ColorTheme.m_brButton);
+	if (bRoundedCorners)
+	{
+		double dblCornerRadius = min(m_rect.Width(), m_rect.Height()) / 3;
+
+		CBCGPRect rectTumb = m_rectThumb;
+		rectTumb.DeflateRect(0.5 * dblCornerRadius, 0.5 * dblCornerRadius);
+
+		CBCGPRoundedRect rrThumb(rectTumb, dblCornerRadius, dblCornerRadius);
+
+		pGM->FillRoundedRectangle(rrThumb, brThumb);
+		pGM->DrawRoundedRectangle(rrThumb, m_ColorTheme.m_brBorder);
+	}
+	else
+	{
+		pGM->FillRectangle(m_rectThumb, brThumb);
+		pGM->DrawRectangle(m_rectThumb, m_ColorTheme.m_brBorder);
+	}
+
+	const CBCGPBrush& brPrev = bIs3D ? (m_bPrevIsClicked ? m_ColorTheme.m_brButtonPressed3D : m_ColorTheme.m_brButton3D) : (m_bPrevIsClicked ? m_ColorTheme.m_brButtonPressed : m_ColorTheme.m_brButton);
+
+	pGM->FillRectangle(m_rectPrev, brPrev);
 	pGM->DrawRectangle(m_rectPrev, m_ColorTheme.m_brBorder);
 
 	CBCGPRect rectArrow = m_rectPrev;
@@ -4189,22 +4991,26 @@ void CBCGPVisualScrollBar::DoDraw(CBCGPGraphicsManager* pGM)
 	{
 		rectArrow.DeflateRect(5, 3);
 
-		arPrevPoints.Add(CBCGPPoint(rectArrow.left, rectArrow.CenterPoint().y));
 		arPrevPoints.Add(CBCGPPoint(rectArrow.right, rectArrow.top));
+		arPrevPoints.Add(CBCGPPoint(rectArrow.left, rectArrow.CenterPoint().y));
 		arPrevPoints.Add(CBCGPPoint(rectArrow.right, rectArrow.bottom));
 	}
 	else
 	{
 		rectArrow.DeflateRect(3, 5);
 
-		arPrevPoints.Add(CBCGPPoint(rectArrow.CenterPoint().x, rectArrow.top));
 		arPrevPoints.Add(CBCGPPoint(rectArrow.left, rectArrow.bottom));
+		arPrevPoints.Add(CBCGPPoint(rectArrow.CenterPoint().x, rectArrow.top));
 		arPrevPoints.Add(CBCGPPoint(rectArrow.right, rectArrow.bottom));
 	}
 
-	pGM->FillGeometry(CBCGPPolygonGeometry(arPrevPoints), m_ColorTheme.m_brBorder);
+	const CBCGPBrush& brArrowPrev = m_bPrevIsClicked && !bIs3D ? m_ColorTheme.m_brFace : m_ColorTheme.m_brBorder;
 
-	pGM->FillRectangle(m_rectNext, m_ColorTheme.m_brButton);
+	pGM->DrawGeometry(CBCGPPolygonGeometry(arPrevPoints, FALSE), brArrowPrev, dblLineWidth);
+
+	const CBCGPBrush& brNext = bIs3D ? (m_bNextIsClicked ? m_ColorTheme.m_brButtonPressed3D : m_ColorTheme.m_brButton3D) : (m_bNextIsClicked ? m_ColorTheme.m_brButtonPressed : m_ColorTheme.m_brButton);
+
+	pGM->FillRectangle(m_rectNext, brNext);
 	pGM->DrawRectangle(m_rectNext, m_ColorTheme.m_brBorder);
 
 	rectArrow = m_rectNext;
@@ -4214,20 +5020,22 @@ void CBCGPVisualScrollBar::DoDraw(CBCGPGraphicsManager* pGM)
 	{
 		rectArrow.DeflateRect(5, 3);
 
-		arNextPoints.Add(CBCGPPoint(rectArrow.right, rectArrow.CenterPoint().y));
 		arNextPoints.Add(CBCGPPoint(rectArrow.left, rectArrow.top));
+		arNextPoints.Add(CBCGPPoint(rectArrow.right, rectArrow.CenterPoint().y));
 		arNextPoints.Add(CBCGPPoint(rectArrow.left, rectArrow.bottom));
 	}
 	else
 	{
 		rectArrow.DeflateRect(3, 5);
 
-		arNextPoints.Add(CBCGPPoint(rectArrow.CenterPoint().x, rectArrow.bottom));
 		arNextPoints.Add(CBCGPPoint(rectArrow.left, rectArrow.top));
+		arNextPoints.Add(CBCGPPoint(rectArrow.CenterPoint().x, rectArrow.bottom));
 		arNextPoints.Add(CBCGPPoint(rectArrow.right, rectArrow.top));
 	}
 
-	pGM->FillGeometry(CBCGPPolygonGeometry(arNextPoints), m_ColorTheme.m_brBorder);
+	const CBCGPBrush& brArrowNext = m_bNextIsClicked && !bIs3D ? m_ColorTheme.m_brFace : m_ColorTheme.m_brBorder;
+
+	pGM->DrawGeometry(CBCGPPolygonGeometry(arNextPoints, FALSE), brArrowNext, dblLineWidth);
 }
 //*******************************************************************************
 BOOL CBCGPVisualScrollBar::OnDragThumb(const CBCGPPoint& pt)
@@ -4292,5 +5100,408 @@ void CBCGPVisualScrollBar::OnScrollStep(BOOL bNext)
 	else if (m_pOwnerContainer != NULL)
 	{
 		m_pOwnerContainer->OnScroll(this, m_dblOffset - dblOffsetOld);
+	}
+}
+//*******************************************************************************
+void CBCGPVisualScrollBar::SetStyle(BCGP_VISUAL_SCROLLBAR_STYLE style)
+{
+	m_Style = style;
+	Redraw();
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPWndHostVisualObject
+
+IMPLEMENT_DYNAMIC(CBCGPWndHostVisualObject, CBCGPBaseVisualObject)
+
+CBCGPWndHostVisualObject::CBCGPWndHostVisualObject(CBCGPVisualContainer* pContainer, CRuntimeClass* pRTI)
+	: CBCGPBaseVisualObject(pContainer)
+	, m_pWnd(NULL)
+	, m_pRTI(pRTI)
+{
+}
+//*******************************************************************************
+CBCGPWndHostVisualObject::~CBCGPWndHostVisualObject()
+{
+	if (m_pWnd != NULL)
+	{
+		if (m_pWnd->GetSafeHwnd() != NULL)
+		{
+			m_pWnd->DestroyWindow();
+		}
+		
+		delete m_pWnd;
+		m_pWnd = NULL;
+	}
+}
+//*******************************************************************************
+CWnd* CBCGPWndHostVisualObject::GetWnd()
+{
+	if (m_pWnd->GetSafeHwnd() == NULL && m_pWndOwner->GetSafeHwnd() != NULL)
+	{
+		m_pWnd = CreateWnd(m_rect, m_nID, m_pWndOwner);
+		if (m_textFormat.IsEmpty())
+		{
+			LOGFONT lf;
+			globalData.fontRegular.GetLogFont(&lf);
+
+			SetTextFormat(CBCGPTextFormat(lf), FALSE);
+		}
+
+		if (m_pWnd->GetSafeHwnd() != NULL)
+		{
+			SetDirty(TRUE, TRUE);
+		}
+	}
+	
+	return m_pWnd;
+}
+//*******************************************************************************
+void CBCGPWndHostVisualObject::ReposWnd()
+{
+	ASSERT_VALID(this);
+
+	CWnd* pWnd = GetWnd();
+	if (pWnd->GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	ASSERT_VALID(pWnd);
+		
+	CRect rectWnd = m_rect;
+	rectWnd.OffsetRect(-m_ptScrollOffset);
+
+	pWnd->SetWindowPos(NULL, rectWnd.left, rectWnd.top, rectWnd.Width(), rectWnd.Height(),
+		SWP_NOZORDER | SWP_NOACTIVATE);
+
+	SetDirty(FALSE);
+}
+//*******************************************************************************
+void CBCGPWndHostVisualObject::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& /*rectClip*/, DWORD dwFlags)
+{
+	if (m_pWnd->GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	if (m_Font.GetSafeHandle() == NULL)
+	{
+		LOGFONT lf;
+
+		if (m_textFormat.GetFontFamily().IsEmpty())
+		{
+			globalData.fontRegular.GetLogFont(&lf);
+		}
+		else
+		{
+			m_textFormat.ExportToLogFont(lf);
+		}
+
+		m_Font.CreateFontIndirect(&lf);
+		m_pWnd->SetFont(&m_Font);
+
+		BOOL bDirty = IsDirty();
+
+		ReposWnd();
+
+		SetDirty(bDirty, FALSE);
+	}
+
+	if (IsEditMode())
+	{
+		if (m_pWnd->IsWindowVisible())
+		{
+			m_pWnd->ShowWindow(SW_HIDE);
+		}
+	}
+	else
+	{
+		if (!m_pWnd->IsWindowVisible())
+		{
+			m_pWnd->ShowWindow(SW_SHOWNOACTIVATE);
+		}
+
+		return;
+	}
+
+	if ((dwFlags & BCGP_DRAW_STATIC) != BCGP_DRAW_STATIC)
+	{
+		return;
+	}
+
+	ASSERT_VALID (pGM);
+
+	if (m_ImageCache.GetHandle() == NULL || IsDirty())
+	{
+		m_ImageCache.Destroy();
+
+		CRect rectWnd;
+		m_pWnd->GetWindowRect(rectWnd);
+		rectWnd.OffsetRect(-rectWnd.left, -rectWnd.top);
+
+		CDC dc;
+		if (dc.CreateCompatibleDC(NULL))
+		{
+			LPBYTE pBitsWnd = NULL;
+			HBITMAP hBitmap = CBCGPDrawManager::CreateBitmap_32 (rectWnd.Size(), (void**)&pBitsWnd);
+			
+			if (hBitmap != NULL)
+			{
+				HBITMAP hBitmapOld = (HBITMAP)dc.SelectObject(hBitmap);
+				if (hBitmapOld != NULL)
+				{
+					dc.FillRect(rectWnd, &globalData.brWindow);
+
+					m_pWnd->SendMessage(WM_PRINT, (WPARAM)dc.GetSafeHdc(), (LPARAM)(PRF_CLIENT | PRF_CHILDREN | PRF_NONCLIENT | PRF_ERASEBKGND));
+					
+					for (int i = 0; i < rectWnd.Width() * rectWnd.Height(); i++)
+					{
+						pBitsWnd[3] = 255;
+						pBitsWnd += 4;
+					}
+					
+					dc.SelectObject (hBitmapOld);
+				}					
+
+				m_ImageCache = CBCGPImage(hBitmap);
+			}
+		}
+	}
+
+	if (m_ImageCache.GetBitmap() != NULL)
+	{
+		pGM->DrawImage(m_ImageCache, m_rect.TopLeft());
+	}
+}
+//*******************************************************************************
+void CBCGPWndHostVisualObject::SetTextFormat(const CBCGPTextFormat& textFormat, BOOL bRedraw)
+{
+	m_textFormat = textFormat;
+	
+	if (m_Font.GetSafeHandle() != NULL)
+	{
+		m_Font.DeleteObject();
+	}
+
+	m_ImageCache.Destroy();
+
+	SetDirty(TRUE, bRedraw);
+}
+//*******************************************************************************
+void CBCGPWndHostVisualObject::SetColorTheme(const CBCGPWndHostColors& colors)
+{
+	m_Colors = colors;
+	m_ImageCache.Destroy();
+
+	SetDirty(TRUE, TRUE);
+}
+//*******************************************************************************
+CWnd* CBCGPWndHostVisualObject::CreateWnd(const CRect& rect, UINT nID, CWnd* pParent)
+{
+	CWnd* pWnd = NULL;
+	
+	if (m_pParentContainer != NULL && m_pRTI != NULL && m_pRTI->IsDerivedFrom(RUNTIME_CLASS(CWnd)))
+	{
+		pWnd = DYNAMIC_DOWNCAST(CWnd, m_pRTI->CreateObject());
+	}
+
+	if (pWnd == NULL)
+	{
+		ASSERT(FALSE);
+		return NULL;
+	}
+	
+	ASSERT_VALID(pWnd);
+
+	if (!m_pParentContainer->OnCreateCustomControl(this, pWnd, rect, nID, pParent))
+	{
+		delete pWnd;
+		return NULL;
+	}
+	
+	return pWnd;
+}
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPGridVisualObject
+
+IMPLEMENT_DYNCREATE(CBCGPGridVisualObject, CBCGPWndHostVisualObject)
+
+CBCGPGridVisualObject::CBCGPGridVisualObject(CBCGPVisualContainer* pContainer, CRuntimeClass* pRTI)
+	: CBCGPWndHostVisualObject(pContainer, pRTI)
+{
+	m_pColorTheme = new CBCGPGridColors;
+}
+//*******************************************************************************
+CBCGPGridVisualObject::~CBCGPGridVisualObject()
+{
+	delete m_pColorTheme;
+}
+//*******************************************************************************
+CBCGPGridCtrl* CBCGPGridVisualObject::GetGridCtrl()
+{
+	return DYNAMIC_DOWNCAST(CBCGPGridCtrl, GetWnd());
+}
+//*******************************************************************************
+void CBCGPGridVisualObject::SetColorTheme(const CBCGPGridColors& colors)
+{
+	m_pColorTheme->FullCopy(colors);
+	
+	CBCGPGridCtrl* pWndGrid = DYNAMIC_DOWNCAST(CBCGPGridCtrl, m_pWnd);
+	if (pWndGrid->GetSafeHwnd() != NULL)
+	{
+		pWndGrid->SetColorTheme(colors, TRUE, TRUE);
+	}
+}
+//*******************************************************************************
+CWnd* CBCGPGridVisualObject::CreateWnd(const CRect& rect, UINT nID, CWnd* pParent)
+{
+	CBCGPGridCtrl* pWndGrid = NULL;
+
+	if (m_pRTI != NULL)
+	{
+		if (m_pRTI->IsDerivedFrom(RUNTIME_CLASS(CBCGPGridCtrl)))
+		{
+			pWndGrid = DYNAMIC_DOWNCAST(CBCGPGridCtrl, m_pRTI->CreateObject());
+		}
+		else
+		{
+			ASSERT(FALSE);
+			return NULL;
+		}
+	}
+	else
+	{
+		pWndGrid = new CBCGPGridCtrl;
+	}
+
+	ASSERT_VALID(pWndGrid);
+
+	pWndGrid->Create(WS_CHILD | WS_VISIBLE | WS_BORDER, rect, pParent, nID);
+
+	pWndGrid->SetScrollBarsStyle(CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER);
+	pWndGrid->SetColorTheme(*m_pColorTheme, TRUE, TRUE);
+	
+	pWndGrid->SetScale(max(m_sizeScaleRatio.cx, m_sizeScaleRatio.cy));
+
+	return pWndGrid;
+}
+//*******************************************************************************
+void CBCGPGridVisualObject::OnScaleRatioChanged(const CBCGPSize& sizeScaleRatioOld)
+{
+	CBCGPWndHostVisualObject::OnScaleRatioChanged(sizeScaleRatioOld);
+
+	CBCGPGridCtrl* pWndGrid = GetGridCtrl();
+	if (pWndGrid->GetSafeHwnd() != NULL)
+	{
+		pWndGrid->SetScale(max(m_sizeScaleRatio.cx, m_sizeScaleRatio.cy));
+	}
+}
+
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPEditVisualObject
+
+IMPLEMENT_DYNCREATE(CBCGPEditVisualObject, CBCGPWndHostVisualObject)
+
+CBCGPEditVisualObject::CBCGPEditVisualObject(CBCGPVisualContainer* pContainer, CRuntimeClass* pRTI)
+	: CBCGPWndHostVisualObject(pContainer, pRTI)
+{
+}
+//*******************************************************************************
+CBCGPEditVisualObject::~CBCGPEditVisualObject()
+{
+}
+//*******************************************************************************
+CBCGPEdit* CBCGPEditVisualObject::GetEditCtrl()
+{
+	return DYNAMIC_DOWNCAST(CBCGPEdit, GetWnd());
+}
+//*******************************************************************************	
+CWnd* CBCGPEditVisualObject::CreateWnd(const CRect& rect, UINT nID, CWnd* pParent)
+{
+	CBCGPEdit* pEdit = NULL;
+
+	if (m_pRTI != NULL)
+	{
+		if (m_pRTI->IsDerivedFrom(RUNTIME_CLASS(CBCGPEdit)))
+		{
+			pEdit = DYNAMIC_DOWNCAST(CBCGPEdit, m_pRTI->CreateObject());
+		}
+		else
+		{
+			ASSERT(FALSE);
+			return NULL;
+		}
+	}
+	else
+	{
+		pEdit = new CBCGPEdit;
+	}
+
+	ASSERT_VALID(pEdit);
+
+	pEdit->SetColorTheme(m_ColorTheme);
+	pEdit->m_bVisualManagerStyle = TRUE;
+	
+	pEdit->Create(WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, rect, pParent, nID);
+	pEdit->ModifyStyleEx(0, WS_EX_CLIENTEDGE);
+	pEdit->SetPrompt(m_strName);
+	pEdit->SetWindowText(m_strInitialValue);
+
+	return pEdit;
+}
+//*******************************************************************************	
+void CBCGPEditVisualObject::ReposWnd()
+{
+	CBCGPEdit* pEdit = GetEditCtrl();
+	if (pEdit->GetSafeHwnd() == NULL)
+	{
+		CBCGPWndHostVisualObject::ReposWnd();
+		return;
+	}
+
+	CBCGPRect rectSaved = m_rect;
+
+	if ((pEdit->GetStyle() & ES_MULTILINE) == 0)
+	{
+		CClientDC dc(pEdit);
+		CBCGPFontSelector fs(dc, pEdit->GetFont());
+		
+		TEXTMETRIC tm;
+		dc.GetTextMetrics(&tm);
+		
+		int nHeight = min((int)m_rect.Height(), tm.tmHeight + 8);
+
+		m_rect.bottom = m_rect.top + nHeight;
+	}
+
+	CBCGPWndHostVisualObject::ReposWnd();
+
+	m_rect = rectSaved;
+}
+//*******************************************************************************	
+void CBCGPEditVisualObject::SetInitialValue(const CString& strVal)
+{
+	m_strInitialValue = strVal;
+
+	if (m_pWnd->GetSafeHwnd() != NULL)
+	{
+		m_pWnd->SetWindowText(m_strInitialValue);
+	}
+}
+//*******************************************************************************	
+void CBCGPEditVisualObject::SetColorTheme(const CBCGPEditColors& colors)
+{
+	m_ColorTheme = colors;
+
+	CBCGPEdit* pEdit = DYNAMIC_DOWNCAST(CBCGPEdit, m_pWnd);
+	if (pEdit->GetSafeHwnd() != NULL)
+	{
+		pEdit->SetColorTheme(colors);
 	}
 }

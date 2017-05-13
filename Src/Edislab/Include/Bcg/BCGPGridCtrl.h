@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -45,8 +45,8 @@
 #include "BCGPButton.h"
 
 #include "BCGPGridFilter.h"
-#include "BCGPChartFormat.h"
-#include "BCGPImageGaugeImpl.h"
+#include "BCGPGraphicsManager.h"
+#include "bcgpaccessibility.h"
 
 // Selection modes:
 #define SM_NONE					0x0000
@@ -225,6 +225,11 @@ public:
 	CBCGPGridRange (const CBCGPGridItemID &id1, const CBCGPGridItemID &id2)
 	{
         Set (id1, id2);
+	}
+
+	CBCGPGridRange (const CBCGPGridRange &src)
+	{
+        Set (src);
 	}
 
 	void Set (int nLeft, int nTop, int nRight, int nBottom)
@@ -421,6 +426,9 @@ public:
 		m_clrScaleHigh = (COLORREF)-1;
 
 		m_bSparklineDefaultSelColor = TRUE;
+
+		m_clrBorder	= (COLORREF)-1;
+		m_clrTreeLines = (COLORREF)-1;
 	}
 
 	CBCGPGridColors (const BCGP_GRID_COLOR_DATA& src)
@@ -451,6 +459,36 @@ public:
 		m_clrScaleHigh = (COLORREF)-1;
 
 		m_bSparklineDefaultSelColor = TRUE;
+
+		m_clrBorder	= (COLORREF)-1;
+		m_clrTreeLines	= src.m_clrVertLine;
+
+		m_ScrollBarColors.Reset();
+	}
+
+	void FullCopy(const CBCGPGridColors& src)
+	{
+		Copy(src);
+
+		m_SelColorsInactive = src.m_SelColorsInactive;
+		m_GroupSelColorsInactive = src.m_GroupSelColorsInactive;
+		m_DataBarColors = src.m_DataBarColors;
+
+		for (int i = 0; i < BCGP_GRID_SPARKLINES_CHART_SERIES_NUM; i++)
+		{
+			m_SparklineSeriesColors[i] = src.m_SparklineSeriesColors[i];
+		}
+
+		m_bSparklineDefaultSelColor = src.m_bSparklineDefaultSelColor;
+
+		m_clrScaleLow = src.m_clrScaleLow;
+		m_clrScaleMid = src.m_clrScaleMid;
+		m_clrScaleHigh = src.m_clrScaleHigh;
+
+		m_clrBorder = src.m_clrBorder;
+		m_clrTreeLines = src.m_clrTreeLines;
+
+		m_ScrollBarColors = src.m_ScrollBarColors;
 	}
 
 	ColorData	m_SelColorsInactive;		// Selected rows colors (inactive)
@@ -463,6 +501,11 @@ public:
 	COLORREF	m_clrScaleLow;
 	COLORREF	m_clrScaleMid;
 	COLORREF	m_clrScaleHigh;
+
+	COLORREF	m_clrBorder;	// Grid border color
+	COLORREF	m_clrTreeLines;	// Grid tree lines color
+
+	BCGPSCROLLBAR_COLOR_THEME	m_ScrollBarColors;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -592,7 +635,7 @@ protected:
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPGridRow object
 
-class BCGCBPRODLLEXPORT CBCGPGridRow : public CObject
+class BCGCBPRODLLEXPORT CBCGPGridRow : public CBCGPBaseAccessibleObject
 {
 	DECLARE_SERIAL(CBCGPGridRow)
 
@@ -614,7 +657,15 @@ public:
 		ClickExpandBox,
 		ClickName,
 		ClickValue,
-		ClickDescription
+		ClickDescription,
+		ClickCheckBox
+	};
+
+	enum ValueUpdateState
+	{
+		VUS_NeedValueUpdate = 0,	// Text of in-place editor needs validating
+		VUS_SuccessValueUpdate = 1,	// In-place editor text is already saved in a cell
+		VUS_CancelValueUpdate = 2	// Not valid in-place editor text
 	};
 
 // Operations:
@@ -643,6 +694,16 @@ public:
 	void GetSubItems (CList<CBCGPGridRow*, CBCGPGridRow*>& lst, BOOL bRecursive = FALSE);
 	void AllowSubItems (BOOL bGroup = TRUE);
 	BOOL AddSubItem (CBCGPGridRow* pItem, BOOL bRedraw = TRUE);
+	BOOL InsertSubItem (CBCGPGridRow* pItem, CBCGPGridRow* pInsertAfterItem, BOOL bRedraw);
+	BOOL HasNonFilteredSubItems() const;
+	BOOL HasNextSibling() const;
+
+	void SetCheck(int nState);			// BST_UNCHECKED, BST_CHECKED, BST_INDETERMINATE
+	int  GetCheck() const;
+	void ToggleCheck();
+
+	void CheckSubItems(BOOL bChecked, BOOL bRecursive = TRUE);
+	void UpdateParentCheckbox(BOOL b3State = TRUE);
 
 	CBCGPGridRow* HitTest (CPoint point, CBCGPGridRow::ClickArea* pnArea = NULL)
 	{
@@ -659,6 +720,7 @@ public:
 	void Redraw ();
 	void AdjustButtonRect ();
 
+	BOOL IsParent (CBCGPGridRow* pParent) const;
 	BOOL IsSubItem (CBCGPGridRow* pItem) const;
 	CBCGPGridRow* FindSubItemByData (DWORD_PTR dwData) const;
 	CBCGPGridRow* FindSubItemById (int nIndex) const;
@@ -667,10 +729,11 @@ public:
 
 	void SetVertAlign (DWORD nAlign);	// BCGP_GRID_ITEM_VTOP, BCGP_GRID_ITEM_VCENTER or BCGP_GRID_ITEM_VBOTTOM
 
+	void Repos (int& y);
+
 protected:
 	void Init ();
 	void SetFlags ();
-	void Repos (int& y);
 	void Shift (int dx, int dy);
 	void AddTerminalItem (CList<CBCGPGridRow*, CBCGPGridRow*>& lstItems);
 	void AddGroupedItem (CList<CBCGPGridRow*, CBCGPGridRow*>& lstItems);
@@ -682,7 +745,7 @@ protected:
 
 	void ExpandDeep (BOOL bExpand = TRUE);
 
-	BOOL IsItemFiltered () const;
+	virtual BOOL IsItemFiltered () const;
 
 	void SetParent(CBCGPGridRow* pParent);
 
@@ -694,6 +757,7 @@ public:
 
 	virtual void OnItemChanged (CBCGPGridItem* pItem, int nRow, int nColumn);
 
+	virtual void OnFillGroupBackground (CDC* pDC, CRect rect, BOOL bGroupUnderline);
 	virtual void OnDrawName (CDC* pDC, CRect rect);
 	virtual void OnDrawPreview (CDC* pDC, CRect rect);
 	virtual void OnDrawExpandBox (CDC* pDC, CRect rectExpand);
@@ -710,11 +774,12 @@ public:
 	virtual CString GetName ();
 	virtual void SetName (const CString& /*strName*/) {}
 
-//	virtual BOOL EditItem (CBCGPGridRow* pItem, LPPOINT lptClick = NULL);
-
 	virtual BOOL OnUpdateValue ();
 	virtual BOOL OnEdit (LPPOINT lptClick);
 	virtual BOOL OnEndEdit ();
+
+	virtual void OnInplaceEditCancelUpdate();
+	virtual BOOL IsInplaceEditNeedUpdate();
 
 	virtual void OnClickButton (CPoint /*point*/) {} // TODO
 	virtual BOOL OnClickValue (UINT uiMsg, CPoint point);
@@ -744,7 +809,34 @@ public:
 
 	virtual BOOL CanSelect () const { return TRUE; };
 
+	virtual BOOL HasCheckBox () const;
+	virtual BOOL HasExpandButton () const;
+
 	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
+	virtual BOOL OnSetAccData (long lVal);
+	
+	// IAccessible	
+	virtual HRESULT get_accParent(IDispatch **ppdispParent);
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accValue(VARIANT varChild, BSTR *pszValue);
+	virtual HRESULT get_accDescription(VARIANT varChild, BSTR *pszDescription);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+	virtual HRESULT get_accDefaultAction(VARIANT varChild, BSTR *pszDefaultAction);
+
+	virtual HRESULT accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild);
+	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
+
+	virtual void GetPreviewText (CString& str) const;
+	virtual void OnMeasureGridRowRect (CRect& rect);
+	virtual void OnMeasureGridItemRect (CRect& rect, CBCGPGridItem* pItem);
+
+	virtual CRect GetIndentRect(int dx) const;
+	virtual CRect GetNameRect(int dx) const;
+	virtual CRect GetExpandBoxRect(int dx) const;
+	virtual CRect GetCheckBoxRect(int dx) const;
 
 protected:
 	virtual HBRUSH OnCtlColor(CDC* pDC, UINT nCtlColor);
@@ -758,10 +850,6 @@ protected:
 	}
 
 	virtual BOOL IsItemVisible () const;
-
-	virtual void GetPreviewText (CString& str) const;
-	virtual void OnMeasureGridRowRect (CRect& rect);
-	virtual void OnMeasureGridItemRect (CRect& rect, CBCGPGridItem* pItem);
 
 // Attributes
 public:
@@ -860,10 +948,13 @@ protected:
 
 	CRect			m_Rect;			// Row rectangle (in the grid coordinates)
 	
+	ValueUpdateState m_vusInPlaceEdit; // VUS_NeedValueUpdate, VUS_SuccessValueUpdate, VUS_CancelValueUpdate
+
 	BOOL			m_bInPlaceEdit;	// Is in InPlace editing mode
 	BOOL			m_bGroup;		// Is item group?
 	BOOL			m_bExpanded;	// Is item expanded (for groups only)
 	BOOL			m_bSelected;	// Is item selected?
+	int				m_nChecked;		// Is item checked?
 	BOOL			m_bEnabled;		// Is item enabled?
 	BOOL			m_bAllowEdit;	// Is item editable?
 	DWORD			m_dwFlags;		// Item flags
@@ -908,8 +999,14 @@ public:
 	virtual void WriteToArchive(CArchive& ar);
 
 	virtual BOOL CanSelect () const { return FALSE; };
+	virtual BOOL HasCheckBox () const { return FALSE; };
 
 	virtual CString GetName () { return GetCaption (); }
+
+	virtual CRect GetIndentRect(int dx) const;
+	virtual CRect GetNameRect(int dx) const;
+	virtual CRect GetExpandBoxRect(int dx) const;
+	virtual CRect GetCheckBoxRect(int dx) const;
 
 // Implementation:
 protected:
@@ -925,7 +1022,7 @@ protected:
 
 class CBCGPGridMergedCells;
 
-class BCGCBPRODLLEXPORT CBCGPGridItem : public CObject
+class BCGCBPRODLLEXPORT CBCGPGridItem : public CBCGPBaseAccessibleObject
 {
 	DECLARE_SERIAL(CBCGPGridItem)
 
@@ -959,7 +1056,7 @@ public:
 		m_bIsChanged = bSet;
 	}
 
-	const CString& GetLabel ()
+	virtual const CString& GetLabel ()
 	{
 		if (m_bIsChanged)
 		{
@@ -988,7 +1085,7 @@ public:
 	
 	DWORD GetVertAlign() const
 	{
-		if ((m_dwFlags & BCGP_GRID_ITEM_VBOTTOM | BCGP_GRID_ITEM_VTOP | BCGP_GRID_ITEM_VCENTER) == 0)
+		if ((m_dwFlags & (BCGP_GRID_ITEM_VBOTTOM | BCGP_GRID_ITEM_VTOP | BCGP_GRID_ITEM_VCENTER)) == 0)
 		{
 			return BCGP_GRID_ITEM_VCENTER;
 		}
@@ -1119,11 +1216,13 @@ public:
 
 // Operations methods
 public:
-	BOOL AddOption (LPCTSTR lpszOption, BOOL bInsertUnique = TRUE);
+	BOOL AddOption (LPCTSTR lpszOption, BOOL bInsertUnique = TRUE, DWORD_PTR dwData = 0);
 	void RemoveAllOptions ();
 
 	int GetOptionCount () const;
+	
 	LPCTSTR GetOption (int nIndex) const;
+	DWORD_PTR GetOptionData(int nIndex) const;
 
 	CBCGPGridItem* HitTest (CPoint point, CBCGPGridRow::ClickArea* pnArea = NULL);
 
@@ -1159,6 +1258,8 @@ public:
 
 	virtual void OnPrintValue (CDC* pDC, CRect rect);
 	virtual void OnPrintBorders (CDC* pDC, CRect rect);
+
+	virtual	BOOL GetLabelBoundsRect (CDC* pDC, CRect& rect, BOOL bIncludeImage);
 
 	virtual BOOL OnCreate (int /* nRow */, int /* nColumn */)	{	return TRUE;	}
 
@@ -1230,7 +1331,20 @@ public:
 	virtual BOOL ClearContent (BOOL bRedraw = TRUE);
 	virtual BOOL ChangeType (const _variant_t& var);
 
+	virtual CString ExportToHTML(DWORD dwFlags);
+
 	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
+	
+	// IAccessible	
+	virtual HRESULT get_accParent(IDispatch **ppdispParent);
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accValue(VARIANT varChild, BSTR *pszValue);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+
+	virtual HRESULT accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild);
+	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
 
 	virtual void OnAfterChangeGridColors() {}
 
@@ -1255,6 +1369,11 @@ protected:
 		return TRUE;
 	}
 
+	virtual BOOL IsPushButton() const
+	{
+		return FALSE;
+	}
+
 // Attributes
 protected:
 	_variant_t		m_varValue;		// Item value
@@ -1267,6 +1386,7 @@ protected:
 	CString			m_strValidChars;// Item edit valid chars (see CBCGPMaskEdit for description)
 
 	CStringList		m_lstOptions;	// List of combobox items
+	CList<DWORD_PTR, DWORD_PTR>	m_lstOptionsData;
 	CSize			m_sizeCombo;	// Dimension of listbox	(400)
 
 	BOOL			m_bInPlaceEdit;	// Is in InPlace editing mode
@@ -1340,6 +1460,8 @@ public:
 
 	virtual BOOL ReadFromArchive(CArchive& ar, BOOL bTestMode = FALSE);
 	virtual void WriteToArchive(CArchive& ar);
+
+	virtual BOOL ClearContent (BOOL bRedraw = TRUE);
 
 protected:
 	virtual BOOL OnKillFocus (CWnd* pNewWnd)
@@ -1457,24 +1579,53 @@ public:
 		return m_strCheckLabel;
 	}
 
+	enum CheckBoxStates
+	{
+		UnChecked     = 0, // BST_UNCHECKED
+		Checked       = 1, // BST_CHECKED
+		Indeterminate = 2, // BST_INDETERMINATE
+	};
+
+	void SetState(int nState, BOOL bRedraw = TRUE);
+	int GetState() const;
+
+	void Enable3StateCheckBox(BOOL bEnable = TRUE);
+	BOOL Is3StateCheckBoxEnabled () const
+	{
+		return m_b3State;
+	}
+
+	BOOL Toggle ();
+
 // Overrides
 public:
 	virtual void OnDrawValue (CDC* pDC, CRect rect);
 	virtual void OnPrintValue (CDC* pDC, CRect rect);
 	virtual BOOL PushChar (UINT nChar);
+	virtual const CString& GetLabel ()	{	return m_strCheckLabel;	}
 	virtual CString FormatItem ()	{	return _T("");	}
 	virtual CString GetValueTooltip ();
 	virtual	CRect GetTooltipRect () const;
 	virtual BOOL OnClickValue (UINT uiMsg, CPoint point);
 	virtual BOOL OnDblClick (CPoint point);
 
+	virtual BOOL IsPushButton() const
+	{
+		return TRUE;
+	}
+
 	virtual BOOL ReadFromArchive(CArchive& ar, BOOL bTestMode = FALSE);
 	virtual void WriteToArchive(CArchive& ar);
 
-	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+	virtual HRESULT get_accDefaultAction(VARIANT varChild, BSTR *pszDefaultAction);
+	virtual HRESULT accDoDefaultAction(VARIANT varChild);
 
 protected:
 	CString	m_strCheckLabel;
+	BOOL	m_b3State;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1517,102 +1668,55 @@ public:
 };
 
 /////////////////////////////////////////////////////////////////////////////
-// CBCGPGridSparklineDataPoint object
+// CBCGPGridPopupDlgItem object
 
-struct BCGCBPRODLLEXPORT CBCGPGridSparklineDataPoint
+class BCGCBPRODLLEXPORT CBCGPGridPopupDlgItem : public CBCGPGridItem
 {
-	CBCGPGridSparklineDataPoint(double dblVal = 0.0, double dblSecondVal = 0.0)
-	{
-		m_dblValue = dblVal;
-		m_dblValue1 = dblSecondVal;
-	}
-
-	double		m_dblValue;			// Data point value
-	double		m_dblValue1;		// Data point second value (used un bubble charts)
-
-	CBCGPBrush	m_brDataPointFill;	// Data point fill color
-	CBCGPBrush	m_brDataPointBorder;// Data point border color (if empty, m_brDataPointFill will be used)
-
-	BCGPChartMarkerOptions	m_MarkerOptions;	// Marker options: show marker or not, shape and size
-
-	CBCGPBrush	m_brMarkerFill;		// Marker fill color
-	CBCGPBrush	m_brMarkerBorder;	// Marker border color (if empty, m_brMarkerFill will be used)
-};
-
-typedef CArray<CBCGPGridSparklineDataPoint, const CBCGPGridSparklineDataPoint&> CBCGPGridSparklineDataArray;
-
-/////////////////////////////////////////////////////////////////////////////
-// CBCGPGridSparklineItem object
-
-class BCGCBPRODLLEXPORT CBCGPGridSparklineItem : public CBCGPGridItem
-{
-	DECLARE_DYNCREATE(CBCGPGridSparklineItem)
-
-public:
-	enum SparklineType
-	{ 
-		SparklineTypeDefault = -1,
-		SparklineTypeLine,
-		SparklineTypeColumn,
-		SparklineTypeArea,
-		SparklineTypeBar,
-		SparklineTypeBubble,
-		SparklineTypePie,
-		SparklineTypeDoughnut,
-	};
+	DECLARE_DYNCREATE(CBCGPGridPopupDlgItem)
 		
-// Construction
-public:
-	CBCGPGridSparklineItem(SparklineType type = SparklineTypeLine, DWORD_PTR dwData = 0);
-	CBCGPGridSparklineItem(const CBCGPDoubleArray& arData, SparklineType type = SparklineTypeLine, DWORD_PTR dwData = 0);
-	CBCGPGridSparklineItem(const CBCGPGridSparklineDataArray& arData, SparklineType type = SparklineTypeLine, DWORD_PTR dwData = 0);
+	friend class CBCGPParentGridItemPtr;
 
-	virtual ~CBCGPGridSparklineItem();
+	// Construction
+protected:
+	CBCGPGridPopupDlgItem ();
 	
-// Attributes:
 public:
-	void SetType(SparklineType type);
-	SparklineType GetType();
-	
-	virtual CBCGPChartVisualObject* GetChart();
-	
-// Overrides
-public:
-	virtual void OnDrawValue (CDC* pDC, CRect rect);
-	virtual void OnPrintValue (CDC* pDC, CRect rect);
-	virtual BOOL OnEdit (LPPOINT lptClick);
-	virtual void OnPosSizeChanged (CRect rectOld);
-	virtual void OnAfterChangeGridColors();
+	CBCGPGridPopupDlgItem(CString str, CRuntimeClass* pRTI, UINT nIDTemplate, BOOL bIsResizable = FALSE, BOOL bIsRightAligned = FALSE);
 
-	virtual BOOL IsChangeSelectedBackground() const
+	CBCGPGridPopupDlgItem(const _variant_t& varValue, DWORD_PTR dwData = 0,
+		LPCTSTR lpszEditMask = NULL, LPCTSTR lpszEditTemplate = NULL,
+		LPCTSTR lpszValidChars = NULL);
+
+	virtual ~CBCGPGridPopupDlgItem();
+
+	// Operations methods
+public:
+	void EnablePopupDialog(CRuntimeClass* pRTI, UINT nIDTemplate, BOOL bIsResizable = FALSE, BOOL bIsRightAligned = FALSE);
+
+	virtual BOOL CreatePopupDlg(CRect rectEdit);
+	
+	virtual void OnBeforeShowPopupDlg(CBCGPDialog* pDlg) 
 	{
-		return m_bDefaultSelColor;
+		UNREFERENCED_PARAMETER(pDlg);
 	}
 
-// Operations
-public:
-	void AddData(const CBCGPDoubleArray& arData, int nSeries = 0, SparklineType type = SparklineTypeDefault);
-	void AddData(const CBCGPGridSparklineDataArray& arData, int nSeries = 0, SparklineType type = SparklineTypeDefault);
+	virtual void ClosePopupDlg(LPCTSTR lpszEditValue, BOOL bOK, DWORD_PTR dwUserData = 0);
 
-	BOOL UpdateDataPoint(int nIndex, double dblValue, int nSeries = 0);
-
-	BOOL ShowDataPointMarker(int nIndex, const BCGPChartMarkerOptions& markerOptions, 
-		const CBCGPBrush& brFill = CBCGPBrush(), const CBCGPBrush& brBorder = CBCGPBrush(),
-		int nSeries = 0);
-
-	void RemoveData(int nSeries = -1);
+	// Overrides
+	virtual void OnClickButton (CPoint point);
 
 protected:
-	virtual void InitChart();
-	virtual COLORREF GetFillColor();
+	virtual CComboBox* CreateCombo (CWnd*, CRect) { return NULL; }
 
-	int SparklineTypeToChartType (SparklineType type);
-	CBCGPChartSeries* GetSeries(int nSeries, SparklineType type);
-
+	// Attributes
 protected:
-	CBCGPChartVisualObject*	m_pChart;
-	int						m_nMaxMarkerSize;
-	BOOL					m_bDefaultSelColor;
+	CRuntimeClass*	m_pPopupDlgRTI;
+	LPCTSTR			m_lpszPopupDlgTemplateName;
+	UINT			m_nPopupDialogIDTemplate;
+	BOOL			m_bPopupDlgIsResizable;
+	BOOL			m_bPopupDlgIsRightAligned;
+
+	CBCGPDialog*	m_pPopupDlg;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1853,7 +1957,8 @@ public:
 	{
 		ClickHeader,
 		ClickDivider,
-		ClickHeaderButton
+		ClickHeaderButton,
+		ClickCheckBox
 	};
 
 public:
@@ -1922,6 +2027,23 @@ public:
 	int HitTestColumn (CPoint point, BOOL bDelimiter = FALSE, int nDelta = 0,
 		CBCGPGridColumnsInfo::ClickArea* pnArea = NULL) const;
 
+	//-----------
+	// Check box:
+	//-----------
+	void EnableCheckBox (BOOL bEnable = TRUE);
+
+	BOOL IsCheckBoxEnabled () const
+	{
+		return m_bCheckBox;
+	}
+
+	void SetCheckBoxState (int nState);	// BST_UNCHECKED, BST_CHECKED, BST_INDETERMINATE
+
+	int GetCheckBoxState () const
+	{
+		return m_nCheckBoxState;
+	}
+
 	// ---------
 	// Resizing:
 	// ---------
@@ -1952,6 +2074,9 @@ public:
 		ASSERT (m_bMultipleSort || GetSortColumnCount () <= 1);
 		return m_bMultipleSort;
 	}
+
+	void SetColumnSortingPriority (LPINT piArray, int iCount);
+	const int* GetColumnSortingPriority (int& nCount) const;
 
 	// ---------
 	// Grouping:
@@ -2038,6 +2163,7 @@ protected:
 	virtual void OnColumnsOrderChanged ();
 	
 	// Helper functions: iterator for visible columns
+public:
 	int Begin () const;
 	int End () const;
 	int Next (int& i) const;
@@ -2049,6 +2175,10 @@ protected:
 	CMap<int, int, int, int> m_mapSortColumn;	// sorted columns
 	CList<int, int> m_lstGroupingColumns;		// grouping columns
 	CArray<int, int> m_arrColumnOrder;			// groups order
+	CArray<int, int> m_arrColumnSortingPriority;// used when multiple columns sort
+
+	BOOL	m_bCheckBox;			// show a check box control at the first visible column
+	int		m_nCheckBoxState;		// 0 - unchecked, 1 - checked, 2 - indeterminate
 
 	BOOL	m_bAutoSize;
 	int		m_nTotalWidth;
@@ -2133,6 +2263,10 @@ public:
 	BOOL AddHeaderItem (const CArray<int, int>* pCols,
 					    const CArray<int, int>* pLines = NULL,
 					    int nColumn = 0, LPCTSTR lpszLabel = NULL, int nAlign = HDF_LEFT, int iImage = -1);
+	CBCGPMergedHeaderItem* AddHeaderItem(LPCTSTR lpszLabel,
+						const CArray<int, int>* pCols, 
+						const CArray<int, int>* pLines = NULL, 
+						int nColumn = 0, int nAlign = HDF_LEFT, int iImage = -1);
 	void RemoveAllHeaderItems ();
 
 // Implementation
@@ -2417,9 +2551,12 @@ BCGCBPRODLLEXPORT extern UINT BCGM_GRID_ITEM_DBLCLICK;
 BCGCBPRODLLEXPORT extern UINT BCGM_GRID_ON_HIDE_COLUMNCHOOSER;
 BCGCBPRODLLEXPORT extern UINT BCGM_GRID_BEGINDRAG;
 BCGCBPRODLLEXPORT extern UINT BCGM_GRID_COLUMN_CLICK;
+BCGCBPRODLLEXPORT extern UINT BCGM_GRID_ROW_CHECKBOX_CLICK;
+BCGCBPRODLLEXPORT extern UINT BCGM_GRID_HEADERCHECKBOX_CLICK;
 BCGCBPRODLLEXPORT extern UINT BCGM_GRID_ADJUST_LAYOUT;
 BCGCBPRODLLEXPORT extern UINT BCGM_GRID_FIND_RESULT;
 BCGCBPRODLLEXPORT extern UINT BCGM_GRID_COLUMN_BTN_CLICK;
+BCGCBPRODLLEXPORT extern UINT BCGM_GRID_SCALE_CHANGED;
 
 // Internal iterator
 typedef void (CALLBACK* BCGPGRID_ITERATOR_COLUMN_CALLBACK)(int nColumn, const CBCGPGridRange& range, LPARAM lParam);
@@ -2612,6 +2749,27 @@ public:
 	
 	void SetVirtualRows (int nRowsNum);
 
+	// Grid scaling:
+	void SetScale(double dblScale, BOOL bNotifyParent = FALSE, CPoint ptCenter = CPoint (0, 0));
+	double GetScale() const
+	{
+		return m_dblScale;
+	}
+
+	void SetScalingRange(double dblMinScale, double dblMaxScale); // Call SetScalingRange(1.0, 1.0) to disable scaling
+
+	double GetMinScale() const
+	{
+		return m_dblMinScale;
+	}
+
+	double GetMaxScale() const
+	{
+		return m_dblMaxScale;
+	}
+
+	virtual void OnScaleChanged(double dblOldScale);
+
 	// Filter:
 	void EnableFilter (BCGPGRID_FILTERCALLBACK pfnCallback = NULL, LPARAM lParam = 0);
 	BCGPGRID_FILTERCALLBACK GetFilterCallbackFunct ();
@@ -2621,6 +2779,13 @@ public:
 		return m_bFilter;
 	}
 
+	void SetOutOfFilterLabel(const CString& strOutOfFilterLabel);
+
+	const CString& GetOutOfFilterLabel() const
+	{
+		return m_strOutOfFilter;
+	}
+	
 	void EnableDefaultFilterMenuPopup (BOOL bEnable = TRUE, UINT uiMenuResId = 0, UINT uiFilterCmd = 0);
 	void OnDefaultFilterMenuApply ();
 
@@ -2664,6 +2829,9 @@ public:
 
 	void EnableMultipleSort (BOOL bEnable = TRUE);
 	BOOL IsMultipleSort () const;
+
+	void SetColumnSortingPriority (LPINT piArray, int iCount);
+	const int* GetColumnSortingPriority (int& nCount) const;
 
 	virtual BOOL IsSortingMode () const
 	{
@@ -2928,10 +3096,47 @@ public:
 	{
 		return m_bGridLines;
 	}
+
+	void EnableTreeLines(BOOL bEnable = TRUE)
+	{
+		m_bTreeLines = bEnable;
+	}
+	
+	BOOL IsTreeLinesEnabled() const
+	{
+		return m_bTreeLines;
+	}
+
+	void EnableTreeButtons(BOOL bEnable = TRUE)
+	{
+		m_bTreeButtons = bEnable;
+	}
+	
+	BOOL IsTreeButtonsEnabled() const
+	{
+		return m_bTreeButtons;
+	}
+
+	void EnableCheckBoxes(BOOL bEnable = TRUE);
+
+	BOOL IsCheckBoxesEnabled() const
+	{
+		return m_bCheckBoxes;
+	}
+
+	void CheckAll(BOOL bChecked = TRUE);
+	void UpdateHeaderCheckbox();
 	
 	// Colors:
-	void SetColorTheme (const CBCGPGridColors& theme, BOOL bRedraw = TRUE);
-	void SetVisualManagerColorTheme(BOOL bSet = TRUE, BOOL bRedraw = TRUE);
+	void SetColorTheme (const CBCGPGridColors& theme, BOOL bRedraw = TRUE, BOOL bFullCopy = FALSE);
+	void SetVisualManagerColorTheme(BOOL bSet = TRUE, BOOL bRedraw = TRUE, BOOL bAutoUpdateOnVMChange = TRUE, BOOL bIncludeScrollbarTheme = TRUE);
+
+	void EnableAlternateRows(BOOL bEnable = TRUE);
+
+	BOOL IsAlternateRowsEnabled () const
+	{
+		return m_bAlternateRows;
+	}
 
 	const CBCGPGridColors& GetColorTheme () const
 	{
@@ -2965,14 +3170,7 @@ public:
 			globalData.clrWindowText : m_ColorData.m_clrText;
 	}
 
-	COLORREF GetGroupTextColor () const
-	{
-		return m_ColorData.m_GroupColors.m_clrText != (COLORREF)-1 ?
-			m_ColorData.m_GroupColors.m_clrText :
-		(m_bHighlightGroups ? 
-			(m_bControlBarColors ? globalData.clrBarShadow : globalData.clrBtnShadow) :
-			globalData.clrWindowText);
-	}
+	COLORREF GetGroupTextColor (BOOL bSelected = FALSE) const;
 	
 	COLORREF GetBkColor () const
 	{
@@ -2996,6 +3194,11 @@ public:
 
 		m_wndScrollVert.SetVisualStyle (style);
 		m_wndScrollHorz.SetVisualStyle (style);
+
+		if (GetSafeHwnd() != NULL)
+		{
+			RedrawWindow();
+		}
 	}
 
 	void ShowVertScrollBar (BOOL bShow = TRUE)
@@ -3082,13 +3285,16 @@ public:
 		return m_bTracking;
 	}
 
+	BOOL IsPrinting() const
+	{
+		return m_bIsPrinting;
+	}
+
 	// Item fonts:
 	HFONT SetBoldFont (CDC* pDC);
 	
-	CFont& GetBoldFont()
-	{
-		return m_fontBold;
-	}
+	CFont& GetBoldFont(BOOL bScaled = FALSE);
+	CFont& GetUnderlineFont(BOOL bScaled = FALSE);
 
 	CBCGPGraphicsManager* GetGraphicsManager()
 	{
@@ -3099,6 +3305,13 @@ public:
 		
 		return m_pGM;
 	}
+
+	const CString& GetNoContentLabel() const
+	{
+		return m_strNoContent;
+	}
+
+	void SetNoContentLabel(const CString& strNoContentLabel);
 
 protected:
 	BOOL		m_bHeader;				// Is header visible?
@@ -3126,6 +3339,8 @@ protected:
 
 	TCHAR		m_cListDelimeter;		// Customized list delimeter character
 
+	CString		m_strNoContent;			// Customized label if no content
+
 	CBCGPScrollBar	m_wndScrollVert;		// Vertical scroll bar
 	CBCGPScrollBar	m_wndScrollHorz;		// Horizontal scroll bar
 	BOOL			m_bScrollVert;			// Show vertical scroll bar
@@ -3135,9 +3350,17 @@ protected:
 	int				m_nMouseWheelSmoothScrollMaxLimit; // If -1 then do not limit smooth scrolling
 	BOOL			m_bFreezeGroups;		// If TRUE - disable horizontal scrolling for groups
 	HFONT			m_hFont;				// Grid regular font
+	CFont			m_fontScaled;			// Grid regular font (scaled)
+	CFont			m_fontBoldScaled;		// Grid bold font (scaled)
 	CFont			m_fontBold;				// Grid bold font
+	CFont			m_fontUnderlineScaled;	// Grid underline font (scaled)
+	CFont			m_fontUnderline;		// Grid underline font
+	double			m_dblScale;				// Grid zoom factor
+	double			m_dblMinScale;			// Grid zoom factor (min)
+	double			m_dblMaxScale;			// Grid zoom factor (max)
 	int				m_nEditLeftMargin;		// Edit control left margin
 	int				m_nEditRightMargin;		// Edit control right margin
+	int				m_nEditTopMargin;		// Edit control top margin
 	BOOL			m_bTrimTextLeft;		// An option for DoDrawText method, TRUE by default
 	int				m_nLeftItemBorderOffset;// Temporary value used while drawing item's borders
 
@@ -3229,6 +3452,7 @@ protected:
 	// Selecting attributes:
 	//----------------------
 	BOOL		m_bSelecting;			// Is selecting range of items?
+	BOOL		m_bSelectingScroll;		// Need to scroll while selecting a range
 	BOOL		m_bClickTimer;			// Used for deferred item click
 	CPoint		m_ptClickOnce;			// Saved point for item click
 	BOOL		m_bIsFirstClick;		// Is first click?
@@ -3260,16 +3484,24 @@ protected:
 	BOOL		m_bSingleSel;			// Allows only one item at a time to be selected
 	BOOL		m_bWholeRowSel;			// Allows only the whole row to be selected
 	BOOL		m_bInvertSelOnCtrl;		// If TRUE, deselect item on single click
+	BOOL		m_bClearSelOnEmptySpace;// If TRUE, select nothing on click at empty space
+	BOOL		m_bSetSelOnCheckBox;	// If TRUE, update selection on checkbox click
 	BOOL		m_bMarkSortedColumn;	// Mark sorted column by background color
 	BOOL		m_bDrawFocusRect;		// Draw frame rect around an active row
 	BOOL		m_bShowInPlaceToolTip;	// Show in-place tooltips for truncated items
 	BOOL		m_bRowMarker;			// Show marker at left of the currently active row
 	BOOL		m_bLineNumbers;			// Show line numbers at the row header
+	BOOL		m_bFillLeftOffsetArea;	// Fill left hierarchy offset area with special color
 	BOOL		m_bHighlightActiveItem;	// If TRUE - fill active item with selected color
 	BOOL		m_bSelectionBorderActiveItem; // Draw frame rect around an active item
 	BOOL		m_bGridItemBorders;		// If FALSE - do not allow item to draw its borders
 	BOOL		m_bUseQuickSort;		// If TRUE - use QSORT algorithm, TRUE by default
 	BOOL		m_bGridLines;			// Draw grid lines
+	BOOL		m_bTreeLines;			// Draw tree lines
+	BOOL		m_bTreeButtons;			// Has buttons
+	BOOL		m_bCheckBoxes;			// Check boxes for rows
+	BOOL		m_bAlternateRows;		// If FALSE, do not use alternate coloring for Even and Odd rows
+	BOOL		m_bWholeCellSel;		// If TRUE, only the whole cell may be selected
 
 	//---------------
 	// Custom colors:
@@ -3277,12 +3509,14 @@ protected:
 	CBCGPGridColors	m_ColorData;
 
 	BOOL		m_bVisualManagerStyle;
+	BOOL		m_bAutoUpdateThemeOnVMChange;
 
 	CBrush		m_brBackground;
 	CBrush		m_brGroupBackground;
 	CBrush		m_brSelBackground;
 	CPen		m_penHLine;
 	CPen		m_penVLine;
+	CPen		m_penTreeLine;
 
 	//---------------
 	// Print support:
@@ -3385,6 +3619,8 @@ protected:
 	CBCGPGridCtrlDropTarget		m_DropTarget;
 
 	enum {	GRID_CLICKVALUE_TIMER_ID = 1,
+			GRID_AUTOSCROLL_TIMER_ID = 2,
+			GRID_AUTOSCROLL_TIMER_INTERVAL = 100,
 			GRID_CLICKVALUE_TIMER_INTERVAL = 200};
 
 	//------------
@@ -3412,6 +3648,9 @@ protected:
 	int							m_nFocusedFilter;		// zero-based index of the active filter edit, -1 if none
 	CBCGPButton					m_btnFilterClear;
 
+	BOOL					m_bOutOfFilter;
+	CString					m_strOutOfFilter;
+
 	//-------------
 	// Find/Replace
 	//-------------
@@ -3425,12 +3664,16 @@ protected:
 	// Export to HTML
 	//---------------
 	CString m_strExportCSVSeparator;
+	DWORD	m_dwDefaultExportToHtmlFlags;
+	DWORD	m_dwDefaultExportToCsvFlags;
+	CList<int, int> m_lstExportSkipColumns;
 
 	//----------------------
 	// Accessibility support:
 	//----------------------
 	CBCGPGridRow*	m_pAccRow;
 	CBCGPGridItem*	m_pAccItem;
+	int				m_nAccLastIndex;
 
 	//------------------------
 	// Conditional formatting:
@@ -3446,6 +3689,11 @@ protected:
 
 public:
 	static BOOL	m_bUseSystemFont;
+
+	//-------------------------
+	// Accessibility support:
+	//-------------------------
+	BOOL m_bAccGridItemValueAsName;
 
 private:
 	CBCGPGridItemID		m_idCur;		// Cached index for currently processing item
@@ -3463,11 +3711,12 @@ public:
 	int InsertRowBefore (int nPos, CBCGPGridRow* pItem, BOOL bRedraw = TRUE);
 	int InsertRowAfter (int nPos, CBCGPGridRow* pItem, BOOL bRedraw = TRUE);
 	int RemoveRow (int nPos, BOOL bRedraw = TRUE);
-	void RemoveAll ();
+	virtual void RemoveAll ();
 	void RebuildIndexes (int nStartFrom = -1);
 
 	CBCGPGridRow* GetRow (int nPos) const;
 	CBCGPGridRow* GetVirtualRow (int nRow);
+	BOOL IsEmpty () const;
 	int GetRowCount (BOOL bIncludeAutoGroups = FALSE) const;
 
 	int GetTotalRowCount (BOOL bCalcVisibleOnly = FALSE) const
@@ -3543,7 +3792,7 @@ public:
 	// -------
 	int  InsertColumn (int nPos, LPCTSTR lpszColumn, int nWidth, int iImage = -1, BOOL bHideNameWithImage = TRUE);
 	BOOL DeleteColumn (int nPos);
-	void DeleteAllColumns ();
+	virtual void DeleteAllColumns ();
 
 	int GetColumnCount() const;
 
@@ -3627,11 +3876,13 @@ public:
 
 	PrintParams& GetPrintParams ()	{ return m_PrintParams; }
 	CDC* GetPrintDC ()	{ return m_pPrintDC; };
+	CFont* GetPrinterFont()	{ return CFont::FromHandle (m_hPrinterFont); }
+	COLORREF GetPrintTextColor () const	{ return m_clrPrintText; }
 
 	//---------------
 	// Export to HTML
 	//---------------
-	BOOL SetExportTextSeparator (DWORD dwExportFlags, CString& strSeparator);
+	BOOL SetExportTextSeparator (DWORD dwExportFlags, CString strSeparator);
 
 	//------------------------
 	// Conditional formatting:
@@ -3676,7 +3927,12 @@ public:
 	virtual BOOL CanReplaceItem (int nRow, int nColumn, CRuntimeClass* pNewRTC);
 
 	virtual void OnPosSizeChanged ();
-	virtual void OnChangeSelection (CBCGPGridRow* /*pNewSel*/, CBCGPGridRow* /*pOldSel*/) {}
+
+	virtual void OnChangeSelection (CBCGPGridRow* pNewSel, CBCGPGridRow* pOldSel) 
+	{
+		UNREFERENCED_PARAMETER(pNewSel);
+		UNREFERENCED_PARAMETER(pOldSel);
+	}
 
 	virtual BOOL EditItem (CBCGPGridRow* pItem, LPPOINT lptClick = NULL);
 	virtual void OnClickButton (CPoint point);
@@ -3694,6 +3950,7 @@ public:
 	virtual CRect OnGetPreviewRowMargins (CBCGPGridRow* pRow) const;
 
 	virtual int GetExtraHierarchyOffset () const;
+	int GetHierarchyOffset (const CBCGPGridRow* pRow) const;
 	virtual int GetHierarchyOffset () const { return GetColumnsInfo ().GetGroupColumnCount () * GetHierarchyLevelOffset ();}
 	virtual int GetHierarchyLevelOffset () const { return m_nBaseHeight;}
 	virtual int GetLeftMarginWidth () const { return m_nBaseHeight; }
@@ -3701,8 +3958,18 @@ public:
 	//------------
 	// Merge cells
 	//------------
-	virtual void OnMergeCellsChanging (const CBCGPGridRange& /*range*/, BOOL /*bMerge*/) {}
-	virtual void OnMergeCellsChanged (const CBCGPGridRange& /*range*/, BOOL /*bMerge*/) {}
+	virtual void OnMergeCellsChanging (const CBCGPGridRange& range, BOOL bMerge) 
+	{
+		UNREFERENCED_PARAMETER(range);
+		UNREFERENCED_PARAMETER(bMerge);
+	}
+
+	virtual void OnMergeCellsChanged (const CBCGPGridRange& range, BOOL bMerge) 
+	{
+		UNREFERENCED_PARAMETER(range);
+		UNREFERENCED_PARAMETER(bMerge);
+	}
+
 	virtual BOOL CanMergeRange (const CBCGPGridRange& /*range*/, BOOL /*bMerge*/) {return TRUE;}
 
 	// -----
@@ -3735,18 +4002,22 @@ public:
 		return FALSE;
 	}
 
-	virtual BOOL CanHideColumn (int /*nColumn*/) const
+	virtual BOOL CanHideColumn (int nColumn) const
 	{
+		UNREFERENCED_PARAMETER(nColumn);
 		return (m_dwHeaderFlags & BCGP_GRID_HEADER_HIDE_ITEMS) != 0;
 	}
 	
-	virtual BOOL CanDropColumn (int /*nNewPosition*/, int /*nOldPosition*/) const
+	virtual BOOL CanDropColumn (int nNewPosition, int nOldPosition) const
 	{
+		UNREFERENCED_PARAMETER(nNewPosition);
+		UNREFERENCED_PARAMETER(nOldPosition);
 		return TRUE;
 	}
 
-	virtual BOOL CanDropColumnToColumnChooser (int /*nColumn*/) const
+	virtual BOOL CanDropColumnToColumnChooser (int nColumn) const
 	{
+		UNREFERENCED_PARAMETER(nColumn);
 		return TRUE;
 	}	
 
@@ -3768,6 +4039,7 @@ public:
 	// Save/Load state:
 	//-----------------
 #ifndef _BCGPGRID_STANDALONE
+	virtual CString GetRegSectionPath (LPCTSTR lpszProfileName, int nIndex = 0);
 	virtual BOOL LoadState (LPCTSTR lpszProfileName, int nIndex = 0);
 	virtual BOOL SaveState (LPCTSTR lpszProfileName, int nIndex = 0);
 	virtual BOOL ResetState ();
@@ -3776,6 +4048,16 @@ public:
 	//---------------
 	// Export to HTML
 	//---------------
+	enum ExportOptions
+	{						
+		EF_IncludeTextColor	      = 0x0100,
+		EF_IncludeBackgroundColor = 0x0200,
+
+		EF_IncludeHeader          = 0x1000
+	};
+
+	void SetExportRangeSkipList(CList<int, int>& lstSkipColumns);
+
 	virtual void ExportRangeToHTML (CString& strHTML, const CBCGPGridRange& range, DWORD dwFlags);
 	virtual void ExportToHTML (CString& strHTML, DWORD dwFlags);
 	virtual void ExportRowToHTML (CBCGPGridRow* pRow, CString& strHTML, DWORD dwFlags);
@@ -3788,6 +4070,7 @@ public:
 		Format_Html		= 0x10	// Html Text
 	};
 
+	virtual void ExportToCSV (CString& strText, DWORD dwFlags);
 	virtual void ExportRangeToText (CString& strText, const CBCGPGridRange& range, 
 									DWORD dwFlags); // dwFlags - Format_CSV or Format_TabSV
 	virtual void OnPrepareTextString (CString& str, DWORD dwFlags) const;
@@ -3812,6 +4095,7 @@ public:
 	virtual BOOL OnQueryReplaceNonEmptyItem (const CBCGPGridItem* pItem) const;
 
 	virtual BOOL CopyHTML ();
+	virtual BOOL CopyCSV ();
 
 	//-------------
 	// Find/Replace
@@ -3851,6 +4135,7 @@ public:
 	// Color themes:
 	//--------------
 	virtual void OnColorThemeChanged ();
+	virtual BOOL IsTreeControl() const { return FALSE; }
 
 protected:
 	virtual void InitConstructor ();
@@ -3874,16 +4159,19 @@ protected:
 	virtual void OnDrawSortArrow (CDC* pDC, CRect rectArrow, BOOL bAscending);
 	virtual void OnFillHeaderBackground (CDC* pDC, CRect rect);
 	virtual void OnDrawHeaderItemBorder (CDC* pDC, CRect rect, int nCol);
+	virtual COLORREF OnGetHeaderItemTextColor(BOOL bSelected, BOOL bIsGroupBox, int nCol, CBCGPHeaderItem* pHeaderItem = NULL);
 	virtual void OnFillRowHeaderBackground (CDC* pDC, CRect rect);
 	virtual void OnDrawRowHeaderItem (CDC* pDC, CBCGPGridRow* pItem);
 	virtual void OnDrawSelectAllArea (CDC* pDC);
 	virtual void OnDrawLineNumber (CDC* pDC, CBCGPGridRow* pRow, CRect rect, BOOL bSelected, BOOL bPressed);
+	virtual void OnDrawTreeLines (CDC* pDC, CBCGPGridRow* pRow, CRect rect);
 	virtual void OnFillFilterBar (CDC* pDC);
 	virtual void OnDrawGridHeader (CDC* pDC);
 	virtual void OnDrawGridFooter (CDC* pDC);
 	virtual void OnDrawSelectionBorder (CDC* pDC);
 	virtual void OnDrawDragMarker (CDC* pDC);
 	virtual void OnDrawDragFrame (CDC* pDC);
+	virtual void OnDrawCheckBox (CDC* pDC, CRect& rect, int nState, BOOL bHighlighted, BOOL bPressed, BOOL bEnabled, UINT nHorzAlign = 0, UINT nVertAlign = 0);
 
 	virtual void DrawHeaderItem (CDC* pDC, CRect rect, CBCGPHeaderItem* pHeaderItem);
 	virtual void PrintHeaderItem (CDC* pDC, CRect rect, CRect rectClip, CBCGPHeaderItem* pHeaderItem);
@@ -3916,6 +4204,9 @@ protected:
 	{
 		return TRUE; // resize columns inside client area by mouse
 	}
+
+	virtual void OnRowCheckBoxClick(CBCGPGridRow* pRow);
+	virtual void OnHeaderCheckBoxClick(int nColumn);
 
 	virtual void OnHeaderDividerDblClick (int /*nColumn*/) {}
 	virtual void OnHeaderColumnClick (int nColumn);
@@ -3964,6 +4255,7 @@ protected:
 	}
 
 	virtual BOOL GetRowName (CBCGPGridRow* pRow, CString& strName);
+	virtual CString GetRowNumber (CBCGPGridRow* pRow);
 	
 	virtual void OnItemUpdateFailed ()
 	{
@@ -4010,6 +4302,7 @@ protected:
 	//-------------
 	// Select items
 	//-------------
+	virtual void OnBeforeSelChange () {}
 	virtual void OnSelChanging (const CBCGPGridRange &range, BOOL bSelect);
 	virtual void OnSelChanged (const CBCGPGridRange &range, BOOL bSelect);
 	
@@ -4030,6 +4323,8 @@ protected:
 	
 	virtual CWnd* OnCreateFilterBarCtrl (int nColumn, LPCTSTR lpszPrompt);
 	virtual void AdjustFilterBarCtrls ();
+	virtual void UpdateFilterBarCtrlsFont ();
+	virtual void UpdateFilterBarCtrlsTheme ();
 
 	//-------------
 	// Find/Replace
@@ -4049,6 +4344,7 @@ protected:
 	// Accessibility support:
 	//----------------------
 	virtual void NotifyAccessibility (CBCGPGridRow* pRow, CBCGPGridItem* pItem);
+	int GetAccRowCount();
 
 // Implementation
 public:
@@ -4065,7 +4361,7 @@ public:
 		return m_bSelectionBorder && !m_bWholeRowSel;
 	}
 
-	BOOL DoDrawText (CDC* pDC, CString strText, CRect rect, UINT uiDrawTextFlags, LPRECT lpRectClip = NULL, BOOL bNoCalcExtent = FALSE);
+	virtual BOOL DoDrawText (CDC* pDC, CString strText, CRect rect, UINT uiDrawTextFlags, LPRECT lpRectClip = NULL, BOOL bNoCalcExtent = FALSE);
 
 	// Generated message map functions
 protected:
@@ -4105,6 +4401,7 @@ protected:
 	afx_msg void OnCloseCombo();
 	afx_msg void OnEditKillFocus();
 	afx_msg void OnComboKillFocus();
+	afx_msg void OnButtonKillFocus();
 	afx_msg LRESULT OnMouseLeave(WPARAM,LPARAM);
 	afx_msg LRESULT OnPrintClient(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnGridAdjustLayout(WPARAM wp, LPARAM lp);
@@ -4113,13 +4410,14 @@ protected:
 	afx_msg LRESULT OnFindReplace(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnBCGSetControlVMMode (WPARAM, LPARAM);
 	afx_msg LRESULT OnGetObject (WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnChangeVisualManager(WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 
 	//------------------
 	// Internal helpers:
 	//------------------
 	static HFONT GetDefaultFont ();
-	HFONT SetCurrFont (CDC* pDC);
+	virtual HFONT SetCurrFont (CDC* pDC);
 	virtual void TrackHeader (int nOffset);
 	virtual BOOL SetHeaderItemWidth (int nPos, int nWidth);
 	virtual void TrackToolTip (CPoint point);
@@ -4159,8 +4457,10 @@ protected:
 	void SetSortOrder (int* aSortOrder, int nSortCount, int nGroupCount);
 	BOOL GetSortOrder (int*& aSortOrder, int& nSortCount, int& nGroupCount) const;
 	void CleanUpAutoGroups (AUTOGROUP_CLEANUP_MODE nMode = AG_FULL_CLEANUP);
+	void CleanUp();
 
 	virtual void UpdateFonts ();
+	virtual void UpdateScaledFonts();
 	virtual void CleanUpFonts ();
 	virtual void CalcEditMargin ();
 
@@ -4273,6 +4573,8 @@ protected:
 	BOOL PasteFromDataObject (COleDataObject* pDataObject,			// paste from clipboard custom registered format
 		CBCGPGridItemID idPasteTo, BOOL bRedraw = FALSE);
 
+	BOOL IsPlacedOnActiveMenu() const;
+
 private:
 	//----------------------
 	// Iterator inside range
@@ -4294,6 +4596,7 @@ private:
 	static void CALLBACK pfnCallbackExportRowEnd (CBCGPGridRow* pRow, const CBCGPGridRange& range, LPARAM lParam);
 	static void CALLBACK pfnCallbackExportItem (CBCGPGridItem* pItem, const CBCGPGridRange& range, LPARAM lParam);
 
+	static void CALLBACK pfnCallbackExportTextColumn (int nColumn, const CBCGPGridRange&, LPARAM lParam);
 	static void CALLBACK pfnCallbackExportTextRowEnd (CBCGPGridRow*, const CBCGPGridRange&, LPARAM lParam);
 	static void CALLBACK pfnCallbackExportTextItem (CBCGPGridItem* pItem, const CBCGPGridRange&, LPARAM lParam);
 

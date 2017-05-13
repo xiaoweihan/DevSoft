@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -144,7 +144,7 @@ protected:
 	BOOL			m_bOnRebar;
 	BOOL			m_bMenuRightAlign;
 
-	CObList			m_lstInvisibleButtons;	// List of invisible butons on 
+	CObList			m_lstInvisibleButtons;	// List of invisible buttons on 
 											// the parent toolbar.
 };
 

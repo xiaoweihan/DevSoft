@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -84,6 +84,7 @@ BOOL			CBCGPDockManager::m_bRestoringDockState = FALSE;
 BOOL			CBCGPDockManager::m_bHideDockingBarsInContainerMode = TRUE;
 BOOL			CBCGPDockManager::m_bDisableRecalcLayout = FALSE;
 BOOL			CBCGPDockManager::m_bFullScreenMode = FALSE;
+BOOL			CBCGPDockManager::m_bKeepBarSizeOnFloating = TRUE;
 
 BOOL			CBCGPDockManager::m_bSavingState = FALSE;
 
@@ -96,6 +97,8 @@ BOOL			CBCGPDockManager::m_bIgnoreEnabledAlignment = FALSE;
 
 CRuntimeClass*	CBCGPDockManager::m_pAutoHideToolbarRTC = RUNTIME_CLASS (CBCGPAutoHideToolBar);
 
+UINT BCGM_ON_MOVE_DOCK_BAR = ::RegisterWindowMessage (_T("BCGM_ON_MOVE_DOCK_BAR"));
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -107,6 +110,7 @@ CBCGPDockManager::CBCGPDockManager() : m_pParentWnd (NULL),
 	m_bActivateAutoHideBarOnMouseClick = FALSE;
 	m_bMaximizeFloatingBars = FALSE;
 	m_bMaximizeFloatingBarsByDblClick = FALSE;
+	m_bRestoreMaximizeFloatingBars = FALSE;
 	m_pActiveSlidingWnd = NULL;
 
 	m_pLastTargetBar = NULL;
@@ -284,7 +288,7 @@ BOOL CBCGPDockManager::EnableAutoHideBars (DWORD dwStyle, BOOL bActivateOnMouseC
 	return TRUE;
 }
 //------------------------------------------------------------------------//
-void CBCGPDockManager::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeByDblClick)
+void CBCGPDockManager::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeByDblClick, BOOL bRestoreMaximizeFloatingBars)
 {
 	ASSERT_VALID(this);
 
@@ -293,6 +297,7 @@ void CBCGPDockManager::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeBy
 	
 	m_bMaximizeFloatingBars = bEnable;
 	m_bMaximizeFloatingBarsByDblClick = bMaximizeByDblClick;
+	m_bRestoreMaximizeFloatingBars = bRestoreMaximizeFloatingBars;
 
 	if (bRebuildCaptionButtons)
 	{
@@ -1020,7 +1025,7 @@ CBCGPAutoHideToolBar* CBCGPDockManager::AutoHideBar (CBCGPDockingControlBar* pBa
 		if (!pAutoHideToolBar->Create (NULL, WS_VISIBLE | WS_CHILD, CRect (0, 0, 0, 0), 
 										m_pParentWnd, 1, dwBCGStyle))
 		{
-			TRACE0 ("Failde to create autohide toolbar");
+			TRACE0 ("failed to create autohide toolbar");
 			ASSERT (FALSE);
 			delete pAutoHideToolBar;
 			return NULL;
@@ -1776,7 +1781,7 @@ void CBCGPDockManager::AdjustDockingLayout (HDWP hdwp)
 
 	CRect rectControlBar;
 	POSITION posLastDockBar = NULL;
-	
+
 	// find position of the last dock bar in the list (actually, it will be position
 	// of the next control bar right after the last dock bar in the list)
 
@@ -1822,13 +1827,13 @@ void CBCGPDockManager::AdjustDockingLayout (HDWP hdwp)
 		{
 			continue;
 		}
-		
+
 		// let's see whether this control bar has enough space to be displayed,
 		// has to be aligned differntly and so on. 
 
 		pNextControlBar->GetWindowRect (rectControlBar);
 		CRect rectSave = rectControlBar;
-		
+
 		DWORD dwAlignment = pNextControlBar->GetCurrentAlignment ();
 		BOOL  bHorizontal = pNextControlBar->IsHorizontal ();
 		BOOL  bResizable  = pNextControlBar->IsResizable ();
@@ -1857,10 +1862,10 @@ void CBCGPDockManager::AdjustDockingLayout (HDWP hdwp)
 											rectControlBar.left = rectControlBar.right - sizeRequered.cx;
 		}
 
-		
+
 		AlignByRect (rectCurrBounds, rectControlBar, dwAlignment, bHorizontal, bResizable);	
-		
-	
+
+
 		CRect rectControlBarScreen = rectControlBar;
 
 		ASSERT_VALID (pNextControlBar->GetParent ());
@@ -1880,14 +1885,21 @@ void CBCGPDockManager::AdjustDockingLayout (HDWP hdwp)
 		{
 			// the slider will change its position, as well as position of
 			// its resizable control bars (container)
-			((CBCGPSlider*) pNextControlBar)->RepositionBars (rectControlBar, hdwp);			
+			((CBCGPSlider*) pNextControlBar)->RepositionBars (rectControlBar, hdwp);
 		}
 		else
 		{
+			CSize sz(rectSave.left - rectControlBar.left, rectSave.top - rectControlBar.top);
+
 			pNextControlBar->GetParent ()->ScreenToClient (rectControlBar);
 			hdwp = pNextControlBar->SetWindowPos (NULL, rectControlBar.left, 
 						rectControlBar.top, rectControlBar.Width (), rectControlBar.Height (), 
 						SWP_NOZORDER | SWP_NOACTIVATE, hdwp);
+
+			if (pNextControlBar->IsKindOf (RUNTIME_CLASS (CBCGPDockBar)))
+			{
+				m_pParentWnd->SendMessage(BCGM_ON_MOVE_DOCK_BAR, (WPARAM)pNextControlBar, (LPARAM)(SIZE*)&sz);
+			}
 		}
 
 		if (dwAlignment & CBRS_ALIGN_TOP)
@@ -1921,7 +1933,6 @@ void CBCGPDockManager::AdjustDockingLayout (HDWP hdwp)
 		m_rectOuterEdgeBounds = rectCurrBounds;
 	}
 
-	
 
 	m_pParentWnd->ScreenToClient (m_rectClientAreaBounds);
 	m_pParentWnd->ScreenToClient (m_rectOuterEdgeBounds);
@@ -2978,7 +2989,13 @@ void CBCGPDockManager::SetDockState ()
 			if (pDefaultSlider != NULL)
 			{
 				pDockingBar->SetBarAlignment (pDefaultSlider->GetCurrentAlignment ());
+
+				BOOL bOnShow = pDockingBar->m_bOnShow;
+				pDockingBar->m_bOnShow = !bShow && CBCGPDockingControlBar::m_bIgnoreRectOnShow;
+
 				pDefaultSlider->OnShowControlBar (pDockingBar, bShow);
+
+				pDockingBar->m_bOnShow = bOnShow;
 			}
 
 			if (pDockingBar->IsKindOf (RUNTIME_CLASS (CBCGPBaseTabbedBar)))
@@ -2987,11 +3004,7 @@ void CBCGPDockManager::SetDockState ()
 
 				if (pDefaultSlider != NULL)
 				{
-					CBCGPBarContainer* pContainer = 
-						pDefaultSlider->FindContainer (pDockingBar, bLeftBar);
-
-					ASSERT (pContainer != NULL);
-
+					CBCGPBarContainer* pContainer = pDefaultSlider->FindContainer (pDockingBar, bLeftBar);
 					if (pContainer == NULL)
 					{
 						continue;
@@ -3142,13 +3155,32 @@ void CBCGPDockManager::SetDockState ()
 		}
 	}
 
+	//---------------------------------------
+	// Restore floating panes maximize state:
+	//---------------------------------------
+	if (m_bMaximizeFloatingBars && m_bRestoreMaximizeFloatingBars)
+	{
+		for (POSITION pos = m_lstMiniFrames.GetHeadPosition (); pos != NULL;)
+		{
+			CBCGPMiniFrameWnd* pMiniFrame = DYNAMIC_DOWNCAST (CBCGPMiniFrameWnd, m_lstMiniFrames.GetNext(pos));
+			if (pMiniFrame != NULL)
+			{
+				ASSERT_VALID(pMiniFrame);
+				
+				if (pMiniFrame->IsWindowVisible() && pMiniFrame->HasSavedMaximizedState())
+				{
+					pMiniFrame->SetMaximized();
+				}
+			}
+		}
+	}
+
 	RecalcLayout ();
 
 	m_lstLoadedBars.RemoveAll ();
 	m_lstLoadedMiniFrames.RemoveAll ();
 	m_lstNonFloatingBars.RemoveAll ();
 	
-
 	m_bRestoringDockState = FALSE;
 }
 //----------------------------------------------------------------------------------//
@@ -3215,7 +3247,9 @@ void BCGP_AUTOHIDEBAR_SAVE_INFO::Serilaize (CArchive& ar)
 //----------------------------------------------------------------------------------------
 void CBCGPDockManager::HideForPrintPreview (const CObList& lstBars)
 {
-	for (POSITION pos = lstBars.GetHeadPosition (); pos != NULL;)
+	POSITION pos = NULL;
+
+	for (pos = lstBars.GetHeadPosition (); pos != NULL;)
 	{
 		CBCGPBaseControlBar* pBar = (CBCGPBaseControlBar*) lstBars.GetNext (pos);
 		ASSERT_VALID (pBar);
@@ -3229,16 +3263,6 @@ void CBCGPDockManager::HideForPrintPreview (const CObList& lstBars)
 				pBar->ShowControlBar (FALSE, TRUE, FALSE);
 				m_lstBarsHiddenInPreview.AddTail (pBar);
 			}
-			for (POSITION pos = m_lstMiniFrames.GetHeadPosition (); pos != NULL;)
-			{
-				CWnd* pWnd = (CWnd*) m_lstMiniFrames.GetNext (pos);
-				ASSERT_VALID (pWnd);
-				if (pWnd->IsWindowVisible ())
-				{
-					pWnd->ShowWindow (SW_HIDE);
-					m_lstBarsHiddenInPreview.AddTail (pWnd);
-				}
-			}
 		}
 		else
 		{
@@ -3251,7 +3275,20 @@ void CBCGPDockManager::HideForPrintPreview (const CObList& lstBars)
 				m_lstBarsHiddenInPreview.AddTail (pBar);
 			}
 		}
-		
+	}
+
+	if (m_bHideDockingBarsInContainerMode || !IsOLEContainerMode ())
+	{
+		for (pos = m_lstMiniFrames.GetHeadPosition (); pos != NULL;)
+		{
+			CWnd* pWnd = (CWnd*) m_lstMiniFrames.GetNext (pos);
+			ASSERT_VALID (pWnd);
+			if (pWnd->IsWindowVisible ())
+			{
+				pWnd->ShowWindow (SW_HIDE);
+				m_lstBarsHiddenInPreview.AddTail (pWnd);
+			}
+		}
 	}
 }
 //----------------------------------------------------------------------------------------
@@ -4239,6 +4276,7 @@ void CBCGPDockManager::RemoveHiddenMDITabbedBar (CBCGPDockingControlBar* pBar)
 //-----------------------------------------------------------------------//
 CBCGPSmartDockingParams::CBCGPSmartDockingParams()
 {
+	m_pRTI = NULL;
 	m_sizeTotal = CSize (93, 93);
 	m_nCentralGroupOffset = 5;
 	m_clrTransparent = RGB (255, 0, 255);
@@ -4261,6 +4299,7 @@ CBCGPSmartDockingParams::CBCGPSmartDockingParams()
 
 void CBCGPSmartDockingParams::CopyTo (CBCGPSmartDockingParams& params)
 {
+	params.m_pRTI = m_pRTI;
 	params.m_sizeTotal = m_sizeTotal;
 	params.m_nCentralGroupOffset = m_nCentralGroupOffset;
 	params.m_clrTransparent = m_clrTransparent;

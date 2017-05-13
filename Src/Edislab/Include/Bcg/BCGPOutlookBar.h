@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -45,6 +45,7 @@ public:
 		return CanFloat ();
 	}
 
+	virtual void GetPaneInfo(CString& strName, CString& strInfo, HICON& hIcon, BOOL& bAutoDestroyIcon);
 	virtual void OnScroll (BOOL /*bDown*/) {}
 
 	void SetMode2003 (BOOL bMode2003 = TRUE);
@@ -68,6 +69,16 @@ public:
 	virtual BOOL IsRestoreTabsState() const
 	{
 		return !m_bMode2003;
+	}
+
+	BOOL IsDrawActiveTabNameOnCaption() const
+	{
+		return m_bDrawActiveTabNameOnCaption;
+	}
+
+	void SetDrawActiveTabNameOnCaption(BOOL bSet = TRUE)
+	{
+		m_bDrawActiveTabNameOnCaption = bSet;
 	}
 
 // Operations
@@ -103,6 +114,11 @@ public:
 		strName = m_strBarName;
 	}
 
+	virtual BOOL IsTabStop() const
+	{
+		return FALSE;
+	}
+
 	// Generated message map functions
 protected:
 	//{{AFX_MSG(CBCGPOutlookBar)
@@ -124,6 +140,7 @@ protected:
 	CFont*	m_pFontButtons;
 
 	CString	m_strBarName;
+	BOOL	m_bDrawActiveTabNameOnCaption;
 };
 
 /////////////////////////////////////////////////////////////////////////////

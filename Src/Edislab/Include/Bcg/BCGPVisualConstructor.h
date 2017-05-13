@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -44,6 +44,9 @@ protected:
 	
 	virtual CBCGPDiagramVisualObject* CreateDiagramElement(const CBCGPVisualInfo::XDiagramElement& info, const CBCGPVisualContainer* container) const;
 	virtual void ConstructDiagramElement (CBCGPDiagramVisualObject& element, const CBCGPVisualInfo::XDiagramElement& info) const;
+
+	virtual CBCGPWndHostVisualObject* CreateControlElement(const CBCGPVisualInfo::XControlElement& info, const CBCGPVisualContainer* container) const;
+	virtual void ConstructControlElement (CBCGPWndHostVisualObject& element, const CBCGPVisualInfo::XControlElement& info) const;
 
 	virtual void ConstructBaseElement (CBCGPBaseVisualObject& element, const CBCGPVisualInfo::XElement& info) const;
 	virtual void ConstructBaseWinUIElement (CBCGPWinUIBaseObject& element, const CBCGPVisualInfo::XWinUIBaseElement& info) const;	

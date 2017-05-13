@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -19,6 +19,7 @@
 #include "BCGPChartLegend.h"
 #include "BCGPChartFormula.h"
 #include "BCGPMath.h"
+#include "BCGPLocalResource.h"
 
 #include "BCGPDrawManager.h"
 #include "BCGPImageProcessing.h"
@@ -38,14 +39,18 @@ IMPLEMENT_DYNCREATE(CBCGPChartHistogramSeries, CBCGPChartSeries)
 IMPLEMENT_DYNCREATE(CBCGPChartLongSeries, CBCGPChartSeries)
 IMPLEMENT_DYNCREATE(CBCGPChartHistoricalLineSeries, CBCGPChartLongSeries)
 IMPLEMENT_DYNCREATE(CBCGPChartBubbleSeries, CBCGPChartSeries)
-IMPLEMENT_DYNCREATE(CBCGPChartPieSeries, CBCGPChartSeries)
+IMPLEMENT_DYNAMIC(CBCGPChartPercentSeries, CBCGPChartSeries)
+IMPLEMENT_DYNCREATE(CBCGPChartPieSeries, CBCGPChartPercentSeries)
 IMPLEMENT_DYNCREATE(CBCGPChartDoughnutSeries, CBCGPChartPieSeries)
-IMPLEMENT_DYNCREATE(CBCGPChartPyramidSeries, CBCGPChartSeries)
+IMPLEMENT_DYNCREATE(CBCGPChartPyramidSeries, CBCGPChartPercentSeries)
 IMPLEMENT_DYNCREATE(CBCGPChartFunnelSeries, CBCGPChartPyramidSeries)
-IMPLEMENT_DYNCREATE(CBCGPBaseChartStockSeries, CBCGPChartSeries)
+IMPLEMENT_DYNCREATE(CBCGPBaseChartMultiSeries, CBCGPChartSeries)
+IMPLEMENT_DYNCREATE(CBCGPBaseChartStockSeries, CBCGPBaseChartMultiSeries)
 IMPLEMENT_DYNCREATE(CBCGPChartStockSeries, CBCGPBaseChartStockSeries)
 IMPLEMENT_DYNCREATE(CBCGPChartPolarSeries, CBCGPChartLineSeries)
 IMPLEMENT_DYNCREATE(CBCGPChartTernarySeries, CBCGPChartLineSeries)
+IMPLEMENT_DYNCREATE(CBCGPChartBoxPlotSeries, CBCGPBaseChartMultiSeries)
+IMPLEMENT_DYNCREATE(CBCGPChartErrorBarsSeries, CBCGPChartSeries)
 
 const int CBCGPChartStockSeries::CHART_STOCK_SERIES_HIGH_IDX = 0;
 const int CBCGPChartStockSeries::CHART_STOCK_SERIES_LOW_IDX = 1;
@@ -55,6 +60,9 @@ const int CBCGPChartStockSeries::STOCK_ARRAY_OPEN_IDX = 0;
 const int CBCGPChartStockSeries::STOCK_ARRAY_HIGH_IDX = 1;
 const int CBCGPChartStockSeries::STOCK_ARRAY_LOW_IDX = 2;
 const int CBCGPChartStockSeries::STOCK_ARRAY_CLOSE_IDX = 3;
+
+const int CBCGPChartErrorBarsSeries::ERRORBAR_SP_PLUS = 0;
+const int CBCGPChartErrorBarsSeries::ERRORBAR_SP_MINUS = 1;
 
 //****************************************************************************************
 // CBCGPChartSeries - basic
@@ -115,6 +123,8 @@ CBCGPChartSeries::~CBCGPChartSeries()
 	}
 
 	m_arDataBuffers.RemoveAll();
+
+	RemoveErrorBars();
 
 	m_pChart = NULL;
 }
@@ -196,8 +206,14 @@ void CBCGPChartSeries::CommonInit(CBCGPChartVisualObject* pChartCtrl,
 	m_nLongDataOffset = 0;
 
 	m_dblEmptyValue = 0;
+	
+	m_bIsLastAnimationSeries = FALSE;
+	m_AnimationComponentIndex = CBCGPChartData::CI_DEFAULT;
+	m_AnimationStyle = BCGPChartAnimationStyle_Default;
 
 	m_dwUserData = 0;
+	m_pOwnerSeries = NULL;
+	m_pErrorSeries = NULL;
 }
 //****************************************************************************************
 void CBCGPChartSeries::SetDefaultSeriesColor(const CBCGPColor& seriesColor)
@@ -258,10 +274,16 @@ void CBCGPChartSeries::SetIndexMode(BOOL bSet)
 			m_pXAxis->SetIndexedSeries(NULL);
 		}
 	}
+
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->m_bIndexMode = IsIndexMode();
+	}
 }
 //****************************************************************************************
 void CBCGPChartSeries::SetVirtualMode(BOOL bSet, BCGPCHART_VSERIES_CALLBACK pCallBack, 
-									  LPARAM lParam, double dblMinRange, double dblMaxRange)
+									  LPARAM lParam, double dblMinRange, double dblMaxRange,
+									  BOOL bRedraw)
 {
 	ASSERT_VALID(this);
 
@@ -279,7 +301,7 @@ void CBCGPChartSeries::SetVirtualMode(BOOL bSet, BCGPCHART_VSERIES_CALLBACK pCal
 	CBCGPChartVirtualFormula vf(pCallBack, lParam);
 	vf.SetTrendRange(dblMinRange, dblMaxRange);
 
-	SetFormula(vf, TRUE);
+	SetFormula(vf, bRedraw);
 }
 //****************************************************************************************
 BOOL CBCGPChartSeries::IsVirtualMode() const
@@ -395,7 +417,7 @@ void CBCGPChartSeries::EnableHistoryMode(BOOL bEnable, int nHistoryDepth, BOOL b
 
 	if (IsOptimizedLongDataMode())
 	{
-		TRACE0("History mode can't be enabled for optimized long adat mode.");
+		TRACE0("History mode can't be enabled for optimized long data mode.");
 		return;
 	}
 
@@ -642,6 +664,9 @@ CBCGPBaseChartImpl* CBCGPChartSeries::OnCreateChartImpl(BCGPChartCategory chartC
 	case BCGPChartDoughnut:
 		m_pChartImpl = new CBCGPDoughnutChartImpl(m_pChart, FALSE);
 		break;
+	case BCGPChartDoughnutNested:
+		m_pChartImpl = new CBCGPDoughnutChartImpl(m_pChart, FALSE, TRUE);
+		break;
 	case BCGPChartDoughnut3D:
 		m_pChartImpl = new CBCGPDoughnutChartImpl(m_pChart, TRUE);
 		break;
@@ -666,6 +691,9 @@ CBCGPBaseChartImpl* CBCGPChartSeries::OnCreateChartImpl(BCGPChartCategory chartC
 		break;
 	case BCGPChartPolar:
 		m_pChartImpl = new CBCGPPolarChartImpl(m_pChart);
+		break;
+	case BCGPChartBoxPlot:
+		m_pChartImpl = new CBCGPBoxPlotChartImpl(m_pChart);
 		break;
 	case BCGPChartTernary:
 	default:
@@ -721,25 +749,28 @@ void CBCGPChartSeries::SetChartImpl(CBCGPBaseChartImpl* pImpl)
 //****************************************************************************************
 BOOL CBCGPChartSeries::CanBeConvertedToCategory(BCGPChartCategory chartCategory) const
 {
-	if (IsOptimizedLongDataMode() && 
-		(chartCategory != BCGPChartArea && chartCategory != BCGPChartColumn && 
-		chartCategory != BCGPChartBar && chartCategory != BCGPChartHistogram && 
-		chartCategory != BCGPChartLine))
+	if (m_chartCategory != chartCategory)
 	{
-		return FALSE;
-	}
+		if (IsOptimizedLongDataMode() && 
+			(chartCategory != BCGPChartArea && chartCategory != BCGPChartColumn && 
+			chartCategory != BCGPChartBar && chartCategory != BCGPChartHistogram && 
+			chartCategory != BCGPChartLine))
+		{
+			return FALSE;
+		}
 
-	if (chartCategory == BCGPChartStock || chartCategory == BCGPChartTernary)
-	{
-		// can't change to stock or ternary category.
-		// stock and ternary types must be created explicitly
-		return FALSE;
-	}
+		if (chartCategory == BCGPChartStock || chartCategory == BCGPChartTernary || chartCategory == BCGPChartBoxPlot)
+		{
+			// can't change to stock or ternary category.
+			// stock and ternary types must be created explicitly
+			return FALSE;
+		}
 
-	if (m_chartCategory == BCGPChartLongData || m_chartCategory == BCGPChartPolar || m_chartCategory == BCGPChartTernary)
-	{
-		// can't change long data, polar and ternary chart to anything else
-		return FALSE;
+		if (m_chartCategory == BCGPChartLongData || m_chartCategory == BCGPChartPolar || m_chartCategory == BCGPChartTernary)
+		{
+			// can't change long data, polar and ternary chart to anything else
+			return FALSE;
+		}
 	}
 
 	return TRUE;
@@ -755,30 +786,33 @@ CBCGPChartSeries* CBCGPChartSeries::SetChartType(BCGPChartCategory chartCategory
 		return NULL;
 	}
 
-	if (IsOptimizedLongDataMode() && 
-			(chartCategory != BCGPChartArea && chartCategory != BCGPChartColumn && 
-			 chartCategory != BCGPChartBar && chartCategory != BCGPChartHistogram && 
-			 chartCategory != BCGPChartLine))
+	if (m_chartCategory != chartCategory)
 	{
-		return NULL;
+		if (IsOptimizedLongDataMode() && 
+				(chartCategory != BCGPChartArea && chartCategory != BCGPChartColumn && 
+				 chartCategory != BCGPChartBar && chartCategory != BCGPChartHistogram && 
+				 chartCategory != BCGPChartLine))
+		{
+			return NULL;
+		}
+
+		if (chartCategory == BCGPChartStock || chartCategory == BCGPChartTernary || chartCategory == BCGPChartBoxPlot)
+		{
+			// can't change to stock or ternary category.
+			// stock and ternary types must be created explicitly
+			return this;
+		}
+
+		if (m_chartCategory == BCGPChartLongData || m_chartCategory == BCGPChartPolar || m_chartCategory == BCGPChartTernary)
+		{
+			// can't change long data, polar and ternary chart to anything else
+			return this;
+		}
 	}
 
 	if (chartCategory == BCGPChartSurface3D && chartType != BCGP_CT_SIMPLE)
 	{
 		chartType = BCGP_CT_SIMPLE;
-	}
-
-	if (chartCategory == BCGPChartStock || chartCategory == BCGPChartTernary)
-	{
-		// can't change to stock or ternary category.
-		// stock and ternary types must be created explicitly
-		return this;
-	}
-
-	if (m_chartCategory == BCGPChartLongData || m_chartCategory == BCGPChartPolar || m_chartCategory == BCGPChartTernary)
-	{
-		// can't change long data, polar and ternary chart to anything else
-		return this;
 	}
 
 	if ((m_chartCategory == BCGPChartPie && chartCategory == BCGPChartPie3D ||
@@ -801,17 +835,12 @@ CBCGPChartSeries* CBCGPChartSeries::SetChartType(BCGPChartCategory chartCategory
 		return this;
 	}
 
-	if (m_chartCategory == BCGPChartBar && 
-		chartCategory == BCGPChartColumn ||
-		m_chartCategory == BCGPChartColumn &&
-		chartCategory == BCGPChartBar ||
-		m_chartCategory == BCGPChartBar3D && 
-		chartCategory == BCGPChartColumn3D ||
-		m_chartCategory == BCGPChartColumn3D &&
-		chartCategory == BCGPChartBar3D)
+	if (m_chartCategory == BCGPChartBar && chartCategory == BCGPChartColumn ||
+		m_chartCategory == BCGPChartColumn && chartCategory == BCGPChartBar ||
+		m_chartCategory == BCGPChartBar3D && chartCategory == BCGPChartColumn3D ||
+		m_chartCategory == BCGPChartColumn3D && chartCategory == BCGPChartBar3D)
 	{
-		if (m_chartType == BCGP_CT_100STACKED && 
-			m_chartType != chartType)
+		if (m_chartType == BCGP_CT_100STACKED && m_chartType != chartType)
 		{
 			if (m_pYAxis != NULL)
 			{
@@ -861,16 +890,13 @@ CBCGPChartSeries* CBCGPChartSeries::SetChartType(BCGPChartCategory chartCategory
 	ASSERT_VALID(m_pChart);
 	m_pChartImpl = GetChartImpl();
 
-	if (m_chartType != chartType)
+	if (m_chartType == BCGP_CT_100STACKED && m_chartType != chartType)
 	{
 		// reset fixed range flag in Y axis, which might be left from stacked series
-		if (m_chartType == BCGP_CT_100STACKED)
+		if (m_pYAxis != NULL)
 		{
-			if (m_pYAxis != NULL)
-			{
-				ASSERT_VALID(m_pYAxis);
-				m_pYAxis->SetAutoDisplayRange();
-			}
+			ASSERT_VALID(m_pYAxis);
+			m_pYAxis->SetAutoDisplayRange();
 		}
 	}
 
@@ -1014,12 +1040,7 @@ CBCGPRect CBCGPChartSeries::GetAxesBoundingRect()
 	ASSERT_VALID(m_pXAxis);
 	ASSERT_VALID(m_pYAxis);
 
-	if (m_pYAxis->m_nAxisID >= BCGP_CHART_FIRST_CUSTOM_ID)
-	{
-		return m_pYAxis->GetBoundingRect();
-	}
-
-	return m_pXAxis->GetBoundingRect();
+	return (m_pYAxis->m_nAxisID >= BCGP_CHART_FIRST_CUSTOM_ID) ? m_pYAxis->GetBoundingRect() : m_pXAxis->GetBoundingRect();
 }
 //****************************************************************************************
 void CBCGPChartSeries::SetRelatedAxes(CBCGPChartAxis* pXAxis, CBCGPChartAxis* pYAxis, CBCGPChartAxis* pZAxis)
@@ -1057,6 +1078,11 @@ void CBCGPChartSeries::SetRelatedAxis(CBCGPChartAxis* pAxis, CBCGPChartSeries::A
 	{
 		ASSERT_VALID(pAxis);
 		ASSERT_KINDOF(CBCGPChartAxis, pAxis);
+	}
+
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->SetRelatedAxis(pAxis, axisIndex);
 	}
 
 	switch(axisIndex)
@@ -1218,11 +1244,21 @@ void CBCGPChartSeries::ClearMinMaxValues()
 	m_nMaxDisplayedXIndex = 0;
 
 	m_bXComponentSet = FALSE;
+
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->ClearMinMaxValues();
+	}
 }
 //****************************************************************************************
 void CBCGPChartSeries::SetMinValue(double dblValue, CBCGPChartData::ComponentIndex ci)
 {
 	ASSERT_VALID(this);
+
+	if (HasErrorBars() && ci == CBCGPChartData::CI_Y)
+	{
+		dblValue = min(dblValue, m_pErrorSeries->GetMinValue(ci));
+	}
 
 	m_minValues.SetValue(dblValue, ci);
 }
@@ -1230,6 +1266,11 @@ void CBCGPChartSeries::SetMinValue(double dblValue, CBCGPChartData::ComponentInd
 void CBCGPChartSeries::SetMaxValue(double dblValue, CBCGPChartData::ComponentIndex ci)
 {
 	ASSERT_VALID(this);
+
+	if (HasErrorBars() && ci == CBCGPChartData::CI_Y)
+	{
+		dblValue = max(dblValue, m_pErrorSeries->GetMaxValue(ci));
+	}
 
 	m_maxValues.SetValue(dblValue, ci);
 }
@@ -1282,9 +1323,6 @@ void CBCGPChartSeries::SetMinMaxValuesRange(double dblValue, CBCGPChartData::Com
 
 	if (ci == CBCGPChartData::CI_Y || nDataPointIndex < 0 || nDataPointIndex >= GetDataPointCount())
 	{
-		CBCGPChartValue chartValueY1 = pDataPoint->GetComponentValue(CBCGPChartData::CI_Y1);
-		CBCGPChartValue chartValueX = pDataPoint->GetComponentValue(CBCGPChartData::CI_X);
-
 		SetMinMaxValuesSimple(dblValue, ci, nDataPointIndex);
 		return;
 	}
@@ -1378,14 +1416,15 @@ void CBCGPChartSeries::SetMinMaxValues100Stacked(double dblValue, CBCGPChartData
 		return;
 	}
 
-	BOOL bIsBarChart = GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl));
+	BOOL bIsBarChart = GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl)) ||
+						GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBoxPlotChartImpl));
 
 	double dblStackedSum = 0;
 	double dblTotalSum = 0;
 	double dblPositiveStackedSum = 0;
 	double dblNegativeStackedSum = 0;
 
-	CalcFullStackedSums(nDataPointIndex, dblStackedSum, dblPositiveStackedSum, dblNegativeStackedSum, dblTotalSum);
+	CalcFullStackedSums(nDataPointIndex, dblStackedSum, dblPositiveStackedSum, dblNegativeStackedSum, dblTotalSum, FALSE);
 
 	double dblCalculatedVal = 0;
 	if (fabs(dblTotalSum) > 0.)
@@ -1406,7 +1445,6 @@ void CBCGPChartSeries::SetMinMaxValues100Stacked(double dblValue, CBCGPChartData
 		}
 	}
 
-
 	SetMinMaxValuesSimple(0., CBCGPChartData::CI_Y, nDataPointIndex);
 	SetMinMaxValuesSimple(dblCalculatedVal, CBCGPChartData::CI_Y, nDataPointIndex);
 }
@@ -1415,8 +1453,6 @@ void CBCGPChartSeries::SetMinMaxValues(const CBCGPChartValue& val, CBCGPChartDat
 {
 	ASSERT_VALID(this);
 	ASSERT_VALID(m_pChart);
-
-	UNREFERENCED_PARAMETER(nDataPointIndex);
 
 	if (_isnan(val.GetValue()) || !_finite(val.GetValue()))
 	{
@@ -1453,9 +1489,154 @@ void CBCGPChartSeries::SetMinMaxValues(const CBCGPChartValue& val, CBCGPChartDat
 	}
 }
 //****************************************************************************************
+void CBCGPChartSeries::OnAnimationValueChanged(double /*dblOldValue*/, double dblNewValue)
+{
+	ASSERT_VALID(this);
+
+	switch (m_AnimationStyle)
+	{
+	case BCGPChartAnimationStyle_Grow:
+		RecalcAnimatedValues(dblNewValue);
+		break;
+
+	case BCGPChartAnimationStyle_Slide:
+	case BCGPChartAnimationStyle_SlideReversed:
+		if (m_pChart != NULL)
+		{
+			ASSERT_VALID(m_pChart);
+
+			if (m_pChart->IsChart3D())
+			{
+				RecalcAnimatedValues(dblNewValue);
+			}
+			else if (m_bIsLastAnimationSeries)
+			{
+				m_pChart->Redraw();
+			}
+		}
+		break;
+
+	case BCGPChartAnimationStyle_Fade:
+		if (m_pChart != NULL)
+		{
+			ASSERT_VALID(m_pChart);
+			m_pChart->Redraw();
+		}
+		break;
+	}
+}
+//****************************************************************************************
+void CBCGPChartSeries::OnAnimationFinished()
+{
+	ASSERT_VALID(this);
+
+	switch (m_AnimationStyle)
+	{
+	case BCGPChartAnimationStyle_Grow:
+		RecalcAnimatedValues(0.0, TRUE);
+		break;
+
+	case BCGPChartAnimationStyle_Slide:
+	case BCGPChartAnimationStyle_SlideReversed:
+		if (m_pChart != NULL && m_bIsLastAnimationSeries)
+		{
+			ASSERT_VALID(m_pChart);
+
+			if (m_pChart->IsChart3D())
+			{
+				RecalcAnimatedValues(0.0, TRUE);
+			}
+			else if (m_bIsLastAnimationSeries)
+			{
+				m_pChart->Redraw();
+			}
+		}
+		break;
+
+	case BCGPChartAnimationStyle_Fade:
+		if (m_pChart != NULL)
+		{
+			ASSERT_VALID(m_pChart);
+			m_pChart->Redraw();
+		}
+		break;
+	}
+
+	m_bIsLastAnimationSeries = FALSE;
+}
+//****************************************************************************************
+void CBCGPChartSeries::RecalcAnimatedValues(double dblValue, BOOL bReset)
+{
+	for (int i = 0; i < GetDataPointCount(); i++)
+	{
+		CBCGPChartDataPoint* pDp = (CBCGPChartDataPoint*)GetDataPointAt(i);
+		if (pDp != NULL)
+		{
+			if (bReset)
+			{
+				pDp->EmptyAnimatedValue();
+			}
+			else if (!pDp->IsEmpty())
+			{
+				pDp->SetAnimatedValue(dblValue, m_AnimationComponentIndex);
+			}
+		}
+	}
+
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->RecalcAnimatedValues(dblValue, bReset);
+	}
+
+	if (m_pChart != NULL && m_bIsLastAnimationSeries)
+	{
+		ASSERT_VALID(m_pChart);
+		m_pChart->SetDirty(TRUE, TRUE);
+	}
+}
+//***********************************************************************************************************
+BOOL CBCGPChartSeries::StartAnimationInternal(double dblAnimationTime, 
+						  BCGPChartAnimationStyle animationStyle, CBCGPAnimationManager::BCGPAnimationType type,
+						  CBCGPChartData::ComponentIndex animationComponentIndex)
+{
+	ASSERT_VALID(this);
+	
+	m_bIsLastAnimationSeries = FALSE;
+
+	if (animationComponentIndex == CBCGPChartData::CI_DEFAULT)
+	{
+		animationComponentIndex = GetDefaultAnimationComponentIndex(animationStyle);
+	}
+	m_AnimationComponentIndex = animationComponentIndex;
+
+	if (animationStyle == BCGPChartAnimationStyle_Default)
+	{
+		animationStyle = GetDefaultAnimationStyle();
+	}
+	
+	if (animationStyle == BCGPChartAnimationStyle_None)
+	{
+		return FALSE;
+	}
+
+	if (animationStyle == BCGPChartAnimationStyle_Fade && !CBCGPAnimationManager::IsAnimationSupportedByOS())
+	{
+		return FALSE;
+	}
+
+	m_AnimationStyle = animationStyle;
+
+	return StartAnimation(0.0, 1.0, dblAnimationTime, type);
+}
+//****************************************************************************************
 void CBCGPChartSeries::OnCalcScreenPointsSimple(CBCGPGraphicsManager* /*pGM*/, const CBCGPRect& /*rectDiagramArea*/)
 {
 	ASSERT_VALID(this);
+
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->GetErrorValue().RemoveAllScreenPoints();
+	}
 
 	for (int i = GetMinDataPointIndex(); i <= GetMaxDataPointIndex(); i++)
 	{
@@ -1465,11 +1646,25 @@ void CBCGPChartSeries::OnCalcScreenPointsSimple(CBCGPGraphicsManager* /*pGM*/, c
 			RemoveAllDataPointScreenPoints(i);
 
 			BOOL bIsEmpty = FALSE;
-			CBCGPPoint point = m_pChart->ScreenPointFromChartData(pDp->GetData(), i, bIsEmpty, this);
+			CBCGPPoint point = m_pChart->ScreenPointFromChartData(pDp->GetAnimatedData(), i, bIsEmpty, this);
 
 			if (!bIsEmpty)
 			{
 				SetDataPointScreenPoint(i, 0, point);
+
+				if (HasErrorBars())
+				{
+					CBCGPChartDataPoint& errValue = m_pErrorSeries->GetErrorValue();
+
+					CBCGPChartData dataErr(GetDataPointErrorAnimatedValue(i, CBCGPChartData::CI_X), GetDataPointErrorAnimatedValue(i, CBCGPChartData::CI_Y));
+					if (!errValue.IsEmpty() && errValue.IsScreenPointsEmpty())
+					{
+						errValue.SetScreenPointAt(0, m_pChart->ScreenPointFromChartData(dataErr, i, bIsEmpty, this));
+					}
+
+					pDp = (CBCGPChartDataPoint*)m_pErrorSeries->GetDataPointAt(i);
+					m_pErrorSeries->CalculateScreenPoints(i, dataErr, *pDp);
+				}
 			}
 		}
 	}
@@ -1478,6 +1673,11 @@ void CBCGPChartSeries::OnCalcScreenPointsSimple(CBCGPGraphicsManager* /*pGM*/, c
 void CBCGPChartSeries::OnCalcScreenPointsRange(CBCGPGraphicsManager* /*pGM*/, const CBCGPRect& /*rectDiagramArea*/)
 {
 	ASSERT_VALID(this);
+
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->GetErrorValue().RemoveAllScreenPoints();
+	}
 
 	for (int i = GetMinDataPointIndex(); i <= GetMaxDataPointIndex(); i++)
 	{
@@ -1489,9 +1689,9 @@ void CBCGPChartSeries::OnCalcScreenPointsRange(CBCGPGraphicsManager* /*pGM*/, co
 			continue;
 		}
 
-		CBCGPChartValue valY = GetDataPointValue(i, CBCGPChartData::CI_Y);
-		CBCGPChartValue valX = GetDataPointValue(i, CBCGPChartData::CI_X);
-		CBCGPChartValue valY1 = GetDataPointValue(i, CBCGPChartData::CI_Y1);
+		CBCGPChartValue valY = GetDataPointAnimatedValue(i, CBCGPChartData::CI_Y);
+		CBCGPChartValue valX = GetDataPointAnimatedValue(i, CBCGPChartData::CI_X);
+		CBCGPChartValue valY1 = GetDataPointAnimatedValue(i, CBCGPChartData::CI_Y1);
 
 		if (valY1.IsEmpty())
 		{
@@ -1523,6 +1723,66 @@ void CBCGPChartSeries::OnCalcScreenPointsRange(CBCGPGraphicsManager* /*pGM*/, co
 	}
 }
 //****************************************************************************************
+void CBCGPChartSeries::CalcStackedSums(int nDataPointIndex, double& dblStackedSum, double& dblPositiveStackedSum, 
+										   double& dblNegativeStackedSum, BOOL bAnimated/* = FALSE*/)
+{
+	ASSERT_VALID(this);
+
+	const BOOL bIsArea3D = GetChartCategory() == BCGPChartArea3D;
+
+	BOOL bThisSeriesFound = FALSE;
+
+	for (int j = 0; j < m_pChart->GetSeriesCount(); j++)
+	{
+		CBCGPChartSeries* pSeries = DYNAMIC_DOWNCAST(CBCGPChartSeries, m_pChart->GetSeries(j, FALSE));
+		if (pSeries == NULL || !pSeries->IsStakedSeries() || !pSeries->m_bVisible || 
+			m_nGroupID != pSeries->m_nGroupID || !pSeries->IsShownOnAxis(m_pYAxis))
+		{
+			continue;
+		}
+
+		if (pSeries == this)
+		{
+			if (m_chartType == BCGP_CT_STACKED)
+			{
+				break;
+			}
+			else
+			{
+				bThisSeriesFound = TRUE;
+			}
+		}
+
+		CBCGPChartValue val = (pSeries->IsAnimated() && bAnimated)
+			? pSeries->GetDataPointAnimatedValue(nDataPointIndex, CBCGPChartData::CI_Y)
+			: pSeries->GetDataPointValue(nDataPointIndex, CBCGPChartData::CI_Y);
+
+		if (!val.IsEmpty())
+		{
+			double dblVal = val.GetValue();
+
+			if (bIsArea3D && dblVal < 0.)
+			{
+				dblVal = fabs(dblVal);
+			}
+
+			if (!bThisSeriesFound)
+			{
+				dblStackedSum += dblVal;
+
+				if (dblVal >= 0)
+				{
+					dblPositiveStackedSum += dblVal;
+				}
+				else
+				{
+					dblNegativeStackedSum += dblVal;
+				}
+			}
+		}
+	}
+}
+//****************************************************************************************
 void CBCGPChartSeries::OnCalcScreenPointsStacked(CBCGPGraphicsManager* pGM, const CBCGPRect& /*rectDiagramArea*/)
 {
 	ASSERT_VALID(this);
@@ -1530,7 +1790,13 @@ void CBCGPChartSeries::OnCalcScreenPointsStacked(CBCGPGraphicsManager* pGM, cons
 
 	UNREFERENCED_PARAMETER(pGM);
 
-	BOOL bIsBarChart = GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl));
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->GetErrorValue().RemoveAllScreenPoints();
+	}
+
+	BOOL bIsBarChart = GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl)) ||
+						GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBoxPlotChartImpl));
 	BOOL bIsArea3D = GetChartCategory() == BCGPChartArea3D;
 
 	// loop over all data points in the series and calculate sum for all data points at index i for all series (100% stacked)
@@ -1541,7 +1807,7 @@ void CBCGPChartSeries::OnCalcScreenPointsStacked(CBCGPGraphicsManager* pGM, cons
 		RemoveAllDataPointScreenPoints(i);
 
 		if (pDp == NULL || 
-			pDp->GetComponentValue().IsEmpty() && m_treatNulls != CBCGPChartSeries::TN_VALUE)
+			pDp->GetAnimatedComponentValue().IsEmpty() && m_treatNulls != CBCGPChartSeries::TN_VALUE)
 		{
 			continue;
 		}
@@ -1549,63 +1815,14 @@ void CBCGPChartSeries::OnCalcScreenPointsStacked(CBCGPGraphicsManager* pGM, cons
 		double dblStackedSum = 0;
 		double dblPositiveStackedSum = 0;
 		double dblNegativeStackedSum = 0;
-		double dblPositiveTotalSum = 0;
-		double dblNegativeTotalSum = 0;
-		BOOL bThisSeriesFound = FALSE;
 
-		for (int j = 0; j < m_pChart->GetSeriesCount(); j++)
-		{
-			CBCGPChartSeries* pSeries = DYNAMIC_DOWNCAST(CBCGPChartSeries, m_pChart->GetSeries(j, FALSE));
-			if (pSeries == NULL || !pSeries->IsStakedSeries() || !pSeries->m_bVisible || 
-				m_nGroupID != pSeries->m_nGroupID || !pSeries->IsShownOnAxis(m_pYAxis))
-			{
-				continue;
-			}
-
-			if (pSeries == this)
-			{
-				if (m_chartType == BCGP_CT_STACKED)
-				{
-					break;
-				}
-				else
-				{
-					bThisSeriesFound = TRUE;
-				}
-			}
-
-
-			CBCGPChartValue val = pSeries->GetDataPointValue(i, CBCGPChartData::CI_Y);
-			if (!val.IsEmpty())
-			{
-				if (bIsArea3D && val < 0.)
-				{
-					val.SetValue(fabs(val));
-				}
-
-				if (!bThisSeriesFound)
-				{
-					dblStackedSum += val;
-					if (val >= 0)
-					{
-						dblPositiveStackedSum += val;
-					}
-					else
-					{
-						dblNegativeStackedSum += val;
-					}
-				}
-
-				dblPositiveTotalSum += val;
-				dblNegativeTotalSum += val;
-			}
-		}
+		CalcStackedSums(i, dblStackedSum, dblPositiveStackedSum, dblNegativeStackedSum, TRUE);
 
 		// obtain data from the current data point to pass it later to ScreenPointFromChartData
 		// we'll preserve X component to receive correct X coordinate, while the Y coordinate
 		// will be set according to STACKED rules (100% or simple)
-		CBCGPChartData chartData = pDp->GetData();
-		double currentVal = pDp->GetComponentValue(CBCGPChartData::CI_Y);
+		CBCGPChartData chartData = pDp->GetAnimatedData();
+		double currentVal = pDp->GetAnimatedComponentValue(CBCGPChartData::CI_Y);
 
 		if (bIsArea3D && currentVal < 0.)
 		{
@@ -1654,13 +1871,29 @@ void CBCGPChartSeries::OnCalcScreenPointsStacked(CBCGPGraphicsManager* pGM, cons
 		point = m_pChart->ScreenPointFromChartData(chartData, i, bIsEmpty, this);
 
 		SetDataPointScreenPoint(i, 0, point);
+
+		if (HasErrorBars())
+		{
+			CBCGPChartData errorData(GetDataPointErrorAnimatedValue(i, CBCGPChartData::CI_X), GetDataPointErrorAnimatedValue(i, CBCGPChartData::CI_Y));
+
+			CBCGPChartDataPoint& errValue = m_pErrorSeries->GetErrorValue();
+			if (!errValue.IsEmpty() && errValue.IsScreenPointsEmpty())
+			{
+				errValue.SetScreenPointAt(0, m_pChart->ScreenPointFromChartData(errorData, i, bIsEmpty, this));
+			}
+
+			pDp = (CBCGPChartDataPoint*)m_pErrorSeries->GetDataPointAt(i);
+			m_pErrorSeries->CalculateScreenPoints(i, errorData, *pDp);
+		}
 	}
 }
 //****************************************************************************************
 void CBCGPChartSeries::CalcFullStackedSums(int nDataPointIndex, double& dblStackedSum, double& dblPositiveStackedSum, 
-										   double& dblNegativeStackedSum, double& dblTotalSum)
+										   double& dblNegativeStackedSum, double& dblTotalSum, BOOL bAnimated/* = FALSE*/)
 {
 	ASSERT_VALID(this);
+
+	const BOOL bIsArea3D = GetChartCategory() == BCGPChartArea3D;
 
 	BOOL bThisSeriesFound = FALSE;
 
@@ -1678,29 +1911,34 @@ void CBCGPChartSeries::CalcFullStackedSums(int nDataPointIndex, double& dblStack
 			bThisSeriesFound = TRUE;
 		}
 
-		CBCGPChartValue val = pSeries->GetDataPointValue(nDataPointIndex, CBCGPChartData::CI_Y);
+		CBCGPChartValue val = (pSeries->IsAnimated() && bAnimated)
+			? pSeries->GetDataPointAnimatedValue(nDataPointIndex, CBCGPChartData::CI_Y)
+			: pSeries->GetDataPointValue(nDataPointIndex, CBCGPChartData::CI_Y);
 
 		if (!val.IsEmpty())
 		{
-			if (pSeries->GetChartCategory() == BCGPChartArea3D && val.GetValue() < 0.)
+			double dblVal = val.GetValue();
+
+			if (bIsArea3D && dblVal < 0.)
 			{
-				val.SetValue(fabs(val));
+				dblVal = fabs(dblVal);
 			}
 
 			if (!bThisSeriesFound)
 			{
-				dblStackedSum += val;
-				if (val >= 0)
+				dblStackedSum += dblVal;
+
+				if (dblVal >= 0)
 				{
-					dblPositiveStackedSum += val;
+					dblPositiveStackedSum += dblVal;
 				}
 				else
 				{
-					dblNegativeStackedSum += val;
+					dblNegativeStackedSum += dblVal;
 				}
 			}
 
-			dblTotalSum += fabs(val);
+			dblTotalSum += fabs(dblVal);
 		}
 	}
 }
@@ -1712,7 +1950,13 @@ void CBCGPChartSeries::OnCalcScreenPoints100Stacked(CBCGPGraphicsManager* pGM, c
 
 	UNREFERENCED_PARAMETER(pGM);
 
-	BOOL bIsBarChart = GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl));
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->GetErrorValue().RemoveAllScreenPoints();
+	}
+
+	BOOL bIsBarChart = GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl)) ||
+						GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBoxPlotChartImpl));
 	BOOL bIsLineChart = GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPLineChartImpl));
 	BOOL bIsArea3D = GetChartCategory() == BCGPChartArea3D;
 
@@ -1724,23 +1968,23 @@ void CBCGPChartSeries::OnCalcScreenPoints100Stacked(CBCGPGraphicsManager* pGM, c
 		RemoveAllDataPointScreenPoints(i);
 
 		if (pDp == NULL || 
-			pDp->GetComponentValue().IsEmpty() && m_treatNulls != CBCGPChartSeries::TN_VALUE)
+			pDp->GetAnimatedComponentValue().IsEmpty() && m_treatNulls != CBCGPChartSeries::TN_VALUE)
 		{
 			continue;
 		}
 
 		double dblStackedSum = 0;
-		double dblTotalSum = 0;
 		double dblPositiveStackedSum = 0;
 		double dblNegativeStackedSum = 0;
+		double dblTotalSum = 0;
 
-		CalcFullStackedSums(i, dblStackedSum, dblPositiveStackedSum, dblNegativeStackedSum, dblTotalSum);
+		CalcFullStackedSums(i, dblStackedSum, dblPositiveStackedSum, dblNegativeStackedSum, dblTotalSum, FALSE);
 
 		// obtain data from the current data point to pass it later to ScreenPointFromChartData
 		// we'll preserve X component to receive correct X coordinate, while the Y coordinate
 		// will be set according to STACKED rules (100% or simple)
-		CBCGPChartData chartData = pDp->GetData();
-		double currentVal = pDp->GetComponentValue(CBCGPChartData::CI_Y);
+		CBCGPChartData chartData = pDp->GetAnimatedData();
+		double currentVal = pDp->GetAnimatedComponentValue(CBCGPChartData::CI_Y);
 
 		if (bIsArea3D && currentVal < 0.)
 		{
@@ -1790,6 +2034,20 @@ void CBCGPChartSeries::OnCalcScreenPoints100Stacked(CBCGPGraphicsManager* pGM, c
 		point = m_pChart->ScreenPointFromChartData(chartData, i, bIsEmpty, this);
 
 		SetDataPointScreenPoint(i, 0, point);
+
+		if (HasErrorBars())
+		{
+			CBCGPChartData errorData(GetDataPointErrorAnimatedValue(i, CBCGPChartData::CI_X), GetDataPointErrorAnimatedValue(i, CBCGPChartData::CI_Y));
+
+			CBCGPChartDataPoint& errValue = m_pErrorSeries->GetErrorValue();
+			if (!errValue.IsEmpty() && errValue.IsScreenPointsEmpty())
+			{
+				errValue.SetScreenPointAt(0, m_pChart->ScreenPointFromChartData(errorData, i, bIsEmpty, this));
+			}
+
+			pDp = (CBCGPChartDataPoint*)m_pErrorSeries->GetDataPointAt(i);
+			m_pErrorSeries->CalculateScreenPoints(i, errorData, *pDp);
+		}
 	}
 }
 //****************************************************************************************
@@ -2583,9 +2841,21 @@ BOOL CBCGPChartSeries::SetDataPointLabelRect(int nDataPointIndex, const CBCGPRec
 }
 //****************************************************************************************
 BOOL CBCGPChartSeries::GetDataPointLabelDropLines(int nDataPointIndex, CBCGPPoint& ptLabelLineStart, 
-										CBCGPPoint& ptLableLineEnd, CBCGPPoint& ptLabelUnderline) const
+										CBCGPPoint& ptLabelLineEnd, CBCGPPoint& ptLabelUnderline) const
 {
 	ASSERT_VALID(this);
+
+	if (IsOptimizedLongDataMode())
+	{
+		CBCGPRect rect;
+		m_mapDataPointLabelsLine.Lookup(nDataPointIndex, rect);
+		m_mapDataPointLabelsUnderline.Lookup(nDataPointIndex, ptLabelUnderline);
+
+		ptLabelLineStart = rect.TopLeft();
+		ptLabelLineEnd = rect.BottomRight();
+
+		return TRUE;
+	}
 
 	CBCGPChartDataPoint* pDataPoint = (CBCGPChartDataPoint*)GetDataPointAt(nDataPointIndex);
 	if (pDataPoint == NULL)
@@ -2594,10 +2864,10 @@ BOOL CBCGPChartSeries::GetDataPointLabelDropLines(int nDataPointIndex, CBCGPPoin
 	}
 
 	ptLabelLineStart = pDataPoint->m_ptLabelLineStart;
-	ptLableLineEnd = pDataPoint->m_ptLabelLineEnd;
+	ptLabelLineEnd = pDataPoint->m_ptLabelLineEnd;
 	ptLabelUnderline = pDataPoint->m_ptLabelUnderline;
 
-	return ptLabelLineStart != ptLableLineEnd;
+	return ptLabelLineStart != ptLabelLineEnd;
 }
 //****************************************************************************************
 BOOL CBCGPChartSeries::SetUseWordWrapForDataLabels(BOOL bSet, int nDataPointIndex)
@@ -2631,6 +2901,13 @@ BOOL CBCGPChartSeries::SetDataPointLabelDropLinePoints(int nDataPointIndex, cons
 											 const CBCGPPoint& ptLabelLineEnd, const CBCGPPoint& ptLabelUnderline)
 {
 	ASSERT_VALID(this);
+
+	if (IsOptimizedLongDataMode())
+	{
+		m_mapDataPointLabelsLine.SetAt(nDataPointIndex, CBCGPRect(ptLabelLineStart, ptLabelLineEnd));
+		m_mapDataPointLabelsUnderline.SetAt(nDataPointIndex, ptLabelUnderline);
+		return TRUE;
+	}
 
 	CBCGPChartDataPoint* pDataPoint = (CBCGPChartDataPoint*)GetDataPointAt(nDataPointIndex);
 	if (pDataPoint == NULL)
@@ -2905,6 +3182,18 @@ BOOL CBCGPChartSeries::OnGetDataLabelText(int nDataPointIndex, CString& strText)
 
 	strText = pDataPoint->m_strDataLabel;
 	return !strText.IsEmpty();
+}
+//****************************************************************************************
+BOOL CBCGPChartSeries::IsLegendEntryVisible() const
+{
+	ASSERT_VALID(this);
+
+	if (IsSeriesTiling() && m_pChart != NULL && m_pChart->FindSeriesIndex((CBCGPChartSeries*)this) > 0)
+	{
+		return FALSE;
+	}
+	
+	return (m_bVisible || m_bIncludeInvisibleSeriesToLegend) && m_bIncludeSeriesToLegend;
 }
 //****************************************************************************************
 void CBCGPChartSeries::OnGetDataPointLegendLabel(int nDataPointIndex, CString& strLabel)
@@ -3206,6 +3495,176 @@ CBCGPChartValue CBCGPChartSeries::GetDataPointValue(int nDataPointIndex, CBCGPCh
 	return pDataPoint->GetComponentValue(ci);
 }
 //****************************************************************************************
+CBCGPChartValue CBCGPChartSeries::GetDataPointErrorValue(int nDataPointIndex, CBCGPChartData::ComponentIndex ci) const
+{
+	if (nDataPointIndex < 0 || nDataPointIndex >= GetDataPointCount())
+	{
+		return CBCGPChartValue();
+	}
+
+	CBCGPChartValue errValue;
+	if (HasErrorBars() && ci == CBCGPChartData::CI_Y)
+	{
+		errValue = m_pErrorSeries->GetErrorValue().GetComponentValue(CBCGPChartData::CI_Y);
+		if (!errValue.IsEmpty())
+		{
+			return errValue.GetValue();
+		}
+	}
+
+	return GetDataPointValue(nDataPointIndex, ci);
+}
+//****************************************************************************************
+CBCGPChartValue CBCGPChartSeries::GetDataPointErrorAnimatedValue(int nDataPointIndex, CBCGPChartData::ComponentIndex ci) const
+{
+	ASSERT_VALID(this);
+
+	if (nDataPointIndex < 0 || nDataPointIndex >= GetDataPointCount())
+	{
+		return CBCGPChartValue();
+	}
+
+	CBCGPChartValue errValue;
+	if (HasErrorBars() && ci == CBCGPChartData::CI_Y)
+	{
+		errValue = m_pErrorSeries->GetErrorValue().GetAnimatedComponentValue(CBCGPChartData::CI_Y);
+		if (!errValue.IsEmpty())
+		{
+			return errValue.GetValue();
+		}
+	}
+
+	return GetDataPointAnimatedValue(nDataPointIndex, ci);
+}
+//****************************************************************************************
+CBCGPPoint CBCGPChartSeries::GetDataPointErrorScreenPoint(int nDataPointIndex) const
+{
+	CBCGPPoint point(GetDataPointScreenPoint(nDataPointIndex, 0));
+
+	if (HasErrorBars())
+	{
+		const CBCGPChartDataPoint& errValue = m_pErrorSeries->GetErrorValue();
+
+		if (!errValue.IsEmpty())
+		{
+			CBCGPChartAxis* pAxis = GetRelatedAxis(CBCGPChartSeries::AI_X);
+			if (pAxis != NULL && pAxis->IsVertical())
+			{
+				point.x = errValue.GetScreenPoint(0).x;
+			}
+			else
+			{
+				point.y = errValue.GetScreenPoint(0).y;
+			}
+		}
+	}
+
+	return point;
+}
+//****************************************************************************************
+BOOL CBCGPChartSeries::CreateErrorBars(const CBCGPChartErrorBarsFormula& formula, UINT uiDrawFlags)
+{
+	RemoveErrorBars();
+
+	CBCGPChartErrorBarsFormula* pFormula = (CBCGPChartErrorBarsFormula*) formula.GetRuntimeClass()->CreateObject();
+	if (pFormula == NULL)
+	{
+		return FALSE;
+	}
+
+	pFormula->CopyFrom(formula);
+
+	CBCGPChartErrorBarsSeries* pErrorSeries = new CBCGPChartErrorBarsSeries(m_pChart);
+	if (pErrorSeries != NULL)
+	{
+		pErrorSeries->m_pOwnerSeries = this;
+
+		pErrorSeries->SetRelatedAxis(m_pXAxis, CBCGPChartSeries::AI_X);
+		pErrorSeries->SetRelatedAxis(m_pYAxis, CBCGPChartSeries::AI_Y);
+		pErrorSeries->SetRelatedAxis(m_pZAxis, CBCGPChartSeries::AI_Z);
+
+		pErrorSeries->SetTreatNulls(GetTreatNulls());
+		pErrorSeries->m_bIndexMode = IsIndexMode();
+		pErrorSeries->SetDrawFlags(uiDrawFlags);
+
+		pFormula->SetInputSeries(this);
+		m_pErrorSeries = pErrorSeries;
+		m_pErrorSeries->SetFormula(*pFormula, FALSE);
+	}
+
+	if (pFormula != NULL)
+	{
+		delete pFormula;
+	}
+
+	return HasErrorBars();
+}
+//****************************************************************************************
+BOOL CBCGPChartSeries::RecreateErrorBars(UINT uiDrawFlags)
+{
+	if (!HasErrorBars())
+	{
+		return FALSE;
+	}
+
+	BOOL bRes = FALSE;
+
+	CBCGPChartErrorBarsSeries* pErrorSeries = new CBCGPChartErrorBarsSeries(m_pChart);
+	if (pErrorSeries != NULL)
+	{
+		pErrorSeries->SetDrawFlags(uiDrawFlags);
+
+		CBCGPChartBaseFormula* pFormula = pErrorSeries->GetFormula();
+		if (pFormula != NULL)
+		{
+			pFormula->GeneratePoints();
+			bRes = TRUE;
+		}
+	}
+
+	return bRes;
+}
+//****************************************************************************************
+void CBCGPChartSeries::RemoveErrorBars()
+{
+	if (HasErrorBars())
+	{
+		delete m_pErrorSeries;
+	}
+
+	m_pErrorSeries = NULL;
+}
+//****************************************************************************************
+CBCGPChartValue CBCGPChartSeries::GetDataPointAnimatedValue(int nDataPointIndex, CBCGPChartData::ComponentIndex ci) const
+{
+	ASSERT_VALID(this);
+
+	if (nDataPointIndex < 0 || nDataPointIndex >= GetDataPointCount())
+	{
+		return CBCGPChartValue();
+	}
+
+	const CBCGPChartDataPoint* pDataPoint = GetDataPointAt(nDataPointIndex);
+
+	if (pDataPoint == NULL)
+	{
+		return CBCGPChartValue();
+	}
+
+	return pDataPoint->GetAnimatedComponentValue(ci);
+}
+//****************************************************************************************
+CBCGPChartData::ComponentIndex CBCGPChartSeries::GetDefaultAnimationComponentIndex(BCGPChartAnimationStyle animationStyle) const
+{
+	if ((animationStyle == BCGPChartAnimationStyle_Slide || animationStyle == BCGPChartAnimationStyle_SlideReversed) &&
+		m_pChart != NULL && m_pChart->IsChart3D())
+	{
+		return CBCGPChartData::CI_Z;
+	}
+	
+	return CBCGPChartData::CI_Y;
+}
+//****************************************************************************************
 BOOL CBCGPChartSeries::SetDataPointValue(int nDataPointIndex, double dblValue, CBCGPChartData::ComponentIndex ci)
 {
 	ASSERT_VALID(this);
@@ -3290,11 +3749,14 @@ BOOL CBCGPChartSeries::OnGetDataPointTooltip(int nDataPointIndex, CString& strTo
 		valX.SetValue(nDataPointIndex + 1);
 	}
 	
-	strTooltip = m_strSeriesName;
-
-	if (m_strSeriesName.IsEmpty())
+	if (m_pChart == NULL || !m_pChart->OnFormatDataPointTooltip(strTooltip, this, nDataPointIndex))
 	{
-		strTooltip = _T("Series");
+		strTooltip = m_strSeriesName;
+
+		if (m_strSeriesName.IsEmpty())
+		{
+			strTooltip = _T("Series");
+		}
 	}
 
 	CString strLabelY;
@@ -3302,6 +3764,13 @@ BOOL CBCGPChartSeries::OnGetDataPointTooltip(int nDataPointIndex, CString& strTo
 
 	CString strLabelX;
 	pAxisX->GetDisplayedLabel(valX.GetValue(), strLabelX);
+
+	if (m_pChart != NULL && m_pChart->OnFormatDataPointTooltipDescription(strTooltipDescr, this, nDataPointIndex, pAxisX, pAxisY, strLabelX, strLabelY))
+	{
+		return TRUE;
+	}
+
+	CBCGPLocalResource localResource;
 
 	CString strValueFormat;
 	if (m_chartType == BCGP_CT_RANGE || m_chartCategory == BCGPChartBubble)
@@ -3391,6 +3860,7 @@ void CBCGPChartSeries::CopyFrom(const CBCGPChartSeries& src)
 	m_strSeriesName = src.m_strSeriesName;
 
 	m_dwUserData = src.m_dwUserData;
+	m_pOwnerSeries = src.m_pOwnerSeries;
 
 	m_nLegendKeyToLabelDistance = src.m_nLegendKeyToLabelDistance;
 	m_rectLegendKey = src.m_rectLegendKey;
@@ -3441,7 +3911,7 @@ void CBCGPChartSeries::RecalcMinMaxValues()
 		(m_pXAxis != NULL && m_pXAxis->IsFixedDisplayRange() && !IsXComponentSet() && 
 		 m_pYAxis != NULL && m_pYAxis->IsFixedDisplayRange() &&
 		 (m_pZAxis == NULL || m_pZAxis->IsFixedDisplayRange()) || 
-		 IsFormulaSeries()))	
+		 IsFormulaSeries()))
 	{
 		return;
 	}
@@ -4284,7 +4754,7 @@ CBCGPBrush::BCGP_GRADIENT_TYPE CBCGPChartSeries::GetDefaultFillGradientType() co
 }
 
 //****************************************************************************************
-// CBCGPChartSeries - specific LINE
+// CBCGPChartLineSeries - specific LINE
 //****************************************************************************************
 CBCGPChartLineSeries::CBCGPChartLineSeries()
 {
@@ -4326,7 +4796,7 @@ void CBCGPChartLineSeries::EnableColorEachLine(BOOL bEnable, BOOL bRedraw)
 	}
 }
 //****************************************************************************************
-// CBCGPChartSeries - specific AREA
+// CBCGPChartAreaSeries - specific AREA
 //****************************************************************************************
 CBCGPChartAreaSeries::CBCGPChartAreaSeries()
 {
@@ -6048,21 +6518,29 @@ void CBCGPChartLongSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const C
 
 	BOOL bIsVertical = m_pXAxis->IsVertical();
 
-	if (m_nMaxDisplayedXIndex == 0)
+	if (m_bIsScatterMode && IsComponentSet(CBCGPChartData::CI_X))
 	{
+		m_nMinDisplayedXIndex = 0;
 		m_nMaxDisplayedXIndex = nDataPointCount - 1;
 	}
-
-	if (m_pXAxis->IsFixedMajorUnit())
+	else
 	{
-		m_nMinDisplayedXIndex = (int)max(0, m_pXAxis->GetMinDisplayedValue() - 1);
-		m_nMaxDisplayedXIndex = (int)min(nDataPointCount - 1, m_pXAxis->GetMaxDisplayedValue());
-	}
-
-	if ((m_nMaxDisplayedXIndex - m_nMinDisplayedXIndex) < 3 && nDataPointCount > 3)
-	{
-		m_nMinDisplayedXIndex = max(0, m_nMinDisplayedXIndex - 1);
-		m_nMaxDisplayedXIndex = min (nDataPointCount - 1, m_nMaxDisplayedXIndex + 1);
+		if (m_nMaxDisplayedXIndex == 0)
+		{
+			m_nMaxDisplayedXIndex = nDataPointCount - 1;
+		}
+		
+		if (m_pXAxis->IsFixedMajorUnit())
+		{
+			m_nMinDisplayedXIndex = (int)max(0, m_pXAxis->GetMinDisplayedValue() - 1);
+			m_nMaxDisplayedXIndex = (int)min(nDataPointCount - 1, m_pXAxis->GetMaxDisplayedValue());
+		}
+		
+		if ((m_nMaxDisplayedXIndex - m_nMinDisplayedXIndex) < 3 && nDataPointCount > 3)
+		{
+			m_nMinDisplayedXIndex = max(0, m_nMinDisplayedXIndex - 1);
+			m_nMaxDisplayedXIndex = min (nDataPointCount - 1, m_nMaxDisplayedXIndex + 1);
+		}
 	}
 
 	for (int i = m_nMinDisplayedXIndex; i <= m_nMaxDisplayedXIndex; i++)
@@ -6078,7 +6556,7 @@ void CBCGPChartLongSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const C
 			pt.y = (int)m_pYAxis->PointFromValue(m_arYValues[i], FALSE);
 		}
 		
-		if ((bIsVertical && ptPrev.y != pt.y || !bIsVertical && ptPrev.x != pt.x) && i > m_nMinDisplayedXIndex)
+		if ((m_bIsScatterMode || (bIsVertical && ptPrev.y != pt.y || !bIsVertical && ptPrev.x != pt.x)) && i > m_nMinDisplayedXIndex)
 		{
 			if (m_bFilterSimilarXValues)
 			{
@@ -6142,7 +6620,7 @@ void CBCGPChartLongSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const C
 	m_arScreenPoints.FreeExtra();
 }
 //****************************************************************************************
-// CBCGPChartSeries - specific HISTORICAL LINE
+// CBCGPChartHistoricalLineSeries - specific HISTORICAL LINE
 //****************************************************************************************
 CBCGPChartHistoricalLineSeries::CBCGPChartHistoricalLineSeries(CBCGPChartVisualObject* pRelatedChart, int nHistoryDepth, double dblDefaultY) : 
 		CBCGPChartLongSeries(pRelatedChart, nHistoryDepth, -1)
@@ -6311,7 +6789,7 @@ void CBCGPChartHistoricalLineSeries::EnableHistoryMode(BOOL bEnable, int nHistor
 }
 
 //****************************************************************************************
-// CBCGPChartSeries - specific BUBBLE
+// CBCGPChartBubbleSeries - specific BUBBLE
 //****************************************************************************************
 CBCGPChartBubbleSeries::CBCGPChartBubbleSeries()
 {
@@ -6370,16 +6848,16 @@ void CBCGPChartBubbleSeries::OnCalcScreenPoints(CBCGPGraphicsManager* /*pGM*/, c
 	ASSERT_VALID(m_pXAxis);
 	ASSERT_VALID(m_pYAxis);
 
-	double dblMinUnitSize = min(m_pXAxis->m_bFormatAsDate ? 
-		m_pXAxis->GetAxisUnitSize() * m_pXAxis->GetMajorUnit() : 
-		m_pXAxis->GetAxisUnitSize() / m_pXAxis->GetMajorUnit(), 
-		m_pYAxis->GetAxisUnitSize() / m_pYAxis->GetMajorUnit());
+	double dblMinUnitSize = min(m_pXAxis->m_bFormatAsDate
+									? m_pXAxis->GetAxisUnitSize() * m_pXAxis->GetMajorUnit()
+									: m_pXAxis->GetAxisUnitSize() / m_pXAxis->GetMajorUnit(), 
+								m_pYAxis->GetAxisUnitSize() / m_pYAxis->GetMajorUnit());
 
 	double dblOrgBubbleSize = dblMinUnitSize * 2 * 0.95 * m_dblScale / 100.;
 
 	double dblMaxSize = valMaxY1.IsEmpty() ? 1. : valMaxY1;
 
-	for (int i = 0; i <= GetDataPointCount(); i++)
+	for (int i = 0; i < GetDataPointCount(); i++)
 	{
 		const CBCGPChartDataPoint* pDp = GetDataPointAt(i);
 
@@ -6390,10 +6868,10 @@ void CBCGPChartBubbleSeries::OnCalcScreenPoints(CBCGPGraphicsManager* /*pGM*/, c
 			continue;
 		}
 
-		CBCGPChartValue valY1 = GetDataPointValue(i, CBCGPChartData::CI_Y1);
+		CBCGPChartValue valY1 = GetDataPointAnimatedValue(i, CBCGPChartData::CI_Y1);
 
 		BOOL bIsEmpty = FALSE;
-		CBCGPPoint point = m_pChart->ScreenPointFromChartData(pDp->GetData(), i, bIsEmpty, this);
+		CBCGPPoint point = m_pChart->ScreenPointFromChartData(pDp->GetAnimatedData(), i, bIsEmpty, this);
 
 		double dblValPercent = 1.; 
 		
@@ -6444,18 +6922,168 @@ CBCGPBrush::BCGP_GRADIENT_TYPE CBCGPChartBubbleSeries::GetSeriesFillGradientType
 	return CBCGPBrush::BCGP_GRADIENT_RADIAL_CENTER;
 }
 //****************************************************************************************
-// CBCGPChartSeries - specific PIE chart
+void CBCGPChartBubbleSeries::OnAnimationValueChanged(double dblOldValue, double dblNewValue)
+{
+	ASSERT_VALID(this);
+	
+	switch (m_AnimationStyle)
+	{
+	case BCGPChartAnimationStyle_Grow:
+	case BCGPChartAnimationStyle_Slide:
+	case BCGPChartAnimationStyle_SlideReversed:
+		RecalcAnimatedValues(dblNewValue);
+		return;
+	}
+
+	CBCGPChartSeries::OnAnimationValueChanged(dblOldValue, dblNewValue);
+}
+
 //****************************************************************************************
-CBCGPChartPieSeries::CBCGPChartPieSeries(CBCGPChartVisualObject* pChartCtrl, 
+// CBCGPChartPercentSeries: base class of PIE, PYRAMID and FUNNEL
+//****************************************************************************************
+
+CBCGPChartPercentSeries::CBCGPChartPercentSeries()
+{
+	CommonInit();
+}
+//****************************************************************************************
+CBCGPChartPercentSeries::CBCGPChartPercentSeries(CBCGPChartVisualObject* pChartCtrl, 
 					BCGPChartCategory category) : CBCGPChartSeries(pChartCtrl, category)
 {
-	ASSERT(category == BCGPChartPie || category == BCGPChartPie3D || category == BCGPChartDoughnut || category == BCGPChartDoughnut3D || category == BCGPChartTorus3D);
+	CommonInit();
+}
+//****************************************************************************************
+CBCGPChartPercentSeries::CBCGPChartPercentSeries(CBCGPChartVisualObject* pChartCtrl, 
+				BCGPChartCategory category, const CString& strSeriesName)
+			: CBCGPChartSeries(pChartCtrl, strSeriesName, CBCGPColor(), category)
+{
+	CommonInit();
+}
+//****************************************************************************************
+void CBCGPChartPercentSeries::CommonInit()
+{
+	m_captionPos = CHART_TILE_POSITION_TOP;
+}
+//****************************************************************************************
+void CBCGPChartPercentSeries::SetTileCaption(BCGP_CHART_TILE_CAPTION_POSITION pos)
+{
+	m_captionPos = pos;
+}
+//****************************************************************************************
+void CBCGPChartPercentSeries::OnCalcSeriesNameSize(CBCGPGraphicsManager* pGM)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pGM);
+
+	m_sizeCaption.SetSizeEmpty();
+
+	if (m_pChart == NULL || m_strSeriesName.IsEmpty() || !IsSeriesTiling() || m_pChart->GetSeriesCount(FALSE) <= 1)
+	{
+		return;
+	}
+
+	m_sizeCaption = m_pChart->OnGetTextSize(pGM, m_strSeriesName, m_pChart->GetTitleLabelFormat().m_textFormat);
+
+	CBCGPSize szPadding = m_pChart->GetTitleLabelFormat().GetContentPadding(TRUE);
+
+	m_sizeCaption.cx += szPadding.cx * 2;
+	m_sizeCaption.cy += szPadding.cy * 2;
+}
+//****************************************************************************************
+CBCGPRect CBCGPChartPercentSeries::GetAxesBoundingRect()
+{
+	ASSERT_VALID(this);
+
+	CBCGPRect rectResult = CBCGPChartSeries::GetAxesBoundingRect();
+	if (rectResult.IsRectEmpty() || m_pChart == NULL || !IsSeriesTiling())
+	{
+		return rectResult;
+	}
+
+	ASSERT_VALID(m_pChart);
+
+	int nSeriesCount = m_pChart->GetSeriesCount(FALSE);
+	if (nSeriesCount > 1 && !IsNested())
+	{
+		int nSeriesIndex = m_pChart->FindSeriesIndex(this);
+		if (nSeriesIndex >= 0)
+		{
+			double dblTileSize = bcg_get_tile_size(rectResult.Size(), nSeriesCount);
+			
+			int nColumns = bcg_clamp((int)(rectResult.Width() / dblTileSize), 1, nSeriesCount);
+			int nRows = bcg_clamp((int)(rectResult.Height() / dblTileSize), 1, nSeriesCount);
+			
+			double dblPaddingX = max(0.0, 0.5 * (rectResult.Width() - nColumns * dblTileSize));
+			double dblPaddingY = max(0.0, 0.5 * (rectResult.Height() - nRows * dblTileSize));
+			
+			rectResult.DeflateRect(dblPaddingX, dblPaddingY);
+			
+			int nRow = nSeriesIndex / nColumns;
+			int nColumn = nSeriesIndex % nColumns;
+			
+			rectResult.left += dblTileSize * nColumn;
+			rectResult.right = rectResult.left + dblTileSize;
+			
+			rectResult.top += dblTileSize * nRow;
+			rectResult.bottom = rectResult.top + dblTileSize;
+
+			if (!m_sizeCaption.IsEmpty() && !IsNested())
+			{
+				if (m_captionPos == CHART_TILE_POSITION_TOP)
+				{
+					rectResult.top += m_sizeCaption.cy;
+				}
+				else if (m_captionPos == CHART_TILE_POSITION_BOTTOM)
+				{
+					rectResult.bottom -= m_sizeCaption.cy;
+				}
+			}
+		}
+	}
+
+	return rectResult;
+}
+//****************************************************************************************
+CBCGPRect CBCGPChartPercentSeries::GetSeriesNameRect()
+{
+	CBCGPRect rectName;
+
+	if (!m_sizeCaption.IsEmpty() && !IsNested())
+	{
+		rectName = GetAxesBoundingRect();
+
+		if (m_captionPos == CHART_TILE_POSITION_TOP)
+		{
+			rectName.bottom = rectName.top;
+			rectName.top -= m_sizeCaption.cy;
+		}
+		else if (m_captionPos == CHART_TILE_POSITION_BOTTOM)
+		{
+			rectName.top = rectName.bottom;
+			rectName.bottom += m_sizeCaption.cy;
+		}
+		else
+		{
+			rectName.SetRectEmpty();
+		}
+	}
+
+	return rectName;
+}
+
+//****************************************************************************************
+// CBCGPChartPieSeries - specific PIE
+//****************************************************************************************
+CBCGPChartPieSeries::CBCGPChartPieSeries(CBCGPChartVisualObject* pChartCtrl, 
+					BCGPChartCategory category) : CBCGPChartPercentSeries(pChartCtrl, category)
+{
+	ASSERT(category == BCGPChartPie || category == BCGPChartPie3D || category == BCGPChartDoughnut || category == BCGPChartDoughnut3D || category == BCGPChartTorus3D || category == BCGPChartDoughnutNested);
 	CommonInit();
 }
 //****************************************************************************************
 CBCGPChartPieSeries::CBCGPChartPieSeries(CBCGPChartVisualObject* pChartCtrl, 
 				BCGPChartCategory category, const CString& strSeriesName)
-			: CBCGPChartSeries(pChartCtrl, strSeriesName, CBCGPColor(), category)
+			: CBCGPChartPercentSeries(pChartCtrl, category, strSeriesName)
 {
 	ASSERT(category == BCGPChartPie || category == BCGPChartPie3D);
 	CommonInit();
@@ -6492,12 +7120,13 @@ CBCGPBrush::BCGP_GRADIENT_TYPE CBCGPChartPieSeries::GetSeriesFillGradientType() 
 	return CBCGPBrush::BCGP_GRADIENT_DIAGONAL_LEFT;
 }
 //****************************************************************************************
-void CBCGPChartPieSeries::SetGroupSmallerSlices(BOOL bSet, double dblMinPercent/* = 5.0*/, BOOL bGroupInGegend/* = FALSE*/, const CString& strLabel/* = _T("Others (< 1%)")*/)
+void CBCGPChartPieSeries::SetGroupSmallerSlices(BOOL bSet, double dblMinPercent/* = 5.0*/, BOOL bGroupInGegend/* = FALSE*/, const CString& strLabel/* = _T("")*/, const CString& strCategoryName/* = _T("")*/)
 {
 	m_bGroupSmallerSlices = bSet;
 	m_dblMinGroupPercent = bcg_clamp(dblMinPercent, 0.0, 100.0);
 	m_bGroupSmallerSlicesInLegend = bGroupInGegend;
 	m_strSmallerSlicesGroupLabel = strLabel;
+	m_strSmallerSlicesGroupName = strCategoryName;
 
 	//-----------------------------------
 	// Rebuild legend entries visibility:
@@ -6559,6 +7188,22 @@ void CBCGPChartPieSeries::SetGroupSmallerSlices(BOOL bSet, double dblMinPercent/
 	}
 }
 //****************************************************************************************
+CBCGPRect CBCGPChartPieSeries::OnCalcAreaRect(const CBCGPRect& rect, BOOL bOutside, double dblMaxDistance)
+{
+	CBCGPRect rectDiagram(rect);
+
+	if (bOutside)
+	{
+		rectDiagram.DeflateRect(m_szMaxDataLabelSize.cx + dblMaxDistance, m_szMaxDataLabelSize.cy + dblMaxDistance);
+	}
+	else
+	{
+		rectDiagram.DeflateRect(rectDiagram.Width() * 5. / 100., rectDiagram.Height() * 5. / 100.);
+	}
+
+	return rectDiagram;
+}
+//****************************************************************************************
 void CBCGPChartPieSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CBCGPRect& /*rectDiagramArea*/)
 {
 	ASSERT_VALID(this);
@@ -6568,6 +7213,7 @@ void CBCGPChartPieSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CB
 	double dblSum = 0;
 	
 	m_nSmallGroupDataPointIndex = -1;
+	m_szMaxDataLabelSize.SetSize(0, 0);
 
 	if (m_pChart == NULL)
 	{
@@ -6589,6 +7235,9 @@ void CBCGPChartPieSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CB
 	double dblMaxDistance = 0.;
 	double dblMaxExplosion = 0;
 
+	const CBCGPRect rectBounds(GetAxesBoundingRect());
+	const double minBounds = min(rectBounds.Width(), rectBounds.Height());
+
 	for (i = 0; i < GetDataPointCount(); i++)
 	{
 		const CBCGPChartDataPoint* pDp = GetDataPointAt(i);
@@ -6598,93 +7247,15 @@ void CBCGPChartPieSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CB
 			continue;
 		}
 
-		const BCGPChartFormatSeries* pDataPointFormat = GetDataPointFormat(i, FALSE);
+		const double dblVal = pDp->GetComponentValue(CBCGPChartData::CI_Y);
 
-		double dblValue = pDp->GetComponentValue(CBCGPChartData::CI_Y);
-
-		if (dblValue < 0 && IsIgnoreNegativeValues())
+		if (dblVal == 0 || (dblVal < 0 && IsIgnoreNegativeValues()))
 		{
 			continue;
 		}
 
-		dblSum += fabs(dblValue);
-
-		CString strDPLabel;
-		if (!OnGetDataLabelText(i, strDPLabel))
-		{
-			GetDataPointLabelText(i, pDataPointFormat->m_dataLabelFormat.m_options.m_content, strDPLabel);
-		}
-
-		CBCGPSize szDataLabelSize(0, 0);
-		if (m_pChart == NULL || !m_pChart->OnCalcDataLabelSize(pGM, strDPLabel, this, i, szDataLabelSize))
-		{
-			szDataLabelSize = pImpl->OnGetDataLabelSize(pGM, strDPLabel, pDp, this, i);
-		}
-
-		m_szMaxDataLabelSize.cx = max(m_szMaxDataLabelSize.cx, szDataLabelSize.cx);
-		m_szMaxDataLabelSize.cy = max(m_szMaxDataLabelSize.cy, szDataLabelSize.cy);
-
-		if ((pDataPointFormat->m_dataLabelFormat.m_options.m_position == BCGPChartDataLabelOptions::LP_OUTSIDE_END ||
-			pDataPointFormat->m_dataLabelFormat.m_options.m_position == BCGPChartDataLabelOptions::LP_DEFAULT_POS) && 
-			pDataPointFormat->m_dataLabelFormat.m_options.m_bShowDataLabel)
-		{
-			dblMaxDistance = max(dblMaxDistance, GetDataPointLabelDistance(i));
-			bOutside = TRUE;
-		}
-
-		dblMaxExplosion = max(dblMaxExplosion, GetDataPointPieExplosion(i));
+		dblSum += fabs(dblVal);
 	}
-
-	dblMaxExplosion += m_dblPieExplosion;
-
-	CBCGPRect rectDiagram = GetAxesBoundingRect();
-
-	if (bOutside)
-	{
-		rectDiagram.DeflateRect(m_szMaxDataLabelSize.cx + dblMaxDistance, m_szMaxDataLabelSize.cy + dblMaxDistance);
-	}
-	else
-	{
-		rectDiagram.DeflateRect(rectDiagram.Width() * 5. / 100., 
-			rectDiagram.Height() * 5. / 100.);
-	}
-
-	BOOL bPreserveShape = !IsFitDiagramAreaEnabled();
-	rectDiagram.DeflateRect(dblMaxExplosion / 2, dblMaxExplosion / 2);
-
-	CBCGPPoint ptCenter = rectDiagram.CenterPoint();
-	double dblK = m_nHeightPercent / 100. / 5.0;
-	double dblAngle = pImpl->Is3DPie() ? bcg_deg2rad(m_dblPieAngle) : M_PI_2;
-	
-	double dblRadiusX = bPreserveShape ? min(rectDiagram.Width() / 2, rectDiagram.Height() / (dblK * cos(dblAngle) + sin(dblAngle) * 2)) :
-							rectDiagram.Width() / 2;
-
-	double dblRadiusY = bPreserveShape ? dblRadiusX * sin(dblAngle) : 
-		(pImpl->Is3DPie() ? rectDiagram.Height() / 2 - rectDiagram.Height() / 2 * dblK : rectDiagram.Height() / 2);
-	double dblHeight = bPreserveShape ? dblRadiusX * dblK * cos(dblAngle) : dblRadiusY * dblK;
-	
-	if (bPreserveShape)
-	{
-		ptCenter.y -= dblHeight / 2;
-	}	
-
-	if (pImpl->Is3DPie() && !bPreserveShape && dblHeight < 5.)
-	{
-		dblHeight = 5.;
-	}
-
-	if (dblRadiusY <= 0)
-	{
-		dblRadiusY = 0.1;
-	}
-
-	double dblPieArea = 2 * M_PI * dblRadiusX * dblRadiusY;
-	double dblStartAngle = bcg_deg2rad(m_nPieRotation);
-
-	double dblPieExplosion = GetPieExplosion();
-	
-	dblRadiusX -= dblPieExplosion;
-	dblRadiusY -= dblPieExplosion;
 
 	double dblSmallSum = 0.0;
 	double dblMinDisplayedValue = 0.0;
@@ -6704,12 +7275,7 @@ void CBCGPChartPieSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CB
 
 			double dblVal = pDp->GetComponentValue(CBCGPChartData::CI_Y);
 
-			if (dblVal < 0 && IsIgnoreNegativeValues())
-			{
-				continue;
-			}
-
-			if (dblVal == 0)
+			if (dblVal == 0 || (dblVal < 0 && IsIgnoreNegativeValues()))
 			{
 				continue;
 			}
@@ -6734,12 +7300,6 @@ void CBCGPChartPieSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CB
 
 		pDp->m_bIncludeLabelToLegend = m_bIncludeDataPointLabelsToLegend;
 
-		double dblDataPointExplosion = GetDataPointPieExplosion(i);
-		double dblTotalExplosion = dblDataPointExplosion + dblPieExplosion; 
-
-		double dblPieRadiusX = dblRadiusX - dblPieExplosion;
-		double dblPieRadiusY = dblRadiusY - dblPieExplosion;
-
 		double dblVal = pDp->GetComponentValue(CBCGPChartData::CI_Y);
 
 		if (dblVal < 0 && IsIgnoreNegativeValues())
@@ -6747,20 +7307,12 @@ void CBCGPChartPieSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CB
 			continue;
 		}
 
-		if (dblVal == 0)
-		{
-			continue;
-		}
-
-		BOOL bIsVisible = TRUE;
 		BOOL bIsSmallGroup = FALSE;
 
 		if (m_bGroupSmallerSlices && fabs(dblVal) < dblMinDisplayedValue)
 		{
 			if (m_nSmallGroupDataPointIndex >= 0)
 			{
-				bIsVisible = FALSE;
-
 				if (m_bGroupSmallerSlicesInLegend)
 				{
 					pDp->m_bIncludeLabelToLegend = FALSE;
@@ -6780,37 +7332,182 @@ void CBCGPChartPieSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CB
 			bIsSmallGroup = TRUE;
 		}
 
+		double dblPercentGroup = (dblSum < DBL_EPSILON) ? 0. : (fabs(dblSmallSum) * 100. / dblSum);
 		double dblPercent = (dblSum < DBL_EPSILON) ? 0. : (fabs(dblVal) * 100. / dblSum);
 		pDp->SetComponentValue(dblPercent, CBCGPChartData::CI_PERCENTAGE);
+		pDp->SetComponentValue(dblPercentGroup, CBCGPChartData::CI_GROUP_PERCENTAGE);
+		pDp->SetComponentValue(dblSmallSum, CBCGPChartData::CI_GROUP_VALUE);
+	}
 
-		if (bIsVisible)
+	for (i = 0; i < GetDataPointCount(); i++)
+	{
+		const CBCGPChartDataPoint* pDp = GetDataPointAt(i);
+
+		if (pDp == NULL || pDp->IsEmpty())
 		{
-			if (bIsSmallGroup && !m_bGroupSmallerSlicesInLegend)
+			continue;
+		}
+
+		const BCGPChartFormatSeries* pDataPointFormat = GetDataPointFormat(i, FALSE);
+		const double dblVal = pDp->GetComponentValue(CBCGPChartData::CI_Y);
+
+		if (dblVal < 0 && IsIgnoreNegativeValues())
+		{
+			continue;
+		}
+
+		if (m_bGroupSmallerSlices && fabs(dblVal) < dblMinDisplayedValue &&
+			m_nSmallGroupDataPointIndex >= 0 && m_nSmallGroupDataPointIndex != i)
+		{
+			continue;
+		}
+
+		CString strDPLabel;
+		if (!OnGetDataLabelText(i, strDPLabel))
+		{
+			GetDataPointLabelText(i, pDataPointFormat->m_dataLabelFormat.m_options.m_content, strDPLabel);
+		}
+
+		CBCGPSize szDataLabelSize(0, 0);
+		if (m_pChart == NULL || !m_pChart->OnCalcDataLabelSize(pGM, strDPLabel, this, i, szDataLabelSize))
+		{
+			szDataLabelSize = pImpl->OnGetDataLabelSize(pGM, strDPLabel, pDp, this, i);
+		}
+
+		m_szMaxDataLabelSize.cx = max(m_szMaxDataLabelSize.cx, szDataLabelSize.cx);
+		m_szMaxDataLabelSize.cy = max(m_szMaxDataLabelSize.cy, szDataLabelSize.cy);
+
+		if ((pDataPointFormat->m_dataLabelFormat.m_options.m_position == BCGPChartDataLabelOptions::LP_OUTSIDE_END ||
+			pDataPointFormat->m_dataLabelFormat.m_options.m_position == BCGPChartDataLabelOptions::LP_DEFAULT_POS) && 
+			pDataPointFormat->m_dataLabelFormat.m_options.m_bShowDataLabel)
+		{
+			CBCGPSize szPadding(pDataPointFormat->m_dataLabelFormat.GetContentPadding(TRUE));
+			double dblLabelDistance = GetDataPointLabelDistance(i) / 100.0;
+			if (m_pChart != NULL && m_pChart->GetScaleRatioMid() != 0.0)
 			{
-				dblPercent = (dblSum < DBL_EPSILON) ? 0. : (fabs(dblSmallSum) * 100. / dblSum);
+				dblLabelDistance /= m_pChart->GetScaleRatioMid();
+			}
+			dblMaxDistance = max(dblMaxDistance, dblLabelDistance * minBounds / 2.0 + max(szPadding.cx, szPadding.cy));
+			bOutside = TRUE;
+		}
+
+		dblMaxExplosion = max(dblMaxExplosion, GetDataPointPieExplosion(i));
+	}
+
+	dblMaxExplosion += GetPieExplosion();
+
+	CBCGPRect rectDiagram(OnCalcAreaRect(GetAxesBoundingRect(), bOutside, dblMaxDistance));
+
+	BOOL bPreserveShape = !IsFitDiagramAreaEnabled();
+	rectDiagram.DeflateRect(dblMaxExplosion, dblMaxExplosion);
+
+	CBCGPPoint ptCenter = rectDiagram.CenterPoint();
+	if (IsAnimated() && GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Grow)
+	{
+		ptCenter.y = rectDiagram.top + 0.5 * rectDiagram.Height() * GetAnimatedValue();
+	}
+
+	double dblK = m_nHeightPercent / 100. / 5.0;
+	double dblAngle = pImpl->Is3DPie() ? bcg_deg2rad(m_dblPieAngle) : M_PI_2;
+	
+	double dblRadiusX = bPreserveShape ? min(rectDiagram.Width() / 2, rectDiagram.Height() / (dblK * cos(dblAngle) + sin(dblAngle) * 2)) :
+							rectDiagram.Width() / 2;
+
+	double dblRadiusY = bPreserveShape ? dblRadiusX * sin(dblAngle) : 
+		(pImpl->Is3DPie() ? rectDiagram.Height() / 2 - rectDiagram.Height() / 2 * dblK : rectDiagram.Height() / 2);
+
+	AdjustRadius(dblRadiusX, dblRadiusY);
+
+	double dblHeight = bPreserveShape ? dblRadiusX * dblK * cos(dblAngle) : dblRadiusY * dblK;
+	
+	if (bPreserveShape)
+	{
+		ptCenter.y -= dblHeight / 2;
+	}	
+
+	if (pImpl->Is3DPie() && !bPreserveShape && dblHeight < 5.)
+	{
+		dblHeight = 5.;
+	}
+
+	if (dblRadiusY <= 0)
+	{
+		dblRadiusY = 0.1;
+	}
+
+	double dblPieArea = M_PI * dblRadiusX * dblRadiusY;
+	double dblStartAngle = bcg_deg2rad(m_nPieRotation);
+
+	double dblPieExplosion = GetPieExplosion();
+	
+	dblRadiusX -= dblPieExplosion;
+	dblRadiusY -= dblPieExplosion;
+
+	for (i = 0; i < GetDataPointCount(); i++)
+	{
+		CBCGPChartDataPoint* pDp = (CBCGPChartDataPoint*)GetDataPointAt(i);
+
+		if (pDp == NULL || pDp->IsEmpty())
+		{
+			continue;
+		}
+
+		double dblDataPointExplosion = GetDataPointPieExplosion(i);
+		double dblTotalExplosion = dblDataPointExplosion + dblPieExplosion;
+
+		double dblPieRadiusX = dblRadiusX - dblPieExplosion;
+		double dblPieRadiusY = dblRadiusY - dblPieExplosion;
+
+		double dblVal = pDp->GetComponentValue(CBCGPChartData::CI_Y);
+
+		if (dblVal < 0 && IsIgnoreNegativeValues())
+		{
+			continue;
+		}
+
+		BOOL bIsSmallGroup = FALSE;
+
+		if (m_bGroupSmallerSlices && fabs(dblVal) < dblMinDisplayedValue)
+		{
+			if (m_nSmallGroupDataPointIndex >= 0 && m_nSmallGroupDataPointIndex != i)
+			{
+				continue;
 			}
 
-			double dblDPArea = dblPercent * dblPieArea / 100.;
-
-			double dblAngle = (fabs(dblPieArea) < DBL_EPSILON) ? 0. : (2. * M_PI * dblDPArea / dblPieArea);
-			CBCGPPoint ptAngles(dblStartAngle, dblStartAngle + dblAngle);
-
-			double dblDiff = ptAngles.y > ptAngles.x ? ptAngles.x + (ptAngles.y - ptAngles.x) / 2 : ptAngles.x + (ptAngles.x - ptAngles.y) / 2;
-			CBCGPPoint ptExplodedCenter (ptCenter.x + dblTotalExplosion * sin(dblDiff), ptCenter.y - dblTotalExplosion * cos(dblDiff));
-
-			CBCGPPoint ptStartPie(ptExplodedCenter.x + dblRadiusX * sin(dblStartAngle), ptExplodedCenter.y - dblRadiusY * cos(dblStartAngle));
-			dblStartAngle += dblAngle;
-
-			CBCGPPoint ptEndPie(ptExplodedCenter.x + dblRadiusX * sin(dblStartAngle), ptExplodedCenter.y - dblRadiusY * cos(dblStartAngle));
-
-			SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_START, ptStartPie);
-			SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_END, ptEndPie);
-			SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_ANGLES, ptAngles);
-			SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_RADIUS, CBCGPPoint(dblPieRadiusX, dblPieRadiusY));
-			SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_CENTER, ptExplodedCenter);
-			SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_HEIGHT, CBCGPPoint(dblHeight, dblHeight));
-			SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_DIAGRAM_CENTER, CBCGPPoint(ptCenter.x, ptCenter.y));
+			bIsSmallGroup = TRUE;
 		}
+
+		double dblDPArea = pDp->GetComponentValue(bIsSmallGroup ? CBCGPChartData::CI_GROUP_PERCENTAGE : CBCGPChartData::CI_PERCENTAGE) * 
+			dblPieArea / 100.;
+
+		double dblAngle = (fabs(dblPieArea) < DBL_EPSILON) ? 0. : (2.0 * M_PI * dblDPArea / dblPieArea);
+		if (IsAnimated() && 
+			(GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Slide || GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_SlideReversed))
+		{
+			dblAngle *= GetAnimatedValue();
+		}
+
+		CBCGPPoint ptAngles(dblStartAngle, dblStartAngle + dblAngle);
+		if (ptAngles.x == ptAngles.y)
+		{
+			ptAngles.y += FLT_EPSILON;
+		}
+
+		double dblDiff = ptAngles.x + fabs(ptAngles.y - ptAngles.x) / 2.0;
+		CBCGPPoint ptExplodedCenter (ptCenter.x + dblTotalExplosion * sin(dblDiff), ptCenter.y - dblTotalExplosion * cos(dblDiff));
+
+		CBCGPPoint ptStartPie(ptExplodedCenter.x + dblRadiusX * sin(dblStartAngle), ptExplodedCenter.y - dblRadiusY * cos(dblStartAngle));
+		dblStartAngle += dblAngle;
+
+		CBCGPPoint ptEndPie(ptExplodedCenter.x + dblRadiusX * sin(dblStartAngle), ptExplodedCenter.y - dblRadiusY * cos(dblStartAngle));
+
+		SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_START, ptStartPie);
+		SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_END, ptEndPie);
+		SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_ANGLES, ptAngles);
+		SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_RADIUS, CBCGPPoint(dblPieRadiusX, dblPieRadiusY));
+		SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_CENTER, ptExplodedCenter);
+		SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_HEIGHT, CBCGPPoint(dblHeight, dblHeight));
+		SetDataPointScreenPoint(i, CBCGPPieChartImpl::PIE_SP_DIAGRAM_CENTER, CBCGPPoint(ptCenter.x, ptCenter.y));
 	}
 }
 //****************************************************************************************
@@ -6819,16 +7516,31 @@ BOOL CBCGPChartPieSeries::GetDataPointLabelText(int nDataPointIndex, BCGPChartDa
 	if ((!m_bGetDataPointLabelForLegend || m_bGroupSmallerSlicesInLegend) && nDataPointIndex == m_nSmallGroupDataPointIndex)
 	{
 		strDPLabel = m_strSmallerSlicesGroupLabel;
-		
-		if (strDPLabel.IsEmpty())
+
+		if (strDPLabel.IsEmpty() && m_strSmallerSlicesGroupName.IsEmpty())
 		{
 			strDPLabel.Format(_T("(< %.0f%%)"), m_dblMinGroupPercent);
 		}
 
-		return TRUE;
+		if (!strDPLabel.IsEmpty())
+		{
+			return TRUE;
+		}
 	}
 
-	return CBCGPChartSeries::GetDataPointLabelText(nDataPointIndex, content, strDPLabel);
+	return CBCGPChartPercentSeries::GetDataPointLabelText(nDataPointIndex, content, strDPLabel);
+}
+//****************************************************************************************
+LPCTSTR CBCGPChartPieSeries::GetDataPointCategoryName(int nDataPointIndex)
+{
+    if ((!m_bGetDataPointLabelForLegend || m_bGroupSmallerSlicesInLegend) &&
+        nDataPointIndex == m_nSmallGroupDataPointIndex && 
+        m_strSmallerSlicesGroupLabel.IsEmpty() && !m_strSmallerSlicesGroupName.IsEmpty())
+    {
+        return m_strSmallerSlicesGroupName;
+    }
+
+    return CBCGPChartPercentSeries::GetDataPointCategoryName(nDataPointIndex);
 }
 //****************************************************************************************
 void CBCGPChartPieSeries::OnBeforeChangeType()
@@ -6842,6 +7554,35 @@ void CBCGPChartPieSeries::OnBeforeChangeType()
 		{
 			pDp->m_bIncludeLabelToLegend = m_bIncludeDataPointLabelsToLegend;
 		}
+	}
+}
+//****************************************************************************************
+void CBCGPChartPieSeries::OnAnimationValueChanged(double dblOldValue, double dblNewValue)
+{
+	ASSERT_VALID(this);
+	
+	switch (m_AnimationStyle)
+	{
+	case BCGPChartAnimationStyle_Grow:
+	case BCGPChartAnimationStyle_Slide:
+	case BCGPChartAnimationStyle_SlideReversed:
+		if (m_pChart != NULL)
+		{
+			ASSERT_VALID(m_pChart);
+			m_pChart->SetDirty(TRUE, TRUE);
+			return;
+		}
+	}
+
+	CBCGPChartPercentSeries::OnAnimationValueChanged(dblOldValue, dblNewValue);
+}
+//****************************************************************************************
+void CBCGPChartPieSeries::OnAnimationFinished()
+{
+	if (m_pChart != NULL)
+	{
+		ASSERT_VALID(m_pChart);
+		m_pChart->SetDirty(TRUE, TRUE);
 	}
 }
 //****************************************************************************************
@@ -6868,21 +7609,39 @@ void CBCGPChartPieSeries::SetDataPointPieExplosion(double dblExplosion, int nDat
 //****************************************************************************************
 double CBCGPChartPieSeries::GetDataPointPieExplosion(int nDataPointIndex) const
 {
+	if (IsNested())
+	{
+		return 0.0;
+	}
+
 	return GetDataPointValue(nDataPointIndex, CBCGPChartData::CI_Y1).GetValue();
 }
 //****************************************************************************************
 CBCGPChartValue CBCGPChartPieSeries::GetDataPointValue(int nDataPointIndex, CBCGPChartData::ComponentIndex ci) const
 {
-	if (ci == CBCGPChartData::CI_X)
+	if (ci == CBCGPChartData::CI_X || ci == CBCGPChartData::CI_Y)
 	{
-		return GetDataPointValue(nDataPointIndex, CBCGPChartData::CI_PERCENTAGE);
+		if (ci == CBCGPChartData::CI_X)
+		{
+			ci = CBCGPChartData::CI_PERCENTAGE;
+		}
+
+		if (((m_bGetDataPointLabelForLegend && !m_bGroupSmallerSlicesInLegend) || !m_bGetDataPointLabelForLegend) &&
+			nDataPointIndex == m_nSmallGroupDataPointIndex && 
+			m_bGroupSmallerSlices && m_dblMinGroupPercent > 0.0)
+		{
+			ci = ci == CBCGPChartData::CI_Y
+					? CBCGPChartData::CI_GROUP_VALUE
+					: CBCGPChartData::CI_GROUP_PERCENTAGE;
+		}
 	}
-	return CBCGPChartSeries::GetDataPointValue(nDataPointIndex, ci);
+
+	return CBCGPChartPercentSeries::GetDataPointValue(nDataPointIndex, ci);
 }
 //****************************************************************************************
 BOOL CBCGPChartPieSeries::CanIncludeDataPointToLegend(int nDataPointIndex)
 {
-	if (!CBCGPChartSeries::CanIncludeDataPointToLegend(nDataPointIndex))
+	if (!CBCGPChartPercentSeries::CanIncludeDataPointToLegend(nDataPointIndex))
 	{
 		return FALSE;
 	}
@@ -6899,6 +7658,11 @@ BOOL CBCGPChartPieSeries::CanIncludeDataPointToLegend(int nDataPointIndex)
 //****************************************************************************************
 BOOL CBCGPChartPieSeries::HitTestDataPoint(const CBCGPPoint& pt, BCGPChartHitInfo* pHitInfo)
 {
+	if (!GetAxesBoundingRect().NormalizedRect().PtInRect(pt) || m_pChart == NULL)
+	{
+		return FALSE;
+	}
+
 	CBCGPPieChartImpl* pImpl = DYNAMIC_DOWNCAST(CBCGPPieChartImpl, GetChartImpl());
 	if (pImpl == NULL)
 	{
@@ -6965,7 +7729,14 @@ BOOL CBCGPChartPieSeries::OnGetDataPointTooltip(int nDataPointIndex, CString& st
 		
 		if (strTooltip.IsEmpty())
 		{
-			strTooltip.Format(_T("(< %.0f%%)"), m_dblMinGroupPercent);
+			if (m_strSmallerSlicesGroupName.IsEmpty())
+			{
+				strTooltip.Format(_T("(< %.0f%%)"), m_dblMinGroupPercent);
+			}
+			else
+			{
+				strTooltip = m_strSmallerSlicesGroupName;
+			}
 		}
 	}
 	else
@@ -6976,6 +7747,11 @@ BOOL CBCGPChartPieSeries::OnGetDataPointTooltip(int nDataPointIndex, CString& st
 	if (strTooltip.IsEmpty())
 	{
 		strTooltip = _T("Pie Series");
+	}
+
+	if (IsNested() && !m_strSeriesName.IsEmpty())
+	{
+		strTooltip = m_strSeriesName + _T(": ") + strTooltip;
 	}
 
 	CString strLabelY;
@@ -6993,17 +7769,62 @@ void CBCGPChartDoughnutSeries::SetDoughnutPercent(int nPercent)
 	m_nDoughnutPercent = bcg_clamp(nPercent, 0, 100);
 }
 //****************************************************************************************
-// CBCGPChartSeries - specific PYRAMID chart
+int CBCGPChartDoughnutSeries::GetDoughnutPercent() const
+{
+	if (IsNested() && m_pChart != NULL && m_nDoughnutPercent < 100)
+	{
+		ASSERT_VALID(m_pChart);
+
+		int nSeriesCount = m_pChart->GetSeriesCount(FALSE);
+		if (nSeriesCount > 1)
+		{
+			const double dHolePerc = (100.0 - m_nDoughnutPercent) * 0.01;
+			const double dHolePercDelta = dHolePerc / nSeriesCount;
+
+			const int nSeriesIndex = nSeriesCount - m_pChart->FindSeriesIndex((CBCGPChartDoughnutSeries*)this) - 1;
+			const int nSeriesPercent = (int)(0.5 + 100.0 * (1.0 - dHolePercDelta / (1.0 - dHolePercDelta * nSeriesIndex)));
+
+			return nSeriesPercent;
+		}
+	}
+
+	return m_nDoughnutPercent;
+}
+//****************************************************************************************
+void CBCGPChartDoughnutSeries::AdjustRadius(double& dblRadiusX, double& dblRadiusY)
+{
+	if (IsNested() && m_pChart != NULL)
+	{
+		ASSERT_VALID(m_pChart);
+		
+		const int nSeriesCount = m_pChart->GetSeriesCount(FALSE);
+		if (nSeriesCount > 1 && m_nDoughnutPercent < 100)
+		{
+			const int nSeriesIndex = nSeriesCount - m_pChart->FindSeriesIndex(this) - 1;
+
+			const double dHolePerc = (100.0 - m_nDoughnutPercent) * 0.01;
+
+			const double radDeltaX = dblRadiusX * dHolePerc / nSeriesCount;
+			const double radDeltaY = dblRadiusY * dHolePerc / nSeriesCount;
+			
+			dblRadiusX -= radDeltaX * nSeriesIndex;
+			dblRadiusY -= radDeltaY * nSeriesIndex;
+		}
+	}
+}
+
+//****************************************************************************************
+// CBCGPChartPyramidSeries - specific PYRAMID
 //****************************************************************************************
 CBCGPChartPyramidSeries::CBCGPChartPyramidSeries(CBCGPChartVisualObject* pChartCtrl, BCGPChartCategory category) :
-						CBCGPChartSeries(pChartCtrl, category)
+						CBCGPChartPercentSeries(pChartCtrl, category)
 {
 	CommonInit();
 }
 //****************************************************************************************
 CBCGPChartPyramidSeries::CBCGPChartPyramidSeries(CBCGPChartVisualObject* pChartCtrl, 
 		BCGPChartCategory category, const CString& strSeriesName)
-		: CBCGPChartSeries(pChartCtrl, strSeriesName, CBCGPColor(), category)
+		: CBCGPChartPercentSeries(pChartCtrl, category, strSeriesName)
 {
 	CommonInit();
 }
@@ -7098,14 +7919,15 @@ CBCGPChartValue CBCGPChartPyramidSeries::GetDataPointValue(int nDataPointIndex, 
 {
 	if (ci == CBCGPChartData::CI_X)
 	{
-		return GetDataPointValue(nDataPointIndex, CBCGPChartData::CI_PERCENTAGE);
+		ci = CBCGPChartData::CI_PERCENTAGE;
 	}
-	return CBCGPChartSeries::GetDataPointValue(nDataPointIndex, ci);
+
+	return CBCGPChartPercentSeries::GetDataPointValue(nDataPointIndex, ci);
 }
 //****************************************************************************************
 BOOL CBCGPChartPyramidSeries::CanIncludeDataPointToLegend(int nDataPointIndex)
 {
-	if (!CBCGPChartSeries::CanIncludeDataPointToLegend(nDataPointIndex))
+	if (!CBCGPChartPercentSeries::CanIncludeDataPointToLegend(nDataPointIndex))
 	{
 		return FALSE;
 	}
@@ -7314,21 +8136,33 @@ BOOL CBCGPChartPyramidSeries::CalcSeriesParams(CBCGPGraphicsManager* pGM, const 
 void CBCGPChartPyramidSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CBCGPRect& /*rectDiagramArea*/)
 {
 	ASSERT_VALID(this);
-	ASSERT_VALID(m_pChart);
-	ASSERT_VALID(pGM);
-
 
 	if (m_pChart == NULL || pGM == NULL)
 	{
 		return;
 	}
 
+	ASSERT_VALID(m_pChart);
+	ASSERT_VALID(pGM);
+
 	double dblSum = 0;
 	CBCGPRect rectShape;
 	int nNonEmptyCount = 0;
 	
-
 	CBCGPRect rectDiagram = GetAxesBoundingRect();
+
+	if (IsAnimated())
+	{
+		if (GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Grow)
+		{
+			rectDiagram.top = rectDiagram.bottom - GetAnimatedValue() * rectDiagram.Height();
+
+			double dblWidth = (0.5 + GetAnimatedValue() / 2) * rectDiagram.Width();
+
+			rectDiagram.left = rectDiagram.CenterPoint().x - dblWidth * 0.5;
+			rectDiagram.right =  rectDiagram.left + dblWidth;
+		}
+	}
 
 	if (!CalcSeriesParams(pGM, rectDiagram, dblSum, nNonEmptyCount, rectShape))
 	{
@@ -7356,7 +8190,7 @@ void CBCGPChartPyramidSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, cons
 	}
 }
 //****************************************************************************************
-// CBCGPChartSeries - specific FUNNEL chart
+// CBCGPChartFunnelSeries - specific FUNNEL
 //****************************************************************************************
 CBCGPChartFunnelSeries::CBCGPChartFunnelSeries(CBCGPChartVisualObject* pChartCtrl, BCGPChartCategory category) :
 					CBCGPChartPyramidSeries(pChartCtrl, category)
@@ -7423,6 +8257,19 @@ void CBCGPChartFunnelSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const
 
 	CBCGPRect rectDiagram = GetAxesBoundingRect();
 
+	if (IsAnimated())
+	{
+		if (GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Grow)
+		{
+			rectDiagram.top = rectDiagram.bottom - GetAnimatedValue() * rectDiagram.Height();
+
+			double dblWidth = (0.5 + GetAnimatedValue() / 2) * rectDiagram.Width();
+
+			rectDiagram.left = rectDiagram.CenterPoint().x - dblWidth * 0.5;
+			rectDiagram.right =  rectDiagram.left + dblWidth;
+		}
+	}
+
 	if (!CalcSeriesParams(pGM, rectDiagram, dblSum, nNonEmptyCount, rectShape))
 	{
 		return;
@@ -7461,10 +8308,464 @@ void CBCGPChartFunnelSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const
 		dblCurrOffset += dblHeight + m_nAllowedGap;
 	}
 }
+
 //****************************************************************************************
-// CBCGPChartSeries - specific STOCK chart
+// CBCGPBaseChartMultiSeries
+//****************************************************************************************
+CBCGPBaseChartMultiSeries::CBCGPBaseChartMultiSeries()
+	: CBCGPChartSeries()
+	, m_bIsMainSeries (FALSE)
+{
+}
+
+CBCGPBaseChartMultiSeries::CBCGPBaseChartMultiSeries(CBCGPChartVisualObject* pChartCtrl, 
+				 BCGPChartCategory chartCategory, 
+				 BCGPChartType chartType)
+	: CBCGPChartSeries(pChartCtrl, chartCategory, chartType)
+	, m_bIsMainSeries (FALSE)
+{
+}
+//****************************************************************************************
+CBCGPBaseChartMultiSeries::CBCGPBaseChartMultiSeries(CBCGPChartVisualObject* pChartCtrl, const CString& strSeriesName, 
+				 const CBCGPColor& seriesColor, BCGPChartCategory chartCategory, 
+				 BCGPChartType chartType)
+	: CBCGPChartSeries(pChartCtrl, strSeriesName, seriesColor, chartCategory, chartType)
+	, m_bIsMainSeries (FALSE)
+{
+}
+//****************************************************************************************
+CBCGPBaseChartMultiSeries::~CBCGPBaseChartMultiSeries()
+{
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		if (m_arChildSeries[i] != NULL)
+		{
+			delete m_arChildSeries[i];
+		}
+	}
+
+	m_arChildSeries.RemoveAll();
+}
+//****************************************************************************************
+CBCGPChartSeries* CBCGPBaseChartMultiSeries::GetChildSeries( int nIdx ) const
+{
+	if (nIdx < 0 || nIdx >= m_arChildSeries.GetSize())
+	{
+		return NULL;
+	}
+
+	return m_arChildSeries[nIdx];
+}
+//****************************************************************************************
+int CBCGPBaseChartMultiSeries::AddChildSeries(CBCGPChartSeries* pSeries)
+{
+	if (pSeries == NULL)
+	{
+		return -1;
+	}
+
+	pSeries->m_pOwnerSeries = this;
+
+	return (int)m_arChildSeries.Add(pSeries);
+}
+//****************************************************************************************
+int CBCGPBaseChartMultiSeries::AddEmptyDataPoint(const CString& strCategoryName, DWORD_PTR dwUserData, BCGPChartFormatSeries* pDataPointFormat)
+{
+	ASSERT_VALID(this);
+	
+	int nIdx = CBCGPChartSeries::AddEmptyDataPoint(strCategoryName, dwUserData, pDataPointFormat);
+	
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->AddEmptyDataPoint();
+		}
+	}
+
+	return nIdx;
+}
+//****************************************************************************************
+int CBCGPBaseChartMultiSeries::AddEmptyDataPoint(DWORD_PTR dwUserData, BCGPChartFormatSeries* pDataPointFormat)
+{
+	ASSERT_VALID(this);
+	
+	int nIdx = CBCGPChartSeries::AddEmptyDataPoint(dwUserData, pDataPointFormat);
+	
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->AddEmptyDataPoint();
+		}
+	}
+
+	return nIdx;
+}
+//****************************************************************************************
+int CBCGPBaseChartMultiSeries::AddEmptyDataPoint(double dblX, DWORD_PTR dwUserData, BCGPChartFormatSeries* pDataPointFormat)
+{
+	ASSERT_VALID(this);
+	
+	int nIdx = CBCGPChartSeries::AddEmptyDataPoint(dblX, dwUserData, pDataPointFormat);
+	
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->AddEmptyDataPoint(dblX);
+		}
+	}
+
+	return nIdx;
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::SetIndexMode(BOOL bSet)
+{
+	ASSERT_VALID(this);
+	
+	if (IsMainSeries())
+	{
+		CBCGPChartSeries::SetIndexMode(bSet);
+	}
+	else
+	{
+		m_bIndexMode = bSet;
+	}
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+		
+		ASSERT_VALID(pSeriesChild);
+		
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->m_bIndexMode = bSet;
+		}
+	}
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::RecalcMinMaxValues()
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartSeries::RecalcMinMaxValues();
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->RecalcMinMaxValues();
+		}
+	}
+}
+//****************************************************************************************
+CBCGPChartValue CBCGPBaseChartMultiSeries::GetMinValue(CBCGPChartData::ComponentIndex ci)
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartValue minValue = CBCGPChartSeries::GetMinValue(ci);
+
+	if (ci == CBCGPChartData::CI_X)
+	{
+		return minValue;
+	}
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL && pSeriesChild->m_bVisible)
+		{
+			CBCGPChartValue minChildVal = pSeriesChild->GetMinValue(ci);
+
+			if (!minChildVal.IsEmpty() || GetTreatNulls() == CBCGPChartSeries::TN_VALUE)
+			{
+				if (minValue.IsEmpty())
+				{
+					minValue = minChildVal;
+				}
+				else
+				{
+					minValue = min(minValue, minChildVal);
+				}
+			}
+		}
+	}
+	return minValue;
+}
+//****************************************************************************************
+CBCGPChartValue CBCGPBaseChartMultiSeries::GetMaxValue(CBCGPChartData::ComponentIndex ci)
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartValue maxValue = CBCGPChartSeries::GetMaxValue(ci);
+
+	if (ci == CBCGPChartData::CI_X)
+	{
+		return maxValue;
+	}
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL && pSeriesChild->m_bVisible)
+		{
+			CBCGPChartValue maxChildVal = pSeriesChild->GetMaxValue(ci);
+
+			if (!maxChildVal.IsEmpty())
+			{
+				if (maxValue.IsEmpty())
+				{
+					maxValue = maxChildVal;
+				}
+				else
+				{
+					maxValue = max(maxValue, maxChildVal);
+				}
+			}
+		}
+	}
+
+	return maxValue;
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::ClearMinMaxValues()
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartSeries::ClearMinMaxValues();
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->ClearMinMaxValues();
+		}
+	}
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::OnScaleRatioChanged(const CBCGPSize& sizeScaleRatioNew, const CBCGPSize& sizeScaleRatioOld)
+{
+	CBCGPChartSeries::OnScaleRatioChanged(sizeScaleRatioNew, sizeScaleRatioOld);
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->OnScaleRatioChanged(sizeScaleRatioNew, sizeScaleRatioOld);
+		}
+	}
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea)
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartSeries::OnCalcScreenPoints(pGM, rectDiagramArea);
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->OnCalcScreenPoints(pGM, rectDiagramArea);
+		}
+	}
+}
+//****************************************************************************************
+BOOL CBCGPBaseChartMultiSeries::StartAnimationInternal(double dblAnimationTime, 
+						  BCGPChartAnimationStyle animationStyle, CBCGPAnimationManager::BCGPAnimationType type,
+						  CBCGPChartData::ComponentIndex animationComponentIndex)
+{
+	ASSERT_VALID(this);
+
+	for (int i = 0; i < (int)m_arChildSeries.GetSize(); i++)
+	{
+		ASSERT_VALID(m_arChildSeries[i]);
+
+		if (!m_arChildSeries[i]->StartAnimationInternal(dblAnimationTime, animationStyle, type, animationComponentIndex))
+		{
+			return FALSE;
+		}
+	}
+
+	return CBCGPChartSeries::StartAnimationInternal(dblAnimationTime, animationStyle, type, animationComponentIndex);
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::ResizeDataPointArray(int nNewSize)
+{
+	ASSERT_VALID(this);
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = GetChildSeries(i);
+		
+		ASSERT_VALID(pSeriesChild);
+		
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->m_arDataPoints.SetSize(nNewSize);
+		}
+	}
+	
+	m_arDataPoints.SetSize(nNewSize);
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::SetTreatNulls(CBCGPChartSeries::TreatNulls tn, BOOL bRecalcMinMax)
+{
+	CBCGPChartSeries::SetTreatNulls(tn, FALSE);
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+		
+		ASSERT_VALID(pSeriesChild);
+		
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->SetTreatNulls(tn, FALSE);
+		}
+	}
+
+	if (bRecalcMinMax)
+	{
+		RecalcMinMaxValues();
+	}
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::SetRelatedAxes(CBCGPChartAxis* pXAxis, CBCGPChartAxis* pYAxis, CBCGPChartAxis* pZAxis)
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartSeries::SetRelatedAxes(pXAxis, pYAxis, pZAxis);
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->SetRelatedAxes(pXAxis, pYAxis, pZAxis);
+		}
+	}
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::SetRelatedAxis(CBCGPChartAxis* pAxis, CBCGPChartSeries::AxisIndex axisIndex)
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartSeries::SetRelatedAxis(pAxis, axisIndex);
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->SetRelatedAxis(pAxis, axisIndex);
+		}
+	}
+}
+
+void CBCGPBaseChartMultiSeries::SetMinMaxValues(const CBCGPChartValue& val, CBCGPChartData::ComponentIndex ci, int nDataPointIndex)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(m_pChart);
+
+	if (_isnan(val.GetValue()) || !_finite(val.GetValue()))
+	{
+		return;
+	}
+
+	CBCGPBaseChartImpl* pImpl = GetChartImpl();
+	ASSERT_VALID(pImpl);
+
+	if (pImpl == NULL)
+	{
+		return;
+	}
+
+	if (val.IsEmpty() && m_treatNulls != CBCGPChartSeries::TN_VALUE)
+	{
+		return;
+	}
+
+	if (IsMainSeries())	
+	{
+		CBCGPChartSeries::SetMinMaxValues(val, ci, nDataPointIndex);
+		return;
+	}
+
+	SetMinMaxValuesSimple(val, ci, nDataPointIndex);
+}
+//****************************************************************************************
+void CBCGPBaseChartMultiSeries::EnableHistoryMode(BOOL bEnable, int nHistoryDepth, BOOL bReverseOrder, BOOL bSetDefaultValue /*= FALSE*/, double dblDefaultYValue /*= 0.*/)
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartSeries::EnableHistoryMode(bEnable, nHistoryDepth, bReverseOrder, bSetDefaultValue, dblDefaultYValue);
+
+	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeriesChild = m_arChildSeries[i];
+
+		ASSERT_VALID(pSeriesChild);
+
+		if (pSeriesChild != NULL)
+		{
+			pSeriesChild->m_bHistoryMode = bEnable;
+			pSeriesChild->m_nHistoryDepth = nHistoryDepth;
+			pSeriesChild->m_bUpdateAxesOnNewData = FALSE;
+			pSeriesChild->m_bReverseAdd = bReverseOrder;
+			pSeriesChild->m_nCurrentIndex = m_nCurrentIndex;
+			pSeriesChild->m_bIndexMode = bEnable;
+		}
+	}
+}
+
+//****************************************************************************************
+// CBCGPBaseChartStockSeries - specific STOCK
 //****************************************************************************************
 CBCGPBaseChartStockSeries::CBCGPBaseChartStockSeries()
+	: CBCGPBaseChartMultiSeries()
 {
 	m_bIsMainStockSeries = FALSE;
 	m_type = CBCGPBaseChartStockSeries::SST_BAR;
@@ -7474,7 +8775,7 @@ CBCGPBaseChartStockSeries::CBCGPBaseChartStockSeries()
 }
 //****************************************************************************************
 CBCGPBaseChartStockSeries::CBCGPBaseChartStockSeries(CBCGPChartVisualObject* pChartCtrl, StockSeriesType seriesType) : 
-CBCGPChartSeries(pChartCtrl, BCGPChartStock)
+	CBCGPBaseChartMultiSeries(pChartCtrl, BCGPChartStock)
 {
 	m_bIsMainStockSeries = FALSE;
 	m_type = seriesType;
@@ -7503,7 +8804,7 @@ CBCGPChartValue CBCGPBaseChartStockSeries::GetDataPointValue(int nDataPointIndex
 		return CBCGPChartValue();
 	}
 
-	CBCGPChartStockData data = (m_bIsMainStockSeries || m_pParentSeries == NULL) ? 
+	CBCGPChartStockData data = (IsMainStockSeries() || m_pParentSeries == NULL) ? 
 		GetStockDataAt(nDataPointIndex) : m_pParentSeries->GetStockDataAt(nDataPointIndex);
 
 	if (ci == CBCGPChartData::CI_X)
@@ -7535,10 +8836,10 @@ int CBCGPBaseChartStockSeries::GetDataPointCount() const
 {
 	if (!IsOptimizedLongDataMode())
 	{
-		return CBCGPChartSeries::GetDataPointCount();
+		return CBCGPBaseChartMultiSeries::GetDataPointCount();
 	}
 
-	if (m_bIsMainStockSeries)
+	if (IsMainStockSeries())
 	{
 		const CBCGPStockDataArray& stockData = GetStockData();
 		return (int)stockData.GetSize();
@@ -7556,7 +8857,7 @@ const CBCGPChartDataPoint* CBCGPBaseChartStockSeries::GetDataPointAt(int nIndex)
 {
 	if (!IsOptimizedLongDataMode())
 	{
-		return CBCGPChartSeries::GetDataPointAt(nIndex);
+		return CBCGPBaseChartMultiSeries::GetDataPointAt(nIndex);
 	}
 
 	CBCGPChartDataPoint* pDP = (CBCGPChartDataPoint*)&m_virtualPoint;
@@ -7566,15 +8867,15 @@ const CBCGPChartDataPoint* CBCGPBaseChartStockSeries::GetDataPointAt(int nIndex)
 	val = GetDataPointValue(nIndex, CBCGPChartData::CI_X);
 	pDP->SetComponentValue(val, CBCGPChartData::CI_X);
 
- 	pDP->m_arScreenPoints.RemoveAll();
- 	
- 	BOOL bIsEmpty = FALSE;
- 	CBCGPPoint point = m_pChart->ScreenPointFromChartData(pDP->GetData(), nIndex, bIsEmpty, (CBCGPChartSeries*)this);
- 	
- 	if (!bIsEmpty)
- 	{
- 		pDP->m_arScreenPoints.Add(point);
- 	}
+	pDP->m_arScreenPoints.RemoveAll();
+
+	BOOL bIsEmpty = FALSE;
+	CBCGPPoint point = m_pChart->ScreenPointFromChartData(pDP->GetAnimatedData(), nIndex, bIsEmpty, (CBCGPChartSeries*)this);
+
+	if (!bIsEmpty)
+	{
+		pDP->m_arScreenPoints.Add(point);
+	}
 
 	return &m_virtualPoint;
 }
@@ -7603,19 +8904,19 @@ CBCGPChartStockSeries::CBCGPChartStockSeries(CBCGPChartVisualObject* pChartCtrl,
 	pSeriesHigh->m_kind = CBCGPBaseChartStockSeries::SSK_HIGH;
 	pSeriesHigh->m_pParentSeries = this;
 
-	m_arChildSeries.Add(pSeriesHigh);
+	AddChildSeries(pSeriesHigh);
 
 	CBCGPBaseChartStockSeries* pSeriesLow = new CBCGPBaseChartStockSeries(pChartCtrl, seriesType);
 	pSeriesLow->m_kind = CBCGPBaseChartStockSeries::SSK_LOW;
 	pSeriesLow->m_pParentSeries = this;
 
-	m_arChildSeries.Add(pSeriesLow);
+	AddChildSeries(pSeriesLow);
 
 	CBCGPBaseChartStockSeries* pSeriesClose = new CBCGPBaseChartStockSeries(pChartCtrl, seriesType);
 	pSeriesClose->m_kind = CBCGPBaseChartStockSeries::SSK_CLOSE;
 	pSeriesClose->m_pParentSeries = this;
 
-	m_arChildSeries.Add(pSeriesClose);
+	AddChildSeries(pSeriesClose);
 
 	SetTreatNulls(CBCGPChartSeries::TN_SKIP, FALSE);
 }
@@ -7623,6 +8924,7 @@ CBCGPChartStockSeries::CBCGPChartStockSeries(CBCGPChartVisualObject* pChartCtrl,
 void CBCGPChartStockSeries::CommonInit()
 {
 	m_nOpenCloseBarSizePercent = 50;
+	m_bIsMainSeries = TRUE;
 	m_bIsMainStockSeries = TRUE;
 	m_nOffsetFromNullZone = 2;
 
@@ -7634,13 +8936,6 @@ void CBCGPChartStockSeries::CommonInit()
 //****************************************************************************************
 CBCGPChartStockSeries::~CBCGPChartStockSeries()
 {
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-		delete pSeriesChild;
-	}
-
-	m_arChildSeries.RemoveAll();
 }
 //****************************************************************************************
 CBCGPChartStockData CBCGPChartStockSeries::GetStockDataAt(int nDataPointIndex) const
@@ -7654,15 +8949,15 @@ CBCGPChartStockData CBCGPChartStockSeries::GetStockDataAt(int nDataPointIndex) c
 	{
 		return CBCGPChartStockData();
 	}
-	
+
 	CBCGPChartStockData data;
 	data.m_dateTime = GetDataPointValue(nDataPointIndex, CBCGPChartData::CI_X); 
 	data.m_dblOpen = GetDataPointValue(nDataPointIndex);
 	data.m_dblHigh = GetChildSeries(CBCGPChartStockSeries::CHART_STOCK_SERIES_HIGH_IDX)->GetDataPointValue(nDataPointIndex);
 	data.m_dblLow = GetChildSeries(CBCGPChartStockSeries::CHART_STOCK_SERIES_LOW_IDX)->GetDataPointValue(nDataPointIndex);
 	data.m_dblClose = GetChildSeries(CBCGPChartStockSeries::CHART_STOCK_SERIES_CLOSE_IDX)->GetDataPointValue(nDataPointIndex);
-			
-	return data;	
+
+	return data;
 }
 //****************************************************************************************
 BOOL CBCGPChartStockSeries::OnGetDataPointTooltip(int nDataPointIndex, CString& strTooltip, CString& strTooltipDescr)
@@ -7699,6 +8994,8 @@ BOOL CBCGPChartStockSeries::OnGetDataPointTooltip(int nDataPointIndex, CString& 
 		m_pXAxis->GetDisplayedLabel(valX, strTime);
 	}
 
+	CBCGPLocalResource localResource;
+
 	CString strFormat;
 	strFormat.LoadString(IDS_BCGBARRES_CHART_STOCK_VALUE_FORMAT);
 	strTooltipDescr.Format(strFormat, strTime, dblOpen, dblHigh, dblLow, dblClose);
@@ -7713,24 +9010,12 @@ CBCGPBaseChartStockSeries* CBCGPChartStockSeries::GetChildSeries(int nIdx) const
 		return NULL;
 	}
 
-	return m_arChildSeries[nIdx];
+	return DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[nIdx]);
 }
 //****************************************************************************************
 void CBCGPChartStockSeries::OnScaleRatioChanged(const CBCGPSize& sizeScaleRatioNew, const CBCGPSize& sizeScaleRatioOld)
 {
-	CBCGPChartSeries::OnScaleRatioChanged(sizeScaleRatioNew, sizeScaleRatioOld);
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-
-		ASSERT_VALID(pSeriesChild);
-
-		if (pSeriesChild != NULL)
-		{
-			pSeriesChild->OnScaleRatioChanged(sizeScaleRatioNew, sizeScaleRatioOld);
-		}
-	}
+	CBCGPBaseChartMultiSeries::OnScaleRatioChanged(sizeScaleRatioNew, sizeScaleRatioOld);
 
 	m_downCandleStyle.OnScaleRatioChanged(sizeScaleRatioNew, sizeScaleRatioOld);
 	m_downBarStyle.SetScaleRatio(sizeScaleRatioNew);
@@ -7740,24 +9025,7 @@ void CBCGPChartStockSeries::EnableHistoryMode(BOOL bEnable, int nHistoryDepth, B
 {
 	ASSERT_VALID(this);
 
-	CBCGPChartSeries::EnableHistoryMode(bEnable, nHistoryDepth, bReverseOrder, FALSE);
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-
-		ASSERT_VALID(pSeriesChild);
-
-		if (pSeriesChild != NULL)
-		{
-			pSeriesChild->m_bHistoryMode = bEnable;
-			pSeriesChild->m_nHistoryDepth = nHistoryDepth;
-			pSeriesChild->m_bUpdateAxesOnNewData = FALSE;
-			pSeriesChild->m_bReverseAdd = bReverseOrder;
-			pSeriesChild->m_nCurrentIndex = m_nCurrentIndex;
-			pSeriesChild->m_bIndexMode = bEnable;
-		}
-	}
+	CBCGPBaseChartMultiSeries::EnableHistoryMode(bEnable, nHistoryDepth, bReverseOrder, FALSE);
 }
 //****************************************************************************************
 void CBCGPChartStockSeries::ResizeDataPointArray(int nNewSize)
@@ -7770,19 +9038,7 @@ void CBCGPChartStockSeries::ResizeDataPointArray(int nNewSize)
 	}
 	else
 	{
-		for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-		{
-			CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-			
-			ASSERT_VALID(pSeriesChild);
-			
-			if (pSeriesChild != NULL)
-			{
-				pSeriesChild->m_arDataPoints.SetSize(nNewSize);
-			}
-		}
-		
-		m_arDataPoints.SetSize(nNewSize);
+		CBCGPBaseChartMultiSeries::ResizeDataPointArray(nNewSize);
 	}
 }
 //****************************************************************************************
@@ -7818,125 +9074,12 @@ void CBCGPChartStockSeries::RecalcMinMaxValues()
 	}
 }
 //****************************************************************************************
-CBCGPChartValue CBCGPChartStockSeries::GetMinValue(CBCGPChartData::ComponentIndex ci)
-{
-	ASSERT_VALID(this);
-
-	CBCGPChartValue minValue = CBCGPChartSeries::GetMinValue(ci);
-
-	if (ci == CBCGPChartData::CI_X)
-	{
-		return minValue;
-	}
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-
-		ASSERT_VALID(pSeriesChild);
-
-		if (pSeriesChild != NULL)
-		{
-			CBCGPChartValue minChildVal = pSeriesChild->GetMinValue(ci);
-
-			if (!minChildVal.IsEmpty() || GetTreatNulls() == CBCGPChartSeries::TN_VALUE)
-			{
-				if (minValue.IsEmpty())
-				{
-					minValue = minChildVal;
-				}
-				else
-				{
-					minValue = min(minValue, minChildVal);
-				}
-			}
-		}
-	}
-	return minValue;
-}
-//****************************************************************************************
-CBCGPChartValue CBCGPChartStockSeries::GetMaxValue(CBCGPChartData::ComponentIndex ci)
-{
-	ASSERT_VALID(this);
-
-	CBCGPChartValue maxValue = CBCGPChartSeries::GetMaxValue(ci);
-
-	if (ci == CBCGPChartData::CI_X)
-	{
-		return maxValue;
-	}
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-
-		ASSERT_VALID(pSeriesChild);
-
-		if (pSeriesChild != NULL)
-		{
-			CBCGPChartValue maxChildVal = pSeriesChild->GetMaxValue(ci);
-
-			if (!maxChildVal.IsEmpty())
-			{
-				if (maxValue.IsEmpty())
-				{
-					maxValue = maxChildVal;
-				}
-				else
-				{
-					maxValue = max(maxValue, maxChildVal);
-				}
-			}
-		}
-	}
-
-	return maxValue;
-}
-//****************************************************************************************
-void CBCGPChartStockSeries::ClearMinMaxValues()
-{
-	ASSERT_VALID(this);
-
-	CBCGPChartSeries::ClearMinMaxValues();
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-
-		ASSERT_VALID(pSeriesChild);
-
-		if (pSeriesChild != NULL)
-		{
-			pSeriesChild->ClearMinMaxValues();
-		}
-	}
-}
-//****************************************************************************************
 void CBCGPChartStockSeries::SetCustomStockValueCallback(BCGPCHART_STOCK_CALLBACK pfn, BOOL bRedraw)
 {
 	m_pfnCustomValueCallback = pfn;
 	if (m_pChart != NULL)
 	{
 		m_pChart->SetDirty(TRUE, bRedraw);
-	}
-}
-//****************************************************************************************
-void CBCGPChartStockSeries::OnCalcScreenPoints(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea)
-{
-	ASSERT_VALID(this);
-
-	CBCGPChartSeries::OnCalcScreenPoints(pGM, rectDiagramArea);
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-
-		ASSERT_VALID(pSeriesChild);
-
-		if (pSeriesChild != NULL)
-		{
-			pSeriesChild->OnCalcScreenPoints(pGM, rectDiagramArea);
-		}
 	}
 }
 //****************************************************************************************
@@ -7995,25 +9138,6 @@ CBCGPPoint CBCGPChartStockSeries::GetDataPointScreenPoint(int nDataPointIndex, i
 	return CBCGPPoint();
 }
 //****************************************************************************************
-void CBCGPChartStockSeries::SetRelatedAxes(CBCGPChartAxis* pXAxis, CBCGPChartAxis* pYAxis, CBCGPChartAxis* pZAxis)
-{
-	ASSERT_VALID(this);
-
-	CBCGPChartSeries::SetRelatedAxes(pXAxis, pYAxis, pZAxis);
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-
-		ASSERT_VALID(pSeriesChild);
-
-		if (pSeriesChild != NULL)
-		{
-			pSeriesChild->SetRelatedAxes(pXAxis, pYAxis, pZAxis);
-		}
-	}
-}
-//****************************************************************************************
 void CBCGPChartStockSeries::SetRelatedAxis(CBCGPChartAxis* pAxis, CBCGPChartSeries::AxisIndex axisIndex)
 {
 	ASSERT_VALID(this);
@@ -8050,32 +9174,6 @@ void CBCGPChartStockSeries::SetRelatedAxis(CBCGPChartAxis* pAxis, CBCGPChartSeri
 	}
 }
 //****************************************************************************************
-void CBCGPChartStockSeries::SetIndexMode(BOOL bSet)
-{
-	ASSERT_VALID(this);
-	
-	if (IsMainStockSeries())
-	{
-		CBCGPChartSeries::SetIndexMode(bSet);
-	}
-	else
-	{
-		m_bIndexMode = bSet;
-	}
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-		
-		ASSERT_VALID(pSeriesChild);
-		
-		if (pSeriesChild != NULL)
-		{
-			pSeriesChild->m_bIndexMode = bSet;
-		}
-	}
-}
-//****************************************************************************************
 void CBCGPChartStockSeries::SetStockSeriesType(CBCGPBaseChartStockSeries::StockSeriesType type, BOOL bRedraw)
 {
 	ASSERT_VALID(this);
@@ -8095,19 +9193,7 @@ void CBCGPChartStockSeries::SetTreatNulls(CBCGPChartSeries::TreatNulls tn, BOOL 
 		return;
 	}
 
-	CBCGPChartSeries::SetTreatNulls(tn, FALSE);
-
-	for (int i = 0; i < m_arChildSeries.GetSize(); i++)
-	{
-		CBCGPBaseChartStockSeries* pSeriesChild = DYNAMIC_DOWNCAST(CBCGPBaseChartStockSeries, m_arChildSeries[i]);
-		
-		ASSERT_VALID(pSeriesChild);
-		
-		if (pSeriesChild != NULL)
-		{
-			pSeriesChild->SetTreatNulls(tn, FALSE);
-		}
-	}
+	CBCGPBaseChartMultiSeries::SetTreatNulls(tn, FALSE);
 }
 //****************************************************************************************
 void CBCGPChartStockSeries::AddData(double dblOpen, double dblHigh, double dblLow, double dblClose, 
@@ -8186,16 +9272,11 @@ int CBCGPChartStockSeries::AddEmptyDataPoint(double dblX, DWORD_PTR /*dwUserData
 		return (int)m_stockData.GetSize() - 1;
 	}
 	
-	int nIdx = CBCGPChartSeries::AddEmptyDataPoint(dblX);
-	
-	m_arChildSeries[CHART_STOCK_SERIES_HIGH_IDX]->AddEmptyDataPoint(dblX);
-	m_arChildSeries[CHART_STOCK_SERIES_LOW_IDX]->AddEmptyDataPoint(dblX);
-	m_arChildSeries[CHART_STOCK_SERIES_CLOSE_IDX]->AddEmptyDataPoint(dblX);
-
-	return nIdx;
+	return CBCGPBaseChartMultiSeries::AddEmptyDataPoint(dblX);
 }
+
 //****************************************************************************************
-// BAR Series - specific implementation
+// CBCGPChartBarSeries - specific BAR
 //****************************************************************************************
 CBCGPChartBarSeries::CBCGPChartBarSeries()
 {
@@ -8272,18 +9353,7 @@ void CBCGPChartBarSeries::SetColumnDistancePercent(int nPercent)
 		return;
 	}
 
-	if (nPercent < 0)
-	{
-		m_pXAxis->m_nColumnDistancePercent = 0;
-	}
-	else if (nPercent > 500)
-	{
-		m_pXAxis->m_nColumnDistancePercent = 500;
-	}
-	else
-	{
-		m_pXAxis->m_nColumnDistancePercent = nPercent;
-	}
+	m_pXAxis->m_nColumnDistancePercent = bcg_clamp(nPercent, 0, 500);
 }
 //****************************************************************************************
 void CBCGPChartBarSeries::SetColumnOverlapPercent(int nPercent)
@@ -8295,23 +9365,12 @@ void CBCGPChartBarSeries::SetColumnOverlapPercent(int nPercent)
 		return;
 	}
 
-	if (nPercent < -100)
+	if (nPercent == 0)
 	{
-		m_pXAxis->m_nColumnOverlapPercent = -100;
+		nPercent = -1;
 	}
-	else if (nPercent > 100)
-	{
-		m_pXAxis->m_nColumnOverlapPercent = 100;
-	}
-	else
-	{
-		if (nPercent == 0)
-		{
-			nPercent = -1;
-		}
 
-		m_pXAxis->m_nColumnOverlapPercent = nPercent;
-	}
+	m_pXAxis->m_nColumnOverlapPercent = bcg_clamp(nPercent, -100, 100);
 }
 //****************************************************************************************
 void CBCGPChartBarSeries::CalcNumberOfSeriesOnAxis()
@@ -8505,6 +9564,7 @@ CBCGPChartPolarSeries::~CBCGPChartPolarSeries()
 void CBCGPChartPolarSeries::CommonInit()
 {
 	m_nPoints = 1;
+	m_bClipExternalArea = FALSE;
 
 	m_bConnectFirstLastPoints = TRUE;
 	m_bFillClosedShape = FALSE;
@@ -8543,7 +9603,6 @@ CBCGPPoint CBCGPChartPolarSeries::ScreenPointFromChartData(const CBCGPChartData&
 
 	m_pYAxis->GetAxisPos(ptAxisStart, ptAxisEnd);
 
-
 	CBCGPChartValue valY = data.GetValue(CBCGPChartData::CI_Y);
 	CBCGPChartValue valAngle = data.GetValue(CBCGPChartData::CI_X);
 
@@ -8564,6 +9623,11 @@ void CBCGPChartPolarSeries::OnCalcScreenPoints(CBCGPGraphicsManager* /*pGM*/, co
 {
 	ASSERT_VALID(this);
 
+	if (HasErrorBars())
+	{
+		m_pErrorSeries->GetErrorValue().RemoveAllScreenPoints();
+	}
+
 	if (m_pChartFormula != NULL && m_pChartFormula->IsNonDiscreteCurve())
 	{
 		m_pChartFormula->GeneratePoints();
@@ -8583,7 +9647,14 @@ void CBCGPChartPolarSeries::OnCalcScreenPoints(CBCGPGraphicsManager* /*pGM*/, co
 	CBCGPPoint ptAxisStart;
 	CBCGPPoint ptAxisEnd;
 
-	m_pYAxis->GetAxisPos(ptAxisStart, ptAxisEnd);
+	if (!m_pYAxis->m_bReverseOrder)
+	{
+		m_pYAxis->GetAxisPos(ptAxisStart, ptAxisEnd);
+	}
+	else
+	{
+		m_pYAxis->GetAxisPos(ptAxisEnd, ptAxisStart);
+	}
 
 	for (int i = GetMinDataPointIndex(); i <= GetMaxDataPointIndex(); i++)
 	{
@@ -8592,8 +9663,8 @@ void CBCGPChartPolarSeries::OnCalcScreenPoints(CBCGPGraphicsManager* /*pGM*/, co
 		{
 			RemoveAllDataPointScreenPoints(i);
 
-			CBCGPChartValue valY = GetDataPointValue(i, CBCGPChartData::CI_Y);
-			CBCGPChartValue valAngle = GetDataPointValue(i, CBCGPChartData::CI_X);
+			CBCGPChartValue valY = GetDataPointAnimatedValue(i, CBCGPChartData::CI_Y);
+			CBCGPChartValue valAngle = GetDataPointAnimatedValue(i, CBCGPChartData::CI_X);
 			
 			if (valY.IsEmpty() && GetTreatNulls() != CBCGPChartSeries::TN_VALUE)
 			{
@@ -8611,8 +9682,98 @@ void CBCGPChartPolarSeries::OnCalcScreenPoints(CBCGPGraphicsManager* /*pGM*/, co
 			pt.y -= dblOffset * cos(dblAngle);
 
 			SetDataPointScreenPoint(i, 0, pt);
+
+			if (HasErrorBars())
+			{
+				DWORD drawFlags = m_pErrorSeries->GetDrawFlags();
+
+				pDp = (CBCGPChartDataPoint*)m_pErrorSeries->GetDataPointAt(i);
+				if (pDp != NULL)
+				{
+					CBCGPChartValue value = pDp->GetAnimatedComponentValue(CBCGPChartData::CI_Y);
+					if ((drawFlags & CBCGPChartErrorBarsSeries::Draw_Plus) && 
+						(!value.IsEmpty() || GetTreatNulls() == CBCGPChartSeries::TN_VALUE))
+					{
+						valY = value.GetValue();
+						dblYScreen = m_pYAxis->PointFromValue(valY, FALSE);
+						dblOffset = m_pYAxis->IsVertical() ? ptAxisStart.y - dblYScreen : dblYScreen - ptAxisStart.x;
+						pt = ptAxisStart;
+						pt.x += dblOffset * sin(dblAngle);
+						pt.y -= dblOffset * cos(dblAngle);
+
+						pDp->SetScreenPointAt(CBCGPChartErrorBarsSeries::ERRORBAR_SP_PLUS, pt);
+					}
+
+					value = pDp->GetAnimatedComponentValue(CBCGPChartData::CI_Y1);
+					if ((drawFlags & CBCGPChartErrorBarsSeries::Draw_Minus) && 
+						(!value.IsEmpty() || GetTreatNulls() == CBCGPChartSeries::TN_VALUE))
+					{
+						valY = value.GetValue();
+						dblYScreen = m_pYAxis->PointFromValue(valY, FALSE);
+						dblOffset = m_pYAxis->IsVertical() ? ptAxisStart.y - dblYScreen : dblYScreen - ptAxisStart.x;
+						pt = ptAxisStart;
+						pt.x += dblOffset * sin(dblAngle);
+						pt.y -= dblOffset * cos(dblAngle);
+
+						pDp->SetScreenPointAt(CBCGPChartErrorBarsSeries::ERRORBAR_SP_MINUS, pt);
+					}
+				}
+			}
 		}
 	}
+}
+//****************************************************************************************
+CBCGPPoint CBCGPChartPolarSeries::GetDataPointErrorScreenPoint(int nDataPointIndex) const
+{
+	CBCGPPoint point(GetDataPointScreenPoint(nDataPointIndex, 0));
+
+	if (HasErrorBars())
+	{
+		const CBCGPChartDataPoint& errValue = m_pErrorSeries->GetErrorValue();
+
+		if (!errValue.IsEmpty())
+		{
+			CBCGPChartAxisPolarX* pXAxis = DYNAMIC_DOWNCAST(CBCGPChartAxisPolarX, m_pXAxis);
+
+			if (pXAxis == NULL || m_pYAxis == NULL)
+			{
+				return point;
+			}
+
+			ASSERT_VALID(pXAxis);
+			ASSERT_VALID(m_pYAxis);
+
+			CBCGPPoint ptAxisStart;
+			CBCGPPoint ptAxisEnd;
+
+			if (!m_pYAxis->m_bReverseOrder)
+			{
+				m_pYAxis->GetAxisPos(ptAxisStart, ptAxisEnd);
+			}
+			else
+			{
+				m_pYAxis->GetAxisPos(ptAxisEnd, ptAxisStart);
+			}
+
+			CBCGPChartValue valAngle = GetDataPointErrorAnimatedValue(nDataPointIndex, CBCGPChartData::CI_X);
+			CBCGPChartValue valY = GetDataPointErrorAnimatedValue(nDataPointIndex, CBCGPChartData::CI_Y);
+
+			if (!valY.IsEmpty() || GetTreatNulls() == CBCGPChartSeries::TN_VALUE)
+			{
+				double dblYScreen = m_pYAxis->PointFromValue(valY, FALSE);
+				double dblOffset = m_pYAxis->IsVertical() ? ptAxisStart.y - dblYScreen : dblYScreen - ptAxisStart.x;
+
+				point = ptAxisStart;
+
+				double dblAngle = !valAngle.IsEmpty() ? bcg_deg2rad(valAngle) : bcg_deg2rad(pXAxis->GetAngleFromIndex(nDataPointIndex));
+
+				point.x += dblOffset * sin(dblAngle);
+				point.y -= dblOffset * cos(dblAngle);
+			}
+		}
+	}
+
+	return point;
 }
 //****************************************************************************************
 // POLAR Series
@@ -8699,7 +9860,7 @@ void CBCGPChartTernarySeries::OnCalcScreenPoints(CBCGPGraphicsManager* /*pGM*/, 
 			continue;
 		}
 
-		CBCGPPoint pt = ((CBCGPChartTernaryAxis*)m_pXAxis)->PointFromChartData(pDp->GetData());
+		CBCGPPoint pt = ((CBCGPChartTernaryAxis*)m_pXAxis)->PointFromChartData(pDp->GetAnimatedData());
 		SetDataPointScreenPoint(i, 0, pt);
 	}
 }
@@ -8957,6 +10118,8 @@ BOOL CBCGPChartTernarySeries::OnGetDataPointTooltip(int nDataPointIndex, CString
 	strB.Format(strPercentFormat, dblB);
 	strC.Format(strPercentFormat, dblC);
 
+	CBCGPLocalResource localResource;
+
 	CString strFormatDescr;
 	strFormatDescr.LoadString(IDS_BCGBARRES_CHART_TOOLTIP_TERNARY_VALUE_FORMAT);
 
@@ -8965,4 +10128,496 @@ BOOL CBCGPChartTernarySeries::OnGetDataPointTooltip(int nDataPointIndex, CString
 											pAxisC->m_strAxisName, strC);
 
 	return TRUE;
+}
+
+
+//****************************************************************************************
+// CBCGPChartBoxPlotSeries
+//****************************************************************************************
+const int CBCGPChartBoxPlotSeries::CHART_BOXPLOT_SERIES_QUARTILE_IDX = 0;
+const int CBCGPChartBoxPlotSeries::CHART_BOXPLOT_SERIES_WHISKERS_IDX = 1;
+const int CBCGPChartBoxPlotSeries::CHART_BOXPLOT_SERIES_AVERAGE_IDX = 2;
+const int CBCGPChartBoxPlotSeries::CHART_BOXPLOT_SERIES_NOTCH_IDX = 3;
+
+CBCGPChartBoxPlotSeries::CBCGPChartBoxPlotSeries()
+{
+	CommonInit();
+}
+//****************************************************************************************
+CBCGPChartBoxPlotSeries::CBCGPChartBoxPlotSeries(CBCGPChartVisualObject* pChartCtrl)
+	: CBCGPBaseChartMultiSeries(pChartCtrl, BCGPChartBoxPlot)
+{
+	CommonInit();
+
+	AddChildSeries(new CBCGPChartLineSeries(pChartCtrl, BCGPChartLine, BCGP_CT_RANGE));
+	AddChildSeries(new CBCGPChartLineSeries(pChartCtrl, BCGPChartLine, BCGP_CT_RANGE));
+	AddChildSeries(new CBCGPChartLineSeries(pChartCtrl));
+	AddChildSeries(new CBCGPChartLineSeries(pChartCtrl, BCGPChartLine, BCGP_CT_RANGE));
+}
+//****************************************************************************************
+void CBCGPChartBoxPlotSeries::CommonInit()
+{
+	m_bIsMainSeries = TRUE;
+
+	m_bCustomSize = FALSE;
+	m_nCustomSizePercent = 50;
+
+	m_bCustomOffset = 0;
+	m_nCustomOffsetPercent = 0;
+
+	m_nWhiskersSizePercent = 50;
+	m_nNotchSizePercent = 25;
+
+	m_nSeriesCountOnAxis = 0;
+	m_FillGradienType = GetSeriesFillGradientType();
+
+	if (m_chartType == BCGP_CT_SIMPLE)
+	{
+		m_formatSeries.m_dataLabelFormat.m_options.m_position = BCGPChartDataLabelOptions::LP_OUTSIDE_END;
+	}
+	else
+	{
+		m_formatSeries.m_dataLabelFormat.m_options.m_position = BCGPChartDataLabelOptions::LP_INSIDE_BASE;
+	}
+
+	m_formatSeries.m_legendLabelContent = BCGPChartDataLabelOptions::LC_CATEGORY_NAME;
+}
+//****************************************************************************************
+int CBCGPChartBoxPlotSeries::GetDefaultShadowAngle() const
+{
+	return (m_pXAxis != NULL && m_pXAxis->IsVertical()) ? 280 : 350;
+}
+//****************************************************************************************
+int CBCGPChartBoxPlotSeries::AddData(const CString& strCategoryName, const CBCGPChartBoxPlotData& data, BCGPChartFormatSeries* pDataPointFormat/* = NULL*/, DWORD_PTR dwUserData/* = 0*/)
+{
+	if (data.IsEmpty())
+	{
+		return AddEmptyDataPoint(strCategoryName, dwUserData, pDataPointFormat);
+	}
+
+	int nRes = AddDataPoint(strCategoryName, data.m_dblQ2, pDataPointFormat, dwUserData);
+
+	GetChildSeries(CHART_BOXPLOT_SERIES_QUARTILE_IDX)->AddDataPoint
+		(
+			new CBCGPChartDataPoint(_T(""), CBCGPChartValue(), data.m_dblQ1, data.m_dblQ3 - data.m_dblQ1, 0, NULL)
+		);
+	GetChildSeries(CHART_BOXPLOT_SERIES_WHISKERS_IDX)->AddDataPoint
+		(
+			new CBCGPChartDataPoint(_T(""), CBCGPChartValue(), data.m_dblMin, data.m_dblMax - data.m_dblMin, 0, NULL)
+		);
+
+	if (data.m_dblAverage != DBL_MAX)
+	{
+		GetChildSeries(CHART_BOXPLOT_SERIES_AVERAGE_IDX)->AddDataPoint(data.m_dblAverage);
+	}
+	else
+	{
+		GetChildSeries(CHART_BOXPLOT_SERIES_AVERAGE_IDX)->AddEmptyDataPoint();
+	}
+
+	if (data.m_dblNotch != DBL_MAX)
+	{
+		GetChildSeries(CHART_BOXPLOT_SERIES_NOTCH_IDX)->AddDataPoint
+			(
+				new CBCGPChartDataPoint(_T(""), CBCGPChartValue(), data.m_dblQ2 - data.m_dblNotch, data.m_dblNotch * 2.0, 0, NULL)
+			);
+	}
+	else
+	{
+		GetChildSeries(CHART_BOXPLOT_SERIES_NOTCH_IDX)->AddEmptyDataPoint();
+	}
+
+	return nRes;
+}
+//****************************************************************************************
+int CBCGPChartBoxPlotSeries::AddData(const CBCGPChartBoxPlotData& data, BCGPChartFormatSeries* pDataPointFormat/* = NULL*/, DWORD_PTR dwUserData/* = 0*/)
+{
+	return AddData(_T(""), data, pDataPointFormat, dwUserData);
+}
+//****************************************************************************************
+int CBCGPChartBoxPlotSeries::AddData(const CBCGPChartBoxPlotData& data, double dblX, BCGPChartFormatSeries* pDataPointFormat/* = NULL*/, DWORD_PTR dwUserData/* = 0*/)
+{
+	if (data.IsEmpty())
+	{
+		return AddEmptyDataPoint(dblX, dwUserData, pDataPointFormat);
+	}
+
+	int nRes = AddDataPoint(data.m_dblQ2, dblX, pDataPointFormat, dwUserData);
+
+	GetChildSeries(CHART_BOXPLOT_SERIES_QUARTILE_IDX)->AddDataPoint
+		(
+			new CBCGPChartDataPoint(_T(""), dblX, data.m_dblQ1, data.m_dblQ3 - data.m_dblQ1)
+		);
+	GetChildSeries(CHART_BOXPLOT_SERIES_WHISKERS_IDX)->AddDataPoint
+		(
+			new CBCGPChartDataPoint(_T(""), dblX, data.m_dblMin, data.m_dblMax - data.m_dblMin)
+		);
+
+	if (data.m_dblAverage != DBL_MAX)
+	{
+		GetChildSeries(CHART_BOXPLOT_SERIES_AVERAGE_IDX)->AddDataPoint(data.m_dblAverage);
+	}
+	else
+	{
+		GetChildSeries(CHART_BOXPLOT_SERIES_AVERAGE_IDX)->AddEmptyDataPoint(dblX);
+	}
+
+	if (data.m_dblNotch != DBL_MAX)
+	{
+		GetChildSeries(CHART_BOXPLOT_SERIES_NOTCH_IDX)->AddDataPoint
+			(
+				new CBCGPChartDataPoint(_T(""), dblX, data.m_dblQ2 - data.m_dblNotch, data.m_dblNotch * 2.0)
+			);
+	}
+	else
+	{
+		GetChildSeries(CHART_BOXPLOT_SERIES_NOTCH_IDX)->AddEmptyDataPoint(dblX);
+	}
+
+	return nRes;
+}
+//****************************************************************************************
+int CBCGPChartBoxPlotSeries::GetColumnOverlapPercent() const 
+{
+	ASSERT_VALID(this);
+
+	if (m_pXAxis != NULL)
+	{
+		return m_pXAxis->m_nColumnOverlapPercent;
+	}
+
+	return 0;
+}
+//****************************************************************************************
+int CBCGPChartBoxPlotSeries::GetColumnDistancePercent() const 
+{
+	ASSERT_VALID(this);
+
+	if (m_pXAxis != NULL)
+	{
+		return m_pXAxis->m_nColumnDistancePercent;
+	}
+
+	return 150;
+}
+//****************************************************************************************
+void CBCGPChartBoxPlotSeries::SetColumnDistancePercent(int nPercent)
+{
+	ASSERT_VALID(this);
+
+	if (m_pXAxis == NULL)
+	{
+		return;
+	}
+
+	m_pXAxis->m_nColumnDistancePercent = bcg_clamp(nPercent, 0, 500);
+}
+//****************************************************************************************
+void CBCGPChartBoxPlotSeries::SetColumnOverlapPercent(int nPercent)
+{
+	ASSERT_VALID(this);
+
+	if (m_pXAxis == NULL)
+	{
+		return;
+	}
+
+	if (nPercent == 0)
+	{
+		nPercent = -1;
+	}
+
+	m_pXAxis->m_nColumnOverlapPercent = bcg_clamp(nPercent, -100, 100);
+}
+//****************************************************************************************
+void CBCGPChartBoxPlotSeries::SetWhiskersSizePercent(int nPercent)
+{
+	m_nWhiskersSizePercent = bcg_clamp(nPercent, 0, 100);
+}
+//****************************************************************************************
+void CBCGPChartBoxPlotSeries::SetNotchSizePercent(int nPercent)
+{
+	m_nNotchSizePercent = bcg_clamp(nPercent, 0, 50);
+	GetChildSeries(CHART_BOXPLOT_SERIES_NOTCH_IDX)->m_bVisible = m_nNotchSizePercent > 0;
+}
+//****************************************************************************************
+void CBCGPChartBoxPlotSeries::CalcNumberOfSeriesOnAxis()
+{
+	ASSERT_VALID(this);
+
+	if (m_pXAxis == NULL || m_pChart == NULL)
+	{
+		return;
+	}
+
+	ASSERT_VALID(m_pChart);
+
+	m_nSeriesCountOnAxis = 0;
+
+	if (IsStakedSeries())
+	{
+		CMap<int, int, int, int> mapByGroup;
+		// calculate number of stacked series on axis
+		for (int i = 0; i < m_pChart->GetSeriesCount(); i++)
+		{
+			CBCGPChartBoxPlotSeries* pBoxPlotSeries = DYNAMIC_DOWNCAST(CBCGPChartBoxPlotSeries, m_pChart->GetSeries(i));
+			if (pBoxPlotSeries == NULL || !pBoxPlotSeries->m_bVisible || !pBoxPlotSeries->IsStakedSeries() || 
+				!pBoxPlotSeries->IsShownOnAxis(m_pXAxis) || 
+				pBoxPlotSeries->IsCustomSize() || pBoxPlotSeries->IsCustomOffset())
+			{
+				continue;
+			}
+			int n;
+			if (!mapByGroup.Lookup(pBoxPlotSeries->GetGroupID(), n))
+			{
+				mapByGroup.SetAt(pBoxPlotSeries->GetGroupID(), 0);
+				m_nSeriesCountOnAxis++;
+			}
+		}
+	}
+	else
+	{
+		for (int i = 0; i < m_pChart->GetSeriesCount(); i++)
+		{
+			CBCGPChartBoxPlotSeries* pBoxPlotSeries = DYNAMIC_DOWNCAST(CBCGPChartBoxPlotSeries, m_pChart->GetSeries(i));
+			if (pBoxPlotSeries == NULL || !pBoxPlotSeries->m_bVisible || pBoxPlotSeries->IsStakedSeries() || 
+				!pBoxPlotSeries->IsShownOnAxis(m_pXAxis) || 
+				pBoxPlotSeries->IsCustomSize() || pBoxPlotSeries->IsCustomOffset())
+			{
+				continue;
+			}
+
+			m_nSeriesCountOnAxis++;
+		}
+	}
+}
+
+//****************************************************************************************
+// CBCGPChartErrorBarsSeries
+//****************************************************************************************
+CBCGPChartErrorBarsSeries::CBCGPChartErrorBarsSeries()
+{
+	CommonInit();
+}
+//****************************************************************************************
+CBCGPChartErrorBarsSeries::CBCGPChartErrorBarsSeries(CBCGPChartVisualObject* pChartCtrl)
+	: CBCGPChartSeries(pChartCtrl, BCGPChartBubble)
+{
+	CommonInit();
+}
+//****************************************************************************************
+void CBCGPChartErrorBarsSeries::CommonInit()
+{
+	m_chartType = BCGP_CT_RANGE;
+	m_drawFlags = Draw_Minus | Draw_Plus | Draw_Cap;
+}
+//****************************************************************************************
+void CBCGPChartErrorBarsSeries::SetDrawFlags(UINT uiDrawFlags)
+{
+	m_drawFlags = uiDrawFlags == (UINT)-1 ? CBCGPChartErrorBarsSeries::Draw_All : uiDrawFlags;
+}
+//****************************************************************************************
+CBCGPBaseChartImpl* CBCGPChartErrorBarsSeries::OnCreateChartImpl(BCGPChartCategory /*chartCategory*/)
+{
+	ASSERT_VALID(this);
+
+	if (m_pChartImpl != NULL)
+	{
+		delete m_pChartImpl;
+	}
+	m_pChartImpl = new CBCGPLineChartImpl(m_pChart);
+
+	return m_pChartImpl;
+}
+//****************************************************************************************
+void CBCGPChartErrorBarsSeries::SetMinMaxValues(const CBCGPChartValue& val, CBCGPChartData::ComponentIndex ci, int nDataPointIndex)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(m_pChart);
+
+	if (_isnan(val.GetValue()) || !_finite(val.GetValue()))
+	{
+		return;
+	}
+
+	CBCGPBaseChartImpl* pImpl = GetChartImpl();
+	ASSERT_VALID(pImpl);
+
+	if (pImpl == NULL)
+	{
+		return;
+	}
+
+	if (val.IsEmpty() && m_treatNulls != CBCGPChartSeries::TN_VALUE)
+	{
+		return;
+	}
+
+	double dblValue = m_pOwnerSeries->GetDataPointErrorValue(nDataPointIndex, ci);
+
+	if (m_drawFlags & (Draw_Plus | Draw_Minus) && 0 <= nDataPointIndex && nDataPointIndex < GetDataPointCount())
+	{
+		const CBCGPChartDataPoint* pDataPoint = GetDataPointAt(nDataPointIndex);
+
+		if (ci == CBCGPChartData::CI_Y/* || ci == CBCGPChartData::CI_Y1*/)
+		{
+			if (m_drawFlags & Draw_Plus)
+			{
+				CBCGPChartValue value(pDataPoint->GetComponentValue(CBCGPChartData::CI_Y));
+				if (!value.IsEmpty())
+				{
+					SetMinMaxValuesSimple(value.GetValue(), ci, nDataPointIndex);
+				}
+			}
+
+			if (m_drawFlags & Draw_Minus)
+			{
+				CBCGPChartValue value(pDataPoint->GetComponentValue(CBCGPChartData::CI_Y1));
+				if (!value.IsEmpty())
+				{
+					SetMinMaxValuesSimple(value.GetValue(), ci, nDataPointIndex);
+				}
+			}
+
+			return;
+		}
+	}
+
+	SetMinMaxValuesSimple(dblValue, ci, nDataPointIndex);
+}
+//****************************************************************************************
+void CBCGPChartErrorBarsSeries::OnCalcScreenPoints(CBCGPGraphicsManager* /*pGM*/, const CBCGPRect& /*rectDiagramArea*/)
+{
+	if (m_pXAxis == NULL || m_pYAxis == NULL)
+	{
+		return;
+	}
+
+	ASSERT_VALID(m_pXAxis);
+	ASSERT_VALID(m_pYAxis);
+
+	for (int i = GetMinDataPointIndex(); i <= GetMaxDataPointIndex(); i++)
+	{
+		CBCGPChartDataPoint* pDp = (CBCGPChartDataPoint*)GetDataPointAt(i);
+		if (pDp == NULL || pDp->IsEmpty())
+		{
+			continue;
+		}
+
+		CalculateScreenPoints(i, CBCGPChartData(m_pOwnerSeries->GetDataPointErrorAnimatedValue(i, CBCGPChartData::CI_X), m_pOwnerSeries->GetDataPointErrorAnimatedValue(i, CBCGPChartData::CI_Y)), *pDp);
+	}
+}
+//****************************************************************************************
+void CBCGPChartErrorBarsSeries::CalculateScreenPoints(int nDataPointIndex, const CBCGPChartData& data, CBCGPChartDataPoint& dp) const
+{
+	dp.RemoveAllScreenPoints();
+
+	BOOL bIsEmpty = FALSE;
+
+	CBCGPChartValue valX(data.GetValue(CBCGPChartData::CI_X));
+	CBCGPChartValue valY(data.GetValue(CBCGPChartData::CI_Y));
+
+	// calculate top range bound
+	CBCGPChartValue valY1 = dp.GetAnimatedComponentValue(CBCGPChartData::CI_Y);
+	if (!valY1.IsEmpty() && (m_drawFlags & Draw_Plus))
+	{
+		valY1.SetValue(valY1.GetValue());
+		CBCGPChartData data(valX, valY1);
+		CBCGPPoint point(m_pChart->ScreenPointFromChartData(data, nDataPointIndex, bIsEmpty, m_pOwnerSeries));
+
+		dp.SetScreenPointAt(CBCGPChartErrorBarsSeries::ERRORBAR_SP_PLUS, point);
+	}
+
+	// calculate bottom point
+	CBCGPChartValue valY2 = dp.GetAnimatedComponentValue(CBCGPChartData::CI_Y1);
+	if (!valY2.IsEmpty() && (m_drawFlags & Draw_Minus))
+	{
+		valY2.SetValue(valY2.GetValue());
+		CBCGPChartData data(valX, valY2);
+		CBCGPPoint point(m_pChart->ScreenPointFromChartData(data, nDataPointIndex, bIsEmpty, m_pOwnerSeries));
+
+		dp.SetScreenPointAt(CBCGPChartErrorBarsSeries::ERRORBAR_SP_MINUS, point);
+	}
+}
+//****************************************************************************************
+BOOL CBCGPChartErrorBarsSeries::CanIncludeDataPointToLegend(int /*nDataPointIndex*/)
+{
+	return FALSE;
+}
+//****************************************************************************************
+BOOL CBCGPChartErrorBarsSeries::IsDisplayShadow() const
+{
+	return FALSE;
+}
+//****************************************************************************************
+CBCGPBrush::BCGP_GRADIENT_TYPE CBCGPChartErrorBarsSeries::GetSeriesFillGradientType() const
+{
+	return CBCGPBrush::BCGP_NO_GRADIENT;
+}
+//****************************************************************************************
+void CBCGPChartErrorBarsSeries::RecalcAnimatedValues(double dblValue, BOOL bReset)
+{
+	if (m_pOwnerSeries == NULL)
+	{
+		return;
+	}
+
+	for (int i = 0; i < GetDataPointCount(); i++)
+	{
+		CBCGPChartDataPoint* pDp = (CBCGPChartDataPoint*)GetDataPointAt(i);
+		if (pDp != NULL)
+		{
+			if (bReset)
+			{
+				pDp->EmptyAnimatedValue();
+			}
+			else if (!pDp->IsEmpty())
+			{
+				if (m_AnimationComponentIndex == CBCGPChartData::CI_Y)
+				{
+					if (m_drawFlags & Draw_Plus)
+					{
+						pDp->SetAnimatedValue(dblValue, CBCGPChartData::CI_Y, FALSE);
+					}
+
+					if (m_drawFlags & Draw_Minus)
+					{
+						pDp->SetAnimatedValue(dblValue, CBCGPChartData::CI_Y1, FALSE);
+					}
+				}
+				else
+				{
+					pDp->SetAnimatedValue(dblValue, m_AnimationComponentIndex);
+				}
+			}
+		}
+	}
+	
+	if (m_pChart != NULL && m_bIsLastAnimationSeries)
+	{
+		ASSERT_VALID(m_pChart);
+		m_pChart->SetDirty(TRUE, TRUE);
+	}
+}
+//****************************************************************************************
+CBCGPChartValue CBCGPChartErrorBarsSeries::GetDataPointValue(int nDataPointIndex, CBCGPChartData::ComponentIndex ci) const
+{
+	if (m_pOwnerSeries == NULL)
+	{
+		return CBCGPChartValue();
+	}
+
+	int nSize = GetDataPointCount();
+
+	if (nDataPointIndex >= nSize || nDataPointIndex < 0)
+	{
+		return CBCGPChartValue();
+	}
+
+	if (ci != CBCGPChartData::CI_Y && ci != CBCGPChartData::CI_Y1)
+	{
+		return m_pOwnerSeries->GetDataPointErrorValue(nDataPointIndex, ci);
+	}
+
+	return CBCGPChartSeries::GetDataPointValue(nDataPointIndex, ci);
 }

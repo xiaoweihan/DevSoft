@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -51,6 +51,7 @@ CBCGPOutlookBar::CBCGPOutlookBar()
 {
 	m_bMode2003 = FALSE;
 	m_pFontButtons = NULL;
+	m_bDrawActiveTabNameOnCaption = TRUE;
 }
 //*************************************************************************************
 CBCGPOutlookBar::~CBCGPOutlookBar()
@@ -593,4 +594,14 @@ BOOL CBCGPOutlookBar::FloatTab (CWnd* pBar, int nTabID,
 	}
 
 	return FALSE;
+}
+//**************************************************************************
+void CBCGPOutlookBar::GetPaneInfo(CString& strName, CString& strInfo, HICON& hIcon, BOOL& bAutoDestroyIcon)
+{
+	CBCGPBaseTabbedBar::GetPaneInfo(strName, strInfo, hIcon, bAutoDestroyIcon);
+
+	if (!m_strBarName.IsEmpty())
+	{
+		strName = m_strBarName;
+	}
 }

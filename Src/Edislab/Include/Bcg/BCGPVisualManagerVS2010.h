@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -139,6 +139,7 @@ public:
 	virtual int GetDockingTabsBordersSize ()	{	return 0;	}
 
 	virtual BOOL OnEraseMDIClientArea (CDC* pDC, CRect rectClient);
+	virtual COLORREF GetPrintPreviewBackgroundColor(CBCGPPrintPreviewView* pPrintPreview);
 
 	virtual BOOL AreCustomToolbarCtrlColors()	{	return TRUE;	}
 
@@ -176,6 +177,13 @@ public:
 	virtual void OnDrawControlBorder (CDC* pDC, CRect rect, CWnd* pWndCtrl, BOOL bDrawOnGlass);
 	virtual void OnDrawExpandingBox (CDC* pDC, CRect rect, BOOL bIsOpened, COLORREF colorBox);
 
+	// Outlook bar:
+	virtual void OnFillOutlookBarCaption (CDC* pDC, CRect rectCaption, COLORREF& clrText);
+	virtual void OnFillOutlookPageButton (CDC* pDC, const CRect& rect,
+		BOOL bIsHighlighted, BOOL bIsPressed,
+		COLORREF& clrText);
+	virtual COLORREF OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption);
+
 #ifndef BCGP_EXCLUDE_GRID_CTRL
 	// Grid control:
 	virtual void OnDrawGridExpandingBox (CDC* pDC, CRect rect, BOOL bIsOpened, COLORREF colorBox);
@@ -210,6 +218,9 @@ public:
 #ifndef BCGP_EXCLUDE_PROP_LIST
 	virtual void OnFillPropListToolbarArea(CDC* pDC, CBCGPPropList* pList, const CRect& rectToolBar);
 #endif
+
+	// Property Sheet:
+	virtual void OnFillPropSheetHeaderArea(CDC* pDC, CBCGPPropertySheet* pPropSheet, CRect rect, BOOL& bDrawBottomLine);
 
     // Gantt control:
 #if !defined (BCGP_EXCLUDE_GRID_CTRL) && !defined (BCGP_EXCLUDE_GANTT)
@@ -250,6 +261,14 @@ public:
 		return FALSE;
 	}
 
+	// Popup window:
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+	virtual COLORREF OnDrawPopupWindowCaption (CDC* pDC, CRect rectCaption, CBCGPPopupWindow* pPopupWnd);
+#endif
+
+	// Breadcrumb control:
+	virtual void OnDrawBreadcrumbButton(CDC& dc, CBCGPBreadcrumb* pControl, CRect rect, UINT uState);
+	
 protected:
 	CBrush		m_brTabs;
 

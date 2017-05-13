@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -415,12 +415,12 @@ LPCTSTR CBCGPPlannerManagerCtrl::GetClipboardFormatName ()
 	return s_ClpFormatName;
 }
 
-void CBCGPPlannerManagerCtrl::SetImages (UINT nResID, int cxImage, COLORREF clrTransparent)
+void CBCGPPlannerManagerCtrl::SetImages (UINT nResID, int cxImage, COLORREF clrTransparent, BOOL bAutoScale)
 {
-	SetImages (MAKEINTRESOURCE (nResID), cxImage, clrTransparent);
+	SetImages (MAKEINTRESOURCE (nResID), cxImage, clrTransparent, bAutoScale);
 }
 
-void CBCGPPlannerManagerCtrl::SetImages (LPCTSTR szResID, int cxImage, COLORREF clrTransparent)
+void CBCGPPlannerManagerCtrl::SetImages (LPCTSTR szResID, int cxImage, COLORREF clrTransparent, BOOL bAutoScale)
 {
 	if (s_ImageList.GetSafeHandle () != NULL)
 	{
@@ -429,10 +429,14 @@ void CBCGPPlannerManagerCtrl::SetImages (LPCTSTR szResID, int cxImage, COLORREF 
 
 	s_ImageSize = CSize (0, 0);
 
-	if (szResID == NULL)
+	if (szResID == NULL || cxImage <= 0)
 	{
 		return;
 	}
+
+#ifdef _BCGSUITE_
+
+	UNREFERENCED_PARAMETER(bAutoScale);
 
 	HBITMAP hBmp = (HBITMAP)::LoadImage (AfxFindResourceHandle (szResID, RT_BITMAP), 
 		szResID, IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR | LR_CREATEDIBSECTION);
@@ -489,8 +493,7 @@ void CBCGPPlannerManagerCtrl::SetImages (LPCTSTR szResID, int cxImage, COLORREF 
 
 	s_ImageList.Create (s_ImageSize.cx, s_ImageSize.cy, nFlags, nCount, 0);
 
-	if ((nFlags & ILC_COLOR32) == ILC_COLOR32 &&
-		clrTransparent == (COLORREF)-1)
+	if ((nFlags & ILC_COLOR32) == ILC_COLOR32 && clrTransparent == (COLORREF)-1)
 	{
 		s_ImageList.Add (&bmp, (CBitmap*) NULL);
 	}
@@ -498,6 +501,35 @@ void CBCGPPlannerManagerCtrl::SetImages (LPCTSTR szResID, int cxImage, COLORREF 
 	{
 		s_ImageList.Add (&bmp, clrTransparent);
 	}
+
+#else
+
+	CBCGPToolBarImages images;
+	images.SetPreMultiplyAutoCheck(TRUE);
+	images.SetMapTo3DColors(FALSE);
+	images.SetTransparentColor(clrTransparent);
+
+	if (images.LoadStr(szResID))
+	{
+		images.SetSingleImage();
+		images.SetImageSize(CSize(cxImage, images.GetImageSize().cy), TRUE);
+
+		if (bAutoScale)
+		{
+			if (globalData.GetRibbonImageScale() != 1.0 && images.GetBitsPerPixel() < 32)
+			{
+				images.ConvertTo32Bits(clrTransparent);
+			}
+
+			globalUtils.ScaleByDPI(images);
+		}
+
+		if (images.ExportToImageList(s_ImageList))
+		{
+			s_ImageSize = images.GetImageSize();
+		}
+	}
+#endif
 }
 
 void CBCGPPlannerManagerCtrl::InitImages ()
@@ -557,7 +589,7 @@ BOOL CBCGPPlannerManagerCtrl::Create(DWORD dwStyle, const RECT& rect, CWnd* pPar
 
 void CBCGPPlannerManagerCtrl::OnDraw (CDC* pDC)
 {
-	CBCGPPlannerView* pView = GetCurrentView ();	
+	CBCGPPlannerView* pView = GetCurrentView ();
 
 	CRect rectClient;
 	GetClientRect (rectClient);
@@ -1069,6 +1101,21 @@ BOOL CBCGPPlannerManagerCtrl::IsCompressWeekend () const
 	return GetCurrentView ()->IsCompressWeekend ();
 }
 
+void CBCGPPlannerManagerCtrl::SetWeekBarType (CBCGPPlannerView::BCGP_PLANNER_WEEKBAR type)
+{
+	GetCurrentView ()->SetWeekBarType (type);
+}
+
+CBCGPPlannerView::BCGP_PLANNER_WEEKBAR CBCGPPlannerManagerCtrl::GetWeekBarType () const
+{
+	return GetCurrentView ()->GetWeekBarType ();
+}
+
+void CBCGPPlannerManagerCtrl::GetWeekBarText(const COleDateTime& /*day1*/, const COleDateTime& /*day2*/, CString& /*strText*/) const
+{
+
+}
+
 void CBCGPPlannerManagerCtrl::SetDrawTimeFinish (BOOL bDraw)
 {
 	GetCurrentView ()->SetDrawTimeFinish (bDraw);
@@ -1097,6 +1144,31 @@ void CBCGPPlannerManagerCtrl::SetDrawTimeAsIcons (BOOL bDraw)
 BOOL CBCGPPlannerManagerCtrl::IsDrawTimeAsIcons () const
 {
 	return GetCurrentView ()->IsDrawTimeAsIcons ();
+}
+
+void CBCGPPlannerManagerCtrl::SetDrawTimeFlags (BCGP_PLANNER_TYPE type, DWORD dwFlags, BOOL bRedraw/* = TRUE*/)
+{
+	if (GetDrawTimeFlags(type) == dwFlags)
+	{
+		return;
+	}
+
+	GetView(type)->SetDrawTimeFlags(dwFlags);
+
+	if (m_dwDrawFlags != dwFlags)
+	{
+		m_dwDrawFlags = dwFlags;
+
+		if (GetSafeHwnd () != NULL)
+		{
+			AdjustLayout (bRedraw);
+		}
+	}
+}
+
+DWORD CBCGPPlannerManagerCtrl::GetDrawTimeFlags (BCGP_PLANNER_TYPE type) const
+{
+	return GetView(type)->GetDrawTimeFlags();
 }
 
 void CBCGPPlannerManagerCtrl::SetSelection (const COleDateTime& sel1, const COleDateTime& sel2, BOOL bRedraw)
@@ -2363,23 +2435,27 @@ void CBCGPPlannerManagerCtrl::RestoreAppointmentSelection
 	}
 }
 
-BOOL CBCGPPlannerManagerCtrl::SetUpDownIcons (UINT nResID, COLORREF clrTransparent)
+BOOL CBCGPPlannerManagerCtrl::SetUpDownIcons (UINT nResID, COLORREF clrTransparent, BOOL bAutoScale)
 {
 	if (nResID == 0)
 	{
 		CBCGPLocalResource localRes;
-		return SetUpDownIcons (MAKEINTRESOURCE (IDB_BCGBARRES_PLANNER_APP_UPDOWN));
+		return SetUpDownIcons (MAKEINTRESOURCE (IDB_BCGBARRES_PLANNER_APP_UPDOWN), RGB(255, 0, 255), bAutoScale);
 	}
 
-	return SetUpDownIcons (MAKEINTRESOURCE (nResID), clrTransparent);
+	return SetUpDownIcons (MAKEINTRESOURCE (nResID), clrTransparent, bAutoScale);
 }
 
-BOOL CBCGPPlannerManagerCtrl::SetUpDownIcons (LPCTSTR szResID, COLORREF clrTransparent)
+BOOL CBCGPPlannerManagerCtrl::SetUpDownIcons (LPCTSTR szResID, COLORREF clrTransparent, BOOL bAutoScale)
 {
 	if (szResID == NULL)
 	{
 		return FALSE;
 	}
+
+#ifdef _BCGSUITE_
+
+	UNREFERENCED_PARAMETER(bAutoScale);
 
 	HBITMAP hBmp = (HBITMAP)::LoadImage (AfxFindResourceHandle (szResID, RT_BITMAP), 
 		szResID, IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR | LR_CREATEDIBSECTION);
@@ -2439,8 +2515,7 @@ BOOL CBCGPPlannerManagerCtrl::SetUpDownIcons (LPCTSTR szResID, COLORREF clrTrans
 
 	m_ilUpDown.Create (m_szUpDown.cx, m_szUpDown.cy, nFlags, 2, 0);
 
-	if ((nFlags & ILC_COLOR32) == ILC_COLOR32 &&
-		clrTransparent == (COLORREF)-1)
+	if ((nFlags & ILC_COLOR32) == ILC_COLOR32 && clrTransparent == (COLORREF)-1)
 	{
 		m_ilUpDown.Add (&bmp, (CBitmap*) NULL);
 	}
@@ -2450,6 +2525,46 @@ BOOL CBCGPPlannerManagerCtrl::SetUpDownIcons (LPCTSTR szResID, COLORREF clrTrans
 	}
 
 	return TRUE;
+
+#else
+
+	BOOL bRes = FALSE;
+
+	CBCGPToolBarImages images;
+	images.SetPreMultiplyAutoCheck(TRUE);
+	images.SetMapTo3DColors(FALSE);
+	images.SetTransparentColor(clrTransparent);
+
+	if (images.LoadStr(szResID))
+	{
+		images.SetSingleImage();
+		images.SetImageSize(CSize(images.GetImageSize().cx / 2, images.GetImageSize().cy), TRUE);
+
+		if (bAutoScale)
+		{
+			if (globalData.GetRibbonImageScale() != 1.0 && images.GetBitsPerPixel() < 32)
+			{
+				images.ConvertTo32Bits(clrTransparent);
+			}
+
+			globalUtils.ScaleByDPI(images);
+		}
+
+		if (m_ilUpDown.GetSafeHandle () != NULL)
+		{
+			m_ilUpDown.DeleteImageList ();
+		}
+
+		if (images.ExportToImageList(m_ilUpDown))
+		{
+			m_szUpDown = images.GetImageSize();
+			bRes = TRUE;
+		}
+	}
+
+	return bRes;
+
+#endif
 }
 
 HICON CBCGPPlannerManagerCtrl::GetUpDownIcon(int nType)
@@ -4464,20 +4579,23 @@ void CBCGPPlannerManagerCtrl::SetDrawFlags (DWORD dwFlags, BOOL bRedraw/* = TRUE
 {
 	ASSERT_VALID (this);
 
-	m_bDefaultDrawFlags = FALSE;
+	m_bDefaultDrawFlags = dwFlags == 0;
 
-	if ((dwFlags & BCGP_PLANNER_DRAW_APP_NO_DURATION) == BCGP_PLANNER_DRAW_APP_NO_DURATION &&
-		(dwFlags & BCGP_PLANNER_DRAW_APP_DURATION_SHAPE) == BCGP_PLANNER_DRAW_APP_DURATION_SHAPE)
+	if (!m_bDefaultDrawFlags)
 	{
-		ASSERT(FALSE);
-		dwFlags &= ~BCGP_PLANNER_DRAW_APP_DURATION_SHAPE;
-	}
+		if ((dwFlags & BCGP_PLANNER_DRAW_APP_NO_DURATION) == BCGP_PLANNER_DRAW_APP_NO_DURATION &&
+			(dwFlags & BCGP_PLANNER_DRAW_APP_DURATION_SHAPE) == BCGP_PLANNER_DRAW_APP_DURATION_SHAPE)
+		{
+			TRACE0("CBCGPPlannerManagerCtrl::SetDrawFlags: BCGP_PLANNER_DRAW_APP_DURATION_SHAPE is removed from input flags\n");
+			dwFlags &= ~BCGP_PLANNER_DRAW_APP_DURATION_SHAPE;
+		}
 
-	if ((dwFlags & BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION) == 0 &&
-		(dwFlags & BCGP_PLANNER_DRAW_APP_DURATION_SHAPE) == BCGP_PLANNER_DRAW_APP_DURATION_SHAPE)
-	{
-		ASSERT(FALSE);
-		dwFlags |= BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION;
+		if ((dwFlags & BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION) == 0 &&
+			(dwFlags & BCGP_PLANNER_DRAW_APP_DURATION_SHAPE) == BCGP_PLANNER_DRAW_APP_DURATION_SHAPE)
+		{
+			TRACE0("CBCGPPlannerManagerCtrl::SetDrawFlags: BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION is added to input flags\n");
+			dwFlags |= BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION;
+		}
 	}
 
 	if (m_dwDrawFlags != dwFlags)

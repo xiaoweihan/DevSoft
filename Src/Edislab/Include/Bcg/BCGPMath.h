@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -156,6 +156,11 @@ inline void bcgp_cross_3D_vectors(const double vect1[3], const double vect2[3], 
 	vect3[2] = vect1[0] * vect2[1] - vect1[1] * vect2[0];
 }
 
+inline int bcg_scale(int value, double scale)
+{
+	return scale == 1.0 ? value : (int)ceil(scale * value);
+}
+
 BCGCBPRODLLEXPORT double bcg_double_precision(double value, int precision);
 
 // returns positive value if p2 is located on the left side from the line defined by p0 and p1
@@ -196,6 +201,8 @@ BCGCBPRODLLEXPORT BOOL bcg_CS_intersect(const CBCGPRect& rect, const CBCGPPoint&
 									CBCGPPoint& point);
 
 BCGCBPRODLLEXPORT BOOL bcg_IsFullEllipse(double dblStartAngle, double dblFinishAngle, BOOL bIsClockwise, double dblPrecision);
+
+BCGCBPRODLLEXPORT double bcg_get_tile_size(const CBCGPSize& size, int nTiles);
 
 class BCGCBPRODLLEXPORT CBCGPVector
 {

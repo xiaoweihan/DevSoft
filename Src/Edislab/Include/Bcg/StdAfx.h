@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,10 @@
 #if _MSC_VER > 1000
 #pragma once
 #endif // _MSC_VER > 1000
+
+#if _MSC_VER <= 1500
+	#pragma warning (disable : 4244)
+#endif
 
 #define VC_EXTRALEAN		// Exclude rarely-used stuff from Windows headers
 #define _AFX_ALL_WARNINGS
@@ -45,6 +49,10 @@
 #include <afxext.h>         // MFC extensions
 
 #pragma warning (disable : 4786)
+#pragma warning (disable : 4456)
+#pragma warning (disable : 4457)
+#pragma warning (disable : 4458)
+#pragma warning (disable : 4459)
 
 #include <afxtempl.h>
 #include <afxpriv.h>
@@ -81,14 +89,6 @@
 	#pragma comment(lib,"winmm.lib") 
 	#pragma message("Automatically linking with winmm.lib")
 #pragma warning (default : 4201)
-
-#if _MSC_VER >= 1400
-	#pragma warning (disable : 6011)
-	#pragma warning (disable : 6031)
-	#pragma warning (disable : 6246)
-	#pragma warning (disable : 6284)
-	#pragma warning (disable : 6387)
-#endif
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.

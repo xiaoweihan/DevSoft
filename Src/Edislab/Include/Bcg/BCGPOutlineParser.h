@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -53,14 +53,14 @@ struct BCGCBPRODLLEXPORT Lexeme
 
 struct BCGCBPRODLLEXPORT BlockType
 {
-	BlockType () : m_bAllowNestedBlocks (TRUE), m_bIgnore (FALSE), m_dwData (0)
+	BlockType () : m_bAllowNestedBlocks (TRUE), m_bIgnore (FALSE), m_dwData (0), m_bOneLine (FALSE)
 	{
 	}
 	BlockType ( LPCTSTR lpszOpen, LPCTSTR lpszClose, LPCTSTR lpszReplace, 
 				BOOL bNested, BOOL bIgnore = FALSE, CStringList* pKeywords = NULL,
 				DWORD dwData = 0) :
 		m_strOpen (lpszOpen), m_strClose (lpszClose), m_strReplace (lpszReplace),
-		m_bAllowNestedBlocks (bNested), m_bIgnore (bIgnore), m_dwData (dwData)
+		m_bAllowNestedBlocks (bNested), m_bIgnore (bIgnore), m_dwData (dwData), m_bOneLine (FALSE)
 	{
 		if (pKeywords != NULL)
 		{
@@ -75,12 +75,14 @@ struct BCGCBPRODLLEXPORT BlockType
 	BOOL		m_bIgnore;
 	CStringList m_lstKeywords;
 	DWORD		m_dwData;
+	BOOL		m_bOneLine;
 };
 
 /////////////////////////////////////////
 // Default parser for outlining support:
 //
 
+class CBCGPEditCtrl;
 class CBCGPOutlineBaseNode;
 class CBCGPOutlineNode;
 struct BCGP_EDIT_OUTLINE_CHANGES;
@@ -98,6 +100,10 @@ public:
 					LPCTSTR lpszOpen, LPCTSTR lpszClose, LPCTSTR lpszReplace = NULL, 
 					BOOL bNested = TRUE, BOOL bIgnore = FALSE, 
 					CStringList* pKeywordsList = NULL);
+	void AddBlockType (
+					LPCTSTR lpszOpen, LPCTSTR lpszClose, LPCTSTR lpszReplace, 
+					BOOL bNested, BOOL bIgnore, CStringList* pKeywordsList, BOOL bOneLine);
+
 	virtual void AddEscapeSequence (LPCTSTR lpszStr);
 	virtual void RemoveAllBlockTypes ();
 	const BlockType* GetBlockType (int nIndex) const;
@@ -111,6 +117,7 @@ protected:
 	virtual void DoParse (const CString& strBuffer, const int nStartOffset, const int nEndOffset, CObList& lstResults);
 
 	BOOL IsEscapeSequence (const CString& strBuffer, int& nBufferOffset) const;
+	BOOL IsEOL (const CString& strBuffer, int nBufferOffset) const;
 	virtual BOOL Compare (const CString& strBuffer, const int nBufferOffset,
 						  const CString& strCompareWith, int& nEndOffset) const;
 
@@ -144,6 +151,7 @@ public:
 	BOOL							m_bCaseSensitive;
 	BOOL							m_bWholeWords;
 	CString							m_strOut;	// for test purpose only
+	CBCGPEditCtrl*					m_pParentEdit;
 };
 
 #endif	// BCGP_EXCLUDE_EDIT_CTRL

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,6 +27,7 @@
 #include "BCGPPropertySheet.h"
 #include "BCGPPropertyPage.h"
 #include "BCGPButton.h"
+#include "BCGPComboBox.h"
 #include "BCGPRibbonTreeCtrl.h"
 #include "BCGPRibbonCustomizationData.h"
 #include "bcgprores.h"
@@ -61,16 +62,16 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPRibbonCustomizeRibbonPage)
 	enum { IDD = IDD_BCGBARRES_PROPPAGE9 };
-	CButton	m_wndNewTab;
-	CComboBox	m_wndRibbonTabsCombo;
+	CBCGPButton	m_wndNewTab;
+	CBCGPComboBox	m_wndRibbonTabsCombo;
 	CStatic	m_wndRibbonSrcTreePlaceholder;
-	CButton	m_wndRename;
-	CButton	m_wndNewGroup;
+	CBCGPButton	m_wndRename;
+	CBCGPButton	m_wndNewGroup;
 	CStatic	m_wndRibbonTreePlaceholder;
-	CButton	m_wndKbdCustomize;
-	CButton	m_wndAdd;
-	CButton	m_wndRemove;
-	CComboBox	m_wndCategoryCombo;
+	CBCGPButton	m_wndKbdCustomize;
+	CBCGPButton	m_wndAdd;
+	CBCGPButton	m_wndRemove;
+	CBCGPComboBox	m_wndCategoryCombo;
 	CBCGPButton	m_wndUp;
 	CBCGPButton	m_wndDown;
 	int		m_nCategory;
@@ -142,6 +143,8 @@ protected:
 	CBCGPBaseRibbonElement*									m_pSelElemDest;
 
 	CString													m_strMainTabs;
+
+	BOOL													m_bCanAdd;
 };
 
 class BCGCBPRODLLEXPORT CBCGPRibbonCustomize : public CBCGPPropertySheet

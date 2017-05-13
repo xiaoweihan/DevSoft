@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -38,6 +38,7 @@ class BCGCBPRODLLEXPORT CBCGPToolbarMenuButton : public CBCGPToolbarButton
 	friend class CBCGPMenuBar;
 	friend class CBCGPRibbonStatusBarCustomizeButton;
 	friend class CBCGPRibbonButton;
+	friend class CBCGPRibbonBar;
 
 	DECLARE_SERIAL(CBCGPToolbarMenuButton)
 
@@ -216,6 +217,8 @@ protected:
 
 	CRect			m_rectArrow;
 	CRect			m_rectButton;
+
+	CBCGPBaseRibbonElement*	m_pRibbonElement;
 
 public:
 

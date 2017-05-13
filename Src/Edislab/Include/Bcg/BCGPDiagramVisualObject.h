@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -198,7 +198,7 @@ public:
 		CP_Begin		= CP_TopLeft,
 		CP_End			= CP_BottomRight,
 
-		CP_Caption		= 22,// = HTCAPTION, //2
+		CP_Caption		= HTCAPTION,		//2
 		CP_ResizeHandle = 23,
 		CP_RotateHandle = 24,
 		
@@ -264,17 +264,32 @@ public:
 	virtual BOOL ValidateInPlaceEdit ();
 	virtual BOOL UpdateData ();
 
+	// Parts of the object:
+	enum Parts
+	{
+		P_None			= HTNOWHERE,		//0
+		P_Caption		= HTCAPTION,		//2
+		P_CustomFirst	= CP_CustomFirst	//32
+	};
+
+	virtual UINT HitTestPart (const CBCGPPoint& pt) const;
+	virtual BOOL GetPartRect (UINT nPartID, CBCGPRect& rect) const;
+	virtual CBCGPDiagramTextDataObject* GetPartTextData (UINT nPartID);
+
 	virtual BOOL FromTag(const CString& /*strCustomProps*/) {	return TRUE;	}
 	virtual void ToTag(CString& /*strCustomName*/, CString& /*strCustomProps*/) const {}
 
 // Implementation:
 protected:
+	UINT DoHitTestConnectionPort (const CBCGPPoint& pt) const;
 
 // Overrides:
 public:
 	virtual void OnDraw (CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip, DWORD dwFlags = BCGP_DRAW_STATIC | BCGP_DRAW_DYNAMIC);
 	virtual void SetRect(const CBCGPRect& rect, BOOL bRedraw = FALSE);
 	virtual void OnScaleRatioChanged(const CBCGPSize& sizeScaleRatioOld);
+	//virtual BOOL OnSetMouseCursor(const CBCGPPoint& pt);
+	virtual void OnMouseMove(const CBCGPPoint& pt);
 
 // Attributes:
 protected:
@@ -284,6 +299,7 @@ protected:
 
 	int		m_nInPlaceEditIndex;
 	CWnd*	m_pWndInPlace;
+	CFont	m_fontInPlaceEdit;
 
 	CBCGPBrush			m_brOutline;
 	CBCGPBrush			m_brFill;
@@ -431,8 +447,8 @@ public:
 	virtual UINT HitTestAnchorPoint (const CBCGPPoint& pt, int& nIndex) const;
 
 public:
-	void BeginTrackAnchorPoint (CBCGPDiagramAnchorPoint anchor);
-	void EndTrackAnchorPoint (BOOL bSaveChanges = TRUE);
+	virtual void BeginTrackAnchorPoint (CBCGPDiagramAnchorPoint anchor);
+	virtual void EndTrackAnchorPoint (BOOL bSaveChanges = TRUE);
 	BOOL IsTrackingAnchorPoints () const { return m_nTrackPointIndex != -1; }
 	const CBCGPDiagramAnchorPoint GetTrackedAnchorPoint () const;
 	BOOL SetTrackedAnchorPoint (const CBCGPDiagramAnchorPoint& anchor);
@@ -467,6 +483,12 @@ public:
 	virtual void SetRect(const CBCGPRect& rect, BOOL bRedraw = FALSE);
 	virtual void SetSelected(BOOL bSet = TRUE);
 	virtual void SetConnectionPorts();
+	virtual UINT HitTestConnectionPort (const CBCGPPoint& pt) const;
+
+	virtual BOOL IsSnapTpGridAvailable() const
+	{
+		return FALSE;
+	}
 
 protected:
 	virtual void SetTrackingRect(const CBCGPRect& rect);

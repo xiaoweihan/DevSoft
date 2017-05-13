@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -47,7 +47,10 @@ CBCGPContextMenuManager::CBCGPContextMenuManager()
 	g_pContextMenuManager = this;
 	m_nLastCommandID = 0;
 	m_bTrackMode = FALSE;
+	m_bIsTracking = FALSE;
 	m_bDontCloseActiveMenu = FALSE;
+	m_nConnectedFloatyHeight = 0;
+	m_bRightMouseButtonCheck = FALSE;
 }
 //***********************************************************************************************
 CBCGPContextMenuManager::~CBCGPContextMenuManager()
@@ -218,11 +221,13 @@ CBCGPPopupMenu* CBCGPContextMenuManager::ShowPopupMenu (HMENU hmenuPopup, int x,
 		pPopupMenu->SetAutoDestroy (FALSE);
 	}
 
+	pPopupMenu->m_hwndOwner = pWndOwner->GetSafeHwnd();
 	pPopupMenu->m_bTrackMode = m_bTrackMode;
 	pPopupMenu->SetRightAlign (bRightAlign);
+	pPopupMenu->m_nConnectedFloatyHeight = m_nConnectedFloatyHeight;
 
 	CBCGPPopupMenu* pMenuActive = CBCGPPopupMenu::GetActiveMenu ();
-	if (!m_bDontCloseActiveMenu && pMenuActive != NULL)
+	if (!m_bDontCloseActiveMenu && pMenuActive->GetSafeHwnd() != NULL)
 	{
 		pMenuActive->SendMessage (WM_CLOSE);
 	}
@@ -248,9 +253,16 @@ UINT CBCGPContextMenuManager::TrackPopupMenu (HMENU hmenuPopup, int x, int y,
 	}
 
 	m_bTrackMode = TRUE;
+	m_bIsTracking = TRUE;
 
-	CBCGPPopupMenu* pMenu = ShowPopupMenu (hmenuPopup, x, y, pWndOwner,
-		FALSE, TRUE, bRightAlign);
+	BOOL bOwnMessage = FALSE;
+
+	if (DYNAMIC_DOWNCAST(CBCGPDialog, pWndOwner) != NULL || DYNAMIC_DOWNCAST(CBCGPPropertyPage, pWndOwner) != NULL)
+	{
+		bOwnMessage = TRUE;
+	}
+	
+	CBCGPPopupMenu* pMenu = ShowPopupMenu (hmenuPopup, x, y, pWndOwner, bOwnMessage, TRUE, bRightAlign);
 
 	if (pMenu != NULL)
 	{
@@ -299,6 +311,7 @@ UINT CBCGPContextMenuManager::TrackPopupMenu (HMENU hmenuPopup, int x, int y,
 					{
 						PostThreadMessage (GetCurrentThreadId(), 
 							msg.message, msg.wParam, msg.lParam);
+						m_bIsTracking = FALSE;
 						return 0;
 					}
 
@@ -309,6 +322,13 @@ UINT CBCGPContextMenuManager::TrackPopupMenu (HMENU hmenuPopup, int x, int y,
 
 					switch (msg.message)
 					{
+					case WM_RBUTTONDOWN:
+						if (!m_bRightMouseButtonCheck)
+						{
+							break;
+						}
+						// Next case...
+
 					case WM_NCLBUTTONDOWN:
 						pMenu->DestroyWindow ();
 
@@ -325,6 +345,7 @@ UINT CBCGPContextMenuManager::TrackPopupMenu (HMENU hmenuPopup, int x, int y,
 							pParentPropPage->SetActiveMenu (NULL);
 						}
 
+						m_bIsTracking = FALSE;
 						return 0;
 					}
 
@@ -366,6 +387,8 @@ UINT CBCGPContextMenuManager::TrackPopupMenu (HMENU hmenuPopup, int x, int y,
 	{
 		pParentPropPage->SetActiveMenu (NULL);
 	}
+
+	m_bIsTracking = FALSE;
 
 	return m_nLastCommandID;
 }

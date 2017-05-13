@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -454,6 +454,9 @@ public:
 	void SetShowBackfaces(BOOL bSet)  {m_bShowBackfaces = bSet;}
 	BOOL IsShowBackfaces() const {return m_bShowBackfaces;}
 
+	static void SetSortTrianglesBySeries(BOOL bSet = TRUE)	{m_bSortTrianglesBySeries = bSet;}
+	static BOOL IsSortTrianglesBySeries() { return m_bSortTrianglesBySeries; }
+
 	CBCGPPoint GetAxisPoint(int nAxisID, AxisPointType apt) const;
 
 	BCGPChartFormatArea m_formatWalls;
@@ -539,9 +542,11 @@ protected:
 
 	double					m_dblWallThicknessNormal;
 
-	static double BCGP_DEFAULT_X_ROTATION;
-	static double BCGP_DEFAULT_Y_ROTATION;
-	static double BCGP_DEFAULT_PERSPECTIVE;
+	static double			BCGP_DEFAULT_X_ROTATION;
+	static double			BCGP_DEFAULT_Y_ROTATION;
+	static double			BCGP_DEFAULT_PERSPECTIVE;
+	
+	static BOOL				m_bSortTrianglesBySeries;
 
 protected:
 	double m_dblXMin;
@@ -560,6 +565,7 @@ class BCGCBPRODLLEXPORT CBCGPChartVisualObject : public CBCGPBaseVisualObject
 	friend class CBCGPChartSeries;
 	friend class CBCGPChartDiagram3D;
 	friend class CBCGPChartLegendVisualObject;
+	friend class CBCGPChartCtrl;
 
 	DECLARE_DYNCREATE(CBCGPChartVisualObject);
 
@@ -604,16 +610,23 @@ public:
 		return m_pDiagram3D->GetEngine3D();
 	}
 
-	void SetColors(const CBCGPChartTheme& theme)
+	void SetColors(const CBCGPChartTheme& theme, BOOL bUseVisualManagerTheme = FALSE)
 	{
 		m_currentTheme = theme;
+		m_currentTheme.SetVisualManagerTheme(bUseVisualManagerTheme);
 		m_currentTheme.SetOpacity(m_dblThemeOpacity);
+
+		if (bUseVisualManagerTheme)
+		{
+			CBCGPChartTheme::InitChartColors(m_currentTheme, CBCGPColor(), CBCGPColor());
+		}
 
 		OnColorThemeChanged();
 	}
 
-	void SetColors(CBCGPChartTheme::ChartTheme themeType)
+	void SetColors(CBCGPChartTheme::ChartTheme themeType, BOOL bUseVisualManagerTheme = FALSE)
 	{
+		m_currentTheme.SetVisualManagerTheme(bUseVisualManagerTheme);
 		m_currentTheme.SetTheme(themeType);
 		m_currentTheme.SetOpacity(m_dblThemeOpacity);
 
@@ -687,6 +700,10 @@ public:
 	void SetChartFillColor(const CBCGPBrush& brColor);
 	void SetDiagramFillColor(const CBCGPBrush& brColor);
 
+	BOOL IsDrawPlotArea() const;
+	void SetAlwaysDrawPlotArea(BOOL bSet = TRUE) { m_bAlwaysDrawPlotArea = bSet; }
+	BOOL IsAlwaysDrawPlotArea() const { return m_bAlwaysDrawPlotArea; }
+
 	const CBCGPBrush& GetChartFillColor() const;
 	const CBCGPBrush& GetDiagramFillColor() const;
 
@@ -716,46 +733,54 @@ public:
 	BOOL IsSmartLabelsEnabled() const {return m_bSmartLabelsEnabled;}
 	void EnableSmartLabels(BOOL bEnable);
 
+// Animation:
+public:
+	BOOL StartAnimation(
+		double dblAnimationTime /* seconds*/, 
+		CBCGPAnimationManager::BCGPAnimationType type = CBCGPAnimationManager::BCGPANIMATION_SmoothStop,
+		CBCGPChartSeries::BCGPChartAnimationStyle animationStyle = CBCGPChartSeries::BCGPChartAnimationStyle_Default,
+		CBCGPChartSeries* pSeries = NULL /* NULL - all series */, CBCGPChartData::ComponentIndex animationComponentIndex = CBCGPChartData::CI_DEFAULT);
+
 protected:
 // Chart Theme
 	CBCGPChartTheme			m_currentTheme;
 	double					m_dblThemeOpacity;
 
 // Define chart style
-	BCGPChartCategory	m_Category;
-	BCGPChartType		m_Type;
+	BCGPChartCategory		m_Category;
+	BCGPChartType			m_Type;
 
 // Styles located in m_arSeriesColorThemes will be applied automatically to 
 // each newly created series. Set it to -1 to manage styles manually.
-	int					m_nDefaultVisualSettingIndex;
+	int						m_nDefaultVisualSettingIndex;
 
 // Zoom/Selection/Scroll support
-	BOOL						m_bEnableSelection;
-	BOOL						m_bEnableZoom;
-	BOOL						m_bEnableMagnifier;
-	BOOL						m_bEnableScroll;
-	BOOL						m_bEnablePan;
+	BOOL					m_bEnableSelection;
+	BOOL					m_bEnableZoom;
+	BOOL					m_bEnableMagnifier;
+	BOOL					m_bEnableScroll;
+	BOOL					m_bEnablePan;
 
-	CBCGPPoint					m_ptSelStart;
-	CBCGPPoint					m_ptSelEnd;
-	BOOL						m_bSelectionMode;
+	CBCGPPoint				m_ptSelStart;
+	CBCGPPoint				m_ptSelEnd;
+	BOOL					m_bSelectionMode;
 
-	CBCGPPoint					m_ptPanStart;
-	CBCGPPoint					m_ptPanOrigin;
-	BOOL						m_bPanMode;
+	CBCGPPoint				m_ptPanStart;
+	CBCGPPoint				m_ptPanOrigin;
+	BOOL					m_bPanMode;
 
-	BOOL						m_bThumbTrackMode;
-	CBCGPChartAxis*				m_pThumbTrackAxis;
+	BOOL					m_bThumbTrackMode;
+	CBCGPChartAxis*			m_pThumbTrackAxis;
 
-	BOOL						m_bThumbSizeMode;
-	CBCGPChartAxis*				m_pThumbSizeAxis;
-	CBCGPPoint					m_ptThumbSizeStart;
-	BOOL						m_bThumbSizeLeft;
-	double						m_dblThumbHitOffset;
+	BOOL					m_bThumbSizeMode;
+	CBCGPChartAxis*			m_pThumbSizeAxis;
+	CBCGPPoint				m_ptThumbSizeStart;
+	BOOL					m_bThumbSizeLeft;
+	double					m_dblThumbHitOffset;
 
-	BCGPChartMouseConfig		m_mouseConfig;
+	BCGPChartMouseConfig	m_mouseConfig;
 
-	BOOL						m_bClipDiagramToAxes;
+	BOOL					m_bClipDiagramToAxes;
 
 // Mouse tracking
 	BCGPChartHitInfo::HitInfoTest	m_hitInfoFlags;
@@ -764,7 +789,7 @@ protected:
 // Layout
  	CBCGPRect				m_rectPlotAreaPadding;
  	CBCGPSize				m_szTitleAreaPadding; // cx - distance from top, cy - distance from next vertical chart element
- 	CBCGPSize				m_szLegendAreaPadding; // cx - horizontal distance from chart elements to legend; cy - vertical disnace from chart elements to legend
+ 	CBCGPSize				m_szLegendAreaPadding; // cx - horizontal distance from chart elements to legend; cy - vertical distance from chart elements to legend
  	CBCGPSize				m_szLegendElementSpacing;
  	CBCGPSize				m_szHitTestDataPointPrecision;
 
@@ -773,6 +798,7 @@ protected:
 	BCGPChartFormatArea			m_chartAreaFormat;
 	// Format plot area
 	BCGPChartFormatArea			m_plotAreaFormat;
+	BOOL						m_bAlwaysDrawPlotArea;
 	// Format legend
 	BCGPChartFormatArea			m_legendAreaFormat;
 	// Format data table
@@ -961,7 +987,7 @@ public:
 
 // Series Management
 	virtual void RecalcMinMaxValues();
-	CBCGPChartSeries* OnCreateChartSeries(BCGPChartCategory category, BCGPChartType type);
+	virtual CBCGPChartSeries* OnCreateChartSeries(BCGPChartCategory category, BCGPChartType type);
 	int FindSeriesIndex(CBCGPChartSeries* pSeries) const;
 
 	CBCGPChartSeries* CreateSeries(const CString& strName, const CBCGPColor& color = CBCGPColor(), 
@@ -1075,11 +1101,15 @@ public:
 	CBCGPChartLegendVisualObject* GetRelatedLegend(int nIndex = 0) const;
 
 // Drawing
+	virtual void OnChangeVisualManager();
+
 	virtual void OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip, DWORD dwFlags = BCGP_DRAW_STATIC | BCGP_DRAW_DYNAMIC);
 	virtual void OnFillBackground (CBCGPGraphicsManager* pGM);
 	virtual void OnDrawChartArea (CBCGPGraphicsManager* pGM, const CBCGPRect& rectChartArea);
 	virtual void OnDrawChartTitle(CBCGPGraphicsManager* pGM, CString& strChartTitle, 
 		CBCGPRect& rectChartTitle, BCGPChartFormatLabel& labelStyle);
+	virtual void OnDrawChartSeriesName(CBCGPGraphicsManager* pGM, const CString& strName, const CBCGPRect& rectName, 
+		BCGPChartFormatLabel& labelStyle, CBCGPChartSeries* pSeries);
 	virtual void OnDrawChartLegend(CBCGPGraphicsManager* pGM, CBCGPRect& rectLegend, BCGPChartFormatArea& legendStyle);
 	virtual void OnDrawLegendEntry(CBCGPGraphicsManager* pGM, const CRect& rectLegend, 
 		CBCGPChartSeries* pSeries, CBCGPChartDataPoint* pDataPoint, int nDataPointIndex);
@@ -1104,6 +1134,7 @@ public:
 	virtual void OnDrawDiagram(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea);
 	virtual void OnDrawDiagramMarkers(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagram);
 	virtual void OnDrawDiagramDataLabels(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagram);
+	virtual void OnDrawDiagramErrorBars(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea);
 	virtual void OnDrawChartEffects(CBCGPGraphicsManager* pGM);
 	virtual void OnDrawChartObjects(CBCGPGraphicsManager* pGM, BOOL bForeground);
 	virtual void OnDrawSelection(CBCGPGraphicsManager* pGM);
@@ -1264,6 +1295,13 @@ public:
 	virtual double OnGetWallThickness() const;
 
 	virtual BOOL OnGetToolTip(const CBCGPPoint& pt, CString& strToolTip, CString& strDescr);
+
+	virtual BOOL OnFormatDataPointTooltip(CString& strTooltip, CBCGPChartSeries* pSeries, int nDataPointIndex);
+
+	virtual BOOL OnFormatDataPointTooltipDescription(CString& strTooltipDescr, CBCGPChartSeries* pSeries, int nDataPointIndex, 
+		CBCGPChartAxis* pAxisX, CBCGPChartAxis* pAxisY, const CString& strLabelX, const CString& strLabelY);
+
+	virtual COLORREF GetInfoTipColor(const CBCGPPoint& pt, int nColor);
 
 	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName)
 	{

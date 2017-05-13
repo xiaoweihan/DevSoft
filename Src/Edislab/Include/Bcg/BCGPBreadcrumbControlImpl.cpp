@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -16,10 +16,12 @@
 
 #include "stdafx.h"
 
+#include "BCGGlobals.h"
 #include "BCGPBreadcrumbControlImpl.h"
 #include "BCGPBreadcrumb.h"
 #include "BCGPVisualManager.h"
 #include "BCGPDrawManager.h"
+#include "BCGPGlobalUtils.h"
 
 #ifndef _BCGSUITE_
 #include "BCGPPopupMenu.h"
@@ -139,6 +141,7 @@ public:
 		, m_hFont (NULL)
 		, m_hwndTooltips (NULL)
 		, m_clrText (CLR_INVALID)
+		, m_clrTextCustom (CLR_INVALID)
 		, m_clrBackground (CLR_INVALID)
 		, m_clrHighlight (CLR_INVALID)
 		, m_clrHighlightText (CLR_INVALID)
@@ -154,6 +157,7 @@ public:
 		, m_iHilitedIndex (-2)
 		, m_uHilitedHitTest (BCCHT_EMPTY)
 		, m_bIsMenuClosedByMouseButton (false)
+		, m_nProgressPercent(0)
 	{
 		ASSERT_VALID (m_pWnd);
 
@@ -248,7 +252,7 @@ protected:
 		{
 			int cx, cy;
 			ImageList_GetIconSize (m_hImageList, &cx, &cy);
-			rectClient.left += 2; // Gap between left border and icon
+			rectClient.left += globalUtils.ScaleByDPI(2); // Gap between left border and icon
 			m_rectIconLayout.left = rectClient.left;
 			m_rectIconLayout.right = rectClient.left + cx;
 
@@ -261,7 +265,7 @@ protected:
 			m_rectIconLayout.bottom = rectClient.top + cy;
 
 			rectClient.left += cx;
-			rectClient.left += 2; // Gap between icon and the following items
+			rectClient.left += globalUtils.ScaleByDPI(2); // Gap between icon and the following items
 		}
 
 		int nSpaceLeft = rectClient.right - rectClient.left;
@@ -361,7 +365,7 @@ protected:
 				if (xPos + arrowWidth + itemWidth > rectClient.right)
 				{
 					itemWidth = (rectClient.right - xPos - arrowWidth);
-					itemWidth = max (itemWidth, 12); // 12 pixels is the minimal width for an item text
+					itemWidth = max (itemWidth, globalUtils.ScaleByDPI(12)); // 12 pixels is the minimal width for an item text
 				}
 
 				if (itemWidth > 0)
@@ -469,7 +473,7 @@ protected:
 	// Returns size in pixels of content (icon + items) that must be visible regardless of control width.
 	UINT GetMinimalContentWidth () const
 	{
-		UINT min = 50;
+		UINT min = globalUtils.ScaleByDPI(50);
 		if (m_hImageList != NULL)
 		{
 			int cx, cy;
@@ -509,7 +513,7 @@ protected:
 		UNUSED_ALWAYS (hdcClient);
 		
 		::GetTextExtentPoint32 (hdcClient, item.strText, item.strText.GetLength (), &size);
-		size.cx += 10; // Margins: 5 pixels left an right
+		size.cx += globalUtils.ScaleByDPI(10); // Margins: 5 pixels left an right
 
 		return true;
 	}
@@ -522,7 +526,7 @@ protected:
 		RECT rectClient;
 		m_pWnd->GetClientRect (&rectClient);
 
-		size.cx = 13;
+		size.cx = globalUtils.ScaleByDPI(13);
 		size.cy = rectClient.bottom - rectClient.top;
 
 		return true;
@@ -535,7 +539,7 @@ protected:
 		RECT rectClient;
 		m_pWnd->GetClientRect (&rectClient);
 
-		size.cx = 15;
+		size.cx = globalUtils.ScaleByDPI(15);
 		size.cy = rectClient.bottom - rectClient.top;
 
 		return true;
@@ -752,7 +756,7 @@ protected:
 
 			if (!rectWindow.IsRectEmpty ())
 			{
-				CBCGPVisualManager::GetInstance ()->OnDrawControlBorder (&dc, rectWindow, m_pWnd, TRUE);
+				CBCGPVisualManager::GetInstance ()->OnDrawControlBorder (&dc, rectWindow, m_pWnd, m_pWnd->IsOnGlass());
 			}
 			return true;
 		}
@@ -779,8 +783,26 @@ protected:
 			return false;
 		}
 
+		if (code == BCCM_DRAWMENUITEMICON && lParam != NULL && m_hImageList != NULL)
+		{
+			BREADCRUMBMENUICONDRAWINFO* pInfo = (BREADCRUMBMENUICONDRAWINFO*)lParam;
+			
+			int nIndex = pInfo->iIndex;
+			if (nIndex >= 0 && nIndex < (int)m_arrCurrentMenuItems.GetSize())
+			{
+				int iImage = m_arrCurrentMenuItems[nIndex]->iImage;
+				CRect rectImage = pInfo->rectIcon;
+				
+				int cx = 0;
+				int cy = 0;
+				ImageList_GetIconSize(m_hImageList, &cx, &cy);
+				
+				CPoint ptIcon(rectImage.left + max(0, (rectImage.Width() - cx) / 2), rectImage.top + max(0, (rectImage.Height() - cy) / 2));
+				return ImageList_Draw(m_hImageList, iImage, pInfo->hdc, ptIcon.x, ptIcon.y, ILD_TRANSPARENT) != 0;
+			}
+		}
+		
 		return false;
-
 	}
 
 	bool MsgFont (UINT code, WPARAM wParam, LPARAM lParam, LRESULT& rResult)
@@ -815,16 +837,29 @@ protected:
 	{
 		UNUSED_ALWAYS (wParam);
 
+		if (code == BCCM_SETPROGRESS)
+		{
+			m_nProgressPercent = (int)wParam;
+			Invalidate ();
+			return true;
+		}
+
+		if (code == BCCM_GETPROGRESS)
+		{
+			rResult = (LRESULT)m_nProgressPercent;
+			return true;
+		}
+
 		if (code == BCCM_SETTEXTCOLOR)
 		{
-			rResult = (LRESULT)m_clrText;
-			m_clrText = (COLORREF)lParam; 
+			rResult = (LRESULT)m_clrTextCustom;
+			m_clrTextCustom = (COLORREF)lParam; 
 			Invalidate ();
 			return true;
 		}
 		if (code == BCCM_GETTEXTCOLOR)
 		{
-			rResult = (LRESULT)m_clrText;
+			rResult = (LRESULT)m_clrTextCustom;
 			return true;
 		}
 
@@ -1407,7 +1442,7 @@ protected:
 				rResult = GetItemInfo ((BREADCRUMBITEMINFO*)lParam, *pItem);
 			}
 			return true;
-
+			
 		case BCCM_GETROOTITEM:
 			rResult = (LRESULT)(HBREADCRUMBITEM)&(GetRootItem ());
 			return true;
@@ -2105,7 +2140,7 @@ protected:
 		int index = LayoutIndexFromItem (pItem);
 		if (index >= 0 && index < (int)m_arrItemsLayout.GetSize ())
 		{
-			ptMenuOrigin.x = rectWindow.left + m_arrItemsLayout[index].rectArrow.left - 18; // See 5.14 in requirements
+			ptMenuOrigin.x = rectWindow.left + m_arrItemsLayout[index].rectArrow.left - globalUtils.ScaleByDPI(18);
 		}
 
 		BREADCRUMB_MENU menuInfo;
@@ -2293,26 +2328,31 @@ protected:
 		return (HFONT)::SelectObject (hdc, hFont);
 	}
 
-	COLORREF TranslateColor (COLORREF clr, int sysDefaultColor)
-	{
-		if (clr == CLR_DEFAULT || clr == CLR_INVALID)
-		{
-			clr = ::GetSysColor (sysDefaultColor);
-		}
-		return clr;
-	}
-
 	// Control rendering
 
 	COLORREF FillControlBackground (CDC& dc, RECT rect)
 	{
-		return CBCGPVisualManager::GetInstance ()->BreadcrumbFillBackground (dc, m_pWnd, rect);
+		COLORREF clrText = CBCGPVisualManager::GetInstance ()->BreadcrumbFillBackground (dc, m_pWnd, rect);
+		
+		int nProgress = max(0, min(100, m_nProgressPercent));
+		if (nProgress > 0)
+		{
+			CRect rectProgress = rect;
+			if (nProgress < 100)
+			{
+				rectProgress.right = rectProgress.left + rectProgress.Width() * nProgress / 100;
+			}
+
+			CBCGPVisualManager::GetInstance ()->BreadcrumbFillProgress(dc, m_pWnd, rect, rectProgress, nProgress);
+		}
+
+		return clrText;
 	}
 
 	void DrawItemBackground (CDC& dc, BREADCRUMBITEMINFO* pItemInfo, RECT rect, UINT uState)
 	{
 		if (::IsRectEmpty (&rect)) return;
-		CBCGPVisualManager::GetInstance ()->BreadcrumbDrawItemBackground (dc, m_pWnd, pItemInfo, rect, uState, TranslateColor (m_clrHighlight, COLOR_HIGHLIGHT));
+		CBCGPVisualManager::GetInstance ()->BreadcrumbDrawItemBackground (dc, m_pWnd, pItemInfo, rect, uState, m_clrHighlight);
 	}
 
 	void DrawItem (CDC& dc, BREADCRUMBITEMINFO* pItemInfo, RECT rect, UINT uState)
@@ -2322,11 +2362,11 @@ protected:
 			COLORREF clrText;
 			if (uState == CDIS_HOT || uState == CDIS_SELECTED || uState == CDIS_OTHERSIDEHOT)
 			{
-				clrText = TranslateColor (m_clrHighlightText, COLOR_HIGHLIGHTTEXT);
+				clrText = m_clrHighlightText;
 			}
 			else
 			{
-				clrText = TranslateColor (m_clrText, COLOR_WINDOWTEXT);
+				clrText = m_clrTextCustom == CLR_INVALID ? m_clrText : m_clrTextCustom;
 			}
 
 			CBCGPVisualManager::GetInstance ()->BreadcrumbDrawItem (dc, m_pWnd, pItemInfo, rect, uState, clrText);
@@ -2336,7 +2376,7 @@ protected:
 	void DrawArrowBackground (CDC& dc, BREADCRUMBITEMINFO* pItemInfo, RECT rect, UINT uState)
 	{
 		if (::IsRectEmpty (&rect)) return;
-		CBCGPVisualManager::GetInstance ()->BreadcrumbDrawArrowBackground (dc, m_pWnd, pItemInfo, rect, uState, TranslateColor (m_clrHighlight, COLOR_HIGHLIGHT));
+		CBCGPVisualManager::GetInstance ()->BreadcrumbDrawArrowBackground (dc, m_pWnd, pItemInfo, rect, uState, m_clrHighlight);
 	}
 
 	void DrawArrow (CDC& dc, BREADCRUMBITEMINFO* pItemInfo, RECT rect, UINT uState)
@@ -2355,11 +2395,11 @@ protected:
 			}
 			else if (uState == CDIS_HOT || uState == CDIS_SELECTED || uState == CDIS_OTHERSIDEHOT)
 			{
-				clrArrow = TranslateColor (m_clrHighlightText, COLOR_HIGHLIGHTTEXT);
+				clrArrow = m_clrHighlightText;
 			}
 			else
 			{
-				clrArrow = TranslateColor (m_clrText, COLOR_WINDOWTEXT);
+				clrArrow = m_clrTextCustom == CLR_INVALID ? m_clrText : m_clrTextCustom;
 			}
 
 			CBCGPVisualManager::GetInstance ()->BreadcrumbDrawArrow (dc, m_pWnd, pItemInfo, rect, uState, clrArrow);
@@ -2369,20 +2409,21 @@ protected:
 	void DrawLeftArrowButtonBackground (CDC& dc, RECT rect, UINT uState)
 	{
 		if (::IsRectEmpty (&rect)) return;
-		CBCGPVisualManager::GetInstance ()->BreadcrumbDrawLeftArrowBackground (dc, m_pWnd, rect, uState, TranslateColor (m_clrHighlight, COLOR_HIGHLIGHT));
+		CBCGPVisualManager::GetInstance ()->BreadcrumbDrawLeftArrowBackground (dc, m_pWnd, rect, uState, m_clrHighlight);
 	}
 
 	void DrawLeftArrowButton (CDC& dc, const RECT& rect, UINT uState)
 	{
 		if (::IsRectEmpty (&rect)) return;
+		
 		COLORREF clrArrows;
 		if (uState == CDIS_HOT || uState == CDIS_SELECTED || uState == CDIS_OTHERSIDEHOT)
 		{
-			clrArrows = TranslateColor (m_clrHighlightText, COLOR_HIGHLIGHTTEXT);
+			clrArrows = m_clrHighlightText;
 		}
 		else
 		{
-			clrArrows = TranslateColor (m_clrText, COLOR_WINDOWTEXT);
+			clrArrows = m_clrTextCustom == CLR_INVALID ? m_clrText : m_clrTextCustom;
 		}
 
 		CBCGPVisualManager::GetInstance ()->BreadcrumbDrawLeftArrow (dc, m_pWnd, rect, uState, clrArrows);
@@ -2702,6 +2743,7 @@ private:
 	// Appearance
 	UINT                        m_cxRightMargin;
 	COLORREF                    m_clrText;
+	COLORREF                    m_clrTextCustom;
 	COLORREF                    m_clrBackground;
 	COLORREF                    m_clrHighlight;
 	COLORREF                    m_clrHighlightText;
@@ -2726,10 +2768,12 @@ private:
 	bool                        m_bNeedShowPopupMenuAgain;
 	bool                        m_bProcessingSelectionChange;
 	CArray<_BREADCRUMBITEM*, _BREADCRUMBITEM*>  m_arrCurrentMenuItems;
-	int                         m_iHilitedIndex; // -1 means that left menu button highlighted; -2 if no items highlited.
+	int                         m_iHilitedIndex; // -1 means that left menu button highlighted; -2 if no items highlighted.
 	UINT                        m_uHilitedHitTest;
 	_BREADCRUMBITEM*            m_pPressedItem; // If not NULL, specifies the item on which the user has clicked (but not yet released the button). If the m_bIsMenuDropped not set to true, specifies that the mouse has been captured.
 	CMousePosTracker            m_MouseTracker;
+
+	int							m_nProgressPercent;
 };
 
 CBCGPBreadcrumbImpl* AttachBreadcrumbImplementation (CWnd* pAttachTo)

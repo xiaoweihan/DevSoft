@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,13 @@
 
 struct BCGCBPRODLLEXPORT BCGP_MSGBOXPARAMS : public MSGBOXPARAMS
 {
+	enum BCGP_MSGBOX_POSITION
+	{
+		BCGP_MSGBOX_POSITION_NO_CENTER     = 0,
+		BCGP_MSGBOX_POSITION_CENTER_PARENT = 1,
+		BCGP_MSGBOX_POSITION_CENTER_OWNER  = 2
+	};
+
 	BOOL	bUseNativeControls;
 	BOOL	bUseNativeCaption;
 	BOOL	bDrawButtonsBanner;
@@ -35,8 +42,16 @@ struct BCGCBPRODLLEXPORT BCGP_MSGBOXPARAMS : public MSGBOXPARAMS
 	BOOL    bShowSeparator;  // Draw separator line above check box (only if check box present).
 	LPCTSTR lpszCheckBoxText; 
 	UINT*   puiAutoRespond;  // [in/out] points to variable that receives selected button ID when user checks "Don't ask me..." checkbox.
+	HFONT	hfontText;
+	HFONT	hfontButtons;
+	LPCTSTR	lpszHeader;		// "Main" text displayed on top
 
 	BOOL    bIgnoreStandardButtons; // Show user-defined buttons only
+
+	BCGP_MSGBOX_POSITION boxPosition;
+
+	BOOL    bHeaderWordBreak; //
+	BOOL    bMessageWordBreak; //
 
 	enum
 	{
@@ -50,8 +65,12 @@ struct BCGCBPRODLLEXPORT BCGP_MSGBOXPARAMS : public MSGBOXPARAMS
 	{
 		ZeroMemory (this, sizeof (BCGP_MSGBOXPARAMS));
 		cbSize = sizeof (MSGBOXPARAMS);
-		
+
 		bDrawButtonsBanner = TRUE;
+		boxPosition = BCGP_MSGBOX_POSITION_CENTER_PARENT;
+
+		bHeaderWordBreak = TRUE;
+		bMessageWordBreak = TRUE;
 	}
 };
 
@@ -69,6 +88,7 @@ protected:
 	void DoInitDialog();
 	void Initialize ();
 	void AddButton (UINT id, HINSTANCE hInst, LPCTSTR lpszCaption = NULL);
+	virtual BOOL CheckAutoCenter() {	return FALSE;	}
 
 	CString GetString (LPCTSTR lpszText, LPCTSTR lpszDefault = NULL) const;
 	// Generated message map functions
@@ -77,6 +97,8 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg void OnButton(UINT nID);
 	afx_msg LRESULT OnHelp(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnGetDefID(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnSetDefID(WPARAM wp, LPARAM lp);
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
 	//}}AFX_MSG
 
@@ -85,24 +107,49 @@ protected:
 	// Overridables
 protected:
 	virtual BOOL PreTranslateMessage (MSG* pMsg);
-	virtual void DrawText (CDC* pDC);
+	virtual void DrawHeader(CDC* pDC);
+	virtual void DrawText(CDC* pDC);
+
+#if _MSC_VER >= 1300
+	//Accessibility
+public:
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+	virtual HRESULT accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild);
+	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
+	virtual HRESULT get_accDefaultAction(VARIANT varChild, BSTR *pszDefaultAction);
+	virtual HRESULT get_accDescription(VARIANT varChild, BSTR *pszDescription);
+	virtual HRESULT get_accHelp(VARIANT varChild, BSTR* pszHelp);
+	virtual HRESULT get_accHelpTopic(BSTR* pszHelpFile, VARIANT varChild, long* pidTopic);
+	virtual HRESULT get_accKeyboardShortcut(VARIANT varChild, BSTR* pszKeyboardShortcut);
+	virtual HRESULT get_accValue(VARIANT varChild, BSTR *pszValue);
+#endif
 
 	// Change these attributes to modify message box global appearance:
 public:
 	static BOOL	m_bUseNativeControls;
 	static BOOL	m_bUseNativeCaption;
 	static BOOL	m_bDontUseDefaultIcon;
+	static BOOL	m_bShowImmediately;
 
 protected:
 	BCGP_MSGBOXPARAMS m_Params;
 	HWND m_hwndOwner;
 
-	HICON   m_hMessageIcon;
+	CBCGPToolBarImages	m_Icon;
 	CString m_strMessageCaption;
+	CString	m_strMessageHeader;
 	CString m_strMessageText;
 	CString m_strCheckBox;
+	CFont   m_fntHeader;
 	CFont   m_fntText;
+	CFont   m_fntButtons;
 	int     m_nDefaultButtonIndex;
+	int     m_nAccTextIndex;
+	int		m_nAccHeaderIndex;
 
 	CArray <CWnd*, CWnd*> m_arrButtons;
 	CBCGPButton m_wndDontAskCheckBox;
@@ -110,6 +157,7 @@ protected:
 	DWORD   m_dwDrawTextFlags;
 	CRect   m_rectButtons;
 	CRect   m_rectIcon;
+	CRect   m_rectHeader;
 	CRect   m_rectText;
 	int     m_cySeparatorLine;
 	CPoint  m_ptNextButtonPos;
@@ -117,20 +165,28 @@ protected:
 
 	// Initial sizes
 	CRect   m_rectClientMargins;
+	CRect   m_rectButtonsMargins;
 	int     m_cxIconSpacing;  // spacing between an icon and message text
 	CSize   m_szButton;
 	int     m_cyCheckBoxHeight;
+	int		m_cyCheckBoxSpacing;
 	int     m_cxButtonSpacing;  // gap between buttons
-	int     m_cyVerticalSpacing; // vertical spacing between text, optional check box and buttons
 };
 
-int BCGCBPRODLLEXPORT BCGPMessageBox (HWND hWnd, LPCTSTR lpText, LPCTSTR lpCaption, UINT uType, LPCTSTR lpszCheckBoxLabel = NULL, BOOL* pCheckBoxResult = NULL);
-int BCGCBPRODLLEXPORT BCGPMessageBoxEx (HWND hWnd, LPCTSTR lpText, LPCTSTR lpCaption, UINT uType, WORD wLanguageId, LPCTSTR lpszCheckBoxLabel = NULL, BOOL* pCheckBoxResult = NULL);
+int BCGCBPRODLLEXPORT BCGPMessageBox (HWND hWnd, LPCTSTR lpText, LPCTSTR lpCaption, UINT uType, LPCTSTR lpszCheckBoxLabel = NULL, BOOL* pCheckBoxResult = NULL, LPCTSTR lpszHeader = NULL);
+int BCGCBPRODLLEXPORT BCGPMessageBoxEx (HWND hWnd, LPCTSTR lpText, LPCTSTR lpCaption, UINT uType, WORD wLanguageId, LPCTSTR lpszCheckBoxLabel = NULL, BOOL* pCheckBoxResult = NULL, LPCTSTR lpszHeader = NULL);
 int BCGCBPRODLLEXPORT BCGPMessageBoxIndirect (const MSGBOXPARAMS* pMsgBoxParams);
 int BCGCBPRODLLEXPORT BCGPMessageBoxIndirect (const BCGP_MSGBOXPARAMS* pMsgBoxParams);
 
-int BCGCBPRODLLEXPORT BCGPMessageBox (LPCTSTR lpszText, UINT nType = MB_OK, LPCTSTR lpszCheckBoxLabel = NULL, BOOL* pCheckBoxResult = NULL);
-int BCGCBPRODLLEXPORT BCGPMessageBox (UINT nIDPrompt, UINT nType = MB_OK, UINT nIDCheckBoxPrompt = 0, BOOL* pCheckBoxResult = NULL);
+int BCGCBPRODLLEXPORT BCGPMessageBox (LPCTSTR lpszText, UINT nType = MB_OK, LPCTSTR lpszCheckBoxLabel = NULL, BOOL* pCheckBoxResult = NULL, LPCTSTR lpszHeader = NULL);
+int BCGCBPRODLLEXPORT BCGPMessageBox (UINT nIDPrompt, UINT nType = MB_OK, UINT nIDCheckBoxPrompt = 0, BOOL* pCheckBoxResult = NULL, LPCTSTR lpszHeader = NULL);
+
+inline int BCGPShowMessageBox(BOOL bIsThemed, CWnd* pWnd, LPCTSTR lpszText, LPCTSTR lpCaption = NULL, UINT nType = MB_OK)
+{
+	return bIsThemed ? 
+		BCGPMessageBox(pWnd->GetSafeHwnd(), lpszText, lpCaption, nType) :
+		pWnd->MessageBox(lpszText, lpCaption, nType);
+}
 
 /////////////////////////////////////////////////////////////////////////////
 

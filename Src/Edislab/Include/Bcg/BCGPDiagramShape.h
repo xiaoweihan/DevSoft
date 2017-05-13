@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -317,6 +317,9 @@ public:
 	void EnableCaption (BOOL bEnable = TRUE);
 	BOOL IsCaptionEnabled () const;
 
+	void EnableConnectionPortsMarkers (BOOL bEnable = TRUE);
+	BOOL IsConnectionPortsMarkersEnabled () const;
+
 	UINT ConnectionPortID (int nRowIndex, BOOL bLeft) const;
 
 // Overrides:
@@ -326,6 +329,10 @@ public:
 	virtual void OnScaleRatioChanged(const CBCGPSize& sizeScaleRatioOld);
 	virtual void SetConnectionPorts();
 	virtual UINT HitTestConnectionPort (const CBCGPPoint& pt) const;
+
+	virtual UINT HitTestPart (const CBCGPPoint& pt) const;
+	virtual BOOL GetPartRect (UINT nPartID, CBCGPRect& rect) const;
+	virtual CBCGPDiagramTextDataObject* GetPartTextData (UINT nPartID);
 
 // Implementation:
 protected:
@@ -339,6 +346,8 @@ protected:
 	BOOL		m_bCaption;
 	CBCGPDiagramTextDataObject	m_CaptionData;
 	CBCGPBrush	m_brCaptionFill;
+
+	BOOL		m_bShowConnectionPorts;
 };
 
 #endif // !defined(AFX_BCGPDIAGRAMSHAPE_H__D398297F_D298_496B_B7CF_25A1BE568972__INCLUDED_)

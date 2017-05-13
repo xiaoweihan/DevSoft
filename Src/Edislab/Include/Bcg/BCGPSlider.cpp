@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -30,7 +30,8 @@ static char THIS_FILE[] = __FILE__;
 
 IMPLEMENT_DYNCREATE(CBCGPSlider,CBCGPBaseControlBar)
 
-int CBCGPSlider::m_nDefaultWidth = 4;
+int CBCGPSlider::m_nDefaultWidth = 6;
+int CBCGPSlider::m_nMinPaneSize = 25;
 CRuntimeClass* CBCGPSlider::m_pContainerManagerRTC = RUNTIME_CLASS (CBCGPBarContainerManager);
 CRuntimeClass* CBCGPSlider::m_pSliderRTC = RUNTIME_CLASS (CBCGPSlider);
 
@@ -359,8 +360,14 @@ void CBCGPSlider::OnLButtonUp(UINT nFlags, CPoint point)
 void CBCGPSlider::OnMouseMove(UINT nFlags, CPoint point) 
 {
 	ASSERT_VALID (this);
+
 	if (m_bCaptured)
 	{
+		CRect rectDragBounds = m_rectDragBounds;
+		
+		const int nMinSize = max(0, globalUtils.ScaleByDPI(m_nMinPaneSize));
+		rectDragBounds.DeflateRect(nMinSize, nMinSize);
+
 		CRect rectNew = m_rectLastDragRect;
 
 		CPoint ptNew;
@@ -370,15 +377,16 @@ void CBCGPSlider::OnMouseMove(UINT nFlags, CPoint point)
 		{
 			rectNew.left = ptNew.x - m_nWidth / 2;
 			rectNew.right = rectNew.left + m_nWidth;
-			if (rectNew.left < m_rectDragBounds.left)
+
+			if (rectNew.left < rectDragBounds.left)
 			{
-				rectNew.left = m_rectDragBounds.left;
+				rectNew.left = rectDragBounds.left;
 				rectNew.right = rectNew.left + m_rectLastDragRect.Width ();
 			}
 
-			if (rectNew.right > m_rectDragBounds.right)
+			if (rectNew.right > rectDragBounds.right)
 			{
-				rectNew.right = m_rectDragBounds.right;
+				rectNew.right = rectDragBounds.right;
 				rectNew.left = rectNew.right - m_rectLastDragRect.Width ();
 			}
 		}
@@ -386,15 +394,16 @@ void CBCGPSlider::OnMouseMove(UINT nFlags, CPoint point)
 		{
 			rectNew.top = ptNew.y - m_nWidth / 2;
 			rectNew.bottom = rectNew.top + m_nWidth;
-			if (rectNew.top < m_rectDragBounds.top)
+
+			if (rectNew.top < rectDragBounds.top)
 			{
-				rectNew.top = m_rectDragBounds.top;
+				rectNew.top = rectDragBounds.top;
 				rectNew.bottom = rectNew.top + m_nWidth;
 			}
 
-			if (rectNew.bottom > m_rectDragBounds.bottom)
+			if (rectNew.bottom > rectDragBounds.bottom)
 			{
-				rectNew.bottom = m_rectDragBounds.bottom;
+				rectNew.bottom = rectDragBounds.bottom;
 				rectNew.top = rectNew.bottom - m_nWidth;
 			}
 		}
@@ -939,7 +948,6 @@ void CBCGPSlider::CalcExpectedDockedRect (CWnd* pWndToDock, CPoint ptMouse,
 										  CRect& rectResult, BOOL& bDrawTab, 
 										  CBCGPDockingControlBar** ppTargetBar)
 {
-	CBCGPGlobalUtils globalUtils;
 	if (m_pContainerManager != NULL)
 	{
 		globalUtils.CalcExpectedDockedRect (*m_pContainerManager, pWndToDock, 

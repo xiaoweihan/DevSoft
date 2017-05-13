@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -73,7 +73,7 @@ int CBCGPTabbedControlBar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	if (m_pTabWnd == NULL)
 	{
-		TRACE0("Failed to dynamically inatantiate a tab window object\n");
+		TRACE0("Failed to dynamically instantiate a tab window object\n");
 		return -1;      // fail to create
 	}
 

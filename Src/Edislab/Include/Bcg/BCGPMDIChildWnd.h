@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -83,8 +83,12 @@ class BCGCBPRODLLEXPORT CBCGPMDIChildWnd : public CMDIChildWnd
 	friend class CBCGPGlobalUtils;
 	friend class CBCGPMDIFrameWnd;
 	friend class CBCGPMDITabProxyWnd;
+	friend class CBCGPWindowsManagerDlg;
+	friend class CBCGPBaseRibbonElement;
+	friend class CBCGPDockingControlBar;
 
 	DECLARE_DYNCREATE(CBCGPMDIChildWnd)
+
 protected:
 	CBCGPMDIChildWnd();           // protected constructor used by dynamic creation
 
@@ -109,9 +113,7 @@ public:
 	}
 
 protected:
-	// ---- MDITabGroup+
 	CBCGPTabWnd*		m_pRelatedTabGroup;
-	// ---- MDITabGroup-
 
 	CBCGPFrameImpl		m_Impl;
 	CBCGPMDIFrameWnd*	m_pMDIFrame;
@@ -163,7 +165,7 @@ public:
 	BOOL EnableDocking (DWORD dwDockStyle);	
 	BOOL EnableAutoHideBars (DWORD dwDockStyle, BOOL bActivateOnMouseClick = FALSE);
 
-	void EnableMaximizeFloatingBars(BOOL bEnable = TRUE, BOOL bMaximizeByDblClick = FALSE);
+	void EnableMaximizeFloatingBars(BOOL bEnable = TRUE, BOOL bMaximizeByDblClick = FALSE, BOOL bRestoreMaximizeFloatingBars = FALSE);
 	BOOL AreFloatingBarsCanBeMaximized() const;
 
 	CBCGPBaseControlBar* GetControlBar (UINT nID);
@@ -172,11 +174,13 @@ public:
 	virtual BOOL OnMoveMiniFrame	(CWnd* pFrame);
 	virtual void RecalcLayout (BOOL bNotify = TRUE);
 
-	virtual BOOL GetToolbarButtonToolTipText (CBCGPToolbarButton* /*pButton*/, CString& /*strTTText*/)
+	virtual BOOL GetToolbarButtonToolTipText (CBCGPToolbarButton* pButton, CString& strTTText)
 	{
+		UNREFERENCED_PARAMETER(pButton);
+		UNREFERENCED_PARAMETER(strTTText);
+
 		return FALSE;
 	}
-
 
 	BOOL DockControlBarLeftOf(CBCGPControlBar* pBar, CBCGPControlBar* pLeftOf);
 
@@ -191,6 +195,8 @@ public:
 	// Next methods used by MDI tabs:
 	virtual CString GetFrameText () const;
 	virtual HICON GetFrameIcon () const;
+	virtual COLORREF GetMDITabBkColor() const	{ return (COLORREF)-1; }
+	virtual COLORREF GetMDITabTextColor() const	{ return (COLORREF)-1; }
 
 	virtual void OnUpdateFrameTitle(BOOL bAddToTitle);
 
@@ -201,6 +207,14 @@ public:
 	CBCGPDockManager* GetDockManager () {	return &m_dockManager;	}
 
 	virtual LPCTSTR GetDocumentName (CObject** pObj);
+	virtual void GetPaneInfo(CString& strName, CString& strPath, HICON& hIcon, BOOL& bAutoDestroyIcon);
+
+	virtual BOOL CanBeDetached() const
+	{
+		return !IsTabbedControlBar();
+	}
+
+	virtual void OnCloseRibbonBackstageView(CBCGPMDIFrameWnd* pMDIFrame);
 
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPMDIChildWnd)
@@ -208,6 +222,7 @@ public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	virtual void ActivateFrame(int nCmdShow = -1);
 	virtual void OnSetPreviewMode(BOOL bPreview, CPrintPreviewState* pState);
+	virtual BOOL OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo);
 	protected:
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 	//}}AFX_VIRTUAL
@@ -272,6 +287,7 @@ protected:
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
 	afx_msg void OnNcRButtonUp(UINT nHitTest, CPoint point);
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
+	afx_msg void OnClose();
 	//}}AFX_MSG
 	afx_msg LRESULT OnSetText(WPARAM,LPARAM);
 	afx_msg LRESULT OnSetIcon(WPARAM,LPARAM);

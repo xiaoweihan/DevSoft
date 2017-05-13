@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "stdafx.h"
 #include "BCGPKnob.h"
 #include "BCGPMath.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -41,6 +42,7 @@ CBCGPKnob::CBCGPKnob(CBCGPVisualContainer* pContainer) :
 	m_bDrawTextBeforeTicks = TRUE;
 	m_bDrawTicksOutsideFrame = TRUE;
 	m_CapSize = 0.;
+	m_bIconsDPIScale = FALSE;
 
 	SetColors(CBCGPCircularGaugeColors::BCGP_CIRCULAR_GAUGE_SILVER);
 
@@ -66,6 +68,15 @@ void CBCGPKnob::SetColors(CBCGPCircularGaugeColors::BCGP_CIRCULAR_GAUGE_COLOR_TH
 	{
 	case CBCGPCircularGaugeColors::BCGP_CIRCULAR_GAUGE_SILVER:
 	case CBCGPCircularGaugeColors::BCGP_CIRCULAR_GAUGE_BLUE:
+		break;
+
+	case CBCGPCircularGaugeColors::BCGP_CIRCULAR_GAUGE_VISUAL_MANAGER:
+		{
+			CBCGPColor clrPointer = m_Colors.m_brPointerOutline.GetColor();
+			clrPointer.MakeLighter(.2);
+			
+			m_Colors.m_brPointerFill.SetColor(clrPointer);
+		}
 		break;
 
 	case CBCGPCircularGaugeColors::BCGP_CIRCULAR_GAUGE_GOLD:
@@ -303,21 +314,44 @@ void CBCGPKnob::SetPointer(const CBCGPKnobPointer& pointer, BOOL bRedraw)
 	}
 }
 //*******************************************************************************
-void CBCGPKnob::SetImageList(UINT uiResID, int cx, const CBCGPSize& szMargin)
+void CBCGPKnob::SetImageList(UINT uiResID, int cx, const CBCGPSize& szMargin, BOOL bDPIScale)
 {
 	m_Icons.Destroy();
+	m_Icons.Clear();
 
 	m_sizeIcon = CBCGPSize(0, 0);
+	m_bIconsDPIScale = bDPIScale;
 	
 	if (uiResID != 0)
 	{
 		m_Icons.Load(uiResID);
-		m_sizeIcon.cx = cx;
 
-		m_sizeIconMargin = szMargin;
+		if (bDPIScale)
+		{
+			m_sizeIcon.cx = globalUtils.ScaleByDPI(cx);
+			m_sizeIconMargin = globalUtils.ScaleByDPI(szMargin);
+		}
+		else
+		{
+			m_sizeIcon.cx = cx;
+			m_sizeIconMargin = szMargin;
+		}
 	}
 
 	SetDirty();
+}
+//*******************************************************************************
+void CBCGPKnob::PrepareImage(CBCGPGraphicsManager* pGM)
+{
+	CBCGPSize size = pGM->GetImageSize(m_Icons);
+	
+	if (m_bIconsDPIScale)
+	{
+		size = globalUtils.ScaleByDPI(size);
+		m_Icons.Resize(size);
+	}
+	
+	m_sizeIcon.cy = size.cy;
 }
 //*******************************************************************************
 CBCGPSize CBCGPKnob::GetTickMarkTextLabelSize(CBCGPGraphicsManager* pGM, const CString& strLabel, const CBCGPTextFormat& tf)
@@ -333,7 +367,7 @@ CBCGPSize CBCGPKnob::GetTickMarkTextLabelSize(CBCGPGraphicsManager* pGM, const C
 
 	if (m_sizeIcon.cy == 0)
 	{
-		m_sizeIcon.cy = pGM->GetImageSize(m_Icons).cy;
+		PrepareImage(pGM);
 	}
 
 	return (m_sizeIcon + m_sizeIconMargin * 2.) * scaleRatio;
@@ -349,7 +383,7 @@ void CBCGPKnob::OnDrawTickMarkTextLabel(CBCGPGraphicsManager* pGM, const CBCGPTe
 
 	if (m_sizeIcon.cy == 0)
 	{
-		m_sizeIcon.cy = pGM->GetImageSize(m_Icons).cy;
+		PrepareImage(pGM);
 	}
 
 	CBCGPSize sizeIcon(m_sizeIcon.cx * m_sizeScaleRatio.cx, m_sizeIcon.cy * m_sizeScaleRatio.cy);

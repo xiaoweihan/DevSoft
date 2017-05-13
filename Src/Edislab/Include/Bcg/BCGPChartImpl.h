@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -64,7 +64,9 @@ typedef enum BCGPChartCategory
 	BCGPChartBar3D,
 	BCGPChartLine3D,
 	BCGPChartArea3D,
-	BCGPChartSurface3D
+	BCGPChartSurface3D,
+	BCGPChartDoughnutNested,
+	BCGPChartBoxPlot
 }
 BCGPChartCategory;
 
@@ -232,6 +234,8 @@ typedef CArray<CBCGPChartSurfaceTriangle, const CBCGPChartSurfaceTriangle&> CBCG
 
 class BCGCBPRODLLEXPORT CBCGPBaseChartImpl : public CObject
 {
+	friend class CBCGPChartVisualObject;
+
 	DECLARE_DYNAMIC(CBCGPBaseChartImpl)
 
 public:
@@ -288,7 +292,6 @@ public:
 	virtual void OnDrawChartLegendKeyEx(CBCGPGraphicsManager* pGM, const CBCGPRect& rectLegendKey,
 		const BCGPChartCellParams& params, CBCGPChartSeries* pSeries);
 
-
 	virtual void OnDrawDiagram(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea, CBCGPChartSeries* pSeries) = 0;
 	virtual void OnDrawDiagramDataLabels(CBCGPGraphicsManager* pGM, CBCGPChartSeries* pSeries);
 	virtual void OnCalcBoundingRect(CBCGPChartDataPoint* pDataPoint, const CBCGPRect& rectDiagramArea, 
@@ -297,7 +300,13 @@ public:
 
 	const CList<CBCGPChartSide3D*, CBCGPChartSide3D*>& GetVisibleSides() const {return m_lstVisibleSides;}
 
+	virtual void OnDrawDiagramErrorBars(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea, CBCGPChartSeries* pSeries);
+
 protected:
+	CBCGPChartSeries* GetErrorBarsSeries(CBCGPChartSeries* pSeries);
+	virtual CBCGPPoint OnPrepareErrorBarsPoint(const CBCGPPoint& point, CBCGPChartSeries* pSeries, int nDataPointIndex, BOOL bErrorPoint);
+	virtual void OnDrawDiagramErrorBars(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea, CBCGPChartSeries* pSeries, int nFirstIndex, int nLastIndex);
+
 	BOOL OnPrepareDataToCalcDataPointLabelRect(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagram, 
 		CBCGPChartDataPoint* pDataPoint, CBCGPChartSeries* pSeries, int nDataPointIndex, 
 		BCGPChartFormatSeries** ppFormatSeries, CBCGPSize& szDataLabel, CBCGPPoint& ptMarkerPos, CBCGPRect& rectBounds);
@@ -320,6 +329,8 @@ protected:
 
 	CList<CBCGPChartSide3D*, CBCGPChartSide3D*> m_lstInvisibleSides;
 	CList<CBCGPChartSide3D*, CBCGPChartSide3D*> m_lstVisibleSides;
+
+	CBCGPRect m_rectCurClip;
 };
 
 class BCGCBPRODLLEXPORT CBCGPLineChartImpl : public CBCGPBaseChartImpl
@@ -351,6 +362,7 @@ public:
 	virtual void OnDrawChartLegendKeyEx(CBCGPGraphicsManager* pGM, const CBCGPRect& rectLegendKey,
 		const BCGPChartCellParams& params, CBCGPChartSeries* pSeries);
 
+	virtual void OnDrawDiagramErrorBars(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea, CBCGPChartSeries* pSeries);
 
 protected:
 	void OnGetStepPoint(CBCGPPoint ptBottomStart, CBCGPPoint ptBottomEnd, BOOL bXAxisVert, 
@@ -404,6 +416,8 @@ public:
 		const BCGPChartFormatSeries* pSeriesStyle, CBCGPChartSeries* pSeries, int nDataPointIndex);
 	virtual void OnDrawChartLegendKeyEx(CBCGPGraphicsManager* pGM, const CBCGPRect& rectLegendKey,
 		const BCGPChartCellParams& params, CBCGPChartSeries* pSeries);
+
+	virtual void OnDrawDiagramErrorBars(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea, CBCGPChartSeries* pSeries);
 };
 
 class BCGCBPRODLLEXPORT CBCGPAreaChart3DImpl : public CBCGPAreaChartImpl
@@ -450,10 +464,12 @@ struct BCGCBPRODLLEXPORT CBCGPChartSurfaceTriangleID
 	{
 		m_nTriangleIndex = -1;
 		m_pSurfaceSeries = NULL;
+		m_nSeriesIndex = -1;
 	}
 
 	int							m_nTriangleIndex;
 	CBCGPChartSurfaceSeries*	m_pSurfaceSeries;
+	int							m_nSeriesIndex;
 
 	CArray<int, int> m_arIDIndexesBefore;
 };
@@ -532,6 +548,8 @@ public:
 	virtual void OnCalcBoundingRect(CBCGPChartDataPoint* pDataPoint, const CBCGPRect& rectDiagramArea, 
 		CBCGPChartSeries* pSeries, int nDataPointIndex);
 	virtual CBCGPPoint OnGetMarkerPoint(const CBCGPChartDataPoint* pDataPoint, CBCGPChartSeries* pSeries, int nDataPointIndex);
+
+	virtual CBCGPPoint OnPrepareErrorBarsPoint(const CBCGPPoint& point, CBCGPChartSeries* pSeries, int nDataPointIndex, BOOL bErrorPoint);
 
 protected:
 	virtual CBCGPRect BoundingRectFromGapAndBarWidth(CBCGPPoint ptBarScreenPoint, int nGapPercent, 
@@ -675,14 +693,23 @@ class BCGCBPRODLLEXPORT CBCGPDoughnutChartImpl : public CBCGPPieChartImpl
 public:
 	CBCGPDoughnutChartImpl()
 	{
+		m_bIsNested = FALSE;
 	}
 
-	CBCGPDoughnutChartImpl(CBCGPChartVisualObject* pRelatedChartControl, BOOL b3D = FALSE) :
+	CBCGPDoughnutChartImpl(CBCGPChartVisualObject* pRelatedChartControl, BOOL b3D = FALSE, BOOL bNested = FALSE) :
 		CBCGPPieChartImpl(pRelatedChartControl, b3D)
 	{
+		m_bIsNested = bNested;
 	}
 
 	virtual int GetDoughnutPercent(CBCGPChartSeries* pSeries) const;
+	virtual BOOL IsNestedSeries() const
+	{
+		return m_bIsNested;
+	}
+
+protected:
+	BOOL	m_bIsNested;
 };
 
 class BCGCBPRODLLEXPORT CBCGPTorusChartImpl : public CBCGPPieChartImpl
@@ -870,6 +897,33 @@ public:
 	}	
 
 	virtual void OnDrawDiagram(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea, CBCGPChartSeries* pSeries);
+};
+
+class BCGCBPRODLLEXPORT CBCGPBoxPlotChartImpl : public CBCGPBaseChartImpl
+{
+	DECLARE_DYNCREATE(CBCGPBoxPlotChartImpl)
+public:
+	CBCGPBoxPlotChartImpl()
+	{
+	}
+	CBCGPBoxPlotChartImpl(CBCGPChartVisualObject* pRelatedChartControl) : CBCGPBaseChartImpl(pRelatedChartControl)
+	{
+	}
+
+	virtual AxisType GetAxisType() const
+	{
+		return AT_XY;
+	}
+
+	virtual void OnDrawDiagram(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea, CBCGPChartSeries* pSeries);
+	virtual void OnDrawChartLegendKey(CBCGPGraphicsManager* pGM, const CBCGPRect& rectLegendKey, 
+		const BCGPChartFormatSeries* pSeriesStyle, CBCGPChartSeries* pSeries, int nDataPointIndex);
+	virtual void OnDrawChartLegendKeyEx(CBCGPGraphicsManager* pGM, const CBCGPRect& rectLegendKey,
+		const BCGPChartCellParams& params, CBCGPChartSeries* pSeries);
+
+	virtual void OnCalcBoundingRect(CBCGPChartDataPoint* pDataPoint, const CBCGPRect& rectDiagramArea, 
+		CBCGPChartSeries* pSeries, int nDataPointIndex);
+	virtual CBCGPPoint OnGetMarkerPoint(const CBCGPChartDataPoint* pDataPoint, CBCGPChartSeries* pSeries, int nDataPointIndex);
 };
 
 #endif // !defined(AFX_BCGPCHARTIMPL_H__14AAD790_6C8D_4160_A013_1C12C567C329__INCLUDED_)

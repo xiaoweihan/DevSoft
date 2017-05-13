@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,7 +29,7 @@
 BCGCBPRODLLEXPORT void BCGCBProDllInitialize ();
 #endif // _BCGCBPRO_IN_OTHER_DLL
 
-#define _BCGCB_LIBNAME1_	"BCGCBPRO2210"
+#define _BCGCB_LIBNAME1_	"BCGCBPRO2510"
 
 #if defined _AFXDLL && !defined _BCGCBPRO_STATIC_
 	#define _BCGCB_LIBNAME2_	_BCGCB_LIBNAME1_
@@ -73,6 +73,8 @@ BCGCBPRODLLEXPORT void BCGCBProDllInitialize ();
 	#define _BCGCB_LIBNAME_	_BCGCB_LIBNAME5_##"110.lib"
 #elif _MSC_VER == 1800
 	#define _BCGCB_LIBNAME_	_BCGCB_LIBNAME5_##"120.lib"
+#elif _MSC_VER == 1900
+	#define _BCGCB_LIBNAME_	_BCGCB_LIBNAME5_##"140.lib"
 #else
 	#error "Unsupported VC++ version"
 #endif
@@ -231,6 +233,7 @@ BCGCBPRODLLEXPORT void BCGCBProDllInitialize ();
 #include "BCGPButton.h"
 #include "BCGPEdit.h"
 #include "BCGPColorButton.h"
+#include "BCGPColorComboBox.h"
 #include "BCGPMenuButton.h"
 #include "BCGPURLLinkButton.h"
 #include "BCGPEditListBox.h"
@@ -277,6 +280,7 @@ BCGCBPRODLLEXPORT void BCGCBProDllInitialize ();
 // BCGControlBar dialogs:
 //-----------------------
 #include "BCGPDialog.h"
+#include "BCGPDHTMLDialog.h"
 #include "BCGPFileDialog.h"
 #include "BCGPWindowsManagerDlg.h"
 #include "BCGPPrintPreviewView.h"
@@ -300,7 +304,7 @@ BCGCBPRODLLEXPORT void BCGCBProDllInitialize ();
 #include "BCGPFormView.h"
 
 //--------------------
-// Visualization stuf:
+// Visualization stuff:
 //--------------------
 #include "BCGPVisualManager.h"
 #include "BCGPVisualManagerXP.h"
@@ -316,6 +320,7 @@ BCGCBPRODLLEXPORT void BCGCBProDllInitialize ();
 #include "BCGPVisualManager2010.h"
 #include "BCGPVisualManager2013.h"
 #include "BCGPSkinManager.h"
+#include "BCGPAnimationManager.h"
 
 //-------------------------
 // OLE Full Server Support:
@@ -342,6 +347,7 @@ BCGCBPRODLLEXPORT void BCGCBProDllInitialize ();
 #include "BCGPGridCtrl.h"
 #include "BCGPGridSerialize.h"
 #include "BCGPGridFilter.h"
+#include "BCGPGridSparkLine.h"
 #include "BCGPGridFilterMenu.h"
 #include "BCGPReportCtrl.h"
 #include "BCGPDBGridCtrl.h"

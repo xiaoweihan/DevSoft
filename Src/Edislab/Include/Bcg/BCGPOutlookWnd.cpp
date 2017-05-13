@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -24,10 +24,15 @@
 #include "BCGPVisualManager.h"
 #include "BCGPOutlookButton.h"
 #include "BCGPDockManager.h"
+#include "BCGPListBox.h"
 #include "bcgprores.h"
 #include "CustomizeButton.h"
 #include "BCGPMultiMiniFrameWnd.h"
 #include "BCGPDialog.h"
+#include "BCGPGlobalUtils.h"
+#include "BCGPPngImage.h"
+#include "BCGPTooltipManager.h"
+#include "trackmouse.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -40,7 +45,317 @@ static const UINT idShowMoreButtons = 0xf200;
 static const UINT idShowFewerButtons = 0xf201;
 static const UINT idNavigationPaneOptions = 0xf202;
 static const UINT idToolbarCommandID = 0xf203;
-static const int nTopEdgeHeight = 4;
+static const int nTopEdgeHeightDefault = 4;
+static const int nIDToolTipCollapse = 32676;
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPOutlookPopupButton
+
+class CBCGPOutlookPopupButton : public CObject
+{
+public:
+	CBCGPOutlookPopupButton(CBCGPOutlookWnd* pOwner, UINT nHit)
+	{
+		m_pOwner = pOwner;
+		m_nHit = nHit;
+		m_rect.SetRectEmpty();
+		m_bPushed = m_bHighlighted = FALSE;
+		m_ImageID = (CBCGPMenuImages::IMAGES_IDS)-1;
+		m_bIsOnCaption = FALSE;
+	}
+	
+	void OnDraw(CDC* pDC)
+	{
+		ASSERT_VALID(pDC);
+
+		if (m_rect.IsRectEmpty())
+		{
+			return;
+		}
+
+		COLORREF clrText = CBCGPVisualManager::GetInstance()->OnDrawOutlookPopupButton(pDC, m_rect, m_bHighlighted, m_bPushed && m_bHighlighted, m_bIsOnCaption);
+
+		if (m_ImageID != (CBCGPMenuImages::IMAGES_IDS)-1)
+		{
+			CBCGPMenuImages::DrawByColor(pDC, m_ImageID, m_rect, clrText, FALSE);
+		}
+		else if (!m_strLabel.IsEmpty())
+		{
+			CFont* pFontOld = (CFont*)pDC->SelectObject(&m_pOwner->m_FontVert);
+			ASSERT(pFontOld != NULL);
+			
+			pDC->SetTextColor(clrText);
+
+			TEXTMETRIC tm;
+			pDC->GetTextMetrics(&tm);
+			
+			CSize szText(pDC->GetTextExtent(m_strLabel));
+			
+			CRect rectText (m_rect);
+			rectText.DeflateRect(0, globalUtils.ScaleByDPI(2));
+			rectText.left = rectText.left + (m_rect.Width () - szText.cy + 1) / 2;
+			
+			rectText.top = rectText.bottom;
+			if (szText.cx < m_rect.Height ())
+			{
+				rectText.top -= (m_rect.Height () - szText.cx + 1) / 2;
+			}
+
+			rectText.bottom = m_rect.top;
+			
+			pDC->DrawText (m_strLabel, rectText, DT_SINGLELINE);
+
+			pDC->SelectObject (pFontOld);
+		}
+	}
+
+	CBCGPOutlookWnd*			m_pOwner;
+	BOOL						m_bPushed;
+    BOOL						m_bHighlighted;
+	BOOL						m_bIsOnCaption;
+	UINT						m_nHit;
+	CRect						m_rect;
+	CString						m_strLabel;
+	CBCGPMenuImages::IMAGES_IDS	m_ImageID;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPOutlookPopupWnd
+
+class CBCGPOutlookPopupWnd : public CWnd
+{
+// Construction
+public:
+	CBCGPOutlookPopupWnd(CWnd* pWndAutoHide);
+	
+	// Attributes
+protected:
+	static CString	m_strClassName;
+	CWnd*			m_pWndAutoHide;
+	CWnd*			m_pParent;
+	CBCGPShadowWnd*	m_pWndShadow;
+	
+	// Operations
+public:
+	void CloseMe();
+	
+	// Overrides
+	// ClassWizard generated virtual function overrides
+	//{{AFX_VIRTUAL(CBCGPOutlookPopupWnd)
+public:
+	virtual BOOL Create(const RECT& rect);
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
+	//}}AFX_VIRTUAL
+	
+	// Implementation
+public:
+	virtual ~CBCGPOutlookPopupWnd();
+	
+	// Generated message map functions
+protected:
+	//{{AFX_MSG(CBCGPOutlookPopupWnd)
+	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnNcPaint();
+	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
+	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
+	afx_msg void OnCancelMode();
+	afx_msg void OnNcDestroy();
+	afx_msg void OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized);
+	//}}AFX_MSG
+#if _MSC_VER >= 1300
+	afx_msg void OnActivateApp(BOOL bActive, DWORD dwThreadID);
+#else
+	afx_msg void OnActivateApp(BOOL bActive, HTASK hTask);
+#endif
+	DECLARE_MESSAGE_MAP()
+};
+
+
+CString	CBCGPOutlookPopupWnd::m_strClassName;
+
+CBCGPOutlookPopupWnd::CBCGPOutlookPopupWnd(CWnd * pWndAutoHide) :
+	m_pWndAutoHide(pWndAutoHide)
+{
+	m_pParent = NULL;
+	m_pWndShadow = NULL;
+}
+//*************************************************************************************
+CBCGPOutlookPopupWnd::~CBCGPOutlookPopupWnd()
+{
+}
+
+BEGIN_MESSAGE_MAP(CBCGPOutlookPopupWnd, CWnd)
+	//{{AFX_MSG_MAP(CBCGPOutlookPopupWnd)
+	ON_WM_SIZE()
+	ON_WM_NCPAINT()
+	ON_WM_ERASEBKGND()
+	ON_WM_CREATE()
+	ON_WM_CANCELMODE()
+	ON_WM_NCDESTROY()
+	ON_WM_ACTIVATE()
+	//}}AFX_MSG_MAP
+	ON_WM_ACTIVATEAPP()
+END_MESSAGE_MAP()
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPOutlookPopupWnd message handlers
+
+BOOL CBCGPOutlookPopupWnd::Create (const RECT& rect) 
+{
+	if (m_strClassName.IsEmpty ())
+	{
+		m_strClassName = ::AfxRegisterWndClass (
+			CS_SAVEBITS,
+			::LoadCursor(NULL, IDC_ARROW),
+			(HBRUSH)(COLOR_BTNFACE + 1), NULL);
+	}
+
+	return CWnd::CreateEx (WS_EX_DLGMODALFRAME,
+				m_strClassName, _T(""), 
+				WS_POPUP | WS_VISIBLE | WS_BORDER,
+				rect, AfxGetMainWnd (), NULL);
+}
+//*************************************************************************************
+void CBCGPOutlookPopupWnd::OnSize(UINT nType, int cx, int cy) 
+{
+	CWnd::OnSize(nType, cx, cy);
+
+	m_pWndAutoHide->SetWindowPos(NULL, 0, 0, cx, cy, SWP_NOACTIVATE | SWP_NOZORDER);
+
+	if (m_pWndShadow->GetSafeHwnd() != NULL)
+	{
+		m_pWndShadow->Repos ();
+	}
+}
+//*************************************************************************************
+void CBCGPOutlookPopupWnd::OnNcPaint()
+{
+	CWindowDC dc(this); // device context for painting
+	
+	CRect rectClient;
+	GetClientRect(rectClient);
+	
+	CRect rectWindow;
+	GetWindowRect(rectWindow);
+	
+	CRect rectBorder = rectWindow;
+	
+	ScreenToClient(rectWindow);
+	
+	rectClient.OffsetRect(-rectWindow.left, -rectWindow.top);
+	dc.ExcludeClipRect (rectClient);
+	
+	rectBorder.OffsetRect(-rectBorder.left, -rectBorder.top);
+	
+	dc.FillSolidRect(rectBorder, globalData.clrBarShadow);
+	
+	dc.SelectClipRgn (NULL);
+}
+//*************************************************************************************
+BOOL CBCGPOutlookPopupWnd::OnEraseBkgnd(CDC* /*pDC*/) 
+{
+	return TRUE;
+}
+//*************************************************************************************
+BOOL CBCGPOutlookPopupWnd::PreTranslateMessage(MSG* pMsg) 
+{
+	switch (pMsg->message)
+	{
+	case WM_KEYDOWN:
+		if (pMsg->wParam == VK_ESCAPE)
+		{
+			CloseMe ();
+			return TRUE;
+		}
+		break;
+	}
+	
+	return CWnd::PreTranslateMessage(pMsg);
+}
+//*************************************************************************************
+int CBCGPOutlookPopupWnd::OnCreate(LPCREATESTRUCT lpCreateStruct) 
+{
+	if (CWnd::OnCreate(lpCreateStruct) == -1)
+		return -1;
+
+	m_pParent = m_pWndAutoHide->SetParent(this);
+	m_pWndAutoHide->ShowWindow(SW_SHOWNOACTIVATE);
+	m_pWndAutoHide->SetFocus ();
+
+	int nDepth = 5;
+	m_pWndShadow = new CBCGPShadowWnd(this, nDepth, nDepth, CSize(nDepth, nDepth));
+	
+	m_pWndShadow->Create();
+	m_pWndShadow->Repos();
+
+	SetWindowPos(NULL, -1, -1, -1, -1, SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE);
+	return 0;
+}
+//*************************************************************************************
+void CBCGPOutlookPopupWnd::OnCancelMode() 
+{
+	CWnd::OnCancelMode();
+	CloseMe ();
+}
+//*************************************************************************************
+void CBCGPOutlookPopupWnd::OnNcDestroy() 
+{
+	if (m_pWndShadow->GetSafeHwnd () != NULL)
+	{
+		m_pWndShadow->ShowWindow (SW_HIDE);
+		m_pWndShadow->DestroyWindow ();
+		m_pWndShadow = NULL;
+	}
+
+	CBCGPOutlookBar* pBar = DYNAMIC_DOWNCAST(CBCGPOutlookBar, m_pParent);
+	if (pBar != NULL)
+	{
+		CBCGPOutlookWnd* pOutlookWnd = DYNAMIC_DOWNCAST(CBCGPOutlookWnd, pBar->GetUnderlinedWindow());
+		if (pOutlookWnd != NULL)
+		{
+			pOutlookWnd->m_bPopupIsDisplayed = FALSE;
+		}
+	}
+
+	CWnd::OnNcDestroy();
+	delete this;
+}
+//*************************************************************************************
+#if _MSC_VER >= 1300
+void CBCGPOutlookPopupWnd::OnActivateApp(BOOL bActive, DWORD dwThreadID)
+{
+	CWnd::OnActivateApp(bActive, dwThreadID);
+#else
+void CBCGPOutlookPopupWnd::OnActivateApp(BOOL bActive, HTASK hTask) 
+{
+	CWnd::OnActivateApp(bActive, hTask);
+#endif
+	if (!bActive)
+	{
+		CloseMe ();
+	}
+}
+//*************************************************************************************
+void CBCGPOutlookPopupWnd::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized) 
+{
+	CWnd::OnActivate(nState, pWndOther, bMinimized);
+	
+	if (nState == WA_INACTIVE)
+	{
+		CloseMe ();
+	}
+}
+//*************************************************************************************
+void CBCGPOutlookPopupWnd::CloseMe()
+{
+	if (CBCGPPopupMenu::GetSafeActivePopupMenu() == NULL)
+	{
+		m_pWndAutoHide->ShowWindow(SW_HIDE);
+		m_pWndAutoHide->SetParent(m_pParent);
+
+		PostMessage (WM_CLOSE);
+	}
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPOutlookSrcrollButton
@@ -182,6 +497,7 @@ void CBCGPOutlookBarToolBar::OnChangeVisualManager()
 	CBCGPOutlookWnd* pParent = DYNAMIC_DOWNCAST(CBCGPOutlookWnd, GetParent());
 	if (pParent->GetSafeHwnd() != NULL)
 	{
+		pParent->RecalcLayout();
 		pParent->RebuildToolBar();
 	}
 }
@@ -259,7 +575,8 @@ void CBCGPOutlookBarToolBar::AdjustLocations ()
 		(int) m_Buttons.GetCount () :
 		(int) m_Buttons.GetCount () - 1;
 
-	int x = rectToolbar.right -  sizeCustomizeButton.cx + 2;
+	int x = rectToolbar.right - (m_pCustomizeBtn != NULL ? sizeCustomizeButton.cx : sizeButton.cx) + 2;
+	int y = globalUtils.ScaleByDPI(-1);
 
 	int nCountToHide = nCount - (rectToolbar.Width () - sizeCustomizeButton.cx + 2) / 
 		(sizeButton.cx - 2);
@@ -270,10 +587,10 @@ void CBCGPOutlookBarToolBar::AdjustLocations ()
 		ASSERT_VALID (pButton);
 		CCustomizeButton* pCustomizeBtn = DYNAMIC_DOWNCAST (CCustomizeButton, pButton);
 
-		if (nCountToHide >0 && pCustomizeBtn == NULL)
+		if (nCountToHide > 0 && pCustomizeBtn == NULL && m_pCustomizeBtn != NULL)
 		{
 			CObList& list = const_cast<CObList&> (m_pCustomizeBtn->GetInvisibleButtons ());
-            list.AddHead (pButton);
+			list.AddHead (pButton);
 			pButton->SetRect (CRect (0, 0, 0, 0));
 			nCountToHide--;
 		}
@@ -287,7 +604,7 @@ void CBCGPOutlookBarToolBar::AdjustLocations ()
 			}
 
 			sizeCurrButton.cy++;
-			pButton->SetRect (CRect (CPoint (x, -1), sizeCurrButton));
+			pButton->SetRect (CRect (CPoint (x, y), sizeCurrButton));
 
 			x -= sizeButton.cx - 2;
 		}
@@ -325,8 +642,14 @@ CBCGPOutlookWnd::CBCGPOutlookWnd() :
 	m_rectWndArea.SetRectEmpty ();
 	m_rectCaption.SetRectEmpty ();
 	m_bHasCaption = TRUE;
+	m_bCollapseMode = FALSE;
+	m_bIsCollapsed = FALSE;
+	m_pAutoHideWindow	= NULL;
+	m_bPopupIsDisplayed = FALSE;
+	m_cxParent = 0;
 	m_bDrawFrame = TRUE;
 	m_bDrawBottomLine = TRUE;
+	m_bToolbarCustomizeButton = TRUE;
 	m_nBorderSize = 0;
 	m_bActivateOnBtnUp = TRUE;
 	m_bEnableTabSwap = FALSE;
@@ -351,12 +674,21 @@ CBCGPOutlookWnd::CBCGPOutlookWnd() :
 
 	m_bAlphaBlendIcons = FALSE;
 	m_bIsPrintingClient = FALSE;
+
+	m_bTracked = FALSE;
+
+	m_strMinimizeToolTip = _T("Minimize");
+	m_strExpandToolTip = _T("Expand");
 }
 
 #pragma warning (default : 4355)
 
 CBCGPOutlookWnd::~CBCGPOutlookWnd()
 {
+	for (int i = 0; i < (int)m_arPopupButtons.GetSize(); i++)
+	{
+		delete m_arPopupButtons[i];
+	}
 }
 
 BEGIN_MESSAGE_MAP(CBCGPOutlookWnd, CBCGPBaseTabWnd)
@@ -370,10 +702,13 @@ BEGIN_MESSAGE_MAP(CBCGPOutlookWnd, CBCGPBaseTabWnd)
 	ON_WM_LBUTTONUP()
 	ON_WM_MOUSEMOVE()
 	ON_WM_CANCELMODE()
+	ON_WM_DESTROY()
 	//}}AFX_MSG_MAP
 	ON_COMMAND_RANGE(idShowMoreButtons, idShowMoreButtons + 10, OnToolbarCommand)
 	ON_UPDATE_COMMAND_UI_RANGE(idShowMoreButtons, idShowMoreButtons + 10, OnUpdateToolbarCommand)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
+	ON_MESSAGE(WM_MOUSELEAVE, OnMouseLeave)
+	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -443,8 +778,24 @@ void CBCGPOutlookWnd::RecalcLayout ()
 		return;
 	}
 
+	int i = 0;
+
+	for (i = 0; i < (int)m_arPopupButtons.GetSize(); i++)
+	{
+		m_arPopupButtons[i]->m_rect.SetRectEmpty();
+	}
+
+	if (m_pToolTip->GetSafeHwnd() != NULL)
+	{
+		m_pToolTip->SetToolRect(this, nIDToolTipCollapse, CRect(0, 0, 0, 0));
+	}
+
+	const int nTabTextMargin = globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_TEXT_MARGIN);
+
 	const BOOL bIsMode2003 = IsMode2003 ();
 	int nToolBarHeight = 0;
+
+	m_pAutoHideWindow = NULL;
 
 	if (bIsMode2003)
 	{
@@ -464,13 +815,7 @@ void CBCGPOutlookWnd::RecalcLayout ()
 			sizeImage.cy = 16;
 		}
 
-		const double dblImageScale = globalData.GetRibbonImageScale ();
-
-		int nVertMargin = 6 + 2 * nToolbarMarginHeight - 2;
-		if (dblImageScale != 1.)
-		{
-			nVertMargin = (int)(.5 + nVertMargin * dblImageScale);
-		}
+		int nVertMargin = globalUtils.ScaleByDPI(6 + 2 * nToolbarMarginHeight - 2);
 
 		nToolBarHeight = sizeImage.cy + nVertMargin;
 	}
@@ -486,6 +831,7 @@ void CBCGPOutlookWnd::RecalcLayout ()
 	m_rectWndArea = rectClient;
 
 	int nVisibleTabsNum = GetVisibleTabsNum ();
+	int nTopEdgeHeight = CBCGPVisualManager::GetInstance ()->IsOutlookBarCaptionTopEdge(this) ? nTopEdgeHeightDefault : 1;
 
 	if (bIsMode2003)
 	{
@@ -511,8 +857,36 @@ void CBCGPOutlookWnd::RecalcLayout ()
 			int nTextHeight = CBCGPVisualManager::GetInstance()->UseLargeCaptionFontInDockingCaptions() ?
 				globalData.GetCaptionTextHeight() : globalData.GetTextHeight();
 
-			m_rectCaption.bottom = m_rectCaption.top + nTextHeight + 2 * CBCGPBaseTabWnd::TAB_TEXT_MARGIN;
-			m_rectCaption.top += nTopEdgeHeight - 1;
+			m_rectCaption.bottom = m_rectCaption.top + nTextHeight + 2 * nTabTextMargin;
+
+			if (CBCGPVisualManager::GetInstance ()->IsOutlookBarCaptionTopEdge(this))
+			{
+				m_rectCaption.top += nTopEdgeHeight - 1;
+			}
+
+			if (m_bCollapseMode)
+			{
+				if (m_arPopupButtons.GetSize() == 0)
+				{
+					m_arPopupButtons.Add(new CBCGPOutlookPopupButton(this, 0));
+					m_arPopupButtons.Add(new CBCGPOutlookPopupButton(this, 1));
+				}
+
+				CSize sizeIcon = CBCGPMenuImages::Size();
+
+				int cxButton = sizeIcon.cx * 2; 
+				int cyButton = sizeIcon.cy * 2; 
+
+				m_arPopupButtons[0]->m_rect = CRect(CPoint(m_rectCaption.right - sizeIcon.cx * 2, m_rectCaption.top + 2), CSize(cxButton, cyButton));
+				m_arPopupButtons[0]->m_ImageID = m_bIsCollapsed ? CBCGPMenuImages::IdArowRightLarge : CBCGPMenuImages::IdArowLeftLarge;
+				m_arPopupButtons[0]->m_bIsOnCaption = !m_bIsCollapsed;
+
+				if (m_pToolTip->GetSafeHwnd() != NULL)
+				{
+					m_pToolTip->SetToolRect(this, nIDToolTipCollapse, m_arPopupButtons[0]->m_rect);
+					m_pToolTip->UpdateTipText(m_bIsCollapsed ? m_strExpandToolTip : m_strMinimizeToolTip, this, nIDToolTipCollapse);
+				}
+			}
 		}
 		else
 		{
@@ -541,7 +915,7 @@ void CBCGPOutlookWnd::RecalcLayout ()
 
 	if (nVisibleTabsNum > 1 || !IsHideSingleTab ())
 	{
-		for (int i = 0; i < m_iTabsNum; i ++)
+		for (i = 0; i < m_iTabsNum; i ++)
 		{
 			CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
 			ASSERT_VALID (pTab);
@@ -555,11 +929,22 @@ void CBCGPOutlookWnd::RecalcLayout ()
 				bIsMode2003)
 			{
 				pTab->m_rect.SetRectEmpty ();
+
+				if (m_pToolTip->GetSafeHwnd () != NULL)
+				{
+					m_pToolTip->SetToolRect (this, pTab->m_iTabID, CRect (0, 0, 0, 0));
+				}
 			}
 
 			if (!pTab->m_bVisible)
 			{
 				pTab->m_rect.SetRectEmpty ();
+
+				if (m_pToolTip->GetSafeHwnd () != NULL)
+				{
+					m_pToolTip->SetToolRect (this, pTab->m_iTabID, CRect (0, 0, 0, 0));
+				}
+
 				continue;
 			}
 
@@ -608,7 +993,6 @@ void CBCGPOutlookWnd::RecalcLayout ()
 		}
 	}
 
-	
 	if (m_bScrollButtons && !bIsMode2003 && m_iActiveTab == nVisibleTabsNum - 1)
 	{
 		m_rectWndArea.bottom -= m_nTabsHeight;
@@ -619,15 +1003,34 @@ void CBCGPOutlookWnd::RecalcLayout ()
 			SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
 	}
 
-	for (int i = 0; i < m_iTabsNum; i ++)
+	for (i = 0; i < m_iTabsNum; i ++)
 	{
 		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
 		ASSERT_VALID (pTab);
+
+		if (m_bIsCollapsed)
+		{
+			pTab->m_pWnd->ShowWindow(SW_HIDE);
+
+			if (i == m_iActiveTab)
+			{
+				m_pAutoHideWindow = pTab->m_pWnd;
+
+				SetupPagePopupButton();
+			}
+
+			continue;
+		}
 
 		CBCGPOutlookBarPane* pOutlookPane = NULL;
 		
 		if (pTab->m_bVisible)
 		{
+			if (IsCollapseModeEnabled() && m_iActiveTab == i && !pTab->m_pWnd->IsWindowVisible())
+			{
+				pTab->m_pWnd->ShowWindow(SW_SHOWNOACTIVATE);
+			}
+
 			CBCGPDockingCBWrapper* pWrapper = DYNAMIC_DOWNCAST (CBCGPDockingCBWrapper, pTab->m_pWnd);
 			if (pWrapper != NULL)
 			{
@@ -652,6 +1055,19 @@ void CBCGPOutlookWnd::RecalcLayout ()
 			if (pOutlookPane != NULL)
 			{
 				pOutlookPane->m_bDontAdjustLayout = FALSE;
+			}
+
+			if (m_pToolTip->GetSafeHwnd () != NULL)
+			{
+				BOOL bShowTooltip = TRUE;	// TODO
+				AdjustTooltipRect(pTab, bShowTooltip);
+			}
+		}
+		else
+		{
+			if (m_pToolTip->GetSafeHwnd () != NULL)
+			{
+				m_pToolTip->SetToolRect (this, pTab->m_iTabID, CRect (0, 0, 0, 0));
 			}
 		}
 	}
@@ -683,6 +1099,53 @@ void CBCGPOutlookWnd::RecalcLayout ()
 		m_btnDown.RedrawWindow ();
 
 		GetParent ()->RedrawWindow (NULL, NULL);
+	}
+}
+//**********************************************************************************
+void CBCGPOutlookWnd::SetupPagePopupButton()
+{
+	if (m_arPopupButtons.GetSize() > 1)
+	{
+		CString strCaption;
+		CBCGPOutlookBar* pOutlookBar = DYNAMIC_DOWNCAST (CBCGPOutlookBar, GetParent());
+		if (pOutlookBar == NULL || pOutlookBar->IsDrawActiveTabNameOnCaption())
+		{
+			GetTabLabel(m_iActiveTab, strCaption);
+		}
+		else
+		{
+			pOutlookBar->GetBarName(strCaption);
+		}
+		
+		CClientDC dc(this);
+		
+		CFont* pFontOld = (CFont*)dc.SelectObject(&m_FontVert);
+		ASSERT(pFontOld != NULL);
+		
+		CSize szText(dc.GetTextExtent(strCaption));
+		
+		dc.SelectObject (pFontOld);
+		
+		CRect rectClient;
+		GetClientRect(rectClient);
+		
+		int yOffset = globalUtils.ScaleByDPI(10);
+		
+		rectClient.top = m_arPopupButtons[0]->m_rect.bottom + yOffset;
+		rectClient.bottom = rectClient.top + szText.cx + 2 * yOffset;
+
+		if (!m_rectSplitter.IsRectEmpty())
+		{
+			rectClient.bottom = min(rectClient.bottom, m_rectSplitter.top - yOffset / 2);
+
+			if (rectClient.top >= rectClient.bottom)
+			{
+				rectClient.SetRectEmpty();
+			}
+		}
+		
+		m_arPopupButtons[1]->m_rect = rectClient;
+		m_arPopupButtons[1]->m_strLabel = strCaption;
 	}
 }
 //**********************************************************************************
@@ -892,27 +1355,29 @@ BOOL CBCGPOutlookWnd::SetActiveTab (int iTab)
 		//------------------------
 		// Show new active window:
 		//------------------------
-		pWndActive->ShowWindow (SW_SHOW);
-		pWndActive->BringWindowToTop ();
+		if (!m_bIsCollapsed)
+		{
+			pWndActive->ShowWindow (SW_SHOW);
+			pWndActive->BringWindowToTop ();
 
-		//----------------------------------------------------------------------
-		// Small trick: to adjust active window scroll sizes, I should change an
-		// active window size twice (+1 pixel and -1 pixel):
-		//----------------------------------------------------------------------
-		BOOL	bPrevDisableRecalcLayout	= CBCGPDockManager::m_bDisableRecalcLayout;
-		CBCGPDockManager::m_bDisableRecalcLayout = TRUE;
+			//----------------------------------------------------------------------
+			// Small trick: to adjust active window scroll sizes, I should change an
+			// active window size twice (+1 pixel and -1 pixel):
+			//----------------------------------------------------------------------
+			BOOL	bPrevDisableRecalcLayout	= CBCGPDockManager::m_bDisableRecalcLayout;
+			CBCGPDockManager::m_bDisableRecalcLayout = TRUE;
 
-		pWndActive->SetWindowPos (NULL,
-				-1, -1,
-				m_rectWndArea.Width () + 1, m_rectWndArea.Height (),
-				SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE);
-		pWndActive->SetWindowPos (NULL,
-				-1, -1,
-				m_rectWndArea.Width (), m_rectWndArea.Height (),
-				SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE);
+			pWndActive->SetWindowPos (NULL,
+					-1, -1,
+					m_rectWndArea.Width () + 1, m_rectWndArea.Height (),
+					SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE);
+			pWndActive->SetWindowPos (NULL,
+					-1, -1,
+					m_rectWndArea.Width (), m_rectWndArea.Height (),
+					SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE);
 
-		CBCGPDockManager::m_bDisableRecalcLayout = bPrevDisableRecalcLayout;
-
+			CBCGPDockManager::m_bDisableRecalcLayout = bPrevDisableRecalcLayout;
+		}
 	}
 
 	//--------------------------------------------------
@@ -990,9 +1455,28 @@ CWnd* CBCGPOutlookWnd::FindTargetWnd (const CPoint& pt)
 	return pWndParent;
 }
 //**********************************************************************************
+int CBCGPOutlookWnd::GetCollapsedWidth() const
+{
+	return max(GetImageSize ().cx + 2 * globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_IMAGE_MARGIN), globalUtils.ScaleByDPI(25));
+}
+//**********************************************************************************
 void CBCGPOutlookWnd::OnSize(UINT nType, int cx, int cy) 
 {
 	CWnd::OnSize(nType, cx, cy);
+
+	if (IsCollapseModeEnabled())
+	{
+		if (cx > GetCollapsedWidth() + 10)
+		{
+			m_cxParent = cx;
+			m_bIsCollapsed = FALSE;
+		}
+		else
+		{
+			m_bIsCollapsed = TRUE;
+		}
+	}
+
 	RecalcLayout ();
 }
 //***********************************************************************************
@@ -1009,6 +1493,7 @@ void CBCGPOutlookWnd::OnDraw(CDC* pDC)
 	ASSERT_VALID(pDC);
 
 	int nVisibleTabsNum = GetVisibleTabsNum ();
+	const int nTabTextMargin = globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_TEXT_MARGIN);
 
 	CRect rectClient;
 	GetClientRect (rectClient);
@@ -1078,25 +1563,36 @@ void CBCGPOutlookWnd::OnDraw(CDC* pDC)
 
 	CRect rectFrame = rectClient;
 
-	if (!m_rectCaption.IsRectEmpty ())
+	if (!m_rectCaption.IsRectEmpty () && !m_bIsCollapsed)
 	{
 		// Draw caption:
-		CRect rectTop = m_rectCaption;
-		rectTop.right++;
+		if (CBCGPVisualManager::GetInstance ()->IsOutlookBarCaptionTopEdge(this))
+		{
+			CRect rectTop = m_rectCaption;
+			rectTop.right++;
+			
+			rectTop.top -= nTopEdgeHeightDefault + 1;
+			rectTop.bottom = rectTop.top + nTopEdgeHeightDefault + 1;
 
-		rectTop.top -= nTopEdgeHeight + 1;
-		rectTop.bottom = rectTop.top + nTopEdgeHeight + 1;
-
-		pDC->FillRect (rectTop, &globalData.brBarFace);
+			pDC->FillRect (rectTop, &globalData.brBarFace);
+		}
 		
 		COLORREF clrText = globalData.clrBarText;
 		CBCGPVisualManager::GetInstance ()->OnFillOutlookBarCaption (pDC, m_rectCaption, clrText);
 
-		CString strActivePage;
-		GetTabLabel (m_iActiveTab, strActivePage);
+		CString strCaption;
+
+		if (pOutlookBar->IsDrawActiveTabNameOnCaption())
+		{
+			GetTabLabel(m_iActiveTab, strCaption);
+		}
+		else
+		{
+			pOutlookBar->GetBarName(strCaption);
+		}
 
 		CRect rcText = m_rectCaption;
-		rcText.DeflateRect (CBCGPBaseTabWnd::TAB_TEXT_MARGIN, 0);
+		rcText.DeflateRect(nTabTextMargin, 0);
 
 		UINT uiDTFlags = DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS;
 
@@ -1104,7 +1600,7 @@ void CBCGPOutlookWnd::OnDraw(CDC* pDC)
 			&globalData.fontCaption : &globalData.fontRegular);
 
 		pDC->SetTextColor (clrText);
-		pDC->DrawText (strActivePage, rcText, uiDTFlags);
+		pDC->DrawText (strCaption, rcText, uiDTFlags);
 
 		rectFrame.top = m_rectCaption.bottom;
 	}
@@ -1130,6 +1626,12 @@ void CBCGPOutlookWnd::OnDraw(CDC* pDC)
 
 			pDC->FillRect (rectFill, &globalData.brBarFace);
 		}
+	}
+
+	// Draw popup buttons:
+	for (int i = 0; i < (int)m_arPopupButtons.GetSize(); i++)
+	{
+		m_arPopupButtons[i]->OnDraw(pDC);
 	}
 
 	pDC->SelectObject (pOldFont);
@@ -1181,14 +1683,14 @@ void CBCGPOutlookWnd::DrawTabButton (CDC& dc, int iButtonIdx, BOOL bDrawPressedB
 		sizeImage.cx = 0;
 	}
 
-	if (sizeImage.cx + CBCGPBaseTabWnd::TAB_IMAGE_MARGIN <= rectBtn.Width ())
+	if (sizeImage.cx + globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_IMAGE_MARGIN) <= rectBtn.Width ())
 	{
 		CRect rectImage = rectBtn;
 
 		rectImage.top += (rectBtn.Height () - sizeImage.cy) / 2;
 		rectImage.bottom = rectImage.top + sizeImage.cy;
 
-		rectImage.left += IMAGE_MARGIN;
+		rectImage.left += globalUtils.ScaleByDPI(IMAGE_MARGIN);
 		rectImage.right = rectImage.left + sizeImage.cx;
 
 		if (hIcon != NULL)
@@ -1214,8 +1716,8 @@ void CBCGPOutlookWnd::DrawTabButton (CDC& dc, int iButtonIdx, BOOL bDrawPressedB
 		}
 	}
 
-	#define TEXT_MARGIN		4
-	#define GRIPPER_MARGIN	4
+	#define TEXT_MARGIN		globalUtils.ScaleByDPI(4)
+	#define GRIPPER_MARGIN	globalUtils.ScaleByDPI(4)
 
 	//---------------
 	// Draw tab text:
@@ -1418,12 +1920,12 @@ void CBCGPOutlookWnd::EnableScrollButtons (BOOL bEnable/* = TRUE*/,
 		m_btnUp.ShowWindow (SW_SHOWNOACTIVATE);
 		m_btnUp.EnableWindow (bIsUp);
 		m_btnUp.SetStdImage (CBCGPMenuImages::IdArowUpLarge,
-			bIsUp ? CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageGray);
+			(CBCGPMenuImages::IMAGE_STATE)CBCGPVisualManager::GetInstance()->GetPushButtonStdImageState(&m_btnUp, !bIsUp));
 
 		m_btnDown.ShowWindow (SW_SHOWNOACTIVATE);
 		m_btnDown.EnableWindow (bIsDown);
 		m_btnDown.SetStdImage (CBCGPMenuImages::IdArowDownLarge,
-			bIsDown ? CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageGray);
+			(CBCGPMenuImages::IMAGE_STATE)CBCGPVisualManager::GetInstance()->GetPushButtonStdImageState(&m_btnDown, !bIsDown));
 	}
 	else
 	{
@@ -1445,6 +1947,17 @@ int CBCGPOutlookWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (CBCGPBaseTabWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
 	
+	CString strName;
+	if (lpCreateStruct->lpszName != NULL)
+	{
+		strName = lpCreateStruct->lpszName;
+	}
+	
+	if (strName.IsEmpty())
+	{
+		SetWindowText(_T("ShortcutsContainer"));
+	}
+
 	//-----------------------
 	// Create scroll buttons:
 	//-----------------------
@@ -1473,7 +1986,110 @@ int CBCGPOutlookWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	m_wndToolBar.SetHotBorder (FALSE);
 
+	LOGFONT lf;
+	memset(&lf, 0, sizeof(LOGFONT));
+
+	globalData.fontRegular.GetLogFont(&lf);
+	lf.lfOrientation = 900;
+	lf.lfEscapement  = lf.lfOrientation;
+
+	m_FontVert.CreateFontIndirect(&lf);
+
+	m_cxParent = max(m_cxParent, lpCreateStruct->cx);
+
+	if (CBCGPTooltipManager::CreateToolTip (m_pToolTip, this, BCGP_TOOLTIP_TYPE_TAB))
+	{
+		CRect rectEmpty (0, 0, 0, 0);
+		m_pToolTip->AddTool(this, m_strMinimizeToolTip, &rectEmpty, nIDToolTipCollapse);
+
+		m_pToolTip->SetWindowPos (&wndTop, -1, -1, -1, -1, SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOSIZE);
+	}
+
 	return 0;
+}
+//***************************************************************************************
+BOOL CBCGPOutlookWnd::Expand(BOOL bExpand)
+{
+	ASSERT_VALID(this);
+
+	if (bExpand != m_bIsCollapsed)
+	{
+		return FALSE;
+	}
+
+	CBCGPOutlookBar* pOutlookBar = DYNAMIC_DOWNCAST(CBCGPOutlookBar, GetParent());
+	if (pOutlookBar->GetSafeHwnd() == NULL)
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+	ASSERT_VALID(pOutlookBar);
+		
+	CBCGPSlider* pDefaultSlider = pOutlookBar->GetDefaultSlider ();
+	if (pDefaultSlider->GetSafeHwnd() == NULL)
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+	ASSERT_VALID(pDefaultSlider);
+			
+	BOOL bLeftBar = FALSE;
+	CBCGPBarContainer* pContainer = pDefaultSlider->FindContainer(pOutlookBar, bLeftBar);
+	
+	while (pContainer->GetParentContainer () != NULL)
+	{
+		pContainer = pContainer->GetParentContainer ();
+	}
+	
+	CRect rectContainer;
+	pContainer->GetWindowRect(rectContainer, FALSE);
+
+	DWORD dwSliderStyle = pDefaultSlider->GetCurrentAlignment ();
+	CPoint ptOffset (0, 0);
+
+	int nWidth = bExpand ? m_cxParent : GetCollapsedWidth();
+	
+	switch (dwSliderStyle)
+	{
+	case CBRS_ALIGN_LEFT:
+		ptOffset.x = nWidth - rectContainer.Width ();
+		break;
+
+	case CBRS_ALIGN_RIGHT:
+		ptOffset.x = rectContainer.Width () - nWidth;
+		break;
+
+	default:
+		ASSERT(FALSE);
+		return FALSE;
+	}
+			
+	pDefaultSlider->MoveSlider(ptOffset);
+
+	m_bIsCollapsed = !bExpand;
+
+	if (m_arPopupButtons.GetSize() > 1)
+	{
+		m_arPopupButtons[0]->m_ImageID = m_bIsCollapsed ? CBCGPMenuImages::IdArowRightLarge : CBCGPMenuImages::IdArowLeftLarge;
+	}
+
+	if (bExpand)
+	{
+		CWnd* pWndActive = GetActiveWnd ();
+		if (pWndActive->GetSafeHwnd() != NULL)
+		{
+			ASSERT_VALID (pWndActive);
+
+			RecalcLayout ();
+		
+			pWndActive->ShowWindow (SW_SHOW);
+			pWndActive->BringWindowToTop ();
+		}
+	}
+
+	return TRUE;
 }
 //***************************************************************************************
 BOOL CBCGPOutlookWnd::OnCommand(WPARAM wParam, LPARAM lParam) 
@@ -1553,6 +2169,16 @@ void CBCGPOutlookWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		SetCapture ();
 		return;
 	}
+
+	for (int i = 0; i < (int)m_arPopupButtons.GetSize(); i++)
+	{
+		if (m_arPopupButtons[i]->m_rect.PtInRect(point))
+		{
+			m_arPopupButtons[i]->m_bPushed = TRUE;
+			RedrawWindow(m_arPopupButtons[i]->m_rect);
+			break;
+		}
+	}
 	
 	CBCGPBaseTabWnd::OnLButtonDown(nFlags, point);
 }
@@ -1565,6 +2191,43 @@ void CBCGPOutlookWnd::OnLButtonUp(UINT nFlags, CPoint point)
 		m_bIsTracking = FALSE;
 	}
 	
+	for (int i = 0; i < (int)m_arPopupButtons.GetSize(); i++)
+	{
+		BOOL bWasPushed = m_arPopupButtons[i]->m_bPushed;
+
+		m_arPopupButtons[i]->m_bPushed = m_arPopupButtons[i]->m_bHighlighted = FALSE;
+
+		if (bWasPushed)
+		{
+			RedrawWindow(m_arPopupButtons[i]->m_rect);
+
+			if (m_arPopupButtons[i]->m_rect.PtInRect(point))
+			{
+				switch (m_arPopupButtons[i]->m_nHit)
+				{
+				case 0:	// Expand/collapse
+					Expand(m_bIsCollapsed);
+					break;
+
+				case 1:	// Show popup
+					if (m_bIsCollapsed && m_pAutoHideWindow->GetSafeHwnd() != NULL && !m_bPopupIsDisplayed)
+					{
+						CBCGPOutlookPopupWnd* pAutohideFrame = new CBCGPOutlookPopupWnd(m_pAutoHideWindow);
+						
+						CRect rectPopup;
+						GetWindowRect(rectPopup);
+						
+						rectPopup.OffsetRect(rectPopup.Width(), 0);
+						rectPopup.right = rectPopup.left + m_cxParent;
+						
+						m_bPopupIsDisplayed = pAutohideFrame->Create(rectPopup);
+					}
+					break;
+				}
+			}
+		}
+	}
+
 	CBCGPBaseTabWnd::OnLButtonUp(nFlags, point);
 }
 //*********************************************************************************
@@ -1572,6 +2235,38 @@ void CBCGPOutlookWnd::OnMouseMove(UINT nFlags, CPoint point)
 {
 	if (!m_bIsTracking)
 	{
+		for (int i = 0; i < (int)m_arPopupButtons.GetSize(); i++)
+		{
+			BOOL bWasHighlighted = m_arPopupButtons[i]->m_bHighlighted;
+			m_arPopupButtons[i]->m_bHighlighted = m_arPopupButtons[i]->m_rect.PtInRect(point);
+
+			if (nFlags & MK_LBUTTON)
+			{
+				m_arPopupButtons[i]->m_bPushed = m_arPopupButtons[i]->m_bHighlighted;
+			}
+			else
+			{
+				m_arPopupButtons[i]->m_bPushed = FALSE;
+			}
+
+			if (bWasHighlighted != m_arPopupButtons[i]->m_bHighlighted)
+			{
+				RedrawWindow(m_arPopupButtons[i]->m_rect);
+			}
+
+			if (m_arPopupButtons[i]->m_bHighlighted && !m_bTracked)
+			{
+				m_bTracked = TRUE;
+				
+				TRACKMOUSEEVENT trackmouseevent;
+				trackmouseevent.cbSize = sizeof(trackmouseevent);
+				trackmouseevent.dwFlags = TME_LEAVE;
+				trackmouseevent.hwndTrack = GetSafeHwnd();
+				trackmouseevent.dwHoverTime = HOVER_DEFAULT;
+				::BCGPTrackMouse (&trackmouseevent);	
+			}
+		}
+
 		CBCGPBaseTabWnd::OnMouseMove(nFlags, point);
 		return;
 	}
@@ -1616,6 +2311,15 @@ void CBCGPOutlookWnd::OnCancelMode()
 		ReleaseCapture ();
 		m_bIsTracking = FALSE;
 	}
+
+	for (int i = 0; i < (int)m_arPopupButtons.GetSize(); i++)
+	{
+		if (m_arPopupButtons[i]->m_bHighlighted || m_arPopupButtons[i]->m_bPushed)
+		{
+			m_arPopupButtons[i]->m_bPushed = m_arPopupButtons[i]->m_bPushed = FALSE;
+			RedrawWindow(m_arPopupButtons[i]->m_rect);
+		}
+	}
 }
 //*******************************************************************************
 void CBCGPOutlookWnd::UseAlphaBlendIcons (BOOL bAlphaBlend/* = TRUE*/, BOOL bRebuildIcons/* = FALSE*/)
@@ -1643,7 +2347,7 @@ void CBCGPOutlookWnd::RebuildToolBar ()
 	m_wndToolBar.RemoveAllButtons ();
 	m_wndToolBar.m_TabButtons.RemoveAll ();
 
-	m_wndToolBar.EnableCustomizeButton (TRUE, 0, _T(""), FALSE);
+	m_wndToolBar.EnableCustomizeButton(m_bToolbarCustomizeButton, 0, _T(""), FALSE);
 
 	CSize sizeImage (0, 0);
 		
@@ -1676,13 +2380,13 @@ void CBCGPOutlookWnd::RebuildToolBar ()
 		customizeButton.m_bShowAtRightSide = TRUE;
 		customizeButton.SetMessageWnd (this);
 
-		m_wndToolBar.m_Buttons.RemoveHead ();
+		m_wndToolBar.m_Buttons.RemoveTail();
 		delete m_wndToolBar.m_pCustomizeBtn;
 		m_wndToolBar.m_pCustomizeBtn = NULL;
 
 		m_wndToolBar.InsertButton (customizeButton);
 
-		m_wndToolBar.m_pCustomizeBtn = (CCustomizeButton*) m_wndToolBar.m_Buttons.GetHead ();
+		m_wndToolBar.m_pCustomizeBtn = (CCustomizeButton*) m_wndToolBar.m_Buttons.GetTail ();
 	}
 
 	int nButtonNum = 0;
@@ -1771,6 +2475,11 @@ void CBCGPOutlookWnd::OnChangeTabs ()
 	m_nVisiblePageButtons = -1;
 }
 //***************************************************************************************
+void CBCGPOutlookWnd::EnableToolbarCustomizeButton(BOOL bEnable/* = TRUE*/)
+{
+	m_bToolbarCustomizeButton = bEnable;
+}
+//***************************************************************************************
 BOOL CBCGPOutlookWnd::SetToolbarImageList (UINT uiID, int cx, COLORREF clrTransp)
 {
 	if (!IsMode2003 ())
@@ -1780,7 +2489,13 @@ BOOL CBCGPOutlookWnd::SetToolbarImageList (UINT uiID, int cx, COLORREF clrTransp
 	}
 
 	CBitmap bmp;
-	if (!bmp.LoadBitmap (uiID))
+
+	CBCGPPngImage pngImage;
+	if (pngImage.Load(uiID))
+	{
+		bmp.Attach((HBITMAP) pngImage.Detach());
+	}
+	else if (!bmp.LoadBitmap (uiID))
 	{
 		TRACE(_T("CBCGPOutlookWnd::SetToolbarImageList Can't load bitmap: %x\n"), uiID);
 		return FALSE;
@@ -1888,7 +2603,7 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPOutlookOptionsDlg)
 	enum { IDD = IDD_BCGBARRES_OUTLOOKBAR_OPTIONS };
-	CBCGPExCheckList	m_wndList;
+	CBCGPCheckListBox	m_wndList;
 	//}}AFX_DATA
 
 
@@ -1912,6 +2627,7 @@ protected:
 	virtual void OnOK();
 	afx_msg void OnReset();
 	//}}AFX_MSG
+	afx_msg void OnCheckchangeList();
 	DECLARE_MESSAGE_MAP()
 
 	CBCGPOutlookWnd& m_parentBar;
@@ -1948,10 +2664,21 @@ BEGIN_MESSAGE_MAP(CBCGPOutlookOptionsDlg, CBCGPDialog)
 	ON_BN_CLICKED(IDC_BCGBARRES_MOVEUP, OnMoveUp)
 	ON_BN_CLICKED(IDC_BCGBARRES_RESET, OnReset)
 	//}}AFX_MSG_MAP
+	ON_CLBN_CHKCHANGE(IDC_BCGBARRES_LIST, OnCheckchangeList)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPOutlookOptionsDlg message handlers
+
+void CBCGPOutlookOptionsDlg::OnCheckchangeList()
+{
+	CWnd* pButtonOk = GetDlgItem (IDOK);
+
+	if (pButtonOk->GetSafeHwnd() != NULL)
+	{
+		pButtonOk->EnableWindow(m_wndList.GetCheckCount() > 0);
+	}
+}
 
 void CBCGPOutlookOptionsDlg::OnSelchange() 
 {
@@ -2127,5 +2854,121 @@ void CBCGPOutlookWnd::OnShowOptions ()
 		m_bDontAdjustLayout = TRUE;
 		RecalcLayout ();
 		m_bDontAdjustLayout = FALSE;
+	}
+}
+//**************************************************************************************
+void CBCGPOutlookWnd::ApplyRestoreActiveTab()
+{
+	if (m_iActiveTab == m_nRestoredActiveTabID)
+	{
+		CWnd* pWndOld = GetActiveWnd ();
+		if (pWndOld->GetSafeHwnd() != NULL && ::IsWindow(pWndOld->GetSafeHwnd()))
+		{
+			pWndOld->ShowWindow(SW_HIDE);
+		}
+
+		m_iActiveTab = -1;
+	}
+
+	CBCGPBaseTabWnd::ApplyRestoreActiveTab();
+}
+//**************************************************************************************
+LRESULT CBCGPOutlookWnd::OnMouseLeave (WPARAM, LPARAM)
+{
+	for (int i = 0; i < (int)m_arPopupButtons.GetSize(); i++)
+	{
+		if (m_arPopupButtons[i]->m_bHighlighted)
+		{
+			m_arPopupButtons[i]->m_bHighlighted = FALSE;
+			RedrawWindow(m_arPopupButtons[i]->m_rect);
+			break;
+		}
+	}
+	
+	m_bTracked = FALSE;
+	return 0;
+}
+//**************************************************************************************
+void CBCGPOutlookWnd::OnDestroy() 
+{
+	CBCGPTooltipManager::DeleteToolTip (m_pToolTip);
+	CBCGPBaseTabWnd::OnDestroy();
+}
+//**************************************************************************************
+BOOL CBCGPOutlookWnd::PreTranslateMessage(MSG* pMsg) 
+{
+   	switch (pMsg->message)
+	{
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_LBUTTONUP:
+	case WM_RBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_NCLBUTTONDOWN:
+	case WM_NCRBUTTONDOWN:
+	case WM_NCMBUTTONDOWN:
+	case WM_NCLBUTTONUP:
+	case WM_NCRBUTTONUP:
+	case WM_NCMBUTTONUP:
+	case WM_MOUSEMOVE:
+		if (m_pToolTip->GetSafeHwnd () != NULL)
+		{
+			m_pToolTip->RelayEvent(pMsg);
+		}
+		break;
+	}
+	
+	return CBCGPBaseTabWnd::PreTranslateMessage(pMsg);
+}
+//**************************************************************************
+LRESULT CBCGPOutlookWnd::OnBCGUpdateToolTips (WPARAM wp, LPARAM)
+{
+	UINT nTypes = (UINT) wp;
+
+	if ((nTypes & BCGP_TOOLTIP_TYPE_TAB) == 0)
+	{
+		return 0;
+	}
+
+	CBCGPTooltipManager::CreateToolTip (m_pToolTip, this,
+		BCGP_TOOLTIP_TYPE_TAB);
+
+	if (m_pToolTip->GetSafeHwnd () == NULL)
+	{
+		return 0;
+	}
+
+	CRect rectDummy (0, 0, 0, 0);
+
+	CBCGPTooltipManager::CreateToolTip (m_pToolTipClose, this, BCGP_TOOLTIP_TYPE_TAB);
+
+	for (int i = 0; i < m_iTabsNum; i++)
+	{
+		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
+		ASSERT_VALID (pTab);
+
+		m_pToolTip->AddTool (this,
+			m_bCustomToolTips ? LPSTR_TEXTCALLBACK : (LPCTSTR)(pTab->m_strText), 
+			&rectDummy, pTab->m_iTabID);
+	}
+
+	CRect rectEmpty (0, 0, 0, 0);
+	m_pToolTip->AddTool(this, m_strMinimizeToolTip, &rectEmpty, nIDToolTipCollapse);
+
+	RecalcLayout ();
+	return 0;
+}
+//**************************************************************************
+void CBCGPOutlookWnd::AdjustTooltipRect(CBCGPTabInfo* pTab, BOOL bShowTooltip)
+{
+	ASSERT_VALID(pTab);
+
+	if (m_pToolTip->GetSafeHwnd() != NULL)
+	{
+		CRect rectTabTT = bShowTooltip ? pTab->m_rect : CRect(0, 0, 0, 0);
+		m_pToolTip->SetToolRect (this, pTab->m_iTabID, rectTabTT);
 	}
 }

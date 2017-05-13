@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -24,6 +24,7 @@
 #include "BCGPContextMenuManager.h"
 #include "BCGPMultiDocTemplate.h"
 #include "BCGPToolbarCustomize.h"
+#include "BCGPMessageBox.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -38,10 +39,10 @@ CPoint CBCGPMenuPage::m_ptMenuLastPos = CPoint (100, 100);
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMenuPage property page
 
-IMPLEMENT_DYNCREATE(CBCGPMenuPage, CPropertyPage)
+IMPLEMENT_DYNCREATE(CBCGPMenuPage, CBCGPPropertyPage)
 
 CBCGPMenuPage::CBCGPMenuPage (CFrameWnd* pParentFrame, BOOL bAutoSet) :
-	CPropertyPage(CBCGPMenuPage::IDD),
+	CBCGPPropertyPage(CBCGPMenuPage::IDD),
 	m_pParentFrame (pParentFrame),
 	m_bAutoSet(bAutoSet)
 {
@@ -67,7 +68,7 @@ CBCGPMenuPage::~CBCGPMenuPage()
 
 void CBCGPMenuPage::DoDataExchange(CDataExchange* pDX)
 {
-	CPropertyPage::DoDataExchange(pDX);
+	CBCGPPropertyPage::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPMenuPage)
 	DDX_Control(pDX, IDC_BCGBARRES_MENU_ANIMATION_LABEL, m_wndMenuAnimationsLabel);
 	DDX_Control(pDX, IDC_BCGBARRES_MENU_ANIMATION, m_wndMenuAnimations);
@@ -88,7 +89,7 @@ void CBCGPMenuPage::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CBCGPMenuPage, CPropertyPage)
+BEGIN_MESSAGE_MAP(CBCGPMenuPage, CBCGPPropertyPage)
 	//{{AFX_MSG_MAP(CBCGPMenuPage)
 	ON_CBN_SELCHANGE(IDC_BCGBARRES_MENU_LIST, OnSelchangeMenuList)
 	ON_WM_DESTROY()
@@ -105,7 +106,7 @@ BOOL CBCGPMenuPage::OnInitDialog()
 {
 	{
 		CBCGPLocalResource locaRes;
-		CPropertyPage::OnInitDialog();
+		CBCGPPropertyPage::OnInitDialog();
 	}
 
 	if (m_iMenuAnimationType == (int) CBCGPPopupMenu::SYSTEM_DEFAULT_ANIMATION)
@@ -147,7 +148,7 @@ BOOL CBCGPMenuPage::OnInitDialog()
 		g_menuHash.SaveMenuBar (m_hmenuCurr, m_pMenuBar);
 
 		//-------------------------------------------------------------------
-		// Find all application document templates and fill menues combobox
+		// Find all application document templates and fill menus combobox
 		// by document template data:
 		//------------------------------------------------------------------
 		CDocManager* pDocManager = AfxGetApp ()->m_pDocManager;
@@ -166,7 +167,7 @@ BOOL CBCGPMenuPage::OnInitDialog()
 				ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 				//-----------------------------------------------------
-				// We are interessing CMultiDocTemplate objects with
+				// We are interesting in CMultiDocTemplate objects with
 				// the shared menu only....
 				//-----------------------------------------------------
 				if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
@@ -410,10 +411,10 @@ void CBCGPMenuPage::OnDestroy()
 	}
 
 	//--------------------------
-	// Update shdows appearance:
+	// Update shadows appearance:
 	//--------------------------
 	CBCGPMenuBar::EnableMenuShadows (m_bMenuShadows);
-	CPropertyPage::OnDestroy();
+	CBCGPPropertyPage::OnDestroy();
 }
 //************************************************************************************************
 void CBCGPMenuPage::OnSelchangeContextMenuList() 
@@ -544,7 +545,7 @@ void CBCGPMenuPage::OnResetMenu()
 		CString strPrompt;
 		strPrompt.Format (IDS_BCGBARRES_RESET_MENU_FMT, m_strContextMenuName);
 
-		if (MessageBox (strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
+		if (BCGPShowMessageBox(IsVisualManagerStyle(), this, strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
 		{
 			return;
 		}
@@ -598,7 +599,7 @@ void CBCGPMenuPage::OnBcgbarresResetFrameMenu()
 		CString strPrompt;
 		strPrompt.Format (IDS_BCGBARRES_RESET_MENU_FMT, m_strMenuName);
 
-		if (MessageBox (strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
+		if (BCGPShowMessageBox(IsVisualManagerStyle(), this, strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
 		{
 			return;
 		}

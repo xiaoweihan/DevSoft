@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -129,9 +129,14 @@ public:
 	BOOL AddAnchor (HWND hWnd, XMoveType typeMove, XSizeType typeSize, 
 					const CPoint& percMove = CPoint (100, 100), const CPoint& percSize = CPoint (100, 100));
 
+	BOOL RemoveAnchor (UINT nID);
+	BOOL RemoveAnchor (HWND hWnd);
+
 protected:
 	BOOL AddAnchor (LPVOID lpHandle, XMoveType typeMove, XSizeType typeSize, 
 					const CPoint& percMove = CPoint (100, 100), const CPoint& percSize = CPoint (100, 100));
+	BOOL RemoveAnchor (LPVOID lpHandle);
+	POSITION FindItem (LPVOID lpHandle);
 	BOOL FindItem (LPVOID lpHandle, XWndItem& item);
 
 	virtual void CorrectItem (XWndItem& item) const;

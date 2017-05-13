@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -168,11 +168,11 @@ void CBCGPDBGridCtrl::Sort (int nColumn, BOOL bAscending, BOOL bAdd)
 
 	if (bAdd)
 	{
-		for (POSITION pos = m_Columns.m_mapSortColumn.GetStartPosition (); pos != NULL; )
+		for (POSITION pos = GetColumnsInfo().m_mapSortColumn.GetStartPosition (); pos != NULL; )
 		{
 			int nListColumn, nState;
 
-			m_Columns.m_mapSortColumn.GetNextAssoc (pos, nListColumn, nState);
+			GetColumnsInfo().m_mapSortColumn.GetNextAssoc (pos, nListColumn, nState);
 
 			if (nState != 0 && nListColumn != nColumn)
 			{
@@ -200,7 +200,7 @@ void CBCGPDBGridCtrl::Sort (int nColumn, BOOL bAscending, BOOL bAdd)
 
 	if (OpenSQL (strSQL))
 	{
-		m_Columns.SetSortColumn (nColumn, bAscending, bAdd);
+		GetColumnsInfo().SetSortColumn (nColumn, bAscending, bAdd);
 	}
 
 	RedrawWindow (m_rectHeader);

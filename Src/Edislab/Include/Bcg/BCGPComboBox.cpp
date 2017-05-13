@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -16,6 +16,7 @@
 #include "stdafx.h"
 #include "BCGPComboBox.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPGlobalUtils.h"
 #ifndef _BCGSUITE_
 #include "BCGPToolBarImages.h"
 #include "BCGPToolbarComboBoxButton.h"
@@ -28,6 +29,129 @@
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
 #endif
+
+#define UM_REDRAWFRAME	(WM_USER + 1001)
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPDropDownListBox
+
+IMPLEMENT_DYNAMIC(CBCGPDropDownListBox, CListBox)
+
+BEGIN_MESSAGE_MAP(CBCGPDropDownListBox, CListBox)
+	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
+	ON_WM_ERASEBKGND()
+	ON_WM_NCPAINT()
+END_MESSAGE_MAP()
+
+CBCGPDropDownListBox::CBCGPDropDownListBox()
+{
+	m_pWndCombo = NULL;
+}
+//****************************************************************************************
+void CBCGPDropDownListBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
+{
+	if (m_pWndCombo->GetSafeHwnd() != NULL)
+	{
+		lpDIS->CtlType = ODT_COMBOBOX;
+		m_pWndCombo->DrawItem(lpDIS);
+	}
+}
+//****************************************************************************************
+void CBCGPDropDownListBox::MeasureItem(LPMEASUREITEMSTRUCT lpMIS)
+{
+	if (m_pWndCombo->GetSafeHwnd() != NULL)
+	{
+		lpMIS->CtlType = ODT_COMBOBOX;
+		m_pWndCombo->MeasureItem(lpMIS);
+	}
+}
+//*******************************************************************************
+LRESULT CBCGPDropDownListBox::OnPrintClient(WPARAM wp, LPARAM lp)
+{
+	if ((lp & PRF_ERASEBKGND) == PRF_ERASEBKGND && GetCount() == 0 && m_pWndCombo != NULL && m_pWndCombo->m_bVisualManagerStyle)
+	{
+		CDC* pDC = CDC::FromHandle((HDC) wp);
+		ASSERT_VALID(pDC);
+
+		CRect rect;
+		GetClientRect(rect);
+
+		CBCGPVisualManager::GetInstance ()->OnFillComboBoxItem(pDC, m_pWndCombo, -1, rect, FALSE, FALSE);
+		return 0;
+	}
+
+	return Default();
+}
+//*******************************************************************************
+BOOL CBCGPDropDownListBox::OnEraseBkgnd(CDC* pDC)
+{
+	if ((GetStyle() & (CBS_OWNERDRAWVARIABLE | CBS_OWNERDRAWFIXED)) == 0)
+	{
+		return (BOOL)Default();
+	}
+
+	CRect rectClient;
+	GetClientRect(rectClient);
+
+	if (m_pWndCombo->m_bVisualManagerStyle || m_pWndCombo->m_bOnGlass)
+	{
+		CBCGPVisualManager::GetInstance ()->OnFillComboBoxItem(pDC, m_pWndCombo, -1, rectClient, FALSE, FALSE);
+	}
+	else
+	{
+		pDC->FillRect(rectClient, &globalData.brWindow);
+	}
+
+	return TRUE;
+}
+//*******************************************************************************
+void CBCGPDropDownListBox::OnNcPaint()
+{
+	CListBox::OnNcPaint();
+
+	const BOOL bHasBorder = (GetExStyle() & WS_EX_CLIENTEDGE) || (GetStyle() & WS_BORDER);
+	const BOOL bIsSimple = (m_pWndCombo->GetStyle() & 0x0003L) == CBS_SIMPLE;
+
+	if (bHasBorder && (m_pWndCombo->m_bVisualManagerStyle || m_pWndCombo->m_bOnGlass))
+	{
+		CRect rect;
+		GetWindowRect (rect);
+		
+		rect.bottom -= rect.top;
+		rect.right -= rect.left;
+		rect.left = rect.top = 0;
+
+		CWindowDC dc(this);
+		
+		if (!bIsSimple)
+		{
+			CRect rectInner = rect;
+			rectInner.DeflateRect(1, 1);
+
+			dc.ExcludeClipRect(rectInner);
+		}
+
+		CBCGPVisualManager::GetInstance()->OnDrawControlBorder(&dc, rect, this, m_pWndCombo->m_bOnGlass);
+
+		dc.SelectClipRgn(NULL);
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPComboBoxItemData
+
+struct CBCGPComboBoxItemData
+{
+public:
+	int		m_nImageIndex;
+	int		m_iIndent;
+	
+	CBCGPComboBoxItemData()
+		: m_iIndent(0)
+		, m_nImageIndex(-1)
+	{
+	}
+};
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPComboBox
@@ -45,10 +169,30 @@ CBCGPComboBox::CBCGPComboBox()
 	m_clrPrompt = (COLORREF)-1;
 	m_clrErrorText = (COLORREF)-1;
 	m_bDefaultPrintClient = FALSE;
+	m_bAutoComplete = FALSE;
+	m_nRowHeight = -1;
+	m_hImageList = NULL;
+	m_sizeImage = CSize(0, 0);
+	m_nImageVertMargin = 0;
 }
 
 CBCGPComboBox::~CBCGPComboBox()
 {
+	CleanUpItemsData();
+}
+
+void CBCGPComboBox::CleanUpItemsData()
+{
+	for (int i = 0; i < (int)m_arItemData.GetSize(); i++)
+	{
+		CBCGPComboBoxItemData* pItemData = m_arItemData[i];
+		if (pItemData != NULL)
+		{
+			delete pItemData;
+		}
+	}
+
+	m_arItemData.RemoveAll();
 }
 
 BEGIN_MESSAGE_MAP(CBCGPComboBox, CComboBox)
@@ -61,6 +205,7 @@ BEGIN_MESSAGE_MAP(CBCGPComboBox, CComboBox)
 	ON_WM_KILLFOCUS()
 	ON_WM_CREATE()
 	ON_WM_SETFOCUS()
+	ON_WM_ERASEBKGND()
 	//}}AFX_MSG_MAP
 	ON_CONTROL_REFLECT_EX(CBN_EDITUPDATE, OnEditupdate)
 	ON_CONTROL_REFLECT_EX(CBN_SELCHANGE, OnSelchange)
@@ -70,6 +215,12 @@ BEGIN_MESSAGE_MAP(CBCGPComboBox, CComboBox)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLAERO, OnBCGSetControlAero)
 	ON_MESSAGE(WM_SETTEXT, OnSetText)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
+	ON_MESSAGE(UM_REDRAWFRAME, OnRedrawFrame)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
+	ON_MESSAGE(WM_SETFONT, OnSetFont)
+	ON_MESSAGE(CB_INSERTSTRING, OnCBInsertString)
+	ON_MESSAGE(CB_DELETESTRING, OnCBDeleteString)
+	ON_MESSAGE(CB_RESETCONTENT , OnCBResetContent)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -78,6 +229,10 @@ END_MESSAGE_MAP()
 LRESULT CBCGPComboBox::OnBCGSetControlVMMode (WPARAM wp, LPARAM)
 {
 	m_bVisualManagerStyle = (BOOL) wp;
+
+	SubclassEditBox();
+	SubclassListBox();
+
 	return 0;
 }
 //**************************************************************************
@@ -88,7 +243,12 @@ void CBCGPComboBox::SubclassEditBox()
 		return;
 	}
 
-	if (m_wndEdit.GetSafeHwnd () == NULL && (GetStyle () & CBS_DROPDOWN))
+	if (!m_bVisualManagerStyle && !m_bOnGlass && m_strPrompt.IsEmpty() && m_strErrorMessage.IsEmpty())
+	{
+		return;
+	}
+
+	if (m_wndEdit.GetSafeHwnd () == NULL && ((GetStyle () & CBS_DROPDOWN) || (GetStyle () & CBS_SIMPLE)))
 	{
 		CWnd* pWndChild = GetWindow (GW_CHILD);
 		
@@ -112,6 +272,11 @@ void CBCGPComboBox::SubclassEditBox()
 
 					m_wndEdit.m_bOnGlass = m_bOnGlass;
 					m_wndEdit.m_bVisualManagerStyle = m_bVisualManagerStyle;
+					
+					if (m_bAutoComplete && (GetStyle () & 0x0003L) == CBS_DROPDOWN)
+					{
+						m_wndEdit.m_pAutoCompleteCombo = this;
+					}
 					break;
 				}
 			}
@@ -121,15 +286,76 @@ void CBCGPComboBox::SubclassEditBox()
 	}
 }
 //**************************************************************************
+void CBCGPComboBox::AdjustItemHeight()
+{
+	if ((GetStyle() & CBS_OWNERDRAWFIXED) == CBS_OWNERDRAWFIXED)
+	{
+		MEASUREITEMSTRUCT mis;
+		memset(&mis, 0, sizeof(MEASUREITEMSTRUCT));
+		
+		mis.CtlType = ODT_COMBOBOX;
+		mis.CtlID = GetDlgCtrlID();
+		
+		SendMessage(WM_MEASUREITEM, (WPARAM)mis.CtlID, (LPARAM)&mis);
+
+		const int nHeight = max((int)mis.itemHeight, GetDropDownItemMinHeight());
+
+		m_wndList.SetItemHeight(-1, nHeight);
+
+		if (DYNAMIC_DOWNCAST(CBCGPToolBar, GetParent()) == NULL)
+		{
+			SetItemHeight(-1, nHeight);
+		}
+	}
+}
+//**************************************************************************
+void CBCGPComboBox::SubclassListBox()
+{
+	CalcRowHeight();
+
+	if (GetSafeHwnd() == NULL || !IsThemedDropDownList() || m_wndList.GetSafeHwnd() != NULL)
+	{
+		return;
+	}
+
+#ifndef _BCGSUITE_
+	BCGP_COMBOBOXINFO info;
+	memset(&info, 0, sizeof(info));
+	info.cbSize = sizeof(info);
+	
+	if (!globalData.GetComboBoxInfo(GetSafeHwnd(), &info))
+	{
+		return;
+	}
+#else
+	COMBOBOXINFO info;
+	memset(&info, 0, sizeof(info));
+	info.cbSize = sizeof(info);
+
+	if (!GetComboBoxInfo(&info))
+	{
+		return;
+	}
+#endif
+
+	m_wndList.m_pWndCombo = this;
+	m_wndList.SubclassWindow(info.hwndList);
+
+	AdjustItemHeight();
+
+	const BOOL bIsSimple = (GetStyle() & 0x0003L) == CBS_SIMPLE;
+	if (bIsSimple)
+	{
+		PostMessage(UM_REDRAWFRAME);
+	}
+}
+//**************************************************************************
 LRESULT CBCGPComboBox::OnBCGSetControlAero (WPARAM wp, LPARAM)
 {
 	m_bOnGlass = (BOOL) wp;
+	m_wndEdit.m_bOnGlass = m_bOnGlass;
 
-	if (m_bOnGlass)
-	{
-		SubclassEditBox();
-	}
-
+	SubclassEditBox();
 	return 0;
 }
 //**************************************************************************
@@ -152,12 +378,6 @@ void CBCGPComboBox::OnPaint()
 		return;
 	}
 #endif
-
-	if ((GetStyle () & 0x0003L) == CBS_SIMPLE)
-	{
-		Default ();
-		return;
-	}
 
 	BOOL bDrawPrompt = FALSE;
 
@@ -196,6 +416,11 @@ void CBCGPComboBox::OnDraw(CDC* pDCIn, BOOL bDrawPrompt)
 {
 	ASSERT_VALID(pDCIn);
 
+	const int nPadding = globalUtils.ScaleByDPI(4);
+	const BOOL bIsSimple = (GetStyle() & 0x0003L) == CBS_SIMPLE;
+	const BOOL bRight = GetExStyle() & WS_EX_RIGHT;
+	const BOOL bLeftSB = GetExStyle() & WS_EX_LEFTSCROLLBAR;
+
 	BYTE alpha = 0;
 	if (m_bOnGlass)
 	{
@@ -209,7 +434,29 @@ void CBCGPComboBox::OnDraw(CDC* pDCIn, BOOL bDrawPrompt)
 	GetClientRect (rectClient);
 
 	CBCGPDrawManager dm (*pDC);
-	dm.DrawRect (rectClient, m_bVisualManagerStyle ? globalData.clrBarHilite : globalData.clrWindow, (COLORREF)-1);
+
+	if (bIsSimple)
+	{
+		CBrush& br2 = CBCGPVisualManager::GetInstance()->GetEditCtrlBackgroundBrush(&m_wndEdit);
+		CRect rectFill = rectClient;
+
+		if (m_wndList.GetSafeHwnd() != NULL) 
+		{
+			CRect rectLB;
+			m_wndList.GetWindowRect(&rectLB);
+			ScreenToClient(&rectLB);
+			
+			rectFill.bottom = rectLB.bottom;
+
+			globalData.DrawParentBackground(this, pDC);
+		}
+
+		pDC->FillRect(rectFill, &br2);
+	}
+	else 
+	{
+		dm.DrawRect(rectClient, m_bVisualManagerStyle ? globalData.clrBarHilite : globalData.clrWindow, (COLORREF)-1);
+	}
 
 	BOOL bDefaultDraw = TRUE;
 
@@ -234,14 +481,24 @@ void CBCGPComboBox::OnDraw(CDC* pDCIn, BOOL bDrawPrompt)
 		CRect rectText;
 		GetClientRect(rectText);
 
-		rectText.left += 4;
-		
+		UINT nFormat = DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX;
+
+		if (bRight || bLeftSB)
+		{
+			rectText.right -= nPadding;
+		}
+		else
+		{
+			rectText.left += nPadding;
+		}
+
+		nFormat |= bRight ? DT_RIGHT : DT_LEFT;
+
 		if ((GetStyle () & WS_BORDER) != 0 || (GetExStyle () & WS_EX_CLIENTEDGE) != 0)
 		{
 			rectText.DeflateRect (1, 1);
 		}
 		
-		UINT nFormat = DT_LEFT | DT_SINGLELINE | DT_VCENTER;
 		const CString& str = !m_strErrorMessage.IsEmpty() ? m_strErrorMessage : m_strPrompt;
 		
 		if (m_bOnGlass)
@@ -278,8 +535,6 @@ void CBCGPComboBox::OnDraw(CDC* pDCIn, BOOL bDrawPrompt)
 					clrText = CBCGPVisualManager::GetInstance ()->GetToolbarDisabledTextColor();
 				}
 				
-				rect.left += 4;
-				
 				CFont* pOldFont = pDC->SelectObject(GetFont());
 				ASSERT_VALID(pOldFont);
 				
@@ -287,10 +542,21 @@ void CBCGPComboBox::OnDraw(CDC* pDCIn, BOOL bDrawPrompt)
 				COLORREF clrTextOld = pDC->SetTextColor(clrText);
 				
 				const int cxDropDown = ::GetSystemMetrics (SM_CXVSCROLL);
-				rect.right -= cxDropDown;
+				UINT nFormat = DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX;
 
-				UINT nFormat = DT_SINGLELINE | DT_VCENTER | DT_LEFT;
-				
+				if (bRight || bLeftSB)
+				{
+					rect.left += cxDropDown;
+					rect.right -= nPadding;
+				}
+				else
+				{
+					rect.left += nPadding;
+					rect.right -= cxDropDown;
+				}
+
+				nFormat |= bRight ? DT_RIGHT : DT_LEFT;
+
 				if (m_bOnGlass)
 				{
 					CBCGPVisualManager::GetInstance ()->DrawTextOnGlass(pDC, strText, rect, nFormat, 0, clrText);
@@ -309,12 +575,14 @@ void CBCGPComboBox::OnDraw(CDC* pDCIn, BOOL bDrawPrompt)
 		}
 
 	#endif
-
-		if (bDefaultDraw)
+		if (!bIsSimple)
 		{
-			m_bDefaultPrintClient = TRUE;
-			SendMessage (WM_PRINTCLIENT, (WPARAM) pDC->GetSafeHdc (), (LPARAM) PRF_CLIENT);
-			m_bDefaultPrintClient = FALSE;
+			if (bDefaultDraw)
+			{
+				m_bDefaultPrintClient = TRUE;
+				SendMessage (WM_PRINTCLIENT, (WPARAM) pDC->GetSafeHdc (), (LPARAM) PRF_CLIENT);
+				m_bDefaultPrintClient = FALSE;
+			}
 		}
 	}
 
@@ -323,42 +591,77 @@ void CBCGPComboBox::OnDraw(CDC* pDCIn, BOOL bDrawPrompt)
 		pDC->SelectClipRgn (NULL);
 	}
 
-	const int cxDropDown = ::GetSystemMetrics (SM_CXVSCROLL) + 4;
+	if (!bIsSimple) 
+	{
+		const int cxDropDown = ::GetSystemMetrics (SM_CXVSCROLL) + nPadding;
 
-	m_rectBtn = rectClient;
-	m_rectBtn.left = m_rectBtn.right - cxDropDown;
+		m_rectBtn = rectClient;
 
-	m_rectBtn.DeflateRect (2, 2);
+		if (bRight || bLeftSB)
+		{
+			m_rectBtn.right = m_rectBtn.left + cxDropDown;
+		}
+		else
+		{
+			m_rectBtn.left = m_rectBtn.right - cxDropDown;
+		}
 
-	CBCGPDrawOnGlass dog (m_bOnGlass);
+		m_rectBtn.DeflateRect (2, 2);
 
-	CBCGPToolbarComboBoxButton buttonDummy;
+		CBCGPDrawOnGlass dog (m_bOnGlass);
+
+		CBCGPToolbarComboBoxButton buttonDummy;
 #ifndef _BCGSUITE_
-	buttonDummy.m_bIsCtrl = TRUE;
+		buttonDummy.m_bIsCtrl = TRUE;
 
-	CBCGPVisualManager::GetInstance ()->OnDrawComboDropButton (
-		pDC, m_rectBtn, !IsWindowEnabled (), m_bIsDroppedDown,
-		m_bIsButtonHighlighted,
-		&buttonDummy);
+		CBCGPVisualManager::GetInstance ()->OnDrawComboDropButton (
+			pDC, m_rectBtn, !IsWindowEnabled (), m_bIsDroppedDown,
+			m_bIsButtonHighlighted,
+			&buttonDummy);
 
-	if (bDefaultDraw)
-	{
-		dm.DrawRect (rectClient, (COLORREF)-1, globalData.clrBarShadow);
-	}
-	else
-	{
-		CBCGPVisualManager::GetInstance ()->OnDrawControlBorder (pDC, rectClient, this, m_bOnGlass);
-	}
+		if (bDefaultDraw)
+		{
+			dm.DrawRect (rectClient, (COLORREF)-1, globalData.clrBarShadow);
+		}
+		else
+		{
+			CBCGPVisualManager::GetInstance ()->OnDrawControlBorder (pDC, rectClient, this, m_bOnGlass);
+		}
 
 #else
-	CMFCVisualManager::GetInstance ()->OnDrawComboDropButton (
-		pDC, m_rectBtn, !IsWindowEnabled (), m_bIsDroppedDown,
-		m_bIsButtonHighlighted,
-		&buttonDummy);
+		CMFCVisualManager::GetInstance ()->OnDrawComboDropButton (
+			pDC, m_rectBtn, !IsWindowEnabled (), m_bIsDroppedDown,
+			m_bIsButtonHighlighted,
+			&buttonDummy);
 
-	dm.DrawRect (rectClient, (COLORREF)-1, globalData.clrBarShadow);
+		dm.DrawRect (rectClient, (COLORREF)-1, globalData.clrBarShadow);
 
 #endif
+	} 
+	else
+	{
+		if (m_wndList.GetSafeHwnd() != NULL) 
+		{
+			CRect rectLB;
+			m_wndList.GetWindowRect(&rectLB);
+			ScreenToClient(&rectLB);
+			
+			rectClient.bottom = rectLB.bottom;
+		}
+
+#ifndef _BCGSUITE_
+		if (bDefaultDraw)
+		{
+			dm.DrawRect(rectClient, (COLORREF)-1, globalData.clrBarShadow);
+		}
+		else
+		{
+			CBCGPVisualManager::GetInstance()->OnDrawControlBorder(pDC, rectClient, this, m_bOnGlass);
+		}
+#else
+		dm.DrawRect(rectClient, (COLORREF)-1, globalData.clrBarShadow);
+#endif
+	}
 
 	rectClient.DeflateRect (1, 1);
 	dm.DrawRect (rectClient, (COLORREF)-1, m_bVisualManagerStyle ? globalData.clrBarHilite : globalData.clrWindow);
@@ -369,7 +672,7 @@ BOOL CBCGPComboBox::OnCloseup()
 	m_bIsDroppedDown = FALSE;
 	m_bIsButtonHighlighted = FALSE;
 
-	RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
 
 	return FALSE;
 }
@@ -391,7 +694,7 @@ BOOL CBCGPComboBox::OnDropdown()
 //**************************************************************************
 void CBCGPComboBox::OnMouseMove(UINT nFlags, CPoint point) 
 {
-	if ((nFlags & MK_LBUTTON) == 0)
+	if ((nFlags & MK_LBUTTON) == 0 && !m_bIsDroppedDown)
 	{
 		BOOL bIsButtonHighlighted = m_bIsButtonHighlighted;
 		m_bIsButtonHighlighted = m_rectBtn.PtInRect (point);
@@ -446,14 +749,21 @@ void CBCGPComboBox::OnLButtonDown(UINT nFlags, CPoint point)
 
 		RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
 	}
-	
+
 	CComboBox::OnLButtonDown(nFlags, point);
 }
 //**************************************************************************
 void CBCGPComboBox::OnKillFocus(CWnd* pNewWnd) 
 {
+	HWND hwndThis = GetSafeHwnd();
+
 	CComboBox::OnKillFocus(pNewWnd);
-	
+
+	if (!::IsWindow(hwndThis))
+	{
+		return;
+	}
+
 	BOOL bDrawPrompt = (!m_strPrompt.IsEmpty() && GetWindowTextLength() == 0) || !m_strErrorMessage.IsEmpty();
 	if (bDrawPrompt)
 	{
@@ -476,10 +786,7 @@ void CBCGPComboBox::SetPrompt(LPCTSTR lpszPrompt, COLORREF clrText, BOOL bRedraw
 	m_strPrompt = (lpszPrompt == NULL) ? _T("") : lpszPrompt;
 	m_clrPrompt = clrText;
 	
-	if (!m_strPrompt.IsEmpty())
-	{
-		SubclassEditBox();
-	}
+	SubclassEditBox();
 
 	if (m_wndEdit.GetSafeHwnd () != NULL)
 	{
@@ -502,10 +809,7 @@ void CBCGPComboBox::SetErrorMessage(LPCTSTR lpszPrompt, COLORREF clrText, BOOL b
 	m_strErrorMessage = (lpszPrompt == NULL) ? _T("") : lpszPrompt;
 	m_clrErrorText = clrText;
 	
-	if (!m_strErrorMessage.IsEmpty())
-	{
-		SubclassEditBox();
-	}
+	SubclassEditBox();
 
 	if (m_wndEdit.GetSafeHwnd () != NULL)
 	{
@@ -518,18 +822,74 @@ void CBCGPComboBox::SetErrorMessage(LPCTSTR lpszPrompt, COLORREF clrText, BOOL b
 	}
 }
 //**************************************************************************
+BOOL CBCGPComboBox::IsThemedDropDownList() const
+{
+#ifndef _BCGSUITE_
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_COMBOBOX) != 0 && m_bVisualManagerStyle;
+#else
+	return FALSE;
+#endif
+}
+//**************************************************************************
+void CBCGPComboBox::CalcRowHeight()
+{
+	if (GetFont()->GetSafeHandle() == globalData.fontRegular.GetSafeHandle() || GetFont()->GetSafeHandle() == NULL)
+	{
+		m_nRowHeight = globalData.GetTextHeight();
+	}
+	else
+	{
+		CClientDC dc((CWnd*)this);
+		
+		CFont* pOldFont = dc.SelectObject(GetFont());
+		ASSERT(pOldFont != NULL);
+		
+		TEXTMETRIC tm;
+		dc.GetTextMetrics (&tm);
+		
+		int nTextMargin = tm.tmHeight < 15 ? 2 : 5;
+		
+		m_nRowHeight = tm.tmHeight + nTextMargin;
+		
+		dc.SelectObject(pOldFont);
+	}
+
+	if (m_sizeImage.cy > 0)
+	{
+		m_nRowHeight = max(m_nRowHeight, m_sizeImage.cy + 2 * m_nImageVertMargin);
+	}
+}
+//**************************************************************************
+int CBCGPComboBox::GetDropDownItemMinHeight() const
+{
+	int nHeight = m_nRowHeight;
+
+#ifndef _BCGSUITE_
+	if (DYNAMIC_DOWNCAST(CBCGPToolBar, GetParent()) != NULL)
+#endif
+	{
+		nHeight -= globalUtils.ScaleByDPI(1);
+	}
+
+	return nHeight;
+}
+//**************************************************************************
 void CBCGPComboBox::PreSubclassWindow() 
 {
 	CComboBox::PreSubclassWindow();
 
-	if (!m_strPrompt.IsEmpty())
+	SubclassEditBox();
+
+	if (!m_strPrompt.IsEmpty() && m_wndEdit.GetSafeHwnd () != NULL)
 	{
-		SubclassEditBox();
-		
-		if (m_wndEdit.GetSafeHwnd () != NULL)
-		{
-			m_wndEdit.SetPrompt(m_strPrompt, m_clrPrompt, FALSE);
-		}
+		m_wndEdit.SetPrompt(m_strPrompt, m_clrPrompt, FALSE);
+	}
+
+	SubclassListBox();
+
+	if ((GetExStyle() & WS_EX_RIGHT) || (GetExStyle() & WS_EX_LEFTSCROLLBAR))
+	{
+		PostMessage(UM_REDRAWFRAME, 1);
 	}
 }
 //**************************************************************************
@@ -538,16 +898,20 @@ int CBCGPComboBox::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (CComboBox::OnCreate(lpCreateStruct) == -1)
 		return -1;
 	
-	if (!m_strPrompt.IsEmpty())
+	SubclassEditBox();
+
+	if (!m_strPrompt.IsEmpty() && m_wndEdit.GetSafeHwnd () != NULL)
 	{
-		SubclassEditBox();
-	
-		if (m_wndEdit.GetSafeHwnd () != NULL)
-		{
-			m_wndEdit.SetPrompt(m_strPrompt, m_clrPrompt, FALSE);
-		}
+		m_wndEdit.SetPrompt(m_strPrompt, m_clrPrompt, FALSE);
 	}
 	
+	SubclassListBox();
+
+	if ((GetExStyle() & WS_EX_RIGHT) || (GetExStyle() & WS_EX_LEFTSCROLLBAR))
+	{
+		PostMessage(UM_REDRAWFRAME, 1);
+	}
+
 	return 0;
 }
 //**************************************************************************
@@ -561,10 +925,17 @@ void CBCGPComboBox::OnSetFocus(CWnd* pOldWnd)
 		m_bIsButtonHighlighted = TRUE;
 	}
 	
-	if (bDrawPrompt)
+	RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
+}
+//**************************************************************************
+BOOL CBCGPComboBox::OnEraseBkgnd(CDC* pDC)
+{
+	if (!m_bVisualManagerStyle)
 	{
-		RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
+		return CComboBox::OnEraseBkgnd(pDC);
 	}
+
+	return TRUE;
 }
 //**************************************************************************
 BOOL CBCGPComboBox::OnEditupdate() 
@@ -620,15 +991,69 @@ LRESULT CBCGPComboBox::OnPrintClient(WPARAM wp, LPARAM lp)
 {
 	if ((lp & PRF_CLIENT) == PRF_CLIENT)
 	{
-		if (m_bDefaultPrintClient)
-		{
-			return Default();
-		}
-
 		CDC* pDC = CDC::FromHandle((HDC) wp);
 		ASSERT_VALID(pDC);
 
-		if ((GetStyle () & 0x0003L) == CBS_SIMPLE)
+		const BOOL bIsSimple = (GetStyle() & 0x0003L) == CBS_SIMPLE;
+
+		if (m_bDefaultPrintClient)
+		{
+			if ((GetStyle() & CBS_OWNERDRAWFIXED) || (GetStyle() & CBS_OWNERDRAWVARIABLE))
+			{
+				CRect rect;
+				GetClientRect(rect);
+
+				rect.DeflateRect(2, 2);
+
+				if (!bIsSimple)
+				{
+					const int cxDropDown = ::GetSystemMetrics (SM_CXVSCROLL);
+
+					if (GetExStyle() & (WS_EX_LEFTSCROLLBAR | WS_EX_RIGHT))
+					{
+						rect.left += cxDropDown;
+					}
+					else
+					{
+						rect.right -= cxDropDown;
+					}
+				}
+
+				DRAWITEMSTRUCT dis;
+				memset (&dis, 0, sizeof (DRAWITEMSTRUCT));
+				
+				dis.CtlType = ODT_COMBOBOX;
+				dis.hDC = pDC->GetSafeHdc();
+				dis.rcItem = rect;
+				dis.itemAction = ODA_DRAWENTIRE;
+				dis.CtlID = GetDlgCtrlID();
+
+				int nCurSel = GetCurSel();
+
+				dis.itemID = nCurSel;
+
+				if (nCurSel >= 0)
+				{
+					dis.itemData = GetItemData(nCurSel);
+				}
+				
+				dis.itemState = (GetSafeHwnd() == CWnd::GetFocus()->GetSafeHwnd()) ? ODS_SELECTED : 0;
+				dis.itemState |= ODS_COMBOBOXEDIT;
+
+				CFont* pOldFont = pDC->SelectObject (GetFont());
+
+				DrawItem(&dis);
+
+				pDC->SelectObject (pOldFont);
+				return 0L;
+			}
+			else
+			{
+				return Default();
+			}
+		}
+
+		if (bIsSimple)
 		{
 			return Default ();
 		}
@@ -655,3 +1080,455 @@ LRESULT CBCGPComboBox::OnPrintClient(WPARAM wp, LPARAM lp)
 
 	return 0;
 }
+//*******************************************************************************
+COLORREF CBCGPComboBox::OnFillLbItem(CDC* pDC, int nIndex, CRect rect, BOOL bIsHighlihted, BOOL bIsSelected)
+{
+	ASSERT_VALID (pDC);
+
+	COLORREF clrText = globalData.clrBarText;
+
+	if (m_bOnGlass)
+	{
+		CBCGPDrawManager dm(*pDC);
+		dm.DrawRect (rect, globalData.clrWindow, (COLORREF)-1);
+
+		return IsWindowEnabled() ? globalData.clrWindowText : globalData.clrGrayedText;
+	}
+
+	if (m_bVisualManagerStyle)
+	{
+		clrText = CBCGPVisualManager::GetInstance ()->OnFillComboBoxItem(pDC, this, nIndex, rect, bIsHighlihted, bIsSelected);
+
+		if (!IsWindowEnabled())
+		{
+			clrText = globalData.clrGrayedText;
+		}
+
+		return clrText;
+	}
+
+	CBrush* pBrush = NULL;
+
+	if (bIsSelected)
+	{
+		pBrush = CBrush::FromHandle(GetSysColorBrush(COLOR_HIGHLIGHT));
+		clrText = GetSysColor(COLOR_HIGHLIGHTTEXT);
+	}
+	else
+	{
+		pBrush = CBrush::FromHandle(GetSysColorBrush(COLOR_WINDOW));
+		clrText = GetSysColor(COLOR_WINDOWTEXT);
+	}
+
+	if (pBrush->GetSafeHandle() != NULL)
+	{
+		pDC->FillRect(rect, pBrush);
+	}
+	
+	if (!IsWindowEnabled())
+	{
+		clrText = globalData.clrGrayedText;
+	}
+
+	return clrText;
+}
+//*******************************************************************************
+void CBCGPComboBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
+{
+	ASSERT (lpDIS->CtlType == ODT_COMBOBOX);
+
+	CDC* pDC = CDC::FromHandle(lpDIS->hDC);
+	ASSERT_VALID (pDC);
+
+	CRect rc = lpDIS->rcItem;
+	int nIndexDC = pDC->SaveDC ();
+
+	BOOL bSelected = (lpDIS->itemState & ODS_SELECTED) == ODS_SELECTED;
+
+	if (m_bDefaultPrintClient && GetDroppedState())
+	{
+		bSelected = TRUE;
+	}
+
+	BOOL bInGlass = m_bOnGlass;
+	if ((lpDIS->itemState & ODS_COMBOBOXEDIT) == 0)
+	{
+		m_bOnGlass = FALSE;
+	}
+
+	COLORREF clrText = OnFillLbItem(pDC, (int)lpDIS->itemID, rc, FALSE, bSelected);
+	if (clrText != (COLORREF)-1)
+	{
+		pDC->SetTextColor (clrText);
+	}
+
+	m_bOnGlass = bInGlass;
+
+	pDC->SetBkMode(TRANSPARENT);
+
+	int id = (int)lpDIS->itemID;
+	if (id >= 0)
+	{
+		if (!m_bDefaultPrintClient)
+		{
+			int nIndent = GetItemIndent(id);
+			if (GetExStyle() & WS_EX_RIGHT)
+			{
+				rc.right -= nIndent;
+			}
+			else
+			{
+				rc.left += nIndent;
+			}
+		}
+
+		int nPadding = globalUtils.ScaleByDPI(2);
+
+		if ((m_hImageList != NULL || m_ImageList.GetCount() > 0) && m_sizeImage != CSize(0, 0))
+		{
+			CRect rectImage = rc;
+			rectImage.top += max(0, (rc.Height () - m_sizeImage.cy) / 2);
+			rectImage.bottom = rectImage.top + m_sizeImage.cy;
+			
+			if (GetExStyle() & WS_EX_RIGHT)
+			{
+				rectImage.right -= nPadding;
+				rectImage.left = rectImage.right - m_sizeImage.cx;
+			}
+			else
+			{
+				rectImage.left += nPadding;
+				rectImage.right = rectImage.left + m_sizeImage.cx;
+			}
+			
+			int nIcon =  GetItemImage(id);
+			if (nIcon >= 0)
+			{
+				if (m_hImageList != NULL)
+				{
+					CImageList* pImageList = CImageList::FromHandle(m_hImageList);
+					pImageList->Draw (pDC, nIcon, rectImage.TopLeft (), ILD_TRANSPARENT);
+				}
+				else if (m_ImageList.GetCount() > 0)
+				{
+					m_ImageList.DrawEx(pDC, rectImage, nIcon);
+				}
+			}
+			
+			if (GetExStyle() & WS_EX_RIGHT)
+			{
+				rc.right -= m_sizeImage.cx + nPadding;
+			}
+			else
+			{
+				rc.left += m_sizeImage.cx + nPadding;
+			}
+		}
+
+		CString strText;
+		GetLBText (id, strText);
+
+		rc.DeflateRect(nPadding, 0);
+
+		UINT nFormat = DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX;
+		
+		if (GetExStyle() & WS_EX_RIGHT)
+		{
+			nFormat |= DT_RIGHT;
+		}
+		else
+		{
+			nFormat |= DT_LEFT;
+		}
+
+		if (m_bOnGlass)
+		{
+			CBCGPVisualManager::GetInstance ()->DrawTextOnGlass(pDC, strText, rc, nFormat, 0, clrText);
+		}
+		else
+		{
+			pDC->DrawText(strText, rc, nFormat);
+		}
+	}
+
+	pDC->RestoreDC (nIndexDC);
+}
+//*******************************************************************************
+void CBCGPComboBox::MeasureItem(LPMEASUREITEMSTRUCT lpMIS) 
+{
+	ASSERT(lpMIS->CtlType == ODT_COMBOBOX);
+	
+	CRect rc;
+	GetWindowRect(&rc);
+	lpMIS->itemWidth = rc.Width();
+	
+	lpMIS->itemHeight = max(lpMIS->itemHeight, (UINT)GetDropDownItemMinHeight());
+}
+//**************************************************************************
+LRESULT CBCGPComboBox::OnRedrawFrame(WPARAM wp, LPARAM)
+{
+	CWnd* pParent = GetParent();
+	if (pParent->GetSafeHwnd() != NULL)
+	{
+		CRect rect;
+		GetWindowRect(rect);
+
+		pParent->ScreenToClient(rect);
+		pParent->RedrawWindow(rect);
+
+		if (wp != 0)
+		{
+			RedrawWindow();
+		}
+	}
+
+	return 0;
+}
+//**************************************************************************
+LRESULT CBCGPComboBox::OnChangeVisualManager (WPARAM, LPARAM)
+{
+	if (m_wndEdit.GetSafeHwnd() != NULL)
+	{
+		m_wndEdit.SendMessage(BCGM_CHANGEVISUALMANAGER, 0, 0);
+	}
+
+	if (m_wndList.GetSafeHwnd() != NULL)
+	{
+		m_wndList.SendMessage(BCGM_CHANGEVISUALMANAGER, 0, 0);
+	}
+
+	return 0L;
+}
+//**************************************************************************
+void CBCGPComboBox::EnableAutoComplete(BOOL bEnable/* = TRUE*/)	// For CBS_DROPDOWN style only
+{
+	m_bAutoComplete = bEnable;
+
+	if (m_wndEdit.GetSafeHwnd() != NULL && (GetStyle () & 0x0003L) == CBS_DROPDOWN)
+	{
+		m_wndEdit.m_pAutoCompleteCombo = m_bAutoComplete ? this : NULL;
+	}
+}
+//**************************************************************************
+int CBCGPComboBox::OnAutoComplete(const CString& strText, CString& strOut)
+{
+	int nIndex = FindString(-1, strText);
+	if (nIndex >= 0)
+	{
+		GetLBText(nIndex, strOut);
+		SetCurSel(nIndex);
+	}
+	else
+	{
+		strOut.Empty();
+	}
+
+	return nIndex;
+}
+//**************************************************************************
+LRESULT CBCGPComboBox::OnSetFont (WPARAM /*wParam*/, LPARAM /*lParam*/)
+{
+	LRESULT lres = Default();
+
+	CalcRowHeight();
+
+	if (m_wndList.GetSafeHwnd() != NULL)
+	{
+		AdjustItemHeight();
+	}
+
+	return lres;
+}
+//***************************************************************************************
+BOOL CBCGPComboBox::SetImageList (HIMAGELIST hImageList, int nVertMargin)
+{
+	m_hImageList = NULL;
+	m_ImageList.Clear();
+	m_sizeImage = CSize(0, 0);
+	m_nImageVertMargin = 0;
+
+	if (hImageList != NULL)
+	{
+		CImageList* pImageList = CImageList::FromHandle (hImageList);
+		if (pImageList != NULL)
+		{
+			IMAGEINFO info;
+			pImageList->GetImageInfo (0, &info);
+
+			CRect rectImage = info.rcImage;
+			m_sizeImage = rectImage.Size ();
+
+			m_hImageList = hImageList;
+			m_nImageVertMargin = nVertMargin;
+		}
+	}
+
+	CalcRowHeight();
+
+	if (m_wndList.GetSafeHwnd() != NULL)
+	{
+		AdjustItemHeight();
+	}
+
+	return TRUE;
+}
+//***************************************************************************************
+BOOL CBCGPComboBox::SetImageList(UINT nImageListResID, int cxIcon, int nVertMargin, BOOL bAutoScale)
+{
+	m_hImageList = NULL;
+	m_ImageList.Clear();
+	m_sizeImage = CSize(0, 0);
+	m_nImageVertMargin = 0;
+
+	if (nImageListResID == 0)
+	{
+		CalcRowHeight();
+		
+		if (m_wndList.GetSafeHwnd() != NULL)
+		{
+			AdjustItemHeight();
+		}
+
+		return TRUE;
+	}
+
+	if (!m_ImageList.Load(nImageListResID))
+	{
+		ASSERT (FALSE);
+		return FALSE;
+	}
+
+#ifndef _BCGSUITE_
+	m_ImageList.SetSingleImage(FALSE);
+#else
+	m_ImageList.SetSingleImage();
+#endif
+
+	int cyIcon = m_ImageList.GetImageSize().cy;
+	m_sizeImage = CSize(cxIcon, cyIcon);
+
+	m_ImageList.SetImageSize(m_sizeImage, TRUE);
+
+	if (bAutoScale)
+	{
+		m_sizeImage = globalUtils.ScaleByDPI(m_ImageList);
+	}
+
+	m_nImageVertMargin = nVertMargin;
+
+	CalcRowHeight();
+
+	if (m_wndList.GetSafeHwnd() != NULL)
+	{
+		AdjustItemHeight();
+	}
+
+	return TRUE;
+}
+//***********************************************************************************************************
+void CBCGPComboBox::InitItemData(int nIndex)
+{
+	int nCurSize = (int)m_arItemData.GetSize();
+	
+	if (nIndex >= nCurSize)
+	{
+		m_arItemData.SetSize(nIndex + 1);
+		
+		for (int i = nCurSize; i < nIndex; i++)
+		{
+			m_arItemData[i] = NULL;
+		}
+	}
+	
+	if (m_arItemData[nIndex] == NULL)
+	{
+		m_arItemData[nIndex] = new CBCGPComboBoxItemData;
+	}
+}
+//***********************************************************************************************************
+void CBCGPComboBox::SetItemImage(int nIndex, int nImageIndex)
+{
+	InitItemData(nIndex);
+	m_arItemData[nIndex]->m_nImageIndex = nImageIndex;
+}
+//***********************************************************************************************************
+int CBCGPComboBox::GetItemImage(int nIndex) const
+{
+	if (nIndex < 0 || nIndex >= (int)m_arItemData.GetSize())
+	{
+		return -1;
+	}
+
+	if (m_arItemData[nIndex] == NULL)
+	{
+		return -1;
+	}
+
+	return m_arItemData[nIndex]->m_nImageIndex;
+}
+//*********************************************************************************************
+LRESULT CBCGPComboBox::OnCBDeleteString(WPARAM wParam, LPARAM lParam)
+{
+	LRESULT lResult = DefWindowProc(CB_DELETESTRING, wParam, lParam);
+
+	int nIndex = (int)wParam;
+
+	if (nIndex >= 0 && nIndex < (int)m_arItemData.GetSize())
+	{
+		CBCGPComboBoxItemData* pItemData = m_arItemData[nIndex];
+		if (pItemData != NULL)
+		{
+			delete pItemData;
+		}
+
+		m_arItemData.RemoveAt(nIndex, 1);
+	}
+
+	return lResult;
+}
+//*********************************************************************************************
+LRESULT CBCGPComboBox::OnCBInsertString(WPARAM wParam, LPARAM lParam)
+{
+	LRESULT lResult = DefWindowProc(CB_INSERTSTRING, wParam, lParam);
+
+	if (lResult != CB_ERR)
+	{
+		int nIndex = (int)lResult;
+		if (nIndex >= 0 && nIndex <= (int)m_arItemData.GetSize())
+		{
+			m_arItemData.InsertAt(nIndex, (CBCGPComboBoxItemData*)NULL);
+		}
+	}
+
+	return lResult;
+}
+//*********************************************************************************************
+LRESULT CBCGPComboBox::OnCBResetContent(WPARAM wParam, LPARAM lParam)
+{
+	LRESULT lResult = DefWindowProc(CB_RESETCONTENT, wParam, lParam);
+	
+	CleanUpItemsData();
+	return lResult;
+}
+//*********************************************************************************************
+void CBCGPComboBox::SetItemIndent(int nIndex, int nIndent)
+{
+	InitItemData(nIndex);
+	m_arItemData[nIndex]->m_iIndent = nIndent;
+}
+//*********************************************************************************************
+int CBCGPComboBox::GetItemIndent(int nIndex) const
+{
+	if (nIndex < 0 || nIndex >= (int)m_arItemData.GetSize())
+	{
+		return -1;
+	}
+	
+	if (m_arItemData[nIndex] == NULL)
+	{
+		return 0;
+	}
+	
+	return m_arItemData[nIndex]->m_iIndent;
+}
+

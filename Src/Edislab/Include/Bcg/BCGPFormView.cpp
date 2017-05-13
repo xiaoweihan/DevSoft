@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,29 +17,34 @@
 #include "BCGPFormView.h"
 #include "BCGPVisualManager.h"
 
+#ifndef _BCGSUITE_
+#include "BCGPTooltipManager.h"
+#endif
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
 #endif
 
+IMPLEMENT_DYNAMIC(CBCGPFormView, CFormView)
+IMPLEMENT_DYNAMIC(CBCGPScrollView, CScrollView)
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPFormView
-
-IMPLEMENT_DYNAMIC(CBCGPFormView, CFormView)
 
 #pragma warning (disable : 4355)
 
 CBCGPFormView::CBCGPFormView(LPCTSTR lpszTemplateName)
-	: CFormView(lpszTemplateName),
+	: TBCGPInternalScrollBarWrapperWnd<CFormView>(lpszTemplateName),
 	m_Impl (*this)
 {
 	m_bInitDlgCompleted = FALSE;
 }
 
 CBCGPFormView::CBCGPFormView(UINT nIDTemplate)
-	: CFormView(nIDTemplate)
-	, m_Impl (*this)
+	: TBCGPInternalScrollBarWrapperWnd<CFormView>(nIDTemplate),
+	m_Impl (*this)
 {
 	m_bInitDlgCompleted = FALSE;
 }
@@ -57,8 +62,13 @@ BEGIN_MESSAGE_MAP(CBCGPFormView, CFormView)
 	ON_WM_DESTROY()
 	ON_WM_SIZE()
 	ON_WM_CREATE()
+	ON_WM_MOUSEMOVE()
+	ON_WM_SETCURSOR()
+	ON_WM_LBUTTONUP()
 	//}}AFX_MSG_MAP
 	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)	
+	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
+	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnNeedTipText)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -98,19 +108,25 @@ BOOL CBCGPFormView::OnEraseBkgnd(CDC* pDC)
 	CRect rectClient;
 	GetClientRect (rectClient);
 
+	BOOL bRes = FALSE;
+
 	if (IsWhiteBackground() && !globalData.IsHighContastMode() && !CBCGPVisualManager::GetInstance ()->IsDarkTheme())
 	{
 		pDC->FillSolidRect(rectClient, RGB(255, 255, 255));
-		return TRUE;
+		bRes = TRUE;
 	}
-
-	if (IsVisualManagerStyle () &&
-		CBCGPVisualManager::GetInstance ()->OnFillDialog (pDC, this, rectClient))
+	else if (IsVisualManagerStyle () && CBCGPVisualManager::GetInstance ()->OnFillDialog (pDC, this, rectClient))
 	{
-		return TRUE;
+		bRes = TRUE;
+	}
+	else
+	{
+		bRes = CFormView::OnEraseBkgnd(pDC);
 	}
 
-	return CFormView::OnEraseBkgnd(pDC);
+	m_Impl.DrawControlInfoTips(pDC);
+
+	return bRes;
 }
 //************************************************************************
 void CBCGPFormView::EnableVisualManagerStyle (BOOL bEnable, const CList<UINT,UINT>* plstNonSubclassedItems)
@@ -138,6 +154,13 @@ void CBCGPFormView::OnInitialUpdate()
 	{
 		m_Impl.EnableVisualManagerStyle (TRUE);
 	}
+
+	m_Impl.CreateTooltipInfo();
+
+	if (!m_Impl.m_mapCtrlInfoTip.IsEmpty())
+	{
+		RedrawWindow();
+	}
 }
 //************************************************************************
 void CBCGPFormView::OnDestroy() 
@@ -149,7 +172,9 @@ void CBCGPFormView::OnDestroy()
 void CBCGPFormView::OnSize(UINT nType, int cx, int cy) 
 {
 	CFormView::OnSize(nType, cx, cy);
+
 	AdjustControlsLayout();
+	m_Impl.UpdateToolTipsRect();
 }
 //************************************************************************
 int CBCGPFormView::OnCreate(LPCREATESTRUCT lpCreateStruct) 
@@ -168,4 +193,115 @@ LRESULT CBCGPFormView::OnChangeVisualManager (WPARAM, LPARAM)
 	}
 
 	return 0L;
+}
+//************************************************************************
+BOOL CBCGPFormView::IsInternalScrollBarThemed() const
+{
+#ifndef _BCGSUITE_
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_FORMVIEW) != 0 && m_Impl.m_bVisualManagerStyle;
+#else
+	return FALSE;
+#endif
+}
+//*************************************************************************************
+void CBCGPFormView::SetControlInfoTip(UINT nCtrlID, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	m_Impl.SetControlInfoTip(nCtrlID, lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
+}
+//*************************************************************************************
+void CBCGPFormView::SetControlInfoTip(CWnd* pWndCtrl, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	m_Impl.SetControlInfoTip(pWndCtrl, lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
+}
+//*************************************************************************************
+BOOL CBCGPFormView::OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult)
+{
+	return m_Impl.OnNeedTipText(id, pNMH, pResult);
+}
+//**************************************************************************
+LRESULT CBCGPFormView::OnBCGUpdateToolTips (WPARAM wp, LPARAM)
+{
+	UINT nTypes = (UINT) wp;
+
+	if (nTypes & BCGP_TOOLTIP_TYPE_DEFAULT)
+	{
+		m_Impl.CreateTooltipInfo();
+	}
+
+	return 0;
+}
+//**************************************************************************
+BOOL CBCGPFormView::PreTranslateMessage(MSG* pMsg) 
+{
+   	switch (pMsg->message)
+	{
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_LBUTTONUP:
+	case WM_RBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_MOUSEMOVE:
+		if (m_Impl.m_pToolTipInfo->GetSafeHwnd () != NULL)
+		{
+			m_Impl.m_pToolTipInfo->RelayEvent(pMsg);
+		}
+		break;
+	}
+	
+	return CFormView::PreTranslateMessage(pMsg);
+}
+//**************************************************************************
+void CBCGPFormView::OnMouseMove(UINT nFlags, CPoint point) 
+{
+	CFormView::OnMouseMove(nFlags, point);
+
+	if (m_Impl.m_pToolTipInfo->GetSafeHwnd () != NULL && !m_Impl.m_mapCtrlInfoTip.IsEmpty())
+	{
+		CString strDescription;
+		CString strTipText;
+		BOOL bIsClickable = FALSE;
+		
+		HWND hwnd = m_Impl.GetControlInfoTipFromPoint(point, strTipText, strDescription, bIsClickable);
+		
+		if (hwnd != m_Impl.m_hwndInfoTipCurr)
+		{
+			m_Impl.m_pToolTipInfo->Pop();
+			m_Impl.m_hwndInfoTipCurr = hwnd;
+		}
+	}
+}
+//**************************************************************************
+BOOL CBCGPFormView::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message) 
+{
+	if (m_Impl.OnSetCursor())
+	{
+		return TRUE;
+	}
+	
+	return CFormView::OnSetCursor(pWnd, nHitTest, message);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPScrollView view
+
+BOOL CBCGPScrollView::IsInternalScrollBarThemed() const
+{
+#ifndef _BCGSUITE_
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_SCROLLVIEW) != NULL;
+#else
+	return FALSE;
+#endif
+}
+
+void CBCGPFormView::OnLButtonUp(UINT nFlags, CPoint point) 
+{
+	if (m_Impl.ProcessInfoTipClick(point))
+	{
+		return;
+	}
+	
+	CFormView::OnLButtonUp(nFlags, point);
 }

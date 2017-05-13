@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -100,6 +100,7 @@ CBCGPControlBar::CBCGPControlBar() :  m_bCaptured (false),
 	m_bExclusiveRow = FALSE;
 
 	m_bPinState = FALSE;
+	m_bFloatingMaximized = FALSE;
 
 	m_sizeMin.cx = m_sizeMin.cy = 1;
 }
@@ -418,7 +419,7 @@ void CBCGPControlBar::OnMouseMove(UINT nFlags, CPoint point)
 	}
 	else
 	{
-		// it should be moved (if captured) along with the mini fraeme
+		// it should be moved (if captured) along with the mini frame
 		CWnd::OnMouseMove(nFlags, point);
 	}
 }
@@ -506,7 +507,7 @@ BOOL CBCGPControlBar::Dock (CBCGPBaseControlBar* pDockBar, LPCRECT lpRect,
 		return FALSE;
 	}
 
-	// save the window rectandle of the control bar, because it will be adjusted in the
+	// save the window rectangle of the control bar, because it will be adjusted in the
 	// moment when the parent is changed
 	CRect rect;
 	rect.SetRectEmpty ();
@@ -639,8 +640,7 @@ void CBCGPControlBar::OnAfterFloat  ()
 	if (pParentMiniFrame != NULL)
 	{
 		pParentMiniFrame->Pin (m_bPinState);
-		pParentMiniFrame->SetWindowPos (NULL, -1, -1, -1, -1, 
-				SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		pParentMiniFrame->SetWindowPos (NULL, -1, -1, -1, -1, SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 			
 	}
 	if (CBCGPControlBar::m_bHandleMinSize)
@@ -1560,6 +1560,8 @@ BOOL CBCGPControlBar::LoadState (LPCTSTR lpszProfileName, int nIndex, UINT uiID)
 	reg.Read (_T ("MRUWidth"), m_nMRUWidth);
 	reg.Read (_T ("PinState"), m_bPinState);
 
+	reg.Read (_T ("IsMaximized"), m_bFloatingMaximized);
+
 	return CBCGPBaseControlBar::LoadState (lpszProfileName, nIndex, uiID);	
 }
 //------------------------------------------------------------------------------------
@@ -1585,13 +1587,20 @@ BOOL CBCGPControlBar::SaveState (LPCTSTR lpszProfileName, int nIndex, UINT uiID)
 	CBCGPRegistrySP regSP;
 	CBCGPRegistry& reg = regSP.Create (FALSE, FALSE);
 
+	BOOL bIsMaximized = FALSE;
+
 	if (reg.CreateKey (strSection))
 	{
 		BOOL bFloating = IsFloating ();
 
+		CBCGPMiniFrameWnd* pMiniFrame = GetParentMiniFrame ();
+		if (pMiniFrame != NULL)
+		{
+			bIsMaximized = pMiniFrame->IsMaximized();
+		}
+
 		if (bFloating)
 		{
-			CBCGPMiniFrameWnd* pMiniFrame = GetParentMiniFrame ();
 			if (pMiniFrame != NULL)
 			{
 				pMiniFrame->GetWindowRect (m_recentDockInfo.m_rectRecentFloatingRect);
@@ -1617,7 +1626,9 @@ BOOL CBCGPControlBar::SaveState (LPCTSTR lpszProfileName, int nIndex, UINT uiID)
 		reg.Write (_T ("IsFloating"), bFloating);
 		reg.Write (_T ("MRUWidth"), m_nMRUWidth);
 		reg.Write (_T ("PinState"), m_bPinState);
+		reg.Write (_T ("IsMaximized"), bIsMaximized);
 	}
+
 	return CBCGPBaseControlBar::SaveState (lpszProfileName, nIndex, uiID);	
 }
 //------------------------------------------------------------------------------------

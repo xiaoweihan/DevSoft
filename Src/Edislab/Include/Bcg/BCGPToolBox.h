@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -34,6 +34,7 @@
 #include "BCGPButton.h"
 #include "BCGPTasksPane.h"
 #include "BCGPToolBarImages.h"
+#include "BCGPEdit.h"
 
 #endif
 
@@ -53,7 +54,12 @@ class BCGCBPRODLLEXPORT CBCGPToolBoxButton : public CObject
 	virtual void OnFillBackground (CDC* pDC, const CRect& rectClient);
 	virtual void OnDrawBorder (CDC* pDC, CRect& rectClient, UINT uiState);
 
-	virtual void OnDraw (CDC* pDC);
+	virtual void OnDraw(CDC* pDC);
+	virtual int GetMaxWidth(CDC* pDC);
+
+	CSize GetImageSize();
+
+	BOOL SetFilter(const CString& strFilter);
 
 	CString				m_strLabel;
 	int					m_iImageIndex;
@@ -63,6 +69,8 @@ class BCGCBPRODLLEXPORT CBCGPToolBoxButton : public CObject
 	CBCGPToolBarImages*	m_pImages;
 	CBCGPToolBoxPage*	m_pPage;
 	int					m_nID;
+	BOOL				m_bInFilter;
+	DWORD_PTR			m_dwUserData;
 
 public:
 	void Highlight (BOOL bSet = TRUE)
@@ -179,7 +187,7 @@ public:
 		return m_Mode;
 	}
 
-	void SetMode (ToolBoxPageMode mode);
+	void SetMode(ToolBoxPageMode mode, BOOL bRecalLayout = FALSE);
 
 	CBCGPToolBarImages& GetImageList ()
 	{
@@ -188,7 +196,7 @@ public:
 
 // Operations:
 public:
-	int AddButton (LPCTSTR lpszText, HICON hIcon);
+	int AddButton (LPCTSTR lpszText, HICON hIcon, BOOL bAlphaBlend = FALSE);
 	BOOL DeleteButton (int nItem);
 	void DeleteAllButons ();
 
@@ -201,6 +209,11 @@ public:
 	CBCGPToolBoxButton* GetButtonByID (int nID);
 
 	BOOL UpdateImageList(UINT nResID);
+
+	int GetOptimalWidth() const;	// Always returns 0 in ToolBoxPageMode_Images mode
+
+	BOOL SetButtonUserData(int nItem, DWORD_PTR dwUserData);
+	DWORD_PTR GetButtonUserData(int nItem) const;
 
 protected:
 	CArray<CBCGPToolBoxButton*, CBCGPToolBoxButton*>	m_arButtons;
@@ -261,6 +274,7 @@ protected:
 	afx_msg void OnDestroy();
 	afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
 	afx_msg void OnSysColorChange();
+	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
 	//}}AFX_MSG
 	afx_msg BOOL OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult);
 	afx_msg LRESULT OnBCGUpdateToolTips (WPARAM, LPARAM);
@@ -274,12 +288,13 @@ protected:
 	virtual BOOL OnGestureEventPan(const CPoint& ptFrom, const CPoint& ptTo, CSize& sizeOverPan);
 	virtual BOOL OnClickButton(int nButtonIndex);
 
-	void ReposButtons ();
+	BOOL SetFilter(const CString& strFilter);
+	void ReposButtons();
 
 	void RedrawButton (int nButton);
 	void HighlightButton (int nButton);
 
-	int GetMaxHeight () const;
+	int GetMaxHeight();
 
 	BOOL InitPage (UINT uiBmpResID, int nImageWidth, const CStringList& lstLabels, CRuntimeClass* pButtonClass);
 
@@ -315,7 +330,7 @@ public:
 	int GetLastClickedTool (int nPage) const;
 	int GetPageNumber (CBCGPToolBoxPage* pPage) const;
 
-	CBCGPToolBoxPage* GetPage (int nPage) const;
+	CBCGPToolBoxPage* GetPage(int nPage) const;
 
 	CBCGPBaseTabWnd* GetTabWnd () const;
 
@@ -383,8 +398,21 @@ public:
 	int GetLastClickedTool (int& nClickedPage) const;
 	int GetPageNumber (CBCGPToolBoxPage* pPage) const;
 
-	int GetPageCount () const;
-	CBCGPToolBoxPage* GetPage (int nPage) const;
+	int GetPageCount(BOOL bInFilter = FALSE) const;
+	CBCGPToolBoxPage* GetPage(int nPage, BOOL bInFilter = FALSE) const;
+
+#if (!defined _BCGSUITE_) && !defined (_BCGSUITE_INC_)
+	void EnableSearchBox(BOOL bEnable = TRUE, LPCTSTR lpszPrompt = NULL, LPCTSTR lpszOutOfFilter = NULL);
+	BOOL IsSearchBox() const
+	{
+		return m_bFilterBox;
+	}
+
+	const CString& GetFilterText() const
+	{
+		return m_strFilter;
+	}
+#endif
 
 // Operations
 public:
@@ -401,9 +429,14 @@ public:
 	BOOL RemoveToolsPage (int nPage);
 	void RemoveAllToolsPages ();
 
+#if (!defined _BCGSUITE_) && !defined (_BCGSUITE_INC_)
+	void SetToolsFilter(LPCTSTR lpszFilter);
+#endif
+
 // Overrides
 public:
 	virtual void OnClickTool (int nPage, int nIndex);
+	virtual void OnActivatePage (int nPage);
 	virtual BOOL OnShowToolboxMenu (CPoint point, CBCGPToolBoxPage* pPage, int nHit);
 
 #if (!defined _BCGSUITE_) && !defined (_BCGSUITE_INC_)
@@ -421,6 +454,7 @@ public:
 
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPToolBoxEx)
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -437,13 +471,25 @@ protected:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
 	//}}AFX_MSG
+	afx_msg void OnFilter();
 	DECLARE_MESSAGE_MAP()
 
 	virtual void NotifyAccessibility (int /*nGroupNumber*/, int /*nTaskNumber*/) {}
 	virtual void NotifyAccessibilityFocusEvent (BOOL /*bUseCursor*/) {}
+
+#if (!defined _BCGSUITE_) && !defined (_BCGSUITE_INC_)
 	virtual HRESULT get_accChildCount(long *pcountChildren);
 	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
-	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
+#endif
+
+protected:
+#if (!defined _BCGSUITE_) && !defined (_BCGSUITE_INC_)
+	CBCGPEdit	m_wndFilter;	// Search box
+	CFont		m_fontFilter;
+	CString		m_strFilter;
+	CString		m_strOutOfFilter;
+	BOOL		m_bFilterBox;
+#endif
 };
 
 #endif // BCGP_EXCLUDE_TASK_PANE

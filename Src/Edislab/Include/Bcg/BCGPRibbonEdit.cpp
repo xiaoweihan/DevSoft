@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,6 +29,7 @@
 #include "BCGPRibbonPanelMenu.h"
 #include "BCGPKeyboardManager.h"
 #include "BCGPLocalResource.h"
+#include "BCGPContextMenuManager.h"
 #include "bcgprores.h"
 
 #ifndef BCGP_EXCLUDE_RIBBON
@@ -87,6 +88,56 @@ BOOL PASCAL BCGPInitRichEdit20 ()
 #endif
 
 /////////////////////////////////////////////////////////////////////////////
+// CBCGPCommandsMenu
+
+class CBCGPCommandsMenu : public CBCGPRibbonPanelMenu
+{
+	DECLARE_DYNAMIC(CBCGPCommandsMenu)
+		
+public:
+	CBCGPCommandsMenu(
+		CBCGPRibbonBar* pRibbonBar,
+		const CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>&	arButtons) :
+	CBCGPRibbonPanelMenu(pRibbonBar, arButtons)
+	{
+	}
+	
+	virtual ~CBCGPCommandsMenu()
+	{
+		CBCGPRibbonCommandsComboBox* pParent = DYNAMIC_DOWNCAST(CBCGPRibbonCommandsComboBox, GetParentRibbonElement());
+		if (pParent != NULL)
+		{
+			pParent->CleanUp();
+		}
+	}
+	
+	virtual BOOL IsDropListMode()
+	{
+		return TRUE;
+	}
+	
+	virtual BOOL IsParentEditFocused()
+	{
+		CBCGPRibbonCommandsComboBox* pParent = DYNAMIC_DOWNCAST(CBCGPRibbonCommandsComboBox, GetParentRibbonElement());
+		return pParent != NULL && pParent->HasFocus();
+	}
+	
+	BOOL OnClickSelection()
+	{
+		CBCGPBaseRibbonElement* pFocused = m_wndRibbonBar.GetFocused();
+		if (pFocused != NULL)
+		{
+			OnKeyDown(VK_RETURN, 0, 0);
+			return TRUE;
+		}
+		
+		return FALSE;
+	}
+};
+
+IMPLEMENT_DYNAMIC(CBCGPCommandsMenu, CBCGPRibbonPanelMenu)
+
+/////////////////////////////////////////////////////////////////////////////
 // CBCGPClearButton
 
 class CBCGPClearButton : public CBCGPButton
@@ -98,7 +149,8 @@ class CBCGPClearButton : public CBCGPButton
 		m_pEdit = pEdit;
 		m_bDrawFocus = FALSE;
 
-		SetMouseCursorHand ();
+		SetMouseCursorHand();
+		SetImageAutoScale();
 
 		CBCGPLocalResource locaRes;
 		SetImage(globalData.Is32BitIcons () ? IDB_BCGBARRES_CLEAR32 : IDB_BCGBARRES_CLEAR);
@@ -200,7 +252,7 @@ BEGIN_MESSAGE_MAP(CBCGPRibbonSpinButtonCtrl, CBCGPSpinButtonCtrl)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
-void CBCGPRibbonSpinButtonCtrl::OnDeltapos(NMHDR* /*pNMHDR*/, LRESULT* pResult) 
+void CBCGPRibbonSpinButtonCtrl::OnDeltapos(NMHDR* pNMHDR, LRESULT* pResult) 
 {
 	if (m_pEdit != NULL && GetBuddy ()->GetSafeHwnd () != NULL)
 	{
@@ -208,6 +260,9 @@ void CBCGPRibbonSpinButtonCtrl::OnDeltapos(NMHDR* /*pNMHDR*/, LRESULT* pResult)
 		GetBuddy ()->GetWindowText (str);
 		
 		m_pEdit->SetEditText (str);
+
+		m_pEdit->OnDeltaPos((LPNMUPDOWN)pNMHDR);
+		
 		m_pEdit->m_RecentChangeEvt = CBCGPRibbonEdit::BCGPRIBBON_EDIT_CHANGED_BY_SPIN_BUTTON;
 		m_pEdit->NotifyCommand (TRUE);
 	}
@@ -282,6 +337,9 @@ void CBCGPRibbonEdit::CommonInit ()
 	m_bIsAutoComplete = FALSE;
 	m_clrCustomText = (COLORREF)-1;
 	m_RecentChangeEvt = BCGPRIBBON_EDIT_NOT_CHANGED;
+	m_clrLight = (COLORREF)-1;
+	m_nMaxWidth = -1;
+	m_nLimitText = 0;
 }
 //**************************************************************************
 CBCGPRibbonEdit::~CBCGPRibbonEdit()
@@ -297,7 +355,12 @@ CSize CBCGPRibbonEdit::GetIntermediateSize (CDC* pDC)
 	int cx = m_bFloatyMode ? m_nWidthFloaty : m_nWidth;
 	if (!m_bDontScaleInHighDPI && !m_bSearchResultMode && globalData.GetRibbonImageScale () > 1.)
 	{
-		cx = (int)(.5 + globalData.GetRibbonImageScale () * cx);
+		cx = globalUtils.ScaleByDPI(cx);
+	}
+
+	if (m_nMaxWidth > 0)
+	{
+		cx = min(cx, m_nMaxWidth);
 	}
 
 	TEXTMETRIC tm;
@@ -379,19 +442,19 @@ void CBCGPRibbonEdit::SetEditText (CString strText)
 		if (pRibbonBar != NULL)
 		{
 			ASSERT_VALID (pRibbonBar);
-
+			
 			CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
 			pRibbonBar->GetElementsByID (m_nID, arButtons, TRUE);
-
+			
 			for (int i = 0; i < arButtons.GetSize (); i++)
 			{
 				CBCGPRibbonEdit* pOther =
 					DYNAMIC_DOWNCAST (CBCGPRibbonEdit, arButtons [i]);
-
+				
 				if (pOther != NULL && pOther != this)
 				{
 					ASSERT_VALID (pOther);
-
+					
 					pOther->m_bDontNotify = TRUE;
 					pOther->SetEditText (strText);
 					pOther->m_bDontNotify = FALSE;
@@ -418,8 +481,10 @@ void CBCGPRibbonEdit::EnableSearchMode(BOOL bEnable, LPCTSTR lpszPrompt)
 			CBCGPLocalResource locaRes;
 			m_ImageSearch.Load(globalData.Is32BitIcons () ?
 				IDB_BCGBARRES_SEARCH32 : IDB_BCGBARRES_SEARCH);
-			m_ImageSearch.SetSingleImage();
+			m_ImageSearch.SetSingleImage(FALSE);
 			m_ImageSearch.SetTransparentColor(globalData.clrBtnFace);
+			
+			globalUtils.ScaleByDPI(m_ImageSearch);
 		}
 	}
 	else
@@ -454,6 +519,11 @@ void CBCGPRibbonEdit::EnableSpinButtons (int nMin, int nMax)
 	}
 }
 //**************************************************************************
+void CBCGPRibbonEdit::OnDeltaPos(LPNMUPDOWN pUpDown)
+{
+	UNREFERENCED_PARAMETER(pUpDown);
+}
+//**************************************************************************
 void CBCGPRibbonEdit::SetTextAlign (int nAlign)
 {
 	ASSERT_VALID (this);
@@ -476,10 +546,34 @@ void CBCGPRibbonEdit::SetWidth (int nWidth, BOOL bInFloatyMode)
 	}
 }
 //**************************************************************************
+void CBCGPRibbonEdit::SetMaxWidth(int nMaxWidth)
+{
+	ASSERT_VALID (this);
+	m_nMaxWidth = nMaxWidth;
+}
+//**************************************************************************
+void CBCGPRibbonEdit::SetLimitText(int nChars)
+{
+	ASSERT_VALID(this);
+	ASSERT(nChars >= 0);
+
+	m_nLimitText = nChars;
+
+	if (m_pWndEdit->GetSafeHwnd() != 0)
+	{
+		m_pWndEdit->LimitText(m_nLimitText);
+	}
+}
+//**************************************************************************
 void CBCGPRibbonEdit::OnDraw (CDC* pDC)
 {
 	ASSERT_VALID (this);
 	ASSERT_VALID (pDC);
+
+	if (m_rect.IsRectEmpty())
+	{
+		return;
+	}
 
 	OnDrawLabelAndImage (pDC);
 
@@ -501,7 +595,17 @@ void CBCGPRibbonEdit::OnDraw (CDC* pDC)
 	int cx = m_bFloatyMode ? m_nWidthFloaty : m_nWidth;
 	if (!m_bDontScaleInHighDPI && !m_bSearchResultMode && globalData.GetRibbonImageScale () > 1.)
 	{
-		cx = (int)(.5 + globalData.GetRibbonImageScale () * cx);
+		cx = globalUtils.ScaleByDPI(cx);
+	}
+
+	if (m_nMaxWidth > 0)
+	{
+		cx = min(cx, m_nMaxWidth);
+	}
+
+	if (m_bIsFixedWidth && m_nLabelImageWidth == 0)
+	{
+		cx = m_rect.Width();
 	}
 
 	m_rectCommand.left = m_rect.left = m_rect.right - cx;
@@ -533,10 +637,34 @@ void CBCGPRibbonEdit::OnDraw (CDC* pDC)
 	if (m_bSearchMode && m_strEdit.IsEmpty() && m_ImageSearch.IsValid())
 	{
 		CRect rectIcon = m_rect;
-
 		rectIcon.left = rectIcon.right - rectIcon.Height();
+
 		m_ImageSearch.DrawEx(pDC, rectIcon, 0, CBCGPToolBarImages::ImageAlignHorzCenter, CBCGPToolBarImages::ImageAlignVertCenter,
 			CRect(0, 0, 0, 0), IsDisabled() ? (BYTE)127 : (BYTE)255);
+	}
+
+	if (IsCommandsCombo())
+	{
+		CRect rectIcon = m_rect;
+		rectIcon.right = rectIcon.left + rectIcon.Height();
+
+		COLORREF clr = CBCGPVisualManager::GetInstance ()->GetRibbonEditPromptColor(m_pWndEdit, FALSE, FALSE);
+		if (clr != m_clrLight || !m_ImageLight.IsValid())
+		{
+			m_clrLight = clr;
+
+			CBCGPLocalResource locaRes;
+
+			m_ImageLight.Clear();
+
+			m_ImageLight.Load(IDB_BCGBARRES_LIGHT32);
+			m_ImageLight.SetSingleImage(FALSE);
+			m_ImageLight.AddaptColors(RGB(0, 0, 0), m_clrLight, TRUE);
+			
+			globalUtils.ScaleByDPI(m_ImageLight);
+		}
+
+		m_ImageLight.DrawEx(pDC, rectIcon, 0, CBCGPToolBarImages::ImageAlignHorzCenter, CBCGPToolBarImages::ImageAlignVertCenter);
 	}
 
 	CBCGPVisualManager::GetInstance ()->OnDrawRibbonButtonBorder 
@@ -593,7 +721,12 @@ void CBCGPRibbonEdit::OnDrawLabelAndImage (CDC* pDC)
 			int cx = (m_bFloatyMode ? m_nWidthFloaty : m_nWidth) + 2 * m_szMargin.cx;
 			if (!m_bDontScaleInHighDPI && globalData.GetRibbonImageScale () > 1.)
 			{
-				cx = (int)(.5 + globalData.GetRibbonImageScale () * cx);
+				cx = globalUtils.ScaleByDPI(cx);
+			}
+
+			if (m_nMaxWidth > 0)
+			{
+				cx = min(cx, m_nMaxWidth);
 			}
 
 			cx += m_rectMenu.Width();
@@ -602,11 +735,21 @@ void CBCGPRibbonEdit::OnDrawLabelAndImage (CDC* pDC)
 			{
 				uiDTFlags |= DT_CENTER;
 				rectText.right -= cx;
+
+				if (sizeImageSmall == CSize (0, 0))
+				{
+					rectText.left -= m_szMargin.cx / 2;
+				}
 			}
 			else if (m_nAlign == ES_RIGHT)
 			{
 				uiDTFlags |= DT_RIGHT;
 				rectText.right -= cx;
+
+				if (sizeImageSmall == CSize (0, 0))
+				{
+					rectText.left -= m_szMargin.cx;
+				}
 			}
 		}
 
@@ -652,7 +795,7 @@ void CBCGPRibbonEdit::OnDrawOnList (CDC* pDC, CString strText,
 	CRect rectText = rect;
 	rectText.left += nTextOffset;
 	rectText.right = rectEdit.left;
-	const int xMargin = 3;
+	const int xMargin = globalUtils.ScaleByDPI(3);
 	rectText.DeflateRect (xMargin, 0);
 
 	pDC->DrawText (strText, rectText, DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
@@ -662,7 +805,7 @@ void CBCGPRibbonEdit::OnDrawOnList (CDC* pDC, CString strText,
 	
 	m_rect = rectEdit;
 	m_rectCommand = m_rect;
-	m_rectCommand.right -= 15;
+	m_rectCommand.right -= globalUtils.ScaleByDPI(15);
 
 	CBCGPVisualManager::GetInstance ()->OnFillRibbonButton (pDC, this);
 	CBCGPVisualManager::GetInstance ()->OnDrawRibbonButtonBorder 
@@ -743,6 +886,7 @@ void CBCGPRibbonEdit::CopyFrom (const CBCGPBaseRibbonElement& s)
 	src.m_ImageSearch.CopyTo(m_ImageSearch);
 	m_bDontScaleInHighDPI = src.m_bDontScaleInHighDPI;
 	m_bIsAutoComplete = src.m_bIsAutoComplete;
+	m_nLimitText = src.m_nLimitText;
 }
 //**************************************************************************
 void CBCGPRibbonEdit::OnAfterChangeRect (CDC* pDC)
@@ -802,7 +946,7 @@ void CBCGPRibbonEdit::ReposEditCtrl ()
 		m_pWndEdit->SetFont (GetTopLevelRibbonBar ()->GetFont ());
 		m_pWndEdit->SetWindowText (m_strEdit);
 	}
-
+	
 	if (rectCommandOld != m_rectCommand || !m_pWndEdit->IsWindowVisible ())
 	{
 		CRect rectEdit = m_rectCommand;
@@ -811,7 +955,17 @@ void CBCGPRibbonEdit::ReposEditCtrl ()
 		int cx = m_bFloatyMode ? m_nWidthFloaty : m_nWidth;
 		if (!m_bDontScaleInHighDPI && !m_bSearchResultMode && globalData.GetRibbonImageScale () > 1.)
 		{
-			cx = (int)(.5 + globalData.GetRibbonImageScale () * cx);
+			cx = globalUtils.ScaleByDPI(cx);
+		}
+
+		if (m_nMaxWidth > 0)
+		{
+			cx = min(cx, m_nMaxWidth);
+		}
+
+		if (m_bIsFixedWidth && m_nLabelImageWidth == 0)
+		{
+			cx = m_rect.Width();
 		}
 
 		rectEdit.left = rectEdit.right - cx;
@@ -828,6 +982,10 @@ void CBCGPRibbonEdit::ReposEditCtrl ()
 		if (m_bSearchMode)
 		{
 			rectEdit.right -= m_rect.Height();
+		}
+		else if (IsCommandsCombo())
+		{
+			rectEdit.left += m_rect.Height();
 		}
 
 		m_pWndEdit->SetWindowPos (NULL, 
@@ -925,7 +1083,19 @@ CBCGPRibbonEditCtrl* CBCGPRibbonEdit::CreateEdit (CWnd* pWndParent, DWORD dwEdit
 		}
 	}
 
+	if (m_nLimitText > 0)
+	{
+		pWndEdit->LimitText(m_nLimitText);
+	}
+
+	AddTooltip(pWndEdit);
 	return pWndEdit;
+}
+//********************************************************************************
+void CBCGPRibbonEdit::OnUpdateToolTips()
+{
+	ASSERT_VALID(this);
+	AddTooltip(m_pWndEdit);
 }
 //********************************************************************************
 BOOL CBCGPRibbonEdit::CreateSpinButton (CBCGPRibbonEditCtrl* pWndEdit, CWnd* pWndParent)
@@ -1154,6 +1324,71 @@ void CBCGPRibbonEdit::OnRTLChanged (BOOL bIsRTL)
 	}
 }
 //*************************************************************************************
+void CBCGPRibbonEdit::AddTooltip(CBCGPRibbonEditCtrl* pWndEdit)
+{
+	ASSERT_VALID(this);
+
+	if (pWndEdit->GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	CWnd* pWndParent = pWndEdit->GetParent();
+	CToolTipCtrl* pWndToolTip = NULL;
+
+	CBCGPRibbonBar* pRibbonBar = DYNAMIC_DOWNCAST (CBCGPRibbonBar, pWndParent);
+	if (pRibbonBar != NULL)
+	{
+		ASSERT_VALID (pRibbonBar);
+		pWndToolTip = pRibbonBar->m_pToolTip;
+	}
+	else
+	{
+		CBCGPRibbonPanelMenuBar* pMenuBar = DYNAMIC_DOWNCAST (CBCGPRibbonPanelMenuBar, pWndParent);
+		if (pMenuBar != NULL)
+		{
+			ASSERT_VALID(pMenuBar);
+			pWndToolTip = pMenuBar->m_pToolTip;
+		}
+	}
+
+	if (pWndToolTip->GetSafeHwnd() != NULL && ::IsWindow(pWndToolTip->GetSafeHwnd()))
+	{
+		pWndToolTip->AddTool(pWndEdit);
+	}
+}
+//*************************************************************************************
+void CBCGPRibbonEdit::DelTooltip()
+{
+	ASSERT_VALID(this);
+
+	CToolTipCtrl* pWndToolTip = NULL;
+
+	if (m_pWndEdit->GetSafeHwnd() != NULL)
+	{
+		CBCGPRibbonBar* pRibbonBar = DYNAMIC_DOWNCAST (CBCGPRibbonBar, m_pWndEdit->GetParent());
+		if (pRibbonBar != NULL)
+		{
+			ASSERT_VALID (pRibbonBar);
+			pWndToolTip = pRibbonBar->m_pToolTip;
+		}
+		else
+		{
+			CBCGPRibbonPanelMenuBar* pMenuBar = DYNAMIC_DOWNCAST (CBCGPRibbonPanelMenuBar, m_pWndEdit->GetParent());
+			if (pMenuBar != NULL)
+			{
+				ASSERT_VALID(pMenuBar);
+				pWndToolTip = pMenuBar->m_pToolTip;
+			}
+		}
+	}
+
+	if (pWndToolTip->GetSafeHwnd() != NULL && ::IsWindow(pWndToolTip->GetSafeHwnd()))
+	{
+		pWndToolTip->DelTool(m_pWndEdit);
+	}
+}
+//*************************************************************************************
 void CBCGPRibbonEdit::DestroyCtrl ()
 {
 	ASSERT_VALID (this);
@@ -1177,6 +1412,16 @@ void CBCGPRibbonEdit::DestroyCtrl ()
 		m_pBtnClear->DestroyWindow ();
 		delete m_pBtnClear;
 		m_pBtnClear = NULL;
+	}
+}
+//*************************************************************************************
+void CBCGPRibbonEdit::OnChangeRibbonFont()
+{
+	ASSERT_VALID (this);
+	
+	if (m_pWndEdit->GetSafeHwnd() != NULL && GetTopLevelRibbonBar() != NULL)
+	{
+		m_pWndEdit->SetFont(GetTopLevelRibbonBar()->GetFont ());
 	}
 }
 //*************************************************************************************
@@ -1214,9 +1459,13 @@ IMPLEMENT_DYNAMIC(CBCGPRibbonEditCtrl, CRichEditCtrl)
 CBCGPRibbonEditCtrl::CBCGPRibbonEditCtrl(CBCGPRibbonEdit& edit) :
 	m_edit (edit)
 {
-	m_bTracked = FALSE;
-	m_bIsHighlighted = FALSE;
-	m_bIsContextMenu = FALSE;
+	m_bTracked			= FALSE;
+	m_bIsHighlighted	= FALSE;
+	m_bIsContextMenu	= FALSE;
+
+#if _MSC_VER >= 1300
+	EnableActiveAccessibility();
+#endif
 }
 
 CBCGPRibbonEditCtrl::~CBCGPRibbonEditCtrl()
@@ -1231,6 +1480,7 @@ BEGIN_MESSAGE_MAP(CBCGPRibbonEditCtrl, CRichEditCtrl)
 	ON_WM_CONTEXTMENU()
 	ON_CONTROL_REFLECT_EX(EN_CHANGE, OnChange)
 	ON_WM_ENABLE()
+	ON_WM_DESTROY()
 	//}}AFX_MSG_MAP
 	ON_MESSAGE(WM_MOUSELEAVE, OnMouseLeave)
 END_MESSAGE_MAP()
@@ -1343,7 +1593,7 @@ BOOL CBCGPRibbonEditCtrl::PreTranslateMessage(MSG* pMsg)
 		case VK_UP:
 		case VK_PRIOR:
 		case VK_NEXT:
-			if (m_edit.IsDroppedDown ())
+			if (m_edit.IsDroppedDown () || m_edit.IsCommandsCombo())
 			{
 				::SendMessage (	CBCGPPopupMenu::GetActiveMenu ()->GetSafeHwnd (),
 								WM_KEYDOWN, pMsg->wParam, pMsg->lParam);
@@ -1351,33 +1601,75 @@ BOOL CBCGPRibbonEditCtrl::PreTranslateMessage(MSG* pMsg)
 			}
 			break;
 
-		case VK_RETURN:
-			if (!m_edit.IsDroppedDown ())
+		case VK_LEFT:
+		case VK_RIGHT:
+		case VK_HOME:
+		case VK_END:
+			if (m_edit.IsCommandsCombo() && CBCGPPopupMenu::GetSafeActivePopupMenu() != NULL)
 			{
-				CString str;
-				GetWindowText (str);
+				::SendMessage (	CBCGPPopupMenu::GetActiveMenu ()->GetSafeHwnd (),
+					WM_KEYDOWN, pMsg->wParam, pMsg->lParam);
+				return TRUE;
+			}
+			break;
 
-				m_edit.SetEditText (str);
-				m_edit.m_RecentChangeEvt = CBCGPRibbonEdit::BCGPRIBBON_EDIT_CHANGED_BY_ENTER_KEY;
-				m_edit.NotifyCommand (TRUE);
-
-				if (m_edit.m_pParentMenu != NULL &&
-					m_edit.m_pParentMenu->GetParent ()->GetSafeHwnd () == CBCGPPopupMenu::GetActiveMenu ()->GetSafeHwnd ())
+		case VK_RETURN:
+			if (m_edit.IsCommandsCombo())
+			{
+				if (DYNAMIC_DOWNCAST(CBCGPCommandsMenu, CBCGPPopupMenu::GetSafeActivePopupMenu()) != NULL)
 				{
-					ASSERT_VALID (m_edit.m_pParentMenu);
-
-					CFrameWnd* pParentFrame = BCGPGetParentFrame (m_edit.m_pParentMenu);
-					ASSERT_VALID (pParentFrame);
-
-					pParentFrame->DestroyWindow ();
 					return TRUE;
 				}
+			}
+			else
+			{
+				BOOL bUseEditText = TRUE;
 
-				if (GetTopLevelFrame () != NULL)
+				if (m_edit.IsDroppedDown())
 				{
-					m_edit.m_bNotifyCommand = FALSE;
-					GetTopLevelFrame ()->SetFocus ();
-					return TRUE;
+					CBCGPDropDownList* pList = DYNAMIC_DOWNCAST(CBCGPDropDownList, m_edit.m_pPopupMenu);
+					if (pList != NULL)
+					{
+						ASSERT_VALID(pList);
+						if (pList->GetCurSel() >= 0)
+						{
+							bUseEditText = FALSE;
+						}
+					}
+				}
+
+				if (bUseEditText)
+				{
+					if (m_edit.IsDroppedDown())
+					{
+						m_edit.ClosePopupMenu();
+					}
+
+					CString str;
+					GetWindowText (str);
+
+					m_edit.SetEditText (str);
+					m_edit.m_RecentChangeEvt = CBCGPRibbonEdit::BCGPRIBBON_EDIT_CHANGED_BY_ENTER_KEY;
+					m_edit.NotifyCommand (TRUE);
+
+					if (m_edit.m_pParentMenu != NULL &&
+						m_edit.m_pParentMenu->GetParent ()->GetSafeHwnd () == CBCGPPopupMenu::GetActiveMenu ()->GetSafeHwnd ())
+					{
+						ASSERT_VALID (m_edit.m_pParentMenu);
+
+						CFrameWnd* pParentFrame = BCGPGetParentFrame (m_edit.m_pParentMenu);
+						ASSERT_VALID (pParentFrame);
+
+						pParentFrame->DestroyWindow ();
+						return TRUE;
+					}
+
+					if (GetTopLevelFrame () != NULL)
+					{
+						m_edit.m_bNotifyCommand = FALSE;
+						GetTopLevelFrame ()->SetFocus ();
+						return TRUE;
+					}
 				}
 			}
 			break;
@@ -1396,7 +1688,7 @@ BOOL CBCGPRibbonEditCtrl::PreTranslateMessage(MSG* pMsg)
 			break;
 
 		case VK_ESCAPE:
-			if (m_edit.IsDroppedDown () && CBCGPPopupMenu::GetActiveMenu () != NULL)
+			if ((m_edit.IsDroppedDown () || m_edit.IsCommandsCombo()) && CBCGPPopupMenu::GetActiveMenu () != NULL)
 			{
 				CBCGPPopupMenu::GetActiveMenu ()->SendMessage (WM_CLOSE);
 				return TRUE;
@@ -1452,8 +1744,21 @@ BOOL CBCGPRibbonEditCtrl::PreTranslateMessage(MSG* pMsg)
 //*********************************************************************************
 BOOL CBCGPRibbonEditCtrl::ProcessClipboardAccelerators (UINT nChar)
 {
-	BOOL bIsCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000);
+	BOOL bIsRAlt = (::GetAsyncKeyState (VK_RMENU) & 0x8000) != 0;
+	BOOL bIsCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000) && !bIsRAlt;
 	BOOL bIsShift = (::GetAsyncKeyState (VK_SHIFT) & 0x8000);
+
+	if (bIsCtrl && nChar == _T('A'))
+	{
+		SetSel(0, -1);
+		return TRUE;
+	}
+
+	if (bIsCtrl && nChar == _T('Z'))
+	{
+		Undo();
+		return TRUE;
+	}
 
 	if (bIsCtrl && (nChar == _T('C') || nChar == VK_INSERT))
 	{
@@ -1516,6 +1821,21 @@ void CBCGPRibbonEditCtrl::OnKillFocus(CWnd* pNewWnd)
 {
 	CRichEditCtrl::OnKillFocus(pNewWnd);
 
+	if (m_edit.IsCommandsCombo())
+	{
+		SetWindowText(_T(""));
+
+		for (CBCGPPopupMenu* pMenu = CBCGPPopupMenu::GetSafeActivePopupMenu(); pMenu != NULL; pMenu = pMenu->GetParentPopupMenu ())
+		{
+			CBCGPCommandsMenu* pCommandsMenu = DYNAMIC_DOWNCAST(CBCGPCommandsMenu, pMenu);
+			if (pCommandsMenu != NULL)
+			{
+				pCommandsMenu->SendMessage(WM_CLOSE);
+				break;
+			}
+		}
+	}
+
 	m_edit.m_bIsEditFocused = FALSE;
 	m_edit.Redraw ();
 
@@ -1531,7 +1851,7 @@ void CBCGPRibbonEditCtrl::OnKillFocus(CWnd* pNewWnd)
 	}
 	else if (pNewWnd->GetSafeHwnd() != NULL && m_edit.m_pParentMenu != NULL &&
 		m_edit.m_pParentMenu->GetParent ()->GetSafeHwnd () == CBCGPPopupMenu::GetActiveMenu ()->GetSafeHwnd () &&
-		::GetParent(pNewWnd->GetSafeHwnd()) == ::GetParent(GetSafeHwnd()))
+		::IsChild(pNewWnd->GetSafeHwnd(), GetSafeHwnd()))
 	{
 		m_edit.SetEditText(m_strOldText);
 	}
@@ -1580,18 +1900,35 @@ void CBCGPRibbonEditCtrl::OnPaint()
 		{
 			CPaintDC dc (this);
 			
-			dc.SetTextColor (CBCGPVisualManager::GetInstance()->GetToolbarEditPromptColor());
+			dc.SetTextColor (CBCGPVisualManager::GetInstance()->GetRibbonEditPromptColor(this, bIsHighlighted, bIsDisabled));
 			dc.SetBkMode(TRANSPARENT);
 			
-			CFont* pOldFont = dc.SelectObject (&globalData.fontRegular);
+			CBCGPRibbonBar* pTopLevelRibbon = m_edit.GetTopLevelRibbonBar();
 
-			CBrush br(clrBackground);
-			dc.FillRect(&rect, &br);
+			CFont* pOldFont = dc.SelectObject(pTopLevelRibbon != NULL ? pTopLevelRibbon->GetFont() : &globalData.fontRegular);
+
+			CBCGPDrawManager dm(dc);
+			dm.DrawRect(rect, clrBackground, (COLORREF)-1);
 
 			CRect rectText = rect;
 			rectText.DeflateRect(m_edit.m_szMargin.cx + 1, 0);
 
-			dc.DrawText(m_edit.m_strSearchPrompt, rectText, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+			UINT uiDTFlags = DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS;
+
+			if (m_edit.m_nAlign == ES_LEFT)
+			{
+				uiDTFlags |= DT_LEFT;
+			}
+			else if (m_edit.m_nAlign == ES_CENTER)
+			{
+				uiDTFlags |= DT_CENTER;
+			}
+			else if (m_edit.m_nAlign == ES_RIGHT)
+			{
+				uiDTFlags |= DT_RIGHT;
+			}
+
+			m_edit.DoDrawText(&dc, m_edit.m_strSearchPrompt, rectText, uiDTFlags);
 
 			dc.SelectObject (pOldFont);
 		}
@@ -1645,9 +1982,21 @@ LRESULT CBCGPRibbonEditCtrl::OnMouseLeave(WPARAM,LPARAM)
 //*****************************************************************************************
 void CBCGPRibbonEditCtrl::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
 {
-	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
+	CBCGPPopupMenu* pActivePopupMenu = CBCGPPopupMenu::GetActiveMenu();
+	HWND hwndActivePopup = pActivePopupMenu->GetSafeHwnd();
+
+	if (pActivePopupMenu != NULL)
 	{
-		return;
+		if (m_edit.m_pParentMenu == NULL ||
+			m_edit.m_pParentMenu->GetParent ()->GetSafeHwnd () != CBCGPPopupMenu::GetActiveMenu ()->GetSafeHwnd ())
+		{
+			return;
+		}
+
+		if (g_pContextMenuManager != NULL)
+		{
+			g_pContextMenuManager->SetDontCloseActiveMenu();
+		}
 	}
 
 	CBCGPRibbonBar* pRibbonBar = m_edit.GetTopLevelRibbonBar ();
@@ -1661,6 +2010,19 @@ void CBCGPRibbonEditCtrl::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
 
 		m_bIsContextMenu = FALSE;
 	}
+
+	if (hwndActivePopup != NULL && pActivePopupMenu != NULL)
+	{
+		if (::IsWindow(hwndActivePopup))
+		{
+			CBCGPPopupMenu::m_pActivePopupMenu = pActivePopupMenu;
+		}
+
+		if (g_pContextMenuManager != NULL)
+		{
+			g_pContextMenuManager->SetDontCloseActiveMenu(FALSE);
+		}
+	}
 }
 //*************************************************************************************
 void CBCGPRibbonEditCtrl::OnEnable(BOOL bEnable) 
@@ -1673,6 +2035,323 @@ void CBCGPRibbonEditCtrl::OnEnable(BOOL bEnable)
 	}
 
 	CRichEditCtrl::OnEnable(bEnable);
+}
+//*************************************************************************************
+HRESULT CBCGPRibbonEditCtrl::get_accName(VARIANT varChild, BSTR *pszName)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		return m_edit.get_accName(varChild, pszName);
+	}
+
+	return S_FALSE;
+}
+//*************************************************************************************
+HRESULT CBCGPRibbonEditCtrl::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		pvarRole->vt = VT_I4;
+		pvarRole->lVal = ROLE_SYSTEM_TEXT;
+
+		return S_OK;
+	}
+
+	return S_FALSE;
+}
+//*************************************************************************************
+HRESULT CBCGPRibbonEditCtrl::get_accValue(VARIANT varChild, BSTR *pszValue)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		return  m_edit.get_accValue(varChild, pszValue);
+	}
+
+	return S_FALSE;
+}
+//*************************************************************************************
+HRESULT CBCGPRibbonEditCtrl::get_accKeyboardShortcut(VARIANT varChild, BSTR* pszKeyboardShortcut)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		return  m_edit.get_accKeyboardShortcut(varChild, pszKeyboardShortcut);
+	}
+
+	return S_FALSE;
+}
+//*************************************************************************************
+HRESULT CBCGPRibbonEditCtrl::get_accDescription(VARIANT varChild, BSTR FAR* pszDescription)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		return  m_edit.get_accDescription(varChild, pszDescription);
+	}
+
+	return S_FALSE;
+}
+//*************************************************************************************
+void CBCGPRibbonEditCtrl::OnDestroy() 
+{
+	m_edit.DelTooltip();
+	CRichEditCtrl::OnDestroy();
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPRibbonCommandsComboBox
+
+IMPLEMENT_DYNCREATE(CBCGPRibbonCommandsComboBox, CBCGPRibbonEdit)
+
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+
+CBCGPRibbonCommandsComboBox::CBCGPRibbonCommandsComboBox(
+	UINT	uiID,
+	LPCTSTR lpszPrompt,
+	int		nWidth) :
+	CBCGPRibbonEdit(uiID, nWidth)
+{
+	if (lpszPrompt != NULL)
+	{
+		m_strSearchPrompt = lpszPrompt;
+	}
+}
+//**************************************************************************
+CBCGPRibbonCommandsComboBox::CBCGPRibbonCommandsComboBox()
+{
+}
+//**************************************************************************
+void CBCGPRibbonCommandsComboBox::CleanUp()
+{
+	ASSERT_VALID(this);
+
+	for (int i = 0; i < m_arSearchResultsFiltered.GetSize(); i++)
+	{
+		ASSERT_VALID(m_arSearchResultsFiltered[i]);
+		delete m_arSearchResultsFiltered[i];
+	}
+
+	m_arSearchResultsFiltered.RemoveAll();
+	m_arSearchResultsRecent.RemoveAll();
+}
+//**************************************************************************
+CBCGPRibbonCommandsComboBox::~CBCGPRibbonCommandsComboBox()
+{
+	CleanUp();
+}
+//**************************************************************************
+BOOL CBCGPRibbonCommandsComboBox::OnEditChange()
+{
+	ASSERT_VALID(m_pRibbonBar);
+
+	m_pRibbonBar->PopTooltip();
+
+	CBCGPCommandsMenu* pCommandsMenu = NULL;
+	for (CBCGPPopupMenu* pMenu = CBCGPPopupMenu::GetSafeActivePopupMenu(); pMenu != NULL; pMenu = pMenu->GetParentPopupMenu ())
+	{
+		pCommandsMenu = DYNAMIC_DOWNCAST(CBCGPCommandsMenu, pMenu);
+		if (pCommandsMenu != NULL)
+		{
+			break;
+		}
+	}
+
+	CStringArray arWords;
+
+	int nIndex = 0;
+	CString strWord;
+
+	while (AfxExtractSubString(strWord, m_strEdit, nIndex, _T(' ')))
+	{
+		if (!strWord.IsEmpty())
+		{
+			strWord.MakeLower();
+			arWords.Add(strWord);
+		}
+
+		++nIndex;
+	}
+
+	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arSearchResults;
+
+	for (int nStep = 0; nStep < 3; nStep++)
+	{
+		if (m_pRibbonBar->QueryElements(arWords, arSearchResults, m_pRibbonBar->GetCommandSearchOptions().m_nMaxResults, nStep == 2, nStep == 0))
+		{
+			break;
+		}
+	}
+
+	int i = 0;
+	BOOL bChanged = FALSE;
+
+	if (m_arSearchResultsRecent.GetSize() == arSearchResults.GetSize())
+	{
+		for (i = 0; i < arSearchResults.GetSize(); i++)
+		{
+			if (m_arSearchResultsRecent[i] != arSearchResults[i])
+			{
+				bChanged = TRUE;
+				break;
+			}
+		}
+	}
+	else
+	{
+		bChanged = TRUE;
+	}
+
+	if (!bChanged && pCommandsMenu->GetSafeHwnd() != NULL && !m_strEdit.IsEmpty())
+	{
+		return FALSE;
+	}
+
+	CleanUp();
+
+	if (pCommandsMenu->GetSafeHwnd() != NULL)
+	{
+		pCommandsMenu->SendMessage(WM_CLOSE);
+	}
+
+	if (arWords.GetSize() == 0)
+	{
+		return FALSE;
+	}
+
+	for (i = 0; i < arSearchResults.GetSize (); i++)
+	{
+		CBCGPBaseRibbonElement* pResElement = arSearchResults[i];
+		ASSERT_VALID(pResElement);
+
+		m_arSearchResultsRecent.Add(pResElement);
+		
+		if (pResElement->IsHiddenInAppMode() || !m_pRibbonBar->OnFilterSearchResult(pResElement))
+		{
+			continue;
+		}
+
+		BOOL bAlreadyAdded = FALSE;
+		for (int j = 0; j < m_arSearchResultsFiltered.GetSize(); j++)
+		{
+			if (m_arSearchResultsFiltered[j]->GetID() == pResElement->GetID())
+			{
+				bAlreadyAdded = TRUE;
+				break;
+			}
+		}
+		
+		if (bAlreadyAdded)
+		{
+			continue;
+		}
+
+		CString strLabel = pResElement->m_strText;
+		if (strLabel.IsEmpty ())
+		{
+			strLabel = pResElement->m_strToolTip;
+		}
+
+		CBCGPBaseRibbonElement* pElement = pResElement->CreateCustomCopy();
+		if (pElement != NULL)
+		{
+			ASSERT_VALID(pElement);
+
+			pElement->SetDefaultMenuLook(TRUE);
+			pElement->m_pRibbonBar = m_pRibbonBar;
+			pElement->m_pOriginal = pResElement;
+
+			// Remove accelerators:
+			static const CString strDummyAmpSeq = _T("\001\001");
+
+			pElement->m_strText.Replace (_T("&&"), strDummyAmpSeq);
+			pElement->m_strText.Remove (_T('&'));
+			pElement->m_strText.Replace (strDummyAmpSeq, _T("&&"));
+			
+			m_arSearchResultsFiltered.Add (pElement);
+		}
+	}
+
+	CWnd* pWndParent = m_pRibbonBar->GetParent();
+	if (pWndParent != NULL)
+	{
+		CBCGPRibbonCommandsMenuCustomItems items;
+		items.m_strInput = m_strEdit;
+
+		pWndParent->SendMessage(BCGM_ON_GET_RIBBON_COMMANDS_MENU_CUSTOM_ITEMS, 0, (LPARAM)&items);
+
+		if (items.m_arCustomItems.GetSize() > 0)
+		{
+			if (m_arSearchResultsFiltered.GetSize() > 0)
+			{
+				m_arSearchResultsFiltered.Add(new CBCGPRibbonSeparator(TRUE));
+			}
+
+			for (i = 0; i < items.m_arCustomItems.GetSize(); i++)
+			{
+				CBCGPBaseRibbonElement* pElement = items.m_arCustomItems[i];
+				ASSERT_VALID(pElement);
+
+				pElement->m_pRibbonBar = m_pRibbonBar;
+				pElement->m_bIsTemporaryPopupItem = TRUE;
+				m_arSearchResultsFiltered.Add(pElement);
+			}
+		}
+	}
+
+	if (m_arSearchResultsFiltered.GetSize() == 0)
+	{
+		return FALSE;
+	}
+
+	pCommandsMenu = new CBCGPCommandsMenu(m_pRibbonBar, m_arSearchResultsFiltered);
+
+	pCommandsMenu->SetParentRibbonElement (this);
+	pCommandsMenu->SetMenuMode ();
+	pCommandsMenu->SetDefaultMenuLook ();
+
+	CBCGPRibbonPanel* pPanel = pCommandsMenu->GetPanel();
+	if (pPanel != NULL)
+	{
+		for (i = 0; i < pPanel->GetCount(); i++)
+		{
+			pPanel->GetElement(i)->SetDefaultMenuLook();
+			pPanel->GetElement(i)->m_bSearchResultMode = TRUE;
+			pPanel->GetElement(i)->SetCommandSearchMenu();
+
+			pPanel->SetInvokeCommandBySpace(FALSE);
+		}
+	}
+
+	pCommandsMenu->EnableCustomizeMenu (FALSE);
+
+	CPoint point = CPoint(m_rect.left, m_rect.bottom + 1);
+	m_pRibbonBar->ClientToScreen(&point);
+
+	if (pCommandsMenu->Create(m_pRibbonBar, point.x, point.y, (HMENU) NULL))
+	{
+		pCommandsMenu->SendMessage (WM_KEYDOWN, VK_DOWN);
+	}
+
+	return FALSE;
+}
+//****************************************************************************************************
+BOOL CBCGPRibbonCommandsComboBox::OnProcessKey(UINT nChar)
+{
+	if (nChar == VK_RETURN)
+	{
+		CBCGPCommandsMenu* pCommandsMenu = DYNAMIC_DOWNCAST(CBCGPCommandsMenu, CBCGPPopupMenu::GetSafeActivePopupMenu());
+		if (pCommandsMenu != NULL)
+		{
+			ASSERT_VALID(pCommandsMenu);
+
+			if (pCommandsMenu->OnClickSelection())
+			{
+				return TRUE;
+			}
+		}
+	}
+
+	return CBCGPRibbonEdit::OnProcessKey(nChar);
 }
 
 #endif // BCGP_EXCLUDE_RIBBON

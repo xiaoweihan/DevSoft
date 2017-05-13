@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -283,3 +283,10 @@ void CBCGPTabView::OnInitialUpdate()
 	m_bIsReady = TRUE;
 	OnChangeActiveTab (m_nFirstActiveTab, 0);
 }
+//****************************************************************************************
+CView* CBCGPTabView::GetView(int iTabNum) const
+{
+	ASSERT_VALID (this);
+	return DYNAMIC_DOWNCAST (CView, m_wndTabs.GetTabWnd(iTabNum));
+}
+

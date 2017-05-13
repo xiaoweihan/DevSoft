@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -105,6 +105,7 @@ IMPLEMENT_DYNCREATE(CBCGPRibbonQuickStepsButton, CBCGPRibbonPaletteButton)
 
 CBCGPRibbonQuickStepsButton::CBCGPRibbonQuickStepsButton()
 {
+	m_nIconsInRow = m_nPanelColumns = 2;
 	CommonInit();
 }
 //******************************************************************************
@@ -113,21 +114,37 @@ CBCGPRibbonQuickStepsButton::CBCGPRibbonQuickStepsButton(
 		 LPCTSTR			lpszText, 
 		 int				nSmallImageIndex,
 		 int				nLargeImageIndex,
-		 CBCGPToolBarImages& imagesPalette) :
+		 CBCGPToolBarImages& imagesPalette,
+		 int				nColumns) :
 	CBCGPRibbonPaletteButton(nID, lpszText, nSmallImageIndex, nLargeImageIndex, imagesPalette)
 {
+	if (nColumns <= 0)
+	{
+		ASSERT(FALSE);
+		nColumns = 1;
+	}
+
+	m_nIconsInRow = m_nPanelColumns = nColumns;
 	CommonInit();
 }
 //******************************************************************************
 CBCGPRibbonQuickStepsButton::CBCGPRibbonQuickStepsButton(
-		UINT				nID,
-		LPCTSTR				lpszText, 
-		int					nSmallImageIndex,
-		int					nLargeImageIndex,
-		UINT				uiImagesPaletteResID,
-		int					cxPaletteImage) :
+		UINT		nID,
+		LPCTSTR		lpszText, 
+		int			nSmallImageIndex,
+		int			nLargeImageIndex,
+		UINT		uiImagesPaletteResID,
+		int			cxPaletteImage,
+		int			nColumns) :
 	CBCGPRibbonPaletteButton(nID, lpszText, nSmallImageIndex, nLargeImageIndex, uiImagesPaletteResID, cxPaletteImage)
 {
+	if (nColumns <= 0)
+	{
+		ASSERT(FALSE);
+		nColumns = 1;
+	}
+
+	m_nIconsInRow = m_nPanelColumns = nColumns;
 	CommonInit();
 }
 //******************************************************************************
@@ -137,7 +154,6 @@ void CBCGPRibbonQuickStepsButton::CommonInit()
 
 	m_nIcons = 0;
 	m_bSmallIcons = TRUE;
-	m_nIconsInRow = m_nPanelColumns = 2;
 }
 //******************************************************************************
 CBCGPRibbonQuickStepsButton::~CBCGPRibbonQuickStepsButton()
@@ -175,8 +191,8 @@ void CBCGPRibbonQuickStepsButton::OnDrawPaletteIcon (CDC* pDC, CRect rectIcon, i
 	ASSERT_VALID (pDC);
 	ASSERT_VALID(pIcon);
 
-	const int nIconPadding = 2;
-	const int nTextPadding = 2;
+	const int nIconPadding = globalUtils.ScaleByDPI(2) + m_sizePadding.cx / 2;
+	const int nTextPadding = globalUtils.ScaleByDPI(2);
 
 	BOOL bIsDisabled = IsDisabled() || pIcon->IsDisabled();
 
@@ -187,7 +203,7 @@ void CBCGPRibbonQuickStepsButton::OnDrawPaletteIcon (CDC* pDC, CRect rectIcon, i
 	}
 
 	CRect rectText = rectIcon;
-	rectText.left += GetIconSize().cx + nIconPadding + nTextPadding;
+	rectText.left += GetIconSize().cx + nIconPadding + nTextPadding + m_sizePadding.cx / 2;
 	rectText.right -= nTextPadding;
 	
 	COLORREF clrTextOld = (COLORREF)-1;
@@ -219,7 +235,14 @@ CSize CBCGPRibbonQuickStepsButton::GetItemSize () const
 		return pOrigButton->GetItemSize();
 	}
 
-	CSize size = GetIconSize();
+	CSize size = GetIconSize() + m_sizePadding;
+
+	CBCGPRibbonBar* pRibbonBar = GetTopLevelRibbonBar();
+	if (pRibbonBar != NULL)
+	{
+		ASSERT_VALID(pRibbonBar);
+		size.cy = max(size.cy, pRibbonBar->GetTextHeight());
+	}
 
 	CBCGPRibbonCategory* pParent = GetParentCategory();
 	if (pParent != NULL)
@@ -227,7 +250,7 @@ CSize CBCGPRibbonQuickStepsButton::GetItemSize () const
 		ASSERT_VALID(pParent);
 
 		size.cx += pParent->GetImageSize(TRUE).cx * 3;
-		size.cy += 4;
+		size.cy += globalUtils.ScaleByDPI(4);
 	}
 
 	return size;
@@ -245,6 +268,9 @@ void CBCGPRibbonQuickStepsButton::CopyFrom (const CBCGPBaseRibbonElement& s)
 	}
 
 	CBCGPRibbonQuickStepsButton& src = (CBCGPRibbonQuickStepsButton&) s;
+
+	m_nIconsInRow = src.m_nIconsInRow;
+	m_nPanelColumns = src.m_nPanelColumns;
 
 	RemoveAll ();
 

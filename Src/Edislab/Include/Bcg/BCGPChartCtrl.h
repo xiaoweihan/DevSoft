@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -32,6 +32,8 @@ class CBCGPChartVisualObject;
 
 class BCGCBPRODLLEXPORT CBCGPChartCtrl : public CBCGPVisualCtrl
 {
+	friend class CBCGPChartView;
+
 	DECLARE_DYNAMIC(CBCGPChartCtrl)
 
 public:
@@ -51,11 +53,6 @@ public:
 	}
 
 	virtual BOOL DoPrint(CDC* pDC = NULL, CPrintInfo* pInfo = NULL);
-
-protected:
-	//{{AFX_MSG(CBCGPChartCtrl)
-	//}}AFX_MSG
-	DECLARE_MESSAGE_MAP()
 
 protected:
 	virtual CBCGPBaseVisualObject* GetVisualObject()

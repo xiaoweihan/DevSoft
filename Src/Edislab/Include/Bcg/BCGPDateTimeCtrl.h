@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -77,6 +77,7 @@ public:
 	static const UINT		DTM_SECONDS;
 
 	int m_monthFormat;	// 0 - short, 1 - long, 2 - numeric
+	int m_dateFormat;	// -1 - system, 0 - Month-Day-Year, 1 - Day-Month-Year, 2 - Year-Month-Day
 
 	void SetDontChangeLocale(BOOL bSet = TRUE)
 	{
@@ -91,6 +92,17 @@ public:
 	BOOL IsDroppedDown() const
 	{
 		return m_pPopup != NULL;
+	}
+
+	void SetMaxWeekDayCharacters(int nMaxWeekDayCharacters)
+	{
+		ASSERT(nMaxWeekDayCharacters > 0);
+		m_nMaxWeekDayCharacters = nMaxWeekDayCharacters;
+	}
+	
+	int GetMaxWeekDayCharacters() const
+	{
+		return m_nMaxWeekDayCharacters;
 	}
 
 // Operations
@@ -123,6 +135,12 @@ public:
 	BOOL IsVisualManagerStyle() const
 	{
 		return m_bVisualManagerStyle;
+	}
+
+	void SetEmptyDateLabel(const CString& strEmptyDate, BOOL bRedraw = TRUE);
+	const CString& GetEmptyDateLabel() const
+	{
+		return m_strEmptyDate;
 	}
 	
 // Overrides
@@ -247,6 +265,8 @@ protected:
 	BOOL					m_bTrackPart;
 	BOOL					m_bPropListMode;
 	BOOL					m_bDontChangeLocale;
+	CString					m_strEmptyDate;
+	int						m_nMaxWeekDayCharacters;
 
 // Operations
 protected:

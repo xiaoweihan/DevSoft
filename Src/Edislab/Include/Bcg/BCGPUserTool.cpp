@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -114,24 +114,14 @@ void CBCGPUserTool::DrawToolIcon (CDC* pDC, const CRect& rectImage)
 		hIcon = m_hGrayIcon == NULL ? m_hIcon : m_hGrayIcon;
 	}
 
-	ICONINFO info;
-	::GetIconInfo (hIcon, &info);
+	CSize sizeIcon = globalUtils.GetIconSize(hIcon);
 
-	BITMAP bmp;
-	::GetObject (info.hbmColor, sizeof (BITMAP), (LPVOID) &bmp);
-
-	int cx = bmp.bmWidth;
-	int cy = bmp.bmHeight;
-
-	int x = max (0, (rectImage.Width () - cx) / 2);
-	int y = max (0, (rectImage.Height () - cy) / 2);
+	int x = max (0, (rectImage.Width () - sizeIcon.cx) / 2);
+	int y = max (0, (rectImage.Height () - sizeIcon.cy) / 2);
 
 	::DrawIconEx (pDC->GetSafeHdc (),
 		rectImage.left + x, rectImage.top + y, hIcon,
 		0, 0, 0, NULL, DI_NORMAL);
-
-	::DeleteObject (info.hbmColor);
-	::DeleteObject (info.hbmMask);
 }
 //******************************************************************************
 BOOL CBCGPUserTool::CopyIconToClipboard ()

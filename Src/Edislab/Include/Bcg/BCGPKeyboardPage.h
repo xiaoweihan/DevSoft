@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,13 +21,18 @@
 
 #include "bcgprores.h"
 #include "KeyAssign.h"
+#include "BCGPPropertyPage.h"
+#include "BCGPButton.h"
+#include "BCGPStatic.h"
+#include "BCGPComboBox.h"
+#include "BCGPListBox.h"
 
 class CBCGPToolbarButton;
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPKeyboardPage dialog
 
-class CBCGPKeyboardPage : public CPropertyPage
+class CBCGPKeyboardPage : public CBCGPPropertyPage
 {
 	DECLARE_DYNCREATE(CBCGPKeyboardPage)
 
@@ -41,15 +46,15 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPKeyboardPage)
 	enum { IDD = IDD_BCGBARRES_PROPPAGE5 };
-	CStatic	m_wndAssignedToTitle;
+	CBCGPStatic	m_wndAssignedToTitle;
 	CKeyAssign	m_wndNewKey;
-	CComboBox	m_wndViewTypeList;
-	CStatic	m_wndViewIcon;
-	CButton	m_wndRemoveButton;
-	CListBox	m_wndCurrentKeysList;
-	CListBox	m_wndCommandsList;
-	CComboBox	m_wndCategoryList;
-	CButton	m_wndAssignButton;
+	CBCGPComboBox	m_wndViewTypeList;
+	CBCGPStatic	m_wndViewIcon;
+	CBCGPButton	m_wndRemoveButton;
+	CBCGPListBox	m_wndCurrentKeysList;
+	CBCGPListBox	m_wndCommandsList;
+	CBCGPComboBox	m_wndCategoryList;
+	CBCGPButton	m_wndAssignButton;
 	CString	m_strDesrcription;
 	CString	m_strAssignedTo;
 	//}}AFX_DATA

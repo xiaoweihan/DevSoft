@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -32,16 +32,30 @@ static char THIS_FILE[] = __FILE__;
 
 IMPLEMENT_DYNCREATE(CBCGPRibbonDialogBar, CBCGPDockingControlBar)
 
-CBCGPRibbonDialogBar::CBCGPRibbonDialogBar() :
+CBCGPRibbonDialogBar::CBCGPRibbonDialogBar(CRuntimeClass* pRTI) :
 	m_wndRibbon (FALSE)
 {
 	m_pCategory = NULL;
 	m_nImagesLarge = 0;
 	m_nImagesSmall = 0;
+
+	if (pRTI != NULL)
+	{
+		ASSERT(pRTI->IsDerivedFrom(RUNTIME_CLASS(CBCGPRibbonBar)));
+		m_pCustomRibbon = DYNAMIC_DOWNCAST(CBCGPRibbonBar, pRTI->CreateObject());
+	}
+	else
+	{
+		m_pCustomRibbon = NULL;
+	}
 }
 
 CBCGPRibbonDialogBar::~CBCGPRibbonDialogBar()
 {
+	if (m_pCustomRibbon != NULL)
+	{
+		delete m_pCustomRibbon;
+	}
 }
 
 
@@ -92,13 +106,15 @@ int CBCGPRibbonDialogBar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
 	if (CBCGPDockingControlBar::OnCreate(lpCreateStruct) == -1)
 		return -1;
+
+	CBCGPRibbonBar& wndRibbon = GetRibbon();
 	
-	if (!m_wndRibbon.Create (this, WS_CHILD | WS_VISIBLE, 0))
+	if (!wndRibbon.Create (this, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0))
 	{
 		return -1;
 	}
 
-	m_pCategory = m_wndRibbon.AddCategory (_T("Main"), m_nImagesSmall, m_nImagesLarge);
+	m_pCategory = wndRibbon.AddCategory (_T("Main"), m_nImagesSmall, m_nImagesLarge);
 	if (m_pCategory == NULL)
 	{
 		ASSERT(FALSE);
@@ -106,7 +122,9 @@ int CBCGPRibbonDialogBar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	}
 
 	ASSERT_VALID (m_pCategory);
+
 	m_pCategory->m_bOnDialogBar = TRUE;
+	m_pCategory->m_ScrollLeft.m_bIsVertical = m_pCategory->m_ScrollRight.m_bIsVertical = TRUE;
 
 	return 0;
 }
@@ -119,11 +137,13 @@ BOOL CBCGPRibbonDialogBar::OnEraseBkgnd(CDC* /*pDC*/)
 void CBCGPRibbonDialogBar::OnSize(UINT nType, int cx, int cy) 
 {
 	CBCGPDockingControlBar::OnSize(nType, cx, cy);
-	
-	if (m_wndRibbon.GetSafeHwnd () != NULL)
+
+	CBCGPRibbonBar& wndRibbon = GetRibbon();
+
+	if (wndRibbon.GetSafeHwnd () != NULL)
 	{
-		m_wndRibbon.SetWindowPos (NULL, 0, 0, cx, cy, SWP_NOZORDER | SWP_NOACTIVATE);
-		m_wndRibbon.RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
+		wndRibbon.SetWindowPos (NULL, 0, 0, cx, cy, SWP_NOZORDER | SWP_NOACTIVATE);
+		wndRibbon.RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
 	}
 }
 //********************************************************************************

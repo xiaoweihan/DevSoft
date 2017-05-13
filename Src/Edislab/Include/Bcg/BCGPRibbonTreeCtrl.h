@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -44,6 +44,9 @@ public:
 protected:
 	CBCGPRibbonBar*					m_pRibbonBar;
 	CBCGPRibbonCustomizationData*	m_pCustomizationData;
+	BOOL							m_bListMode;
+	BOOL							m_bShowHiddenCategories;
+	BOOL							m_bLockTooltipUpdate;
 
 // Operations
 public:
@@ -65,6 +68,8 @@ public:
 
 	virtual BOOL OnDrawItem (CDC* pDC, CBCGPGridRow* pItem);
 	virtual int GetLeftMarginWidth() const { return m_bListMode ? 0 : CBCGPGridCtrl::GetLeftMarginWidth(); }
+	virtual void ReposItems ();
+	virtual void ShiftItems (int dx, int dy);
 
 // Implementation
 public:
@@ -86,8 +91,8 @@ protected:
 
 	UINT GetCategoryContextID(CBCGPRibbonCategory* pCategory) const;
 
-	BOOL	m_bListMode;
-	BOOL	m_bShowHiddenCategories;
+	void GetVisibleItemsList(CBCGPGridRow* pRootRow, CList<CBCGPGridRow*, CBCGPGridRow*>& lst);
+	void RebuildTooltips();
 };
 
 #else

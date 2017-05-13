@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -39,7 +39,7 @@ static const UINT BCGP_SCROLL_TIMER_ID = 6;
 class CBCGPDockingControlBar;
 class CBCGPTabbedControlBar;
 class CBCGPBarContainerManager;
-
+class CBCGPMDIFrameWnd;
 
 /////////////////////////////////////////////////////////////////////////
 // CBCGPDockingControlBar control bar styles
@@ -70,6 +70,7 @@ class BCGCBPRODLLEXPORT CBCGPDockingControlBar : public CBCGPControlBar
 	friend class CBCGPBaseTabbedBar;
 	friend class CBCGPTabbedControlBar;
 	friend class CBCGPMainClientAreaWnd;
+	friend class CBCGPBarContainer;
 
 	DECLARE_SERIAL(CBCGPDockingControlBar);
 public:
@@ -80,8 +81,14 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPDockingControlBar)
 	public:
-	virtual BOOL Create(LPCTSTR lpszCaption, CWnd* pParentWnd, const RECT& rect, BOOL bHasGripper, UINT nID, DWORD dwStyle, DWORD dwTabbedStyle = CBRS_BCGP_REGULAR_TABS, DWORD dwBCGStyle = dwDefaultBCGDockingBarStyle, CCreateContext* pContext = NULL);
-	virtual BOOL CreateEx(DWORD dwStyleEx, LPCTSTR lpszCaption, CWnd* pParentWnd, const RECT& rect, BOOL bHasGripper, UINT nID, DWORD dwStyle, DWORD dwTabbedStyle = CBRS_BCGP_REGULAR_TABS, DWORD dwBCGStyle = dwDefaultBCGDockingBarStyle, CCreateContext* pContext = NULL);
+
+	virtual BOOL Create(LPCTSTR lpszCaption, CWnd* pParentWnd, const RECT& rect, BOOL bHasGripper, 
+		UINT nID, DWORD dwStyle, DWORD dwTabbedStyle = CBRS_BCGP_REGULAR_TABS, 
+		DWORD dwBCGStyle = dwDefaultBCGDockingBarStyle, CCreateContext* pContext = NULL);
+
+	virtual BOOL CreateEx(DWORD dwStyleEx, LPCTSTR lpszCaption, CWnd* pParentWnd, const RECT& rect, BOOL bHasGripper, 
+		UINT nID, DWORD dwStyle, DWORD dwTabbedStyle = CBRS_BCGP_REGULAR_TABS, 
+		DWORD dwBCGStyle = dwDefaultBCGDockingBarStyle, CCreateContext* pContext = NULL);
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	//}}AFX_VIRTUAL
 public:	
@@ -91,9 +98,12 @@ public:
 		DWORD dwTabbedStyle = CBRS_BCGP_REGULAR_TABS,
 		DWORD dwBCGStyle = dwDefaultBCGDockingBarStyle);
 
+	BOOL AddTabbed(CBCGPDockingControlBar* pBar, BOOL bSetActive = FALSE);
+
 	virtual void OnUpdateCmdUI(class CFrameWnd *pTarget, int bDisableIfNoHndler);
 
 	virtual BOOL IsDocked () const;
+	virtual BOOL IsTabStop() const { return TRUE; }
 
 	virtual int GetCaptionHeight () const;
 
@@ -287,6 +297,12 @@ public:
 		m_pTabbedControlBarRTC = pRTC;
 	}
 
+	void SetTabCustomLabel(const CString& strLabel);
+	const CString& GetTabCustomLabel() const
+	{
+		return m_strTabCustomLabel;
+	}
+
 	void SetRestoredDefaultSlider (HWND hRestoredSlider)
 	{
 		m_hRestoredDefaultSlider = hRestoredSlider;
@@ -305,9 +321,15 @@ public:
 	virtual void ConvertToTabbedDocument (BOOL bActiveTabOnly = TRUE);
 
 	virtual BOOL IsAccessibilityCompatible () { return FALSE; }
+	virtual void GetPaneInfo(CString& strName, CString& strInfo, HICON& hIcon, BOOL& bAutoDestroyIcon);
+
+	virtual CBCGPMDIChildWnd* OnNewMDITabbedChildWnd(CBCGPMDIFrameWnd* pMainFrame) const;
+
+	int CalcGripperHeight() const;
 
 	static int	m_nTimeOutBeforeAutoHide;
 	static int	m_nSlideSteps;
+	static BOOL	m_bIgnoreRectOnShow;
 	//---------------------------------
 protected:
 	//{{AFX_MSG(CBCGPDockingControlBar)
@@ -352,7 +374,10 @@ protected:
 	virtual void StoreRecentTabRelatedInfo ();
 
 	virtual void OnPressCloseButton ();
-	virtual void OnPressButtons (UINT /*nHit*/) {}
+	virtual void OnPressButtons (UINT nHit) 
+	{
+		UNREFERENCED_PARAMETER(nHit);
+	}
 
 	virtual void DoNcPaint(CDC* pDC);
 
@@ -361,9 +386,10 @@ protected:
 	virtual void AdjustBarWindowToContainer (CBCGPSlider* pSlider);
 
 	virtual void UpdateScrollBars() {}
-	virtual BOOL ScrollHorzAvailable(BOOL /*bLeft*/) {	return FALSE;	}
-	virtual BOOL ScrollVertAvailable(BOOL /*bTop*/) {	return FALSE;	}
-	virtual void OnScrollClient(UINT /*uiScrollCode*/) {}
+	virtual BOOL ScrollHorzAvailable(BOOL bLeft) { UNREFERENCED_PARAMETER(bLeft);  return FALSE; }
+	virtual BOOL ScrollVertAvailable(BOOL bTop) { UNREFERENCED_PARAMETER(bTop);  return FALSE; }
+	
+	virtual void OnScrollClient(UINT uiScrollCode) { UNREFERENCED_PARAMETER(uiScrollCode);  }
 	virtual CPoint GetScrollPos() const {	return CPoint(0, 0);	}
 
 	void RedrawButton (const CBCGPCaptionButton* pBtn);
@@ -381,7 +407,8 @@ protected:
 	void CalcScrollButtons();
 	int GetScrollButtonSize() const;
 	
-	void UpdateTooltips ();
+	void UpdateTooltips();
+	void UpdateTabLabel(BOOL bForceClear);
 
 	CRect	m_rectCloseButton;
 
@@ -410,9 +437,9 @@ protected:
 	static int				m_nSlideDefaultTimeOut;
 	CRect					m_rectRestored;
 	
-	BOOL					m_bIsSliding;	
+	BOOL					m_bIsSliding;
 	BOOL					m_bIsResizing;
-	BOOL					m_bIsHiding;	
+	BOOL					m_bIsHiding;
 	
 	UINT					m_ahSlideMode;
 
@@ -448,7 +475,11 @@ protected:
 	UINT			m_nHit;
 	BOOL			m_bCaptionButtonsCaptured;
 
-	CToolTipCtrl*			m_pToolTip;
+	CToolTipCtrl*	m_pToolTip;
+	BOOL			m_bOnShow;
+	BOOL			m_bDisableOnShow;
+
+	CString			m_strTabCustomLabel;
 };
 
 /////////////////////////////////////////////////////////////////////////////

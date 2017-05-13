@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -256,7 +256,7 @@ void CBCGPPlannerPrintDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CB
 		}
 		else
 		{
-			// if time drawed and description not completely in view, then
+			// if time is drawn and description not completely in view, then
 			// move description down (if possible)
 			if (bDrawTime)
 			{
@@ -459,7 +459,7 @@ void CBCGPPlannerPrintDay::AdjustLayout (CDC* /*pDC*/, const CRect& rectClient)
 	m_rectApps.left = m_rectTimeBar.right;
 
 	{
-		// finding allday or multiday events
+		// finding all day or multi day events
 
 		CDWordArray arDays;
 		arDays.SetSize (GetViewDuration ());
@@ -755,7 +755,7 @@ void CBCGPPlannerPrintDay::AdjustAppointments ()
 
 				i = 1;
 
-				// remove appointmets, that have collisions in rects, from previous column 
+				// remove appointments, that have collisions in rects, from previous column 
 				// to the next column
 				while (i < ar->GetSize ())
 				{

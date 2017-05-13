@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -180,7 +180,7 @@ CBCGPTextFormatDlg::CBCGPTextFormatDlg(CBCGPTextFormat& textFormat, CBCGPTextFor
 		}
 	}
 
-	double dblTextSize = m_textFormat.GetFontSize();
+	double dblTextSize = m_textFormat.GetOriginalFontSize();
 	m_bIsNegativeHeight = FALSE;
 
 	if (dblTextSize < 0.0)
@@ -314,6 +314,14 @@ void CBCGPTextFormatDlg::SetupFormat(CBCGPTextFormat& textFormat, BOOL bForPrevi
 
 	int nWeight = min(950, (m_nTextWeight + 1) * 100);
 
+	double dblScale = 1.0;
+
+	if (m_textFormat.GetOriginalFontSize() != 0.0)
+	{
+		dblScale = m_textFormat.GetFontSize() / m_textFormat.GetOriginalFontSize();
+		dblSize *= dblScale;
+	}
+
 	if (!m_bUseCharSet)
 	{
 		CString strLocaleName;
@@ -329,13 +337,13 @@ void CBCGPTextFormatDlg::SetupFormat(CBCGPTextFormat& textFormat, BOOL bForPrevi
 		}
 
 		CBCGPTextFormat tfNew(strFamily, (float)dblSize, nWeight, (CBCGPTextFormat::BCGP_FONT_STYLE)m_nTextStyle,
-			strLocaleName.IsEmpty() ? NULL : (LPCTSTR)strLocaleName);
+			strLocaleName.IsEmpty() ? NULL : (LPCTSTR)strLocaleName, dblScale);
 
 		textFormat = tfNew;
 	}
 	else
 	{
-		CBCGPTextFormat tfNew(GetCharset(m_nLocaleIndex), strFamily, (float)dblSize, nWeight, (CBCGPTextFormat::BCGP_FONT_STYLE)m_nTextStyle);
+		CBCGPTextFormat tfNew(GetCharset(m_nLocaleIndex), strFamily, (float)dblSize, nWeight, (CBCGPTextFormat::BCGP_FONT_STYLE)m_nTextStyle, dblScale);
 
 		textFormat = tfNew;
 	}

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -16,7 +16,8 @@
 #include "BCGCBPro.h"
 
 #if (!defined _BCGPCALENDAR_STANDALONE) && !(defined _BCGPGRID_STANDALONE) && !(defined _BCGPEDIT_STANDALONE) && !(defined _BCGPCHART_STANDALONE)
-#include "bcgpaccessibility.h"
+	#include "BCGPGlobalUtils.h"
+	#include "bcgpaccessibility.h"
 #include <oleacc.h>
 
 /////////////////////////////////////////////////////////////////////////////
@@ -28,7 +29,21 @@ typedef enum BCGP_DOCK_TYPE
 	BCGP_DT_IMMEDIATE = 1,		// control bar torn off immediately and follows the mouse
 	BCGP_DT_STANDARD  = 2,		// user drags a frame
     BCGP_DT_SMART = 0x80		// smart docking style
-};
+}
+BCGP_DOCK_TYPE;
+
+// Themed scrollbars support:
+#define BCGP_THEMED_SCROLLBAR_DISABLE		0x0000
+#define BCGP_THEMED_SCROLLBAR_TREECTRL		0x0001
+#define BCGP_THEMED_SCROLLBAR_LISTCTRL		0x0002
+#define BCGP_THEMED_SCROLLBAR_FORMVIEW		0x0004
+#define BCGP_THEMED_SCROLLBAR_LISTBOX		0x0008
+#define BCGP_THEMED_SCROLLBAR_EDITBOX		0x0010
+#define BCGP_THEMED_SCROLLBAR_PRINT_PREVIEW	0x0020
+#define BCGP_THEMED_SCROLLBAR_SCROLLVIEW	0x0040
+#define BCGP_THEMED_SCROLLBAR_COMBOBOX		0x0080
+#define BCGP_THEMED_SCROLLBAR_MDICLIENT		0x0100
+#define BCGP_THEMED_SCROLLBAR_ALL			0xFFFF
 
 // autohide sliding modes
 static const UINT BCGP_AHSM_MOVE		= 1;
@@ -99,10 +114,14 @@ typedef struct _BCGPMARGINS {
 typedef HRESULT (__stdcall * BCGP_DWMEXTENDFRAMEINTOCLIENTAREA)(HWND hWnd, const BCGPMARGINS* pMargins);
 typedef HRESULT (__stdcall * BCGP_DWMDEFWINDOWPROC)(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *plResult);
 typedef HRESULT (__stdcall * BCGP_DWMISCOMPOSITIONENABLED)(BOOL* pfEnabled);
+typedef HRESULT (__stdcall * BCGP_DWMGETWINDOWATTRIBUTE)(HWND, DWORD, PVOID, DWORD);
 typedef HRESULT (__stdcall * BCGP_DWMSETWINDOWATTRIBUTE)(HWND, DWORD, LPCVOID, DWORD);
 typedef HRESULT (__stdcall * BCGP_DWMSETICONICTHUMBNAIL)(HWND, HBITMAP, DWORD);
 typedef HRESULT (__stdcall * BCGP_DWMSETICONICLIVEPRBMP)(HWND, HBITMAP, POINT *, DWORD);
 typedef HRESULT (__stdcall * BCGP_DWMINVALIDATEICONICBITMAPS)(HWND);
+
+BCGCBPRODLLEXPORT BOOL BCGCBProDwmExtendFrameIntoClientArea(HWND hWnd, BCGPMARGINS* pMargins);
+BCGCBPRODLLEXPORT BOOL BCGCBProDwmIsCompositionEnabled();
 
 typedef int (WINAPI *BCGPDTT_CALLBACK_PROC)
 (
@@ -150,10 +169,24 @@ BCGP_TBPFLAG;
 
 typedef BOOL (__stdcall * BCGP_CHANGEWINDOWMESSAGEFILTER)(UINT, DWORD);
 
+typedef struct tagBCGPCOMBOBOXINFO
+{
+    DWORD cbSize;
+    RECT  rcItem;
+    RECT  rcButton;
+    DWORD stateButton;
+    HWND  hwndCombo;
+    HWND  hwndItem;
+    HWND  hwndList;
+} BCGP_COMBOBOXINFO;
+
+typedef BOOL (WINAPI * BCGP_GETCOMBOBOXINFO)(HWND hwndCombo, BCGP_COMBOBOXINFO*);
+
 struct BCGCBPRODLLEXPORT BCGPGLOBAL_DATA
 {
 	friend class CBCGPMemDC;
 	friend class CBCGPGraphicsManagerD2D;
+	friend class CBCGPAnimationManager;
 
 	BOOL	m_bUseSystemFont;	// Use system font for menu/toolbar/ribbons
 
@@ -234,6 +267,7 @@ struct BCGCBPRODLLEXPORT BCGPGLOBAL_DATA
 	// Toolbar and menu fonts:
 	CFont				fontRegular;
 	CFont				fontCaption;
+	CFont				fontHeader;
 	CFont				fontTooltip;
 	CFont				fontBold;
 	CFont				fontDefaultGUIBold;
@@ -243,8 +277,10 @@ struct BCGCBPRODLLEXPORT BCGPGLOBAL_DATA
 	CFont				fontVertCaption;
 	CFont				fontSmall;
 	CFont				fontGroup;
+	CFont				fontGroupBold;
 
 	CFont				fontMarlett;	// Standard Windows menu symbols
+	CFont				fontWingdings;
 						
 	BOOL				bIsWindowsNT4;
 	BOOL				bIsWindows9x;
@@ -289,8 +325,11 @@ struct BCGCBPRODLLEXPORT BCGPGLOBAL_DATA
 	BOOL				m_bSysUnderlineKeyboardShortcuts;
 
 	BOOL				m_bShowTooltipsOnRibbonFloaty;
+	BOOL				m_bAutoTrimRibbonLabels;
 
 	BOOL				m_bShowFrameLayeredShadows;
+
+	UINT				m_nThemedScrollBars;	// default is BCGP_THEMED_SCROLLBAR_ALL
 
 // Implementation
 	BCGPGLOBAL_DATA();
@@ -403,6 +442,7 @@ struct BCGCBPRODLLEXPORT BCGPGLOBAL_DATA
 	BOOL DwmExtendFrameIntoClientArea (HWND hWnd, BCGPMARGINS* pMargins);
 	LRESULT DwmDefWindowProc (HWND hWnd, UINT message, WPARAM wp, LPARAM lp);
 	BOOL DwmIsCompositionEnabled ();
+	BOOL DwmGetWindowAttribute(HWND hwnd, DWORD dwAttribute, PVOID pvAttribute, DWORD cbAttribute);
 	BOOL DwmSetWindowAttribute(HWND hwnd, DWORD dwAttribute, LPCVOID pvAttribute, DWORD cbAttribute);
 	BOOL DwmSetIconicThumbnail(HWND hwnd, HBITMAP hbmp, DWORD dwSITFlags);
 	BOOL DwmSetIconicLivePreviewBitmap(HWND hwnd, HBITMAP hbmp, POINT *pptClient, DWORD dwSITFlags);
@@ -436,6 +476,7 @@ struct BCGCBPRODLLEXPORT BCGPGLOBAL_DATA
 	BOOL TaskBar_SetOverlayIcon(HWND hwnd, HICON hIcon, LPCTSTR lpcszDescr);
 
 	BOOL ChangeWindowMessageFilter(UINT message, DWORD dwFlag);
+	BOOL GetComboBoxInfo(HWND hwndCombo, BCGP_COMBOBOXINFO* pInfo);
 
 	// Windows NLS wrappers:
 	const CStringList& GetLocaleList() const;
@@ -488,6 +529,7 @@ protected:
 	BCGP_DWMEXTENDFRAMEINTOCLIENTAREA	m_pfDwmExtendFrameIntoClientArea;
 	BCGP_DWMDEFWINDOWPROC				m_pfDwmDefWindowProc;
 	BCGP_DWMISCOMPOSITIONENABLED		m_pfDwmIsCompositionEnabled;
+	BCGP_DWMGETWINDOWATTRIBUTE			m_pfDwmGetWindowAttribute;
 	BCGP_DWMSETWINDOWATTRIBUTE			m_pfDwmSetWindowAttribute;
 	BCGP_DWMSETICONICTHUMBNAIL			m_pfDwmSetIconicThumbnail;
 	BCGP_DWMSETICONICLIVEPRBMP			m_pfDwmSetIconicLivePreviewBitmap;
@@ -495,6 +537,7 @@ protected:
 	BCGP_CHANGEWINDOWMESSAGEFILTER		m_pfChangeWindowMessageFilter;
 	BCGP_SETWINDOWTHEME					m_pfSetWindowTheme;
 	BCGP_GETTHEMEBITMAP					m_pfGetThemeBitmap;
+	BCGP_GETCOMBOBOXINFO				m_pfGetComboBoxInfo;
 
 	DWORD								m_dwComCtlVersion;
 	int									m_nShellAutohideBars;
@@ -523,6 +566,8 @@ extern BCGCBPRODLLEXPORT BCGPGLOBAL_DATA globalData;
 #define CY_GRIPPER  3
 #define CX_BORDER_GRIPPER 2
 #define CY_BORDER_GRIPPER 2
+
+BCGCBPRODLLEXPORT extern UINT BCGM_ONSETRIBBONIMAGESCALE;
 
 /////////////////////////////////////////////////////////////////////////////
 

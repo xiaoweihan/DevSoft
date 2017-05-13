@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,12 +27,12 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
-#define DEFAULT_WIDTH_OF_LUMINANCE_BAR	20
-#define DEFAULT_OFFSET_OF_LUMINANCE_BAR	5
+#define DEFAULT_WIDTH_OF_LUMINANCE_BAR	globalUtils.ScaleByDPI(20)
+#define DEFAULT_OFFSET_OF_LUMINANCE_BAR	globalUtils.ScaleByDPI(5)
+#define PICKER_CURSOR_SIZE				globalUtils.ScaleByDPI(19)
+#define PICKER_CURSOR_SIZEH				globalUtils.ScaleByDPI(9)
+#define LUM_CURSOR_SIZE					globalUtils.ScaleByDPI(9)
 #define DEFAULT_LUMINANCE				0.50f
-#define PICKER_CURSOR_SIZE				19
-#define PICKER_CURSOR_SIZEH				9
-#define LUM_CURSOR_SIZE					9
 
 // Hex
 #define NUM_LEVELS			7
@@ -224,6 +224,8 @@ CBCGPColorPickerCtrl::CBCGPColorPickerCtrl()
 	
 	m_dblLum = 0.500;
 	m_pPalette = NULL;
+
+	m_bVisualManagerStyle = FALSE;
 }
 
 CBCGPColorPickerCtrl::~CBCGPColorPickerCtrl()
@@ -251,6 +253,7 @@ BEGIN_MESSAGE_MAP(CBCGPColorPickerCtrl, CButton)
 	ON_WM_CANCELMODE()
 	ON_WM_LBUTTONDBLCLK()
 	//}}AFX_MSG_MAP
+	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
 END_MESSAGE_MAP()
 
 
@@ -384,7 +387,7 @@ void CBCGPColorPickerCtrl::CreateHexagon ()
 	CRect rectClient;
 	GetClientRect (rectClient);
 
-	// Normalize to squere:
+	// Normalize to square:
 	if (rectClient.Height () < rectClient.Width ())
 	{
 		rectClient.DeflateRect ((rectClient.Width () - rectClient.Height ()) / 2, 0);
@@ -535,10 +538,13 @@ void CBCGPColorPickerCtrl::DrawCursor (CDC* pDC, const CRect& rect)
 	{
 		COLORREF colorFocus = (GetFocus() == this) ? colorBlack : colorWhite;
 		
-		pDC->FillSolidRect((rect.left + nHalfSize) - 1, rect.top, 3, 5, colorFocus);		// Top
-		pDC->FillSolidRect((rect.left + nHalfSize) - 1, rect.bottom - 5, 3, 5, colorFocus);	// Bottom
-		pDC->FillSolidRect(rect.left, (rect.top + nHalfSize) - 1, 5, 3, colorFocus);		// Left
-		pDC->FillSolidRect(rect.right - 5, (rect.top + nHalfSize) - 1, 5, 3, colorFocus);	// Right
+		int nWidth = 3;
+		int nHeight = 5;
+		
+		pDC->FillSolidRect((rect.left + nHalfSize) - 1, rect.top, nWidth, nHeight, colorFocus);				// Top
+		pDC->FillSolidRect((rect.left + nHalfSize) - 1, rect.bottom - nHeight, nWidth, nHeight, colorFocus);// Bottom
+		pDC->FillSolidRect(rect.left, (rect.top + nHalfSize) - 1, nHeight, nWidth, colorFocus);				// Left
+		pDC->FillSolidRect(rect.right - 5, (rect.top + nHalfSize) - 1, nHeight, nWidth, colorFocus);		// Right
 	}
 	else if (m_COLORTYPE == PICKERH)
 	{
@@ -585,10 +591,10 @@ void CBCGPColorPickerCtrl::DrawCursor (CDC* pDC, const CRect& rect)
 		pt[2].x = rect.right - 1;
 		pt[2].y = rect.bottom - 1;
 		
-		CPen pen (PS_SOLID, 1, globalData.clrBtnText);
+		COLORREF clrLine = m_bVisualManagerStyle ? globalData.clrBarText : globalData.clrBtnText;
+		CPen pen (PS_SOLID, 1, clrLine);
 
-		CBrush br (GetFocus() == this ? 
-			globalData.clrBtnText : globalData.clrBtnShadow);
+		CBrush br (GetFocus() == this ? clrLine : (m_bVisualManagerStyle ? globalData.clrBarShadow : globalData.clrBtnShadow));
 		
 		CBrush* poldBrush = pDC->SelectObject (&br);
 		CPen* poldPen = pDC->SelectObject(&pen);
@@ -1119,8 +1125,8 @@ void CBCGPColorPickerCtrl::DrawItem (LPDRAWITEMSTRUCT lpDIS)
 			pDC->SetTextColor (clrText);	// Text color was changed by FillSolidRect
 
 			// Draw frame
-			pDC->Draw3dRect (rectClient,
-				globalData.clrBtnDkShadow, globalData.clrBtnDkShadow);
+			COLORREF clrFrame = m_bVisualManagerStyle ? globalData.clrBarDkShadow : globalData.clrBtnDkShadow;
+			pDC->Draw3dRect (rectClient, clrFrame, clrFrame);
 		}
 		break;
 
@@ -1128,7 +1134,16 @@ void CBCGPColorPickerCtrl::DrawItem (LPDRAWITEMSTRUCT lpDIS)
 	case PICKERH:
 		DrawPicker(pDC);
 		DrawCursor (pDC, GetCursorRect ());
-		pDC->Draw3dRect (rectClient, globalData.clrBtnDkShadow, globalData.clrBtnHilite);
+
+		if (m_bVisualManagerStyle)
+		{
+			pDC->Draw3dRect (rectClient, globalData.clrBarShadow, globalData.clrBarLight);
+		}
+		else
+		{
+			pDC->Draw3dRect (rectClient, globalData.clrBtnDkShadow, globalData.clrBtnLight);
+		}
+
 		break;
 
 	case LUMINANCE:
@@ -1221,8 +1236,7 @@ CPoint CBCGPColorPickerCtrl::GetCursorPos ()
 	switch (m_COLORTYPE)
 	{
 	case LUMINANCE:
-		point =  CPoint (rectClient.left + m_nLumBarWidth + 6, 
-						PointFromLum (m_dblLum));
+		point =  CPoint (rectClient.left + m_nLumBarWidth + globalUtils.ScaleByDPI(6), PointFromLum (m_dblLum));
 		break;
 
 	case PICKER:
@@ -1315,4 +1329,10 @@ void CBCGPColorPickerCtrl::OnLButtonDblClk(UINT nFlags, CPoint point)
 	}
 	
 	CButton::OnLButtonDblClk(nFlags, point);
+}
+
+LRESULT CBCGPColorPickerCtrl::OnBCGSetControlVMMode (WPARAM wp, LPARAM)
+{
+	m_bVisualManagerStyle = (BOOL) wp;
+	return 0;
 }

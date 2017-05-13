@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -708,19 +708,21 @@ void CBCGPVisualManagerVS2005::OnDrawSeparator (CDC* pDC, CBCGPBaseControlBar* p
 										 CRect rect, BOOL bHorz)
 {
 	CBCGPToolBar* pToolBar = DYNAMIC_DOWNCAST (CBCGPToolBar, pBar);
-	if (pToolBar != NULL)
+	if (pToolBar != NULL && DYNAMIC_DOWNCAST(CBCGPPopupMenuBar, pBar) == NULL)
 	{
 		ASSERT_VALID (pToolBar);
 
 		if (bHorz)
 		{
-			const int nDelta = max (0, (pToolBar->GetButtonSize ().cy - pToolBar->GetImageSize ().cy) / 2);
-			rect.top += nDelta;
+			int nHeight = rect.Height () / 5;
+			rect.top    += nHeight;
+			rect.bottom -= nHeight;
 		}
 		else
 		{
-			const int nDelta = max (0, (pToolBar->GetButtonSize ().cx - pToolBar->GetImageSize ().cx) / 2);
-			rect.left += nDelta;
+			int nWidth = rect.Width () / 5;
+			rect.left  += nWidth;
+			rect.right -= nWidth;
 		}
 	}
 

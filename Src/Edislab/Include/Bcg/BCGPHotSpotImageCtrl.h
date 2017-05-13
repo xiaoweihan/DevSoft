@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,10 @@
 
 #include "BCGCBPro.h"
 #include "BCGPScrollBar.h"
+
+#if (!defined _BCGSUITE_) && (!defined _BCGSUITE_INC_)
+	#include "BCGPToolBarImages.h"
+#endif
 
 #ifndef BCGP_EXCLUDE_HOT_SPOT_IMAGE
 
@@ -47,9 +51,21 @@ public:
 
 	virtual void Serialize(CArchive& ar);
 
+	const CString& GetToolTip() const
+	{
+		return m_strToolTip;
+	}
+
+	const CString& GetToolTipDescription() const
+	{
+		return m_strToolTipDescription;
+	}
+
 protected:
 	CRect			m_rect;
 	const UINT		m_nID;
+	CString			m_strToolTip;
+	CString			m_strToolTipDescription;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -59,7 +75,7 @@ class BCGCBPRODLLEXPORT CBCGPHotSpotImageCtrl : public CButton
 {
 // Construction
 public:
-	CBCGPHotSpotImageCtrl();
+	CBCGPHotSpotImageCtrl(BOOL bDPIAutoScale = FALSE);
 
 // Attributes
 public:
@@ -94,11 +110,11 @@ public:
 	}
 
 protected:
-	HBITMAP			m_hbmpImage;
-	HBITMAP			m_hbmpHot;
-	BOOL			m_bAutoDestroyImage;
-	CSize			m_sizeImage;
-	COLORREF		m_clrBack;
+	CBCGPToolBarImages	m_Image;
+	CBCGPToolBarImages	m_ImageHot;
+	BOOL				m_bDPIAutoScale;
+	CSize				m_sizeImage;
+	COLORREF			m_clrBack;
 
 	CList<CBCGPHotSpot*, CBCGPHotSpot*>	m_lstHotSpots;
 
@@ -124,12 +140,18 @@ protected:
 
 	CRect			m_rectView;
 
+	CToolTipCtrl*	m_pToolTip;
+	BOOL			m_bRebuildTooltips;
+	BOOL			m_bKeepHotSpotsOnCleanup;
+
 // Operations
 public:
-	BOOL SetImage (UINT uiImageResID, UINT uiHotImageResID = 0);
-	BOOL SetImage (HBITMAP hbmpImage, HBITMAP hbmpImageHot = NULL, BOOL bAutoDestroy = FALSE);
+	BOOL SetImage (UINT uiImageResID, UINT uiHotImageResID = 0, BOOL bKeepHotSpots = FALSE);
+	BOOL SetImage (HBITMAP hbmpImage, HBITMAP hbmpImageHot = NULL, BOOL bAutoDestroy = FALSE, BOOL bKeepHotSpots = FALSE);
 
-	BOOL AddHotSpot (UINT nID, CRect rect);
+	BOOL AddHotSpot (UINT nID, CRect rect, LPCTSTR lpszToolTip = NULL, LPCTSTR lpszToolTipDescription = NULL);
+
+	void SetHotSpotToolTip(UINT nID, LPCTSTR lpszToolTip, LPCTSTR lpszToolTipDescription = NULL);
 
 	void SetHighlightHotArea (int nPercentage, int nTolerance = 0);
 	void EnableScrollBars (BOOL bEnable = TRUE);
@@ -141,6 +163,7 @@ public:
 	virtual BOOL Create(const RECT& rect, CWnd* pParentWnd, UINT nID);
 	virtual void DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct);
 	virtual CScrollBar* GetScrollBarCtrl(int nBar) const;
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	protected:
 	virtual void PreSubclassWindow();
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
@@ -153,7 +176,7 @@ public:
 
 	virtual BOOL HasHotImage () const
 	{
-		return m_hbmpHot != NULL;
+		return m_ImageHot.GetCount() > 0;
 	}
 
 	virtual CBCGPHotSpot* FindHotSpot (UINT uiID) const;
@@ -178,6 +201,9 @@ protected:
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	//}}AFX_MSG
 	afx_msg LRESULT OnStyleChanging (WPARAM,LPARAM);
+	afx_msg LRESULT OnChangeVisualManager(WPARAM, LPARAM);
+	afx_msg LRESULT OnBCGUpdateToolTips (WPARAM, LPARAM);
+	afx_msg BOOL OnTTNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult);
 	DECLARE_MESSAGE_MAP()
 
 	void UpdateScrollBars ();
@@ -188,6 +214,8 @@ protected:
 
 	CPoint GetDeviceScrollPosition() const;
 	void RedrawRect (CRect rect);
+
+	void RebuildToolTips();
 };
 
 #endif // BCGP_EXCLUDE_HOT_SPOT_IMAGE

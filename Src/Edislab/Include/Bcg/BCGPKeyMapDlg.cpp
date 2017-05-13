@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -14,6 +14,7 @@
 //
 
 #include "stdafx.h"
+#include "multimon.h"
 
 #include "BCGCBPro.h"
 #include "BCGPKeyMapDlg.h"
@@ -212,6 +213,7 @@ BOOL CBCGPKeyMapDlg::OnInitDialog()
 		{
 			m_ButtonPrint.SetImage (globalData.Is32BitIcons () ? 
 				IDB_BCGBARRES_PRINT32 : IDB_BCGBARRES_PRINT, NULL);
+			m_ButtonPrint.SetImageAutoScale();
 			m_ButtonPrint.GetWindowText (strTT);
 			m_ButtonPrint.SetWindowText (_T(""));
 			m_ButtonPrint.SetTooltip (strTT);
@@ -225,6 +227,7 @@ BOOL CBCGPKeyMapDlg::OnInitDialog()
 
 		m_ButtonCopy.SetImage (globalData.Is32BitIcons () ?
 			IDB_BCGBARRES_COPY32 : IDB_BCGBARRES_COPY, NULL);
+		m_ButtonCopy.SetImageAutoScale();
 		m_ButtonCopy.GetWindowText (strTT);
 		m_ButtonCopy.SetWindowText (_T(""));
 		m_ButtonCopy.SetTooltip (strTT);
@@ -256,7 +259,7 @@ BOOL CBCGPKeyMapDlg::OnInitDialog()
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CBCGPMultiDocTemplate objects with
+			// We are interesting in CBCGPMultiDocTemplate objects with
 			// the shared menu only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
@@ -337,7 +340,25 @@ BOOL CBCGPKeyMapDlg::OnInitDialog()
 		if (reg.Open (GetWorkspace ()->GetRegSectionPath (strWindowPlacementRegSection)) &&
 			reg.Read (strRectKey, rectPosition))
 		{
-			MoveWindow (rectPosition);
+			CRect rectDesktop;
+			
+			MONITORINFO mi;
+			mi.cbSize = sizeof (MONITORINFO);
+			if (GetMonitorInfo (MonitorFromPoint (rectPosition.TopLeft (), 
+				MONITOR_DEFAULTTONEAREST), &mi))
+			{
+				rectDesktop = mi.rcWork;
+			}
+			else
+			{
+				::SystemParametersInfo (SPI_GETWORKAREA, 0, &rectDesktop, 0);
+			}
+			
+			CRect rectInter;
+			if (rectInter.IntersectRect (&rectDesktop, &rectPosition))
+			{
+				MoveWindow (rectPosition);
+			}
 		}
 	}
 

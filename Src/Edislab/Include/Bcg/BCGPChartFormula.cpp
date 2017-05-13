@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,6 +28,7 @@ IMPLEMENT_DYNCREATE(CBCGPChartMACDFormula, CBCGPChartAdvancedFormula)
 IMPLEMENT_DYNCREATE(CBCGPChartTransitionFormula, CBCGPChartBaseFormula)
 IMPLEMENT_DYNCREATE(CBCGPChartTrendFormula, CBCGPChartBaseFormula)
 IMPLEMENT_DYNCREATE(CBCGPChartVirtualFormula, CBCGPChartTrendFormula)
+IMPLEMENT_DYNCREATE(CBCGPChartErrorBarsFormula, CBCGPChartBaseFormula)
 
 static BOOL CreatePolynomial(const double* X, const double* Y, int count, int order, CBCGPMatrix& matrix, CBCGPVector& vector)
 {
@@ -1183,7 +1184,7 @@ CBCGPChartDataPoint* CBCGPChartTransitionFormula::CalculateDataPoint(const CArra
 		CBCGPChartValue valY = data[i].GetValue(CBCGPChartData::CI_Y);
 
 		CBCGPChartSeries::TreatNulls tn = CBCGPChartSeries::TN_VALUE;
-		CBCGPChartSeries* pSeries = GetInputSeriesAt(i);		
+		CBCGPChartSeries* pSeries = GetInputSeriesAt(i);
 
 		if (pSeries != NULL)
 		{
@@ -1355,7 +1356,7 @@ void CBCGPChartTrendFormula::SetInputSeries(CBCGPChartSeries* pSeries)
 	{
 		ASSERT_VALID(pSeries);
 
-		m_arInputSeries.Add(pSeries)	;
+		m_arInputSeries.Add(pSeries);
 	}
 }
 //*******************************************************************************
@@ -1771,6 +1772,12 @@ void CBCGPChartTrendFormula::GeneratePoints()
 
 		m_pParentSeries->SetMinMaxValues(YVal, CBCGPChartData::CI_Y, 0);
 
+		if (!YVal.IsEmpty() && m_pParentSeries->IsAnimated() && m_pParentSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Grow)
+		{
+			double dblAnimationRatio = m_pParentSeries->GetAnimatedValue();
+			YVal.SetValue(dblAnimationRatio * YVal.GetValue());
+		}
+
 		CBCGPChartData dataMax(dblMaxValue, YVal);
 		pt = pSeries != NULL ? pSeries->ScreenPointFromChartData(dataMax, 0) : m_pParentSeries->ScreenPointFromChartData(dataMax, 0);
 
@@ -1798,6 +1805,12 @@ void CBCGPChartTrendFormula::GeneratePoints()
 
 			if (!YVal.IsEmpty())
 			{
+				if (m_pParentSeries->IsAnimated() && m_pParentSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Grow)
+				{
+					double dblAnimationRatio = m_pParentSeries->GetAnimatedValue();
+					YVal.SetValue(dblAnimationRatio * YVal.GetValue());
+				}
+
 				CBCGPChartData data(dblXVal, YVal);
 
 				CBCGPPoint pt = pSeries != NULL ? pSeries->ScreenPointFromChartData(data, 0) : 
@@ -2247,3 +2260,446 @@ CBCGPChartValue CBCGPChartVirtualFormula::CalculateYValue(double dblXVal)
 
 	return CBCGPChartValue();
 }
+
+//*******************************************************************************
+// CBCGPChartErrorBarsFormula
+//*******************************************************************************
+CBCGPChartErrorBarsFormula::CBCGPChartErrorBarsFormula()
+	: m_Type   (EBT_STD_S)
+	, m_Fixed  (1.0)
+	, m_Percent(5.0)
+	, m_Count  (0)
+	, m_Sum    (0.0)
+	, m_SumAE  (0.0)
+	, m_SumSE  (0.0)
+	, m_pfnErrorBarsCallback(NULL)
+	, m_IgnoreZeroValues(FALSE)
+{
+	m_lParam = (LPARAM)0;
+}
+//*******************************************************************************
+CBCGPChartErrorBarsFormula::CBCGPChartErrorBarsFormula(ErrorBarsType type, LPARAM lParam, BCGPCHART_ERRORBARS_CALLBACK pCallback)
+	: m_Fixed  (1.0)
+	, m_Percent(5.0)
+	, m_Count  (0)
+	, m_Sum    (0.0)
+	, m_SumAE  (0.0)
+	, m_SumSE  (0.0)
+	, m_IgnoreZeroValues(FALSE)
+{
+	SetErrorBarsType(type, lParam, pCallback);
+}
+//*******************************************************************************
+CBCGPChartErrorBarsFormula::CBCGPChartErrorBarsFormula(const CBCGPChartErrorBarsFormula& src)
+	: m_Count  (0)
+	, m_Sum    (0.0)
+	, m_SumAE  (0.0)
+	, m_SumSE  (0.0)
+{
+	m_Fixed = src.m_Fixed;
+	m_Percent = src.m_Percent;
+	m_IgnoreZeroValues = src.m_IgnoreZeroValues;
+	SetErrorBarsType(src.m_Type, src.m_lParam, src.m_pfnErrorBarsCallback);
+}
+//*******************************************************************************
+void CBCGPChartErrorBarsFormula::SetInputSeries(CBCGPChartSeries* pSeries)
+{
+	ASSERT_VALID(this);
+
+	m_arInputSeries.RemoveAll();
+
+	if (pSeries != NULL)
+	{
+		ASSERT_VALID(pSeries);
+
+		m_arInputSeries.Add(pSeries);
+	}
+}
+//*******************************************************************************
+void CBCGPChartErrorBarsFormula::SetErrorBarsType(ErrorBarsType type, LPARAM lParam, BCGPCHART_ERRORBARS_CALLBACK pCallback)
+{
+	ASSERT_VALID(this);
+
+	m_Type = type;
+	m_lParam = lParam;
+	m_pfnErrorBarsCallback = pCallback;
+
+	GeneratePoints();
+
+	if (m_pParentSeries != NULL && m_pParentSeries->GetChartCtrl() != 0)
+	{
+		m_pParentSeries->GetChartCtrl()->SetDirty(TRUE, TRUE);
+	}
+}
+//*******************************************************************************
+void CBCGPChartErrorBarsFormula::SetFixedValue(double value)
+{
+	if (m_Fixed == value)
+	{
+		return;
+	}
+
+	m_Fixed = value;
+
+	if (m_Type != EBT_FIXED)
+	{
+		return;
+	}
+
+	GeneratePoints();
+
+	if (m_pParentSeries != NULL && m_pParentSeries->GetChartCtrl() != 0)
+	{
+		m_pParentSeries->GetChartCtrl()->SetDirty(TRUE, TRUE);
+	}
+}
+//*******************************************************************************
+void CBCGPChartErrorBarsFormula::SetPercentValue(double value)
+{
+	if (m_Percent == value)
+	{
+		return;
+	}
+
+	m_Percent = value;
+
+	if (m_Type != EBT_PERCENT)
+	{
+		return;
+	}
+
+	GeneratePoints();
+
+	if (m_pParentSeries != NULL && m_pParentSeries->GetChartCtrl() != 0)
+	{
+		m_pParentSeries->GetChartCtrl()->SetDirty(TRUE, TRUE);
+	}
+}
+//*******************************************************************************
+void CBCGPChartErrorBarsFormula::GeneratePoints()
+{
+	ASSERT_VALID(this);
+
+	m_Count = 0;
+	m_Sum   = 0.0;
+	m_SumAE = 0.0;
+	m_SumSE = 0.0;
+
+	CBCGPChartErrorBarsSeries* pParentSeries = DYNAMIC_DOWNCAST(CBCGPChartErrorBarsSeries, GetParentSeries());
+	if (pParentSeries == NULL)
+	{
+		return;
+	}
+
+	ASSERT_VALID(pParentSeries);
+
+	pParentSeries->RemoveAllDataPoints();
+
+	CBCGPChartSeries* pSeries = GetInputSeriesAt(0);
+	if (pSeries == NULL)
+	{
+		return;
+	}
+
+	ASSERT_VALID(pSeries);
+
+	CBCGPChartVisualObject* pChart = pSeries->GetChartCtrl();
+	if (pChart == NULL)
+	{
+		return;
+	}
+
+	ASSERT_VALID(pChart);
+
+	CBCGPChartSeries::TreatNulls tn = pSeries->GetTreatNulls();
+
+	const int nCount = pSeries->GetDataPointCount();
+	double dMean = 0.0;
+
+	BOOL bIsBarChart = pSeries->GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl)) ||
+						pSeries->GetChartImpl()->IsKindOf(RUNTIME_CLASS(CBCGPBoxPlotChartImpl));
+
+	CArray<double, double> arValues;
+
+	int i = 0;
+	if (pSeries->GetChartType() == BCGP_CT_STACKED || pSeries->GetChartType() == BCGP_CT_100STACKED)
+	{
+		for (i = 0; i < nCount; i++)
+		{
+			CBCGPChartData data = pSeries->GetDataPointData(i);
+			CBCGPChartValue valY = data.GetValue(CBCGPChartData::CI_Y);
+			if (valY.IsEmpty() && tn != CBCGPChartSeries::TN_VALUE)
+			{
+				continue;
+			}
+
+			double currentVal = valY.GetValue();
+
+			if (pSeries->GetChartType() == BCGP_CT_STACKED)
+			{
+				if (arValues.GetSize() == 0)
+				{
+					arValues.SetSize(nCount);
+				}
+
+				double dblStackedSum = 0;
+				double dblPositiveStackedSum = 0;
+				double dblNegativeStackedSum = 0;
+
+				pSeries->CalcStackedSums(i, dblStackedSum, dblPositiveStackedSum, dblNegativeStackedSum, FALSE);
+
+				if (bIsBarChart)
+				{
+					if (currentVal < 0)
+					{
+						currentVal += dblNegativeStackedSum;
+					}
+					else
+					{
+						currentVal += dblPositiveStackedSum;
+					}
+				}
+				else
+				{
+					currentVal += dblStackedSum;
+				}
+			}
+			else if (pSeries->GetChartType() == BCGP_CT_100STACKED)
+			{
+				if (arValues.GetSize() == 0)
+				{
+					arValues.SetSize(nCount);
+				}
+
+				double dblStackedSum = 0;
+				double dblPositiveStackedSum = 0;
+				double dblNegativeStackedSum = 0;
+				double dblTotalSum = 0;
+
+				pSeries->CalcFullStackedSums(i, dblStackedSum, dblPositiveStackedSum, dblNegativeStackedSum, dblTotalSum, FALSE);
+
+				if (fabs(dblTotalSum) > 0.)
+				{
+					if (bIsBarChart)
+					{
+						currentVal = currentVal < 0. ? (dblNegativeStackedSum + currentVal) * 100. / fabs(dblTotalSum) :
+														(dblPositiveStackedSum + currentVal) * 100. / dblTotalSum;
+					}
+					else
+					{
+						currentVal = (dblStackedSum + currentVal) * 100. / dblTotalSum;
+					}
+				}
+				else
+				{
+					currentVal = 0;
+				}
+			}
+
+			if (arValues.GetSize() > 0)
+			{
+				arValues[i] = currentVal;
+			}
+		}
+	}
+
+	if (EBT_SEM_SE <= m_Type && m_Type <= EBT_STD_P)
+	{
+		for (i = 0; i < nCount; i++)
+		{
+			CBCGPChartData data = pSeries->GetDataPointData(i);
+			CBCGPChartValue valY = data.GetValue(CBCGPChartData::CI_Y);
+			if (valY.IsEmpty() && tn != CBCGPChartSeries::TN_VALUE)
+			{
+				continue;
+			}
+
+			m_Sum += arValues.GetSize() > 0 ? arValues[i] : valY.GetValue();
+			m_Count++;
+		}
+
+		if (m_Count < 2)
+		{
+			return;
+		}
+
+		dMean = GetMean();
+
+		for (i = 0; i < nCount; i++)
+		{
+			CBCGPChartData data = pSeries->GetDataPointData(i);
+			CBCGPChartValue valY = data.GetValue(CBCGPChartData::CI_Y);
+			if (valY.IsEmpty() && tn != CBCGPChartSeries::TN_VALUE)
+			{
+				continue;
+			}
+
+			double currentVal = arValues.GetSize() > 0 ? arValues[i] : valY.GetValue();
+
+			double dDiff = fabs(currentVal - dMean);
+			m_SumAE += dDiff;
+			m_SumSE += bcg_sqr(dDiff);
+		}
+	}
+
+	double dValue = DBL_MAX;
+	double dMinus = DBL_MAX;
+
+	switch(m_Type)
+	{
+	case EBT_SEM_SE:
+		dMinus = GetSEM_SE();
+		break;
+	case EBT_SEM_SD:
+		dMinus = GetSEM_SD();
+		break;
+	case EBT_STD_S:
+		dValue = dMean;
+		dMinus = GetSD_S();
+		break;
+	case EBT_STD_P:
+		dValue = dMean;
+		dMinus = GetSD_P();
+		break;
+	}
+
+	CBCGPChartDataPoint& errValue = ((CBCGPChartErrorBarsSeries*)pParentSeries)->GetErrorValue();
+
+	double dPlus = dMinus;
+	if (dValue != DBL_MAX)
+	{
+		errValue.SetComponentValue(dValue, CBCGPChartData::CI_Y);
+	}
+	else
+	{
+		errValue = CBCGPChartDataPoint();
+	}
+
+	CBCGPChartData dataPrev;
+
+	for (i = 0; i < nCount; i++)
+	{
+		CBCGPChartData data = pSeries->GetDataPointData(i);
+
+		CBCGPChartDataPoint* pDP = new CBCGPChartDataPoint();
+		CBCGPChartValue valX = data.GetValue(CBCGPChartData::CI_X);
+		if (!valX.IsEmpty())
+		{
+			pDP->SetComponentValue(valX, CBCGPChartData::CI_X);
+		}
+
+		BOOL bCalculated = TRUE;
+
+		if (!data.IsEmpty() || tn == CBCGPChartSeries::TN_VALUE)
+		{
+			if (m_Type == EBT_FIXED || m_Type == EBT_PERCENT || m_Type == EBT_DIFF || m_Type == EBT_CUSTOM)
+			{
+				dMinus = m_Type == EBT_FIXED ? m_Fixed : DBL_MAX;
+				dPlus = dMinus;
+
+				dValue = data.GetValue(CBCGPChartData::CI_Y);
+
+				if (m_Type == EBT_CUSTOM)
+				{
+					bCalculated = (*m_pfnErrorBarsCallback)(i, pSeries, m_lParam, dValue, dMinus, dPlus);
+				}
+				else if (m_Type == EBT_DIFF)
+				{
+					if (i > 0 && (!dataPrev.IsEmpty() || tn == CBCGPChartSeries::TN_VALUE))
+					{
+						dValue -= dataPrev.GetValue(CBCGPChartData::CI_Y);
+						if (dValue < 0.0)
+						{
+							dMinus = fabs(dValue);
+						}
+						else if (dValue > 0.0)
+						{
+							dPlus = dValue;
+						}
+					}
+				}
+				else if (m_Type == EBT_PERCENT)
+				{
+					dMinus = dValue * m_Percent / 100.0;
+					dPlus = dMinus;
+				}
+
+				if (bCalculated &&
+					pSeries->GetChartType() == BCGP_CT_100STACKED &&
+					(dMinus != DBL_MAX && dMinus != 0.0 ||
+					dPlus != DBL_MAX && dPlus != 0.0))
+				{
+					double dblStackedSum = 0;
+					double dblPositiveStackedSum = 0;
+					double dblNegativeStackedSum = 0;
+					double dblTotalSum = 0;
+
+					pSeries->CalcFullStackedSums(i, dblStackedSum, dblPositiveStackedSum, dblNegativeStackedSum, dblTotalSum, FALSE);
+
+					if (fabs(dblTotalSum) > 0.0)
+					{
+						if (dMinus != DBL_MAX && dMinus != 0.0)
+						{
+							dMinus = dMinus * 100.0 / dblTotalSum;
+						}
+						if (dPlus != DBL_MAX && dPlus != 0.0)
+						{
+							dPlus = dPlus * 100.0 / dblTotalSum;
+						}
+					}
+				}
+			}
+
+			if (bCalculated)
+			{
+				if (errValue.IsEmpty())
+				{
+					dValue = arValues.GetSize() > 0 ? arValues[i] : data.GetValue(CBCGPChartData::CI_Y);
+				}
+
+				if (dMinus != DBL_MAX && (dMinus != 0.0 || !m_IgnoreZeroValues))
+				{
+					pDP->SetComponentValue(dValue - dMinus, CBCGPChartData::CI_Y1);
+				}
+				if (dPlus != DBL_MAX && (dPlus != 0.0 || !m_IgnoreZeroValues))
+				{
+					pDP->SetComponentValue(dValue + dPlus, CBCGPChartData::CI_Y);
+				}
+			}
+		}
+
+		m_pParentSeries->AddDataPoint(pDP);
+
+		dataPrev = data;
+	}
+
+	pSeries->RecalcMinMaxValues();
+}
+//*******************************************************************************
+void CBCGPChartErrorBarsFormula::CopyFrom(const CBCGPChartBaseFormula& src)
+{
+	ASSERT_VALID(this);
+
+	CBCGPChartErrorBarsFormula* pSrcErr = DYNAMIC_DOWNCAST(CBCGPChartErrorBarsFormula, &src);
+
+	if (pSrcErr == NULL)
+	{
+		return;
+	}
+
+	ASSERT_VALID(pSrcErr);
+
+	CBCGPChartBaseFormula::CopyFrom(src);
+
+	m_Type    = pSrcErr->GetErrorBarsType();
+	m_IgnoreZeroValues = pSrcErr->m_IgnoreZeroValues;
+	m_Fixed   = pSrcErr->m_Fixed;
+	m_Percent = pSrcErr->m_Percent;
+	m_pfnErrorBarsCallback = pSrcErr->m_pfnErrorBarsCallback;
+
+	m_Count   = pSrcErr->m_Count;
+	m_Sum     = pSrcErr->m_Sum;
+	m_SumAE   = pSrcErr->m_SumAE;
+	m_SumSE   = pSrcErr->m_SumSE;
+}
+

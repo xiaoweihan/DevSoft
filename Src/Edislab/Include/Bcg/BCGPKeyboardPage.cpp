@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -23,6 +23,7 @@
 #include "BCGPKeyboardManager.h"
 #include "BCGPMultiDocTemplate.h"
 #include "BCGPToolBar.h"
+#include "BCGPMessageBox.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -33,10 +34,10 @@ static char THIS_FILE[] = __FILE__;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPKeyboardPage property page
 
-IMPLEMENT_DYNCREATE(CBCGPKeyboardPage, CPropertyPage)
+IMPLEMENT_DYNCREATE(CBCGPKeyboardPage, CBCGPPropertyPage)
 
 CBCGPKeyboardPage::CBCGPKeyboardPage (CFrameWnd* pParentFrame, BOOL bAutoSet) : 
-	CPropertyPage(CBCGPKeyboardPage::IDD),
+	CBCGPPropertyPage(CBCGPKeyboardPage::IDD),
 	m_pParentFrame (pParentFrame),
 	m_bAutoSet(bAutoSet)
 {
@@ -66,7 +67,7 @@ CBCGPKeyboardPage::~CBCGPKeyboardPage()
 //******************************************************************
 void CBCGPKeyboardPage::DoDataExchange(CDataExchange* pDX)
 {
-	CPropertyPage::DoDataExchange(pDX);
+	CBCGPPropertyPage::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPKeyboardPage)
 	DDX_Control(pDX, IDC_BCGBARRES_ASSIGNED_TO_TITLE, m_wndAssignedToTitle);
 	DDX_Control(pDX, IDC_BCGBARRES_NEW_SHORTCUT_KEY, m_wndNewKey);
@@ -83,7 +84,7 @@ void CBCGPKeyboardPage::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CBCGPKeyboardPage, CPropertyPage)
+BEGIN_MESSAGE_MAP(CBCGPKeyboardPage, CBCGPPropertyPage)
 	//{{AFX_MSG_MAP(CBCGPKeyboardPage)
 	ON_BN_CLICKED(IDC_BCGBARRES_ASSIGN, OnAssign)
 	ON_CBN_SELCHANGE(IDC_BCGBARRES_CATEGORY, OnSelchangeCategory)
@@ -101,7 +102,7 @@ END_MESSAGE_MAP()
 
 BOOL CBCGPKeyboardPage::OnInitDialog() 
 {
-	CPropertyPage::OnInitDialog();
+	CBCGPPropertyPage::OnInitDialog();
 
 	ASSERT (g_pKeyboardManager != NULL);
 
@@ -116,7 +117,7 @@ BOOL CBCGPKeyboardPage::OnInitDialog()
 	m_wndCategoryList.SetCurSel (0);
 
 	//-------------------------------------------------------------------
-	// Find all application document templates and fill menues combobox
+	// Find all application document templates and fill menus combobox
 	// by document template data:
 	//------------------------------------------------------------------
 	CDocManager* pDocManager = AfxGetApp ()->m_pDocManager;
@@ -133,7 +134,7 @@ BOOL CBCGPKeyboardPage::OnInitDialog()
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CBCGPMultiDocTemplate objects with
+			// We are interesting in CBCGPMultiDocTemplate objects with
 			// the shared menu only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
@@ -460,7 +461,7 @@ void CBCGPKeyboardPage::OnResetAll()
 		CString str;
 		str.LoadString (IDS_BCGBARRES_RESET_KEYBOARD);
 
-		if (MessageBox (str, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
+		if (BCGPShowMessageBox(IsVisualManagerStyle(), this, str, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
 		{
 			return;
 		}

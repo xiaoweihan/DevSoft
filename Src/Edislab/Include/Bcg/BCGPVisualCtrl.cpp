@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,8 @@
 #include "BCGPDrawManager.h"
 #include "BCGPMath.h"
 #include "BCGPGraphicsManagerGDI.h"
+#include "BCGPGridCtrl.h"
+#include "BCGPPopupWindow.h"
 
 #if (!defined _BCGSUITE_) && (!defined _BCGPCHART_STANDALONE)
 	#include "BCGPPopupMenu.h"
@@ -55,13 +57,16 @@ CBCGPBaseVisualCtrl::CBCGPBaseVisualCtrl()
 	m_bIsTooltip = FALSE;
 	m_bToolTipCleared = FALSE;
 	m_bTooltipTrackingMode = FALSE;
+	m_bUsePopupWindowInTrackingMode = FALSE;
 	m_pToolTip = NULL;
+	m_pInfoTip = NULL;
 
 	m_bIsFocused = FALSE;
 	m_nDlgCode = 0;
 
 	m_bIsPopup = FALSE;
 	m_nPopupAlpha = 255;
+	m_nPopupAlphaAnimated = (BYTE)-1;
 }
 
 CBCGPBaseVisualCtrl::~CBCGPBaseVisualCtrl()
@@ -96,6 +101,11 @@ BEGIN_MESSAGE_MAP(CBCGPBaseVisualCtrl, CStatic)
 	ON_WM_KEYUP()
 	ON_WM_NCDESTROY()
 	ON_WM_NCCREATE()
+	ON_WM_NCCALCSIZE()
+	ON_WM_NCLBUTTONDOWN()
+	ON_WM_NCLBUTTONUP()
+	ON_WM_NCPAINT()
+	ON_WM_NCHITTEST()
 	//}}AFX_MSG_MAP
 #if (!defined _BCGSUITE_) && (!defined _BCGPCHART_STANDALONE)
 	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
@@ -106,6 +116,7 @@ BEGIN_MESSAGE_MAP(CBCGPBaseVisualCtrl, CStatic)
 	ON_MESSAGE(WM_GESTURE, OnGestureEvent)
 	ON_MESSAGE(WM_TABLET_QUERYSYSTEMGESTURESTATUS, OnTabletQuerySystemGestureStatus)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
+	ON_MESSAGE(WM_PRINT, OnPrint)
 	ON_MESSAGE(WM_GETOBJECT, OnGetObject)
 END_MESSAGE_MAP()
 
@@ -115,6 +126,7 @@ END_MESSAGE_MAP()
 BOOL CBCGPBaseVisualCtrl::Create(const RECT& rect, CWnd* pParentWnd, UINT nID, DWORD dwStyle, CCreateContext* pContext)
 {
 	CString strClassName = globalData.RegisterWindowClass (_T("BCGPVisualCtrl"));
+	dwStyle |= (WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
 
 	return CWnd::Create (strClassName, _T (""),
 							dwStyle, 
@@ -337,6 +349,7 @@ int CBCGPBaseVisualCtrl::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig);
 	}
 
+	OnAfterCreateWnd();
 	return 0;
 }
 //***********************************************************************************************************
@@ -364,6 +377,12 @@ void CBCGPBaseVisualCtrl::PreSubclassWindow()
 	if (GetGestureConfig(gestureConfig))
 	{
 		bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig);
+	}
+
+	_AFX_THREAD_STATE* pThreadState = AfxGetThreadState ();
+	if (pThreadState->m_pWndInit == NULL)
+	{
+		OnAfterCreateWnd();
 	}
 }
 //***********************************************************************************************************
@@ -421,6 +440,9 @@ void CBCGPBaseVisualCtrl::EnableTooltip(BOOL bEnable, BOOL bTooltipTrackingMode)
 
 	if (m_bIsTooltip)
 	{
+		m_bUsePopupWindowInTrackingMode = FALSE;
+		DeleteInfoTip();
+
 		if (m_pToolTip->GetSafeHwnd() == NULL)
 		{
 			InitTooltip();
@@ -437,7 +459,24 @@ void CBCGPBaseVisualCtrl::EnableTooltip(BOOL bEnable, BOOL bTooltipTrackingMode)
 	}
 #endif
 }
-//***********************************************************************************************************
+
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+void CBCGPBaseVisualCtrl::EnableInfoTip(BOOL bEnable/* = TRUE*/, CBCGPInfoTipOptions* pOptions/* = NULL*/)
+{
+	if (!bEnable)
+	{
+		DeleteInfoTip();
+	}
+
+	m_bUsePopupWindowInTrackingMode = bEnable;
+
+	if (bEnable && pOptions != NULL)
+	{
+		m_InfoTipOptions = *pOptions;
+	}
+}
+#endif
+
 BOOL CBCGPBaseVisualCtrl::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message) 
 {
 	CPoint ptCursor;
@@ -471,7 +510,11 @@ BOOL CBCGPBaseVisualCtrl::PreTranslateMessage(MSG* pMsg)
 	case WM_NCLBUTTONUP:
 	case WM_NCRBUTTONUP:
 	case WM_NCMBUTTONUP:
+		DeleteInfoTip();
+		// Next case....
+
 	case WM_MOUSEMOVE:
+
 		if (m_pToolTip->GetSafeHwnd () != NULL)
 		{
 			m_pToolTip->RelayEvent(pMsg);
@@ -496,7 +539,21 @@ BOOL CBCGPBaseVisualCtrl::PreTranslateMessage(MSG* pMsg)
 #if !defined _BCGPCHART_STANDALONE
 				if (CBCGPPopupMenu::GetActiveMenu() != NULL && ::IsWindow (CBCGPPopupMenu::GetActiveMenu()->m_hWnd))
 				{
-					CBCGPPopupMenu::GetActiveMenu()->SendMessage (WM_CLOSE);
+					BOOL bIsParentMenu = FALSE;
+					
+					for (CWnd* pWndParent = GetParent(); pWndParent != NULL; pWndParent = pWndParent->GetParent())
+					{
+						if (pWndParent->GetSafeHwnd() == CBCGPPopupMenu::GetActiveMenu()->m_hWnd)
+						{
+							bIsParentMenu = TRUE;
+							break;
+						}
+					}
+
+					if (!bIsParentMenu)
+					{
+						CBCGPPopupMenu::GetActiveMenu()->SendMessage (WM_CLOSE);
+					}
 				}
 #endif
 				SetCapture();
@@ -537,23 +594,29 @@ BOOL CBCGPBaseVisualCtrl::PreTranslateMessage(MSG* pMsg)
 		break;
 	
 	case WM_MOUSEWHEEL:
+		if (CBCGPPopupMenu::GetActiveMenu() == NULL)
 		{
 			CPoint pt (BCG_GET_X_LPARAM(pMsg->lParam), BCG_GET_Y_LPARAM(pMsg->lParam));
 
 			CWnd* pWnd = CWnd::FromHandle (pMsg->hwnd);
-			if (pWnd != NULL)
-			{
-				pWnd->ScreenToClient(&pt);
-			}
 
-			if (OnMouseWheel(pt, HIWORD(pMsg->wParam)))
+			if (pWnd->GetSafeHwnd() == GetSafeHwnd())
 			{
-				if (m_pToolTip->GetSafeHwnd () != NULL)
+				if (pWnd != NULL)
 				{
-					m_pToolTip->Pop();
+					pWnd->ScreenToClient(&pt);
 				}
 
-				return TRUE;
+				if (OnMouseWheel(pt, HIWORD(pMsg->wParam)))
+				{
+					if (m_pToolTip->GetSafeHwnd () != NULL)
+					{
+						m_pToolTip->Pop();
+					}
+
+					DeleteInfoTip();
+					return TRUE;
+				}
 			}
 		}
 		break;
@@ -576,8 +639,10 @@ BOOL CBCGPBaseVisualCtrl::PreTranslateMessage(MSG* pMsg)
 				::BCGPTrackMouse (&trackmouseevent);	
 			}
 
-			if (m_pToolTip->GetSafeHwnd () != NULL)
+			if (m_pToolTip->GetSafeHwnd () != NULL || m_bUsePopupWindowInTrackingMode)
 			{
+				const int nDelta = 20;
+
 				CString strToolTip;
 				CString strDescr;
 
@@ -585,20 +650,154 @@ BOOL CBCGPBaseVisualCtrl::PreTranslateMessage(MSG* pMsg)
 
 				if (strToolTip != m_strLastDisplayedToolTip || strDescr != m_strLastDisplayedToolTipDescr)
 				{
-					if (m_bTooltipTrackingMode)
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+					if (m_bUsePopupWindowInTrackingMode)
 					{
-						m_pToolTip->Update();
+						if (!strToolTip.IsEmpty())
+						{
+							CPoint ptScreen = pt;
+							ClientToScreen(&ptScreen);
+							ptScreen.x += nDelta;
+							ptScreen.y += nDelta;
+							
+							CString strText = strToolTip;
+							
+							if (!strDescr.IsEmpty())
+							{
+								strText += _T("\r\n\r\n");
+								strText += strDescr;
+							}
+
+							if (m_pInfoTip == NULL)
+							{
+								m_pInfoTip = new CBCGPPopupWindow;
+								
+								m_pInfoTip->SetRoundedCorners(m_InfoTipOptions.m_bRoundedCorners);
+								m_pInfoTip->SetStemLocation(m_InfoTipOptions.m_StemLocation, m_InfoTipOptions.m_nStemSize, nDelta);
+								m_pInfoTip->SetShadow(m_InfoTipOptions.m_bShadow);
+								m_pInfoTip->SetTransparency(m_InfoTipOptions.m_nTransparency);
+
+								m_pInfoTip->SetAnimationType(CBCGPPopupMenu::NO_ANIMATION);
+								m_pInfoTip->SetSmallCaptionGripper(FALSE);
+								m_pInfoTip->SetAutoCloseTime(0);
+								m_pInfoTip->EnableCloseButton(FALSE);
+
+								CBCGPPopupWindowColors colors;
+								colors.clrFill = m_InfoTipOptions.m_clrFill;
+								colors.clrText = m_InfoTipOptions.m_clrText;
+								colors.clrBorder = m_InfoTipOptions.m_clrBorder;
+
+								if (colors.clrFill == (COLORREF)-1)
+								{
+									colors.clrFill = GetInfoTipColor(pt, BCGP_INFOTIP_FILL_COLOR);
+								}
+
+								if (colors.clrText == (COLORREF)-1)
+								{
+									colors.clrText = GetInfoTipColor(pt, BCGP_INFOTIP_TEXT_COLOR);
+								}
+
+								if (colors.clrBorder == (COLORREF)-1)
+								{
+									colors.clrBorder = GetInfoTipColor(pt, BCGP_INFOTIP_BORDER_COLOR);
+
+									if (colors.clrBorder != (COLORREF)-1 && m_InfoTipOptions.m_StemLocation != CBCGPPopupWindow::BCGPPopupWindowStemLocation_None)
+									{
+										if (CBCGPDrawManager::IsDarkColor(colors.clrBorder))
+										{
+											colors.clrBorder = CBCGPDrawManager::ColorMakeLighter(colors.clrBorder, .4);
+										}
+										else
+										{
+											colors.clrBorder = CBCGPDrawManager::ColorMakeDarker(colors.clrBorder, .4);
+										}
+									}
+								}
+
+								m_pInfoTip->SetCustomTheme(colors);
+
+								CBCGPPopupWndParams params;
+
+								params.m_strText = strText;
+								params.m_nXPadding = m_InfoTipOptions.m_szPadding.cx;
+								params.m_nYPadding = m_InfoTipOptions.m_szPadding.cy;
+
+								m_pInfoTip->Create(this, params, NULL, ptScreen);
+							}
+							else
+							{
+								m_pInfoTip->UpdateContent(strText, ptScreen);
+							}
+						}
+						else
+						{
+							DeleteInfoTip();
+						}
+
+						m_strLastDisplayedToolTip = strToolTip;
+						m_strLastDisplayedToolTipDescr = strDescr;
+					}
+					else
+#endif
+					{
+						if (m_bTooltipTrackingMode)
+						{
+							m_pToolTip->Update();
+						}
+						else
+						{
+							m_pToolTip->Pop ();
+						}
+
+						if (!strToolTip.IsEmpty() && !strDescr.IsEmpty())
+						{
+							m_bToolTipCleared = TRUE;
+						}
+					}
+				}
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+				else if (m_pInfoTip->GetSafeHwnd() != NULL)
+				{
+					CPoint ptScreen = pt;
+					ClientToScreen(&ptScreen);
+
+					if (m_pInfoTip->GetStemLocation() != CBCGPPopupWindow::BCGPPopupWindowStemLocation_None)
+					{
+						m_pInfoTip->AdjustLocationByStem(ptScreen, nDelta);
 					}
 					else
 					{
-						m_pToolTip->Pop ();
+						ptScreen.x += nDelta;
+						ptScreen.y += nDelta;
 					}
 
-					if (!strToolTip.IsEmpty() && !strDescr.IsEmpty())
+					CRect rectScreen = globalData.m_rectVirtual;
+
+					CRect rectInfoTip;
+					m_pInfoTip->GetWindowRect(rectInfoTip);
+
+					if (ptScreen.x < rectScreen.left)
 					{
-						m_bToolTipCleared = TRUE;
+						ptScreen.x = rectScreen.left;
 					}
+					else if (ptScreen.x + rectInfoTip.Width() > rectScreen.right)
+					{
+						ptScreen.x = rectScreen.right - rectInfoTip.Width();
+					}
+					
+					if (ptScreen.y < rectScreen.top)
+					{
+						ptScreen.y = rectScreen.top;
+					}
+					else if (ptScreen.y + rectInfoTip.Height() > rectScreen.bottom)
+					{
+						ptScreen.y = rectScreen.bottom - rectInfoTip.Height();
+					}
+
+					m_pInfoTip->SetWindowPos(NULL, ptScreen.x, ptScreen.y, -1, -1, 
+						SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
 				}
+#endif
 			}
 		}
 		break;
@@ -613,6 +812,7 @@ BOOL CBCGPBaseVisualCtrl::PreTranslateMessage(MSG* pMsg)
 		}
 
 		StopClickAndHold();
+		DeleteInfoTip();
 		break;
 
 	case WM_KEYDOWN:
@@ -703,9 +903,10 @@ void CBCGPBaseVisualCtrl::StopClickAndHold()
 	}
 }
 //********************************************************************************
-void CBCGPBaseVisualCtrl::OnEnable(BOOL /*bEnable*/) 
+void CBCGPBaseVisualCtrl::OnEnable(BOOL bEnable) 
 {
-	RedrawWindow ();
+	OnWndEnabled(bEnable);
+	RedrawWindow();
 }
 //***********************************************************************************************************
 LRESULT CBCGPBaseVisualCtrl::WindowProc(UINT message, WPARAM wParam, LPARAM lParam) 
@@ -713,6 +914,8 @@ LRESULT CBCGPBaseVisualCtrl::WindowProc(UINT message, WPARAM wParam, LPARAM lPar
 	if (message == WM_MOUSELEAVE)
 	{
 		m_bIsTracked = FALSE;
+
+		DeleteInfoTip();
 		OnMouseLeave();
 	}
 	else if (message == WM_ACTIVATEAPP && m_bIsPopup && wParam == 0)
@@ -791,6 +994,8 @@ LRESULT CBCGPBaseVisualCtrl::OnBCGUpdateToolTips (WPARAM wp, LPARAM)
 //*************************************************************************************
 void CBCGPBaseVisualCtrl::OnDestroy() 
 {
+	OnBeforeDestroyWnd();
+
 	if (m_hwndHookedPopup == GetSafeHwnd() && m_hookMouse != NULL)
 	{
 		::UnhookWindowsHookEx(m_hookMouse);
@@ -802,8 +1007,25 @@ void CBCGPBaseVisualCtrl::OnDestroy()
 #if !defined _BCGPCHART_STANDALONE
 	CBCGPTooltipManager::DeleteToolTip (m_pToolTip);
 #endif
+	
+	DeleteInfoTip();
 
 	CStatic::OnDestroy();
+}
+//***********************************************************************************************************
+void CBCGPBaseVisualCtrl::DeleteInfoTip()
+{
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+	if (m_pInfoTip != NULL)
+	{
+		if (m_pInfoTip->GetSafeHwnd() != NULL)
+		{
+			m_pInfoTip->DestroyWindow();
+		}
+		
+		m_pInfoTip = NULL;
+	}
+#endif
 }
 //***********************************************************************************************************
 UINT CBCGPBaseVisualCtrl::OnGetDlgCode() 
@@ -994,7 +1216,7 @@ void CBCGPBaseVisualCtrl::OnDrawLayeredPopup()
 	BLENDFUNCTION bf;
 	bf.BlendOp             = AC_SRC_OVER;
 	bf.BlendFlags          = 0;
-	bf.SourceConstantAlpha = (BYTE)bcg_clamp(m_nPopupAlpha, 0, 255);
+	bf.SourceConstantAlpha = (BYTE)bcg_clamp(m_nPopupAlphaAnimated == (BYTE)-1 ? m_nPopupAlpha : m_nPopupAlphaAnimated, 0, 255);
 	bf.AlphaFormat         = LWA_COLORKEY;
 
 #ifndef _BCGSUITE_
@@ -1239,6 +1461,47 @@ LRESULT CBCGPBaseVisualCtrl::OnPrintClient(WPARAM wp, LPARAM lp)
 
 	return Default();
 }
+//****************************************************************************
+LRESULT CBCGPBaseVisualCtrl::OnPrint(WPARAM wp, LPARAM lp)
+{
+	if ((lp & PRF_NONCLIENT) == PRF_NONCLIENT)
+	{
+		CDC* pDC = CDC::FromHandle((HDC) wp);
+		ASSERT_VALID(pDC);
+		
+		if (m_pGM == NULL)
+		{
+			if ((m_pGM = CBCGPGraphicsManager::CreateInstance()) == NULL)
+			{
+				return Default();
+			}
+		}
+		
+		CRect rect;
+		GetWindowRect(rect);
+		
+		CRect rectClient;
+		GetClientRect(rectClient);
+		ClientToScreen(rectClient);
+		
+		rectClient.OffsetRect(-rect.TopLeft());
+		rect.OffsetRect(-rect.TopLeft());
+		
+		pDC->ExcludeClipRect(rectClient);
+
+		m_pGM->BindDC(pDC, rect);
+		
+		if (m_pGM->BeginDraw())
+		{
+			OnNcDraw(m_pGM, rect);
+			m_pGM->EndDraw();
+		}
+
+		pDC->SelectClipRgn(NULL);
+	}
+
+	return Default();
+}
 //***********************************************************************************************************
 LRESULT CBCGPBaseVisualCtrl::OnGetObject(WPARAM wParam, LPARAM lParam)
 {
@@ -1269,3 +1532,159 @@ LRESULT CBCGPBaseVisualCtrl::OnGetObject(WPARAM wParam, LPARAM lParam)
 #endif	
 	return (LRESULT)0L;
 }	
+//***********************************************************************************************************
+void CBCGPBaseVisualCtrl::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR* lpncsp) 
+{
+	CBCGPRect rectNCArea;
+	OnCalcBorderSize(rectNCArea);
+	
+	lpncsp->rgrc[0].top += (int)rectNCArea.top;
+	lpncsp->rgrc[0].bottom -= (int)rectNCArea.bottom;
+	lpncsp->rgrc[0].left += (int)rectNCArea.left;
+	lpncsp->rgrc[0].right -= (int)rectNCArea.right;
+	
+	CStatic::OnNcCalcSize(bCalcValidRects, lpncsp);
+}
+//***********************************************************************************************************
+void CBCGPBaseVisualCtrl::OnNcLButtonDown(UINT /*nHitTest*/, CPoint point) 
+{
+	CRect rect;
+	GetWindowRect(rect);
+
+	point.Offset(-rect.TopLeft());
+
+	if (OnNcMouseDown(0, point))
+	{
+		SetCapture();
+		m_bIsCaptured = TRUE;
+
+		StartClickAndHold();
+	}
+}
+//***********************************************************************************************************
+void CBCGPBaseVisualCtrl::OnNcLButtonUp(UINT /*nHitTest*/, CPoint point)
+{
+	CRect rect;
+	GetWindowRect(rect);
+	
+	point.Offset(-rect.TopLeft());
+
+	OnNcMouseUp(0, point);
+
+	if (m_bIsCaptured)
+	{
+		ReleaseCapture();
+		m_bIsCaptured = FALSE;
+	}
+
+	StopClickAndHold();
+}
+//***********************************************************************************************************
+void CBCGPBaseVisualCtrl::OnNcPaint() 
+{
+	if (m_pGM == NULL)
+	{
+		if ((m_pGM = CBCGPGraphicsManager::CreateInstance()) == NULL)
+		{
+			return;
+		}
+	}
+	
+	CWindowDC dc(this);
+	
+	CRect rect;
+	GetWindowRect(rect);
+
+	CRect rectClient;
+    GetClientRect(rectClient);
+    ClientToScreen(rectClient);
+	
+    rectClient.OffsetRect(-rect.TopLeft());
+	rect.OffsetRect(-rect.TopLeft());
+
+    dc.ExcludeClipRect(rectClient);
+
+	if (DYNAMIC_DOWNCAST(CBCGPGraphicsManagerGDI, m_pGM) != NULL)
+	{
+		m_pGM->BindDC(&dc, FALSE);
+	}
+	else
+	{
+		m_pGM->BindDC(&dc, rect);
+	}
+	
+	if (m_pGM->BeginDraw())
+	{
+		OnNcDraw(m_pGM, rect);
+		m_pGM->EndDraw();
+	}
+}
+//***********************************************************************************************************
+BCGNcHitTestType CBCGPBaseVisualCtrl::OnNcHitTest(CPoint point) 
+{
+	CRect rectClient;
+	GetClientRect(rectClient);
+	ClientToScreen(rectClient);
+
+	return rectClient.PtInRect(point) ? HTCLIENT : HTBORDER;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPVisualContainerCtrl
+
+BEGIN_MESSAGE_MAP(CBCGPVisualContainerCtrl, CBCGPBaseVisualCtrl)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
+END_MESSAGE_MAP()
+
+BOOL CBCGPVisualContainerCtrl::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) 
+{
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
+	CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+	if (pVisualContainer != NULL)
+	{
+		NMHDR* pNMHDR = (NMHDR*)(lParam);
+		if (pNMHDR != NULL && pNMHDR->code == BCGPGN_SELCHANGED)
+		{
+			pVisualContainer->OnGridSelChanged((UINT)pNMHDR->idFrom);
+
+			*pResult = 0L;
+			return TRUE;
+		}
+	}
+
+#endif
+
+	return CBCGPBaseVisualCtrl::OnNotify(wParam, lParam, pResult);
+}
+//***********************************************************************************************************
+LRESULT CBCGPVisualContainerCtrl::OnChangeVisualManager(WPARAM, LPARAM)
+{
+	CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+	if (pVisualContainer != NULL)
+	{
+		ASSERT_VALID(pVisualContainer);
+		pVisualContainer->OnChangeVisualManager();
+	}
+	
+	return 0;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPVisualCtrl
+
+BEGIN_MESSAGE_MAP(CBCGPVisualCtrl, CBCGPBaseVisualCtrl)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
+END_MESSAGE_MAP()
+
+LRESULT CBCGPVisualCtrl::OnChangeVisualManager(WPARAM, LPARAM)
+{
+	CBCGPBaseVisualObject* pVisualObject = GetVisualObject();
+	if (pVisualObject != NULL)
+	{
+		ASSERT_VALID(pVisualObject);
+		pVisualObject->OnChangeVisualManager();
+	}
+	
+	return 0;
+}

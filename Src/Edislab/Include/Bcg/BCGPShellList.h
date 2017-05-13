@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -67,7 +67,18 @@ public:
 		return m_bIsDesktop;
 	}
 
+	void EnableSystemUserInput(BOOL bEnable = TRUE)
+	{
+		m_bSystemUserInput = bEnable;
+	}
+
+	BOOL IsSystemUserInputEnabled() const
+	{
+		return m_bSystemUserInput;
+	}
+
 protected:
+	BOOL			m_bSystemUserInput;
 	IShellFolder*	m_psfCurFolder;
 	LPITEMIDLIST	m_pidlCurFQ;
 	BOOL			m_bContextMenu;

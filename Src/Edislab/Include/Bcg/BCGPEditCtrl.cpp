@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -24,13 +24,17 @@
 #include "BCGGlobals.h"
 
 #ifndef _BCGPEDIT_STANDALONE
+	#define BCGP_SCALE_BY_DPI(x)	globalUtils.ScaleByDPI(x)
+	#include "BCGPGlobalUtils.h"
 	#include "BCGPVisualManager.h"
 #ifndef _BCGSUITE_
+	#include "BCGPFrameImpl.h"
 	#include "BCGPPopupMenu.h"
 	#include "BCGPTooltipManager.h"
 #endif
 #else
 	#include "resource.h"
+	#define BCGP_SCALE_BY_DPI(x) (x)
 #endif
 
 #ifdef _DEBUG
@@ -42,6 +46,14 @@ static char THIS_FILE[] = __FILE__;
 static const CString g_strEOL = _T ("\n");
 static const TCHAR g_chEOL = _T ('\n');
 static const CString g_strEOLExport = _T ("\r\n");
+
+#ifdef  _UNICODE
+	static const CString g_strSymbolSpace = _T("\xB7");
+	static const CString g_strSymbolTab = _T("\xBB");
+#else
+	static const CString g_strSymbolSpace = _T("\x2E");
+	static const CString g_strSymbolTab = _T("\x3E");
+#endif
 
 static CString strTipText;
 
@@ -114,8 +126,10 @@ CBCGPEditCtrl::CBCGPEditCtrl() :
 	m_hFont (NULL),
 	m_nCurrOffset (0),
 	m_bDisableSetCaret (FALSE),
-	m_nLeftMarginWidth (20),
+	m_bShowCaretInReadOnly (FALSE),
+	m_nLeftMarginWidth (BCGP_SCALE_BY_DPI(20)),
 	m_nLineNumbersMarginWidth (40),
+	m_nLineNumbersMargin2Width (0),
 	m_nOutlineMarginWidth (20),
 	m_ptCaret (CPoint (m_nLeftMarginWidth, 0)),
 	m_nTabSize (4),
@@ -153,6 +167,7 @@ CBCGPEditCtrl::CBCGPEditCtrl() :
 	m_bIntelliSenseMode (FALSE),
 	m_bKeepTabs (TRUE), 
 	m_nTabLogicalSize (0),
+	m_bViewWhiteSpace (FALSE),
 	m_bBlockSelectionMode (FALSE),
 	m_bAltPressedForBlockSel (FALSE),
 	m_nIndentSize (4),
@@ -199,7 +214,7 @@ CBCGPEditCtrl::CBCGPEditCtrl() :
 	m_bEnableSymSupport = FALSE;
 
 	m_bEnableLineNumbersMargin = FALSE;
-	m_nLineNumbersMarginAutoWidth = m_nLineNumbersMarginWidth;
+	m_nLineNumbersMarginAutoWidth = m_nLineNumbersMarginWidth + m_nLineNumbersMargin2Width;
 
 	m_bEnableOutlineMargin = FALSE;
 	m_bEnableOutlining = FALSE;
@@ -309,6 +324,9 @@ BEGIN_MESSAGE_MAP(CBCGPEditCtrl, CWnd)
 	ON_MESSAGE(WM_GETTEXTLENGTH, OnGetTextLength)
 #ifndef _BCGPEDIT_STANDALONE
 	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
+#ifndef _BCGSUITE_
+	ON_REGISTERED_MESSAGE(BCGM_PRECLOSEFRAME, OnPreCloseFrame)
+#endif
 #endif
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
 END_MESSAGE_MAP()
@@ -392,6 +410,7 @@ void CBCGPEditCtrl::Initialize ()
 	if (!m_pOutlineParser)
 	{
 		m_pOutlineParser = CreateOutlineParser ();
+		m_pOutlineParser->m_pParentEdit = this;
 	}
 
 	if (m_pOutlineParser != NULL)
@@ -404,7 +423,7 @@ void CBCGPEditCtrl::Initialize ()
 	CBCGPGestureConfig gestureConfig;
 	gestureConfig.EnablePan(TRUE, BCGP_GC_PAN_WITH_SINGLE_FINGER_VERTICALLY | BCGP_GC_PAN_WITH_SINGLE_FINGER_HORIZONTALLY | BCGP_GC_PAN_WITH_GUTTER | BCGP_GC_PAN_WITH_INERTIA);
 	
-	bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig);
+	bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig, TRUE);
 #endif
 }
 //********************************************************************************
@@ -690,7 +709,7 @@ BOOL CBCGPEditCtrl::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 				m_nCurrHyperlinkHot = -1;
 			}
 
-			// if in alternate mode - highlight hovered hyperlinks
+			// if in alternate mode - highlight hovered hyper links
 			const BOOL bCtrl = ::GetAsyncKeyState (VK_CONTROL) & 0x8000;
 			if (bCtrl && m_nCurrHyperlinkHot != -1)
 			{
@@ -764,11 +783,11 @@ void CBCGPEditCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 	#endif
 	}
 
-	if (m_bReadOnly)
+	if (m_bReadOnly && !m_bShowCaretInReadOnly)
 	{
 		switch (nChar)
 		{
-/*		case VK_LEFT:
+		case VK_LEFT:
 			ScrollUp (SB_HORZ, TRUE);
 			break;
 
@@ -791,7 +810,7 @@ void CBCGPEditCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		case VK_DOWN:
 			ScrollDown (SB_VERT, TRUE);
 			break;
-*/
+
 		case VK_PRIOR:
 			PageUp ();
 			break;
@@ -976,8 +995,6 @@ void CBCGPEditCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			BOOL bResult = RemoveSelection (FALSE);
 			Down (!bResult);
-
-			m_nLastMaxColumn = GetColumnFromOffset (m_nCurrOffset, TRUE);
 		}
 		break;
 
@@ -1012,6 +1029,11 @@ void CBCGPEditCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		break;
 
 	case VK_RETURN:
+		if (m_bReadOnly)
+		{
+			break;
+		}
+
 		DeleteSelectedText (TRUE, FALSE, TRUE);		
 		if (GetOverrideMode ())
 		{
@@ -1027,6 +1049,11 @@ void CBCGPEditCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		break;
 
 	case VK_TAB:
+		if (m_bReadOnly)
+		{
+			break;
+		}
+
 		if (!bCtrl)
 		{
 			if (!bShift && m_iStartSel == -1)
@@ -1054,6 +1081,11 @@ void CBCGPEditCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		break;
 
 	case VK_BACK:
+		if (m_bReadOnly)
+		{
+			break;
+		}
+
 		if (m_nCurrOffset > 0 || m_iStartSel >= 0)
 		{
 			BOOL bHideCaret = FALSE;
@@ -1107,6 +1139,7 @@ void CBCGPEditCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		break;									  
 												  
 	case VK_DELETE:
+		if (!m_bReadOnly)
 		{
 			BOOL bHideCaret = FALSE;
 			if (bCtrl)
@@ -1134,13 +1167,20 @@ void CBCGPEditCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 				ShowCaret ();
 			}
 		}
+		break;
 
 	case VK_ESCAPE:
-		RemoveSelection (FALSE, TRUE);
+		if (!m_bReadOnly)
+		{
+			RemoveSelection (FALSE, TRUE);
+		}
 		break;
 
 	case VK_INSERT:
-		OnSetOvrMode ();
+		if (!m_bReadOnly)
+		{
+			OnSetOvrMode ();
+		}
 		break;
 	}
 		  
@@ -1173,7 +1213,7 @@ void CBCGPEditCtrl::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
 #ifdef _UNICODE
     if (nChar != VK_TAB &&
-        iswprint ((wint_t) nChar) && !m_bReadOnly)
+		(iswprint ((wint_t) nChar) || nChar > 127) && !m_bReadOnly)
 #else
 	if ((isprint (nChar) || nChar > 127) && !m_bReadOnly)
 #endif
@@ -1215,7 +1255,7 @@ BOOL CBCGPEditCtrl::OnFillIntelliSenseList (int& nCurrOffset, CObList& lstIntell
 		return FALSE;
 	}
 
-	VERIFY(FillIntelliSenseList(lstIntelliSenseData, strIntelliSence.GetBuffer(0)));
+	FillIntelliSenseList(lstIntelliSenseData, strIntelliSence.GetBuffer(0));
 
 	return !lstIntelliSenseData.IsEmpty();
 }
@@ -1788,7 +1828,7 @@ void CBCGPEditCtrl::OnChangeFont (CDC* pDC)
 
 	UpdateScrollBars ();
 
-	if (!m_bReadOnly)
+	if (!m_bReadOnly || m_bShowCaretInReadOnly)
 	{
 		SetCaret (m_nCurrOffset);
 		ShowCaret ();
@@ -2996,7 +3036,7 @@ BOOL CBCGPEditCtrl::InsertNewLine (BOOL bRedraw, BOOL bForceNextUndo, int  nOffs
 	if (bLineStart)
 	{
 		// the new line is inserted at the beginning of the current line
-		// the current line with all markesr should be moved down
+		// the current line with all markers should be moved down
 		UpdateLineRelatedData (nRowNum, 1);
 	}
 	else
@@ -3476,6 +3516,7 @@ void CBCGPEditCtrl::OnDrawLineNumber (CDC* pDC, CRect rect, const int nLineNumbe
 	
 	if (size.cx <= rect.Width ())
 	{
+		rect.right -= m_nLineNumbersMargin2Width;
 		pDC->DrawText (str, rect, DT_NOCLIP | DT_SINGLELINE | DT_NOPREFIX | DT_RIGHT);
 	}
 }
@@ -3945,7 +3986,7 @@ void CBCGPEditCtrl::OnDrawText (CDC* pDC)
 	int nCurrColumn = 0;
 	BOOL bColoredLine = FALSE;
 
-	// temporary data for hyperlink support:
+	// temporary data for hyper link support:
 	BOOL bHyperlink = FALSE;
 	BOOL bHyperlinkOut = FALSE;
 	int nHyperlinkStart = -1;
@@ -3984,7 +4025,7 @@ void CBCGPEditCtrl::OnDrawText (CDC* pDC)
 								LookUpSymbol (m_strBuffer, i, nEndOffset + 1, chNext, symDef, nSymExtraLen) : FALSE;
 		
 		// ------------------
-		// Search hyperlinks:
+		// Search hyper links:
 		// ------------------
 		bHyperlink = FALSE;
 		if (m_bEnableHyperlinkSupport)
@@ -4089,7 +4130,7 @@ void CBCGPEditCtrl::OnDrawText (CDC* pDC)
 			
 			nCurrColumn += nRestOfTab; 
 
-			int nRestOfTabWidth = nCharWidth - (ptCharOffset.x - m_rectText.left - 1) % nCharWidth;
+			int nRestOfTabWidth = nCharWidth - (ptCharOffset.x - m_rectText.left - 1) % (max(1, nCharWidth));
 			nCharWidth = nRestOfTabWidth;
 		}
 		else
@@ -4116,7 +4157,7 @@ void CBCGPEditCtrl::OnDrawText (CDC* pDC)
 			bColorFound = TRUE;
 			bColoredLine = TRUE;
 		}
-		// 3) chack for color blocks:
+		// 3) check for color blocks:
 		else if (bIsOpenBlock && i < nCloseBlockOffset)
 		{
 			clrForeground = clrBlockFore;
@@ -4205,7 +4246,7 @@ void CBCGPEditCtrl::OnDrawText (CDC* pDC)
 			ptCharOffset.x += nCharWidth;
 		}
 
-		// 6) check for hilited text:
+		// 6) check for highlighted text:
 		if (!bIsPrint)
 		{
 			IsHilitedText (i, clrForeground, clrBackground);
@@ -4217,7 +4258,7 @@ void CBCGPEditCtrl::OnDrawText (CDC* pDC)
 			OnGetCharColor (chNext, i, clrForeground, clrBackground);
 		}
 
-		// 8) check for hyperlink:
+		// 8) check for hyper link:
 		if (m_bEnableHyperlinkSupport && bHyperlink)
 		{
 			if (m_clrHyperlink != (COLORREF)-1)
@@ -4285,13 +4326,11 @@ void CBCGPEditCtrl::OnDrawText (CDC* pDC)
 
 			if (i < max (m_iStartSel, m_iEndSel) && !bColoredLine)
 			{
-				if (clrForeground != clrOutText || clrBackground != clrOutBack)
-				{
-					pDC->SetTextColor (clrForeground);
-					pDC->SetBkColor   (clrBackground);
-				}
-				
-				DrawString (pDC, _T (" "), rectRow, nTabOrigin, clrDefaultBack);
+				CRect rect = rectRow;
+				rect.right = rect.left + m_nAveCharWidth;
+				pDC->FillSolidRect (rect, clrBackground);
+				pDC->SetBkColor   (clrBackground);
+
 			}
 
 			clrOutText = clrForeground;
@@ -4416,7 +4455,7 @@ void CBCGPEditCtrl::OnDrawText (CDC* pDC)
 		}
 
 		// ---------------------------
-		// Trancate very long strings:
+		// Truncate very long strings:
 		// ---------------------------
 		if (iIdx + 1 > m_nMaxScrollWidth - 1)
 		{
@@ -4553,6 +4592,47 @@ int CBCGPEditCtrl::DrawString (CDC* pDC, LPCTSTR str, CRect rect, int nOrigin,
 	if (m_nLineVertSpacing > 0)
 	{
 		rect.top += m_nLineVertSpacing / 2;
+	}
+
+	if (m_bViewWhiteSpace && !pDC->IsPrinting())
+	{
+		COLORREF clrTextOld = pDC->SetTextColor(m_clrTextLineNumber);
+
+		CString strSpace(_T(" "));
+		CString strTab(_T("\t"));
+
+		const int dxSpace = GetStringExtent (pDC, strSpace, 1).cx;
+		const int dxTab = m_bKeepTabs ?
+			pDC->GetTabbedTextExtent(strTab, 1, &m_nTabLogicalSize).cx:
+			GetStringExtent (pDC, strTab, 1).cx;
+
+		int x = rect.left;
+		int iStart = 0;
+
+		for (int i = 0; i < (int)_tcslen(str); i++)
+		{
+			const BOOL bIsTab = str[i] == _T('\t');
+			if (bIsTab || str[i] == _T(' '))
+			{
+				int nLen = i - iStart;
+				if (nLen > 0)
+				{
+					x += GetStringExtent (pDC, str + iStart, nLen).cx;
+				}
+
+				int nTabResidue = m_nTabLogicalSize > 0 ? (x - nOrigin) % m_nTabLogicalSize : 0;
+				int dx = bIsTab ? dxTab - nTabResidue : dxSpace;
+
+				CRect rectSpace(CPoint(x, rect.top), CSize(dx, rect.Height()));
+
+				pDC->DrawText(bIsTab ? g_strSymbolTab : g_strSymbolSpace, rectSpace, DT_SINGLELINE | DT_LEFT | DT_VCENTER);
+
+				x = rectSpace.right;
+				iStart = i + 1;
+			}
+		}
+
+		pDC->SetTextColor(clrTextOld);
 	}
 
 	if (m_bKeepTabs)  
@@ -4737,6 +4817,21 @@ int CBCGPEditCtrl::GetHorzRowExtent (CDC* pDC, int nOffset)
 	return 0;
 }
 //**************************************************************************************
+static BOOL IsEquals(LPCTSTR str1, TCHAR ch2, BOOL bCaseSensitive)
+{
+	ASSERT(str1 != NULL);
+	const TCHAR str2[2] = {ch2, 0};
+
+	if (bCaseSensitive)
+	{
+		return _tcsncmp(str1, str2, 1) == 0;
+	}
+	else
+	{
+		return _tcsnicmp(str1, str2, 1) == 0;
+	}
+}
+//**************************************************************************************
 BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFoundBlock)
 {
 	LPTSTR  lpcszBuffer = (LPTSTR) (LPCTSTR) m_strBuffer;
@@ -4745,7 +4840,7 @@ BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 	LPTSTR  lpCloseBlock = NULL;
 	LPTSTR	lpOpenBlock = NULL;
 
-	// lpBuffer points to the offsset to start the reverse search from;
+	// lpBuffer points to the offset to start the reverse search from;
 	lpBuffer = lpcszBuffer + nStartOffset;
 
 	for (POSITION pos = m_lstColorBlocks.GetHeadPosition (); pos != NULL;)
@@ -4770,7 +4865,7 @@ BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 			{
 				bOpenBlockFound = FALSE;
 				lpBuffer--;
-				if (*lpBuffer == chFirstCloseChar && !bCloseBlockFound && 
+				if (IsEquals(lpBuffer, chFirstCloseChar, colorBlock.m_bCaseSensitive) && !bCloseBlockFound && 
 					lpBuffer - nCloseBlockLen >= lpcszBuffer)
 				{
 					bCloseBlockFound = TRUE;
@@ -4790,7 +4885,7 @@ BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 					}
 				}
 				
-				if (*lpBuffer == chFirstOpenChar)
+				if (IsEquals(lpBuffer, chFirstOpenChar, colorBlock.m_bCaseSensitive))
 				{
 					if (nOpenBlockLen == 2 && lpBuffer > lpcszBuffer)
 					{
@@ -4819,12 +4914,12 @@ BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 						bOpenBlockFound = TRUE;
 						lpOpenBlock = lpBuffer;
 					}
-					else if (lpBuffer - nOpenBlockLen >= lpcszBuffer)
+					else if (lpBuffer - (nOpenBlockLen - 1) >= lpcszBuffer)
 					{
 						bOpenBlockFound = TRUE;
 						for (int i = 0; i < nOpenBlockLen; i++)
 						{
-							if (*(lpBuffer - i) != colorBlock.m_strOpen.GetAt (nOpenBlockLen - i - 1))
+							if (!IsEquals(lpBuffer - i, colorBlock.m_strOpen.GetAt (nOpenBlockLen - i - 1), colorBlock.m_bCaseSensitive))
 							{
 								bOpenBlockFound = FALSE;
 								break;
@@ -4833,7 +4928,7 @@ BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 
 						if (bOpenBlockFound)
 						{
-							lpBuffer -= nOpenBlockLen;
+							lpBuffer -= (nOpenBlockLen - 1);
 							lpOpenBlock = lpBuffer;
 						}
 					}
@@ -4847,7 +4942,7 @@ BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 						int nRowOffset = GetRowStartByOffset (nCurrOffset, FALSE);
 						CList <BCGP_EDIT_COLOR_AREA, BCGP_EDIT_COLOR_AREA&> colorAreas;
 
-						BuildColorAreas (colorAreas, nRowOffset, nCurrOffset + 2, &colorBlock, FALSE);
+						BuildColorAreas (colorAreas, nRowOffset, nCurrOffset + (nOpenBlockLen - 1), &colorBlock, FALSE);
 
 						for (POSITION posTmp = colorAreas.GetHeadPosition (); posTmp != NULL;)
 						{
@@ -4864,6 +4959,18 @@ BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 								bOpenBlockFound = FALSE;
 								lpOpenBlock = NULL;
 								break;
+							}
+						}
+
+						// check whether this open block is not ended
+						// before nStartOffset
+						if (bOpenBlockFound)
+						{
+							int nCloseBlockOffset = FindCloseBlock(nCurrOffset + (nOpenBlockLen - 1), &colorBlock);
+							if (nCloseBlockOffset < nStartOffset)
+							{
+								bOpenBlockFound = FALSE;
+								lpOpenBlock = NULL;
 							}
 						}
 
@@ -4891,6 +4998,44 @@ BOOL CBCGPEditCtrl::FindOpenBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 	return (lpOpenBlock != NULL && lpCloseBlock == NULL);
 }
 //**************************************************************************************
+// Case sensitive/insensitive version of CString.Find
+static int FindString(const CString& strBuf, const CString& strSearch, int nStartOffset, BOOL bCaseSensitive)
+{
+	if (bCaseSensitive)
+	{
+		return strBuf.Find(strSearch, nStartOffset);
+	}
+	
+	if (strBuf.IsEmpty() || strSearch.IsEmpty() || nStartOffset < 0 || nStartOffset >= strBuf.GetLength())
+	{
+		return -1;
+	}
+	
+	LPCTSTR lpBuffer = nStartOffset == 0 ? (LPCTSTR) strBuf : _tcsninc((LPCTSTR) strBuf, nStartOffset);
+	const LPCTSTR lpSub = (LPCTSTR) strSearch;
+	
+	ASSERT(lpSub != NULL);
+	
+	const size_t  nSubLen = _tcslen(lpSub);
+	
+	if (lpBuffer != NULL && nSubLen >= 1)
+	{
+		int i = nStartOffset;
+		while (*lpBuffer != _T('\0'))
+		{
+			if (_tcsnicmp(lpBuffer, lpSub, nSubLen) == 0) // case insensitive compare
+			{
+				return i;
+			}
+			
+			lpBuffer = _tcsinc(lpBuffer);
+			i++;
+		}
+	}
+	
+	return -1;
+}
+
 int CBCGPEditCtrl::FindCloseBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFoundBlock)
 {
 	int nResult = -1;
@@ -4899,7 +5044,7 @@ int CBCGPEditCtrl::FindCloseBlock (int nStartOffset, BCGP_EDIT_COLOR_BLOCK* pFou
 		BCGP_EDIT_COLOR_BLOCK colorBlock = m_lstColorBlocks.GetNext (pos);
 		if (colorBlock.m_bWholeText && colorBlock == *pFoundBlock)
 		{
-			nResult = m_strBuffer.Find (colorBlock.m_strClose, nStartOffset);
+			nResult = FindString(m_strBuffer, colorBlock.m_strClose, nStartOffset, colorBlock.m_bCaseSensitive);
 			if (nResult == -1)
 			{
 				nResult = m_strBuffer.GetLength () - 1;
@@ -4957,26 +5102,57 @@ void CBCGPEditCtrl::AddEscapeSequence (LPCTSTR lpszStr)
 	m_lstEscapeSequences.AddTail (lpszStr);
 }
 //**************************************************************************************
-BOOL CBCGPEditCtrl::IsEscapeSequence (const CString& strBuffer, int nOffset, BOOL bDirForward) const
+int CBCGPEditCtrl::IsEscapeSequence (const CString& strBuffer, int nOffset, BOOL bDirForward, BOOL bScanBufferLeft) const
 {
 	if (nOffset < 0 || nOffset >= strBuffer.GetLength ())
 	{
-		return FALSE;
+		return 0;
 	}
 
 	ASSERT (nOffset >= 0);
-	ASSERT (nOffset < strBuffer.GetLength ());
+	ASSERT (nOffset < strBuffer.GetLength());
 
+	int nFound = 0;
 	for (POSITION pos = m_lstEscapeSequences.GetHeadPosition (); pos != NULL; )
 	{
-		const CString& str = m_lstEscapeSequences.GetNext (pos);
-		if (str.GetLength () > 0 && IsIqual (strBuffer, nOffset, bDirForward, str))
+		const CString& str = m_lstEscapeSequences.GetNext(pos);
+		if (str.GetLength() > 0 && IsIqual(strBuffer, nOffset, bDirForward, str))
 		{
-			return TRUE;
+			nFound = str.GetLength();
+			break;
 		}
 	}
 
-	return FALSE;
+	if (nFound && bScanBufferLeft)
+	{
+		int nFoundOffset = bDirForward ? nOffset : nOffset - (nFound - 1);
+
+		// check if head of str is not a part of the previous escape sequence
+		int nPrevOffset = nFoundOffset + nFound - 1;
+		while (--nPrevOffset > 0 && IsEscapeSequence(strBuffer, nPrevOffset, FALSE, FALSE));
+
+		// skip previous escape sequences
+		while (nPrevOffset < nFoundOffset)
+		{
+			int nPrevLen = IsEscapeSequence(strBuffer, nPrevOffset, TRUE, FALSE);
+			if (nPrevLen <= 0)
+			{
+				ASSERT(FALSE);
+				break;
+			}
+
+			nPrevOffset += nPrevLen;
+
+			// the previous escape sequence overlaps the found one
+			if (nPrevOffset > nFoundOffset)
+			{
+				nFound = 0;
+				break;
+			}
+		}
+	}
+
+	return nFound;
 }
 //**************************************************************************************
 BOOL CBCGPEditCtrl::IsIqual (const CString& strBuffer, int nOffset, BOOL bDirForward, const CString& str) const
@@ -5135,6 +5311,13 @@ void CBCGPEditCtrl::BuildColorAreas (CList <BCGP_EDIT_COLOR_AREA, BCGP_EDIT_COLO
 					break;
 				}
 
+				// char is a part of escape sequence
+				if(IsEscapeSequence (strBuffer, nIdx, FALSE))
+				{
+					++nIdx;
+					continue;
+				}
+
 				// Check for a m_bWholeWord condition
 				if (colorBlock.m_bWholeWord && colorBlock.m_strOpen.FindOneOf (m_strWordDelimeters) == -1)
 				{
@@ -5206,6 +5389,13 @@ void CBCGPEditCtrl::BuildColorAreas (CList <BCGP_EDIT_COLOR_AREA, BCGP_EDIT_COLO
 					!IsEscapeSequence (strBuffer, colorArea.m_nEnd - 1, FALSE))
 				{
 					nNextEndOffset = colorArea.m_nEnd + 1; // skip line feed
+					continue;
+				}
+
+				// prev char is a part of escape sequence
+				if(IsEscapeSequence (strBuffer, colorArea.m_nEnd - 1, TRUE))
+				{
+					nNextEndOffset = colorArea.m_nEnd + 1;
 					continue;
 				}
 
@@ -5648,6 +5838,11 @@ BOOL CBCGPEditCtrl::DeleteSelectedText (BOOL bRedraw, BOOL bCopyToClipboard,
 
 	UpdateScrollBars ();
 
+	if (m_nScrollOffsetVert > 0 && m_nLineHeight != 0 && (m_rectText.Height() / m_nLineHeight > m_szTotalScroll.cy))
+	{
+		m_nTopVisibleOffset = 0;
+	}
+
 	m_nScrollOffsetVert = RowFromOffset (m_nTopVisibleOffset, TRUE, TRUE);
 	m_nScrollHiddenVert = RowFromOffset (m_nTopVisibleOffset, TRUE, FALSE) - m_nScrollOffsetVert;
 	m_wndScrollVert.SetScrollPos (m_nScrollOffsetVert);
@@ -5686,7 +5881,7 @@ void CBCGPEditCtrl::OnInsertTextToBuffer (int nStartOffset,
 		}
 		else
 		{
-			// update markesr from the next row
+			// update markers from the next row
 			UpdateLineRelatedData (nStartRow + 1, nNewRowsInserted);
 		}
 	}
@@ -5913,7 +6108,7 @@ HGLOBAL CBCGPEditCtrl::ExportBuffer (LPCTSTR lpszText, int nTextLen, BOOL bRepla
 		if (::WideCharToMultiByte(::GetACP (), 0, lpExpBuffer, nFinalLen, 
 			pszTextBufferA, nTextLenA, NULL, NULL) == 0)
 		{
-			TRACE0 ("ExportBuffer failed - system convertion API failed\n");
+			TRACE0 ("ExportBuffer failed - system conversion API failed\n");
 			delete [] pszTextBufferA;
 			GlobalFree (hExpBuffer);
 			return NULL;
@@ -5981,6 +6176,7 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 	}
 	
 	BOOL bPerformDragDrop = FALSE;
+	const BOOL bPerformSelection = ::GetAsyncKeyState (VK_SHIFT) & 0x8000;
 
 	int iStartSel = -1;
 	int iEndSel = -1;
@@ -5988,7 +6184,7 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 	iStartSel = min (m_iEndSel, m_iStartSel);
 	iEndSel = max (m_iEndSel, m_iStartSel);
 
-	if (IsPointInSelectionRect (point) && (nFlags & MK_LBUTTON))
+	if (IsPointInSelectionRect (point) && (nFlags & MK_LBUTTON) && !bPerformSelection)
 	{
 		CString strText;
 		PrepareBlock (strText);
@@ -6012,6 +6208,11 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 				m_bDragTextMode = TRUE;
 				bPerformDragDrop = TRUE;
 
+				if (m_bReadOnly && m_bShowCaretInReadOnly)
+				{
+					HideCaret();
+				}
+
 				COleDataSource* pSrcItem = new COleDataSource();
 
 				pSrcItem->CacheGlobalData (_TCF_TEXT, hClipbufferText);
@@ -6024,7 +6225,7 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 
 				m_bDragTextMode = FALSE;
 
-				if (!m_bReadOnly)
+				if (!m_bReadOnly || m_bShowCaretInReadOnly)
 				{
 					ShowCaret ();
 				}
@@ -6041,7 +6242,7 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 						if (iStartSel >= 0 && m_nDropOffset <= iStartSel &&
 							m_nDropOffset != -1)
 						{
-							// moving text before selecttion, text inserted, section index should
+							// moving text before selection, text inserted, section index should
 							// be incremented
 							m_iStartSel += nLen;
 							m_iEndSel += nLen;
@@ -6056,7 +6257,7 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 						
 						if (!m_bReadOnly)
 						{
-							// the third TRUE parameter will cause Undo action be played twise
+							// the third TRUE parameter will cause Undo action be played twice
 							DeleteSelectedText (FALSE, FALSE);
 						}
 					}
@@ -6127,6 +6328,7 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 	}
 
 	const BOOL bCtrl = ::GetAsyncKeyState (VK_CONTROL) & 0x8000;
+
 	if (m_bEnableHyperlinkSupport && bCtrl &&
 		m_nCurrHyperlinkHot >= 0 && m_nCurrHyperlinkHot <= m_arrHyperlinks.GetUpperBound ())
 	{
@@ -6137,7 +6339,31 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 
 	if (nOffset >= 0)
 	{
+		int nOldMinSel = min (m_iStartSel, m_iEndSel);
+		int nOldMaxSel = max (m_iStartSel, m_iEndSel);
+
+		if (bPerformSelection)
+		{
+			if (m_iStartSel < 0)
+			{
+				m_iStartSel = m_iEndSel = m_nCurrOffset;
+			}
+
+			m_iEndSel = nOffset;
+		}
+
 		SetCaret (nOffset);
+
+		if (bPerformSelection)
+		{
+			int nMinNewSel = min (m_iEndSel, m_iStartSel);
+			int nMaxNewSel = max (m_iEndSel, m_iStartSel);
+			RedrawTextOffsets (min (nOldMinSel, nMinNewSel), 
+				max (nOldMaxSel, nMaxNewSel));
+		
+			m_nLastSelOffset = nOffset;
+		}
+
 		if ((nFlags & MK_LBUTTON) && !bPerformDragDrop)
 		{
 			SetCapture ();
@@ -6151,7 +6377,7 @@ void CBCGPEditCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
-	if (m_iStartSel >= 0)
+	if (m_iStartSel >= 0 && !bPerformSelection)
 	{
 		m_iEndSel = m_iStartSel = -1;
 		m_bBlockSelectionMode = FALSE;
@@ -6358,7 +6584,6 @@ void CBCGPEditCtrl::OnMouseMove(UINT nFlags, CPoint point)
 					{
 						int nMinNewSel = min (m_iEndSel, m_iStartSel);
 						int nMaxNewSel = max (m_iEndSel, m_iStartSel);
-						//RedrawWindow ();
 						RedrawTextOffsets (min (nOldMinSel, nMinNewSel), 
 										   max (nOldMaxSel, nMaxNewSel));
 					}
@@ -6425,16 +6650,9 @@ void CBCGPEditCtrl::OnKillFocus(CWnd* pNewWnd)
 	m_ptSavedBlockCaretOffset.x += m_nScrollOffsetHorz * m_nMaxCharWidth;
 	m_ptSavedBlockCaretOffset.y += m_nScrollOffsetVert * m_nLineHeight;
 
-	if (/*m_bClearSelectionWhenInactive*/FALSE)
-	{
-		m_iStartSel = m_iEndSel = -1;
-		m_bBlockSelectionMode = FALSE;
-		m_ptStartBlockSel = m_ptEndBlockSel = CPoint (-1, -1);
-	}
-
 	RedrawWindow ();
 
-	if (!m_bIntelliSenseMode && !m_bReadOnly)
+	if (!m_bIntelliSenseMode && (!m_bReadOnly || m_bShowCaretInReadOnly))
 	{
 		::DestroyCaret ();
 	}
@@ -6444,7 +6662,7 @@ void CBCGPEditCtrl::OnSetFocus(CWnd* pOldWnd)
 {
 	CWnd::OnSetFocus(pOldWnd);
 	
-	if (!m_bReadOnly)
+	if (!m_bReadOnly || m_bShowCaretInReadOnly)
 	{
 		::DestroyCaret ();
 		CSize sizeCaret = GetCaretSize ();
@@ -6992,7 +7210,7 @@ BOOL CBCGPEditCtrl::OnScroll (int fnBar, UINT nSBCode, int nPos)
 		return FALSE;
 	}
 
-	nScrollOffset = min (max (scrollInfo.nMin, nScrollOffset), scrollInfo.nMax - 1);
+	nScrollOffset = min (max (scrollInfo.nMin, nScrollOffset), scrollInfo.nMax - (fnBar == SB_VERT && m_bScrollVertEmptyPage ? (int)scrollInfo.nPage : 0) - 1);
 	nScrollOffset = max (nScrollOffset, 0);
 
 	if (nScrollOffset == nScrollOffsetOld)
@@ -7057,7 +7275,7 @@ BOOL CBCGPEditCtrl::OnScroll (int fnBar, UINT nSBCode, int nPos)
 		}
 
 		m_nTopVisibleOffset = nNextOffset;
-		m_nScrollHiddenVert = RowFromOffset (m_nTopVisibleOffset, TRUE, FALSE) - nScrollOffset;
+		m_nScrollHiddenVert = max(0, RowFromOffset (m_nTopVisibleOffset, TRUE, FALSE) - nScrollOffset);
 	}
 
 	wndScroll.SetScrollPos (nScrollOffset);
@@ -7065,7 +7283,7 @@ BOOL CBCGPEditCtrl::OnScroll (int fnBar, UINT nSBCode, int nPos)
 	return TRUE;
 }
 //***************************************************************************************
-BOOL CBCGPEditCtrl::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/) 
+BOOL CBCGPEditCtrl::OnMouseWheel(UINT nFlags, short zDelta, CPoint /*pt*/) 
 {
 #ifndef _BCGPEDIT_STANDALONE
 	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
@@ -7073,6 +7291,18 @@ BOOL CBCGPEditCtrl::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/)
 		return TRUE;
 	}
 #endif
+
+ 	if (m_bIntelliSenseMode && m_pIntelliSenseWnd->GetSafeHwnd() != NULL)
+ 	{
+		CBCGPBaseIntelliSenseLB* pLB = m_pIntelliSenseWnd->GetListBox();
+		if (pLB->GetSafeHwnd() != NULL)
+		{
+			CRect rectLB;
+			m_pIntelliSenseWnd->GetWindowRect(rectLB);
+			CPoint pt = rectLB.CenterPoint();
+			return (BOOL)pLB->SendMessage(WM_MOUSEWHEEL, MAKEWPARAM(nFlags, zDelta), MAKELPARAM(pt.x, pt.y));
+		}
+ 	}
 
 	SCROLLINFO scrollInfo;
 	ZeroMemory(&scrollInfo, sizeof(SCROLLINFO));
@@ -8230,9 +8460,9 @@ BOOL CBCGPEditCtrl::IsOffsetAtColorBlock (int nOffset)
 	{
 		BCGP_EDIT_COLOR_BLOCK colorBlock = m_lstColorBlocks.GetNext (pos);
 		if (!colorBlock.m_strOpen.IsEmpty () &&
-			 strRange.Find (colorBlock.m_strOpen) != -1 ||
+			FindString(strRange, colorBlock.m_strOpen, 0, colorBlock.m_bCaseSensitive) != -1 ||
 			!colorBlock.m_strClose.IsEmpty () && 
-			strRange.Find (colorBlock.m_strClose) != -1)
+			FindString(strRange, colorBlock.m_strClose, 0, colorBlock.m_bCaseSensitive) != -1)
 		{
 			return TRUE;
 		}
@@ -8830,7 +9060,7 @@ BOOL CBCGPEditCtrl::GetWordFromPoint (CPoint pt, CString& strWord)
 {
 	CPoint ptSave  = pt;
 	int nOffset = HitTest (pt, TRUE);
-	if (abs (ptSave.x - pt.x) > m_nMaxCharWidth)
+	if (abs (ptSave.x - pt.x + m_nScrollOffsetHorz * m_nMaxCharWidth) > m_nMaxCharWidth)
 	{
 		return FALSE;
 	}
@@ -8842,7 +9072,7 @@ BOOL CBCGPEditCtrl::GetWordFromPoint (CPoint pt, CString& strWord)
 	return GetWordFromOffset (nOffset, strWord);
 }
 //************************************************************************************
-BOOL CBCGPEditCtrl::GetWordFromOffset (int nOffset, CString& strWord)
+BOOL CBCGPEditCtrl::GetWordFromOffset (int nOffset, CString& strWord) const
 {
 	int nStartOffset = -1;
 	int nEndOffset = -1;
@@ -9149,7 +9379,7 @@ POSITION CBCGPEditCtrl::InsertMarker (CBCGPEditMarker* pMarker, BOOL bRedraw)
 	if (pMarker->m_dwMarkerType & g_dwBCGPEdit_MarkerReserved)
 	{
 		ASSERT (FALSE);
-		TRACE0 ("The type of this marker is reserved by the library. Use values greatr than 0x0000FFF0\n");
+		TRACE0 ("The type of this marker is reserved by the library. Use values greater than 0x0000FFF0\n");
 		return NULL;
 	}
 
@@ -9785,7 +10015,7 @@ BOOL CBCGPEditCtrl::LoadXMLSettingsFromBuffer (const CString& strInBuffer)
 		}
 
 		//----------------
-		// Read keywwords:
+		// Read keywords:
 		//----------------
 		CString strKeywords;
 		while (globalData.ExcludeTag (strColorData, _T("KEYWORDS"), strKeywords))
@@ -10126,7 +10356,7 @@ BOOL CBCGPEditCtrl::OpenFile (CFile& file)
 			ASSERT ((DWORD)nTextLen <= dwFileSize);
 			if (nTextLen <= 0)
 			{
-				TRACE0 ("SaveFile failed - system convertion API failed\n");
+				TRACE0 ("SaveFile failed - system conversion API failed\n");
 				delete [] pszTextBuffer;
 				return FALSE;
 			}
@@ -10257,7 +10487,7 @@ BOOL CBCGPEditCtrl::SaveFile (CFile& file)
 				if (WideCharToMultiByte(::GetACP (), 0, lpszBuffer, dwTextLen, 
 					pszTextBuffer, nTextLenA, NULL, NULL) == 0)
 				{
-					TRACE0 ("SaveFile failed - system convertion API failed\n");
+					TRACE0 ("SaveFile failed - system conversion API failed\n");
 					delete [] pszTextBuffer;
 					GlobalFree (hGlobal);
 					return FALSE;
@@ -10430,7 +10660,7 @@ BOOL CBCGPEditCtrl::DoFindText(int& nPos, int& nFindLength,
 	{
 		nPos = pStrBuffer->Find(lpszFind, nCurrOffset);
 
-		// for backword search:
+		// for backward search:
 		if (!bNext)
 		{
 			if (nPos == nLastOffset)
@@ -10455,7 +10685,7 @@ BOOL CBCGPEditCtrl::DoFindText(int& nPos, int& nFindLength,
 			break;
 		}
 		
-		// skip all substrings which are not embaced with delimiters
+		// skip all substrings which are not embraced with delimiters
 		int nPos1 = (nPos > 0)? m_strWordDelimeters.Find(pStrBuffer->GetAt(nPos - 1)): 0;
 		int nPos2 = (nPos + nFindLen < m_strBuffer.GetLength() - 1)? m_strWordDelimeters.Find(pStrBuffer->GetAt(nPos + nFindLen)): 0;
 
@@ -10499,7 +10729,7 @@ BOOL CBCGPEditCtrl::DoFindText(int& nPos, int& nFindLength,
 				{
 					nPos = pStrBuffer->Find(lpszFind, nCurrOffset);
 
-					// skip all substrings which are not embaced with delimiters
+					// skip all substrings which are not embraced with delimiters
 					if (nPos == -1)
 					{
 						break;
@@ -11639,7 +11869,7 @@ int CBCGPOutlineNode::ToggleOutliningInRange (int nStart, int nEnd)
 	ASSERT_VALID (this);
 
 	// ---------------------------------------------
-	// Toggle outlinig regions inside the selection:
+	// Toggle outlining regions inside the selection:
 	// ---------------------------------------------
 	CObList lstBlocks;
 	GetTopBlocksInRange (nStart, nEnd, lstBlocks);
@@ -11756,7 +11986,7 @@ CBCGPOutlineNode* CBCGPOutlineNode::AddNode (CBCGPOutlineNode* pNewNode, BCGP_ED
 	pNewNode->SetOwnerEditCtrl (m_pEditCtrl);
 
 	// ----------------------------------------------------------------------
-	// Insert new node in the list of subnodes to make the result list sorted
+	// Insert new node in the list of sub nodes to make the result list sorted
 	// ----------------------------------------------------------------------
 	POSITION pos = m_lstNodes.GetHeadPosition ();
 	while (pos != NULL)
@@ -11767,7 +11997,7 @@ CBCGPOutlineNode* CBCGPOutlineNode::AddNode (CBCGPOutlineNode* pNewNode, BCGP_ED
 		ASSERT_VALID (pNode);
 
 		// ------------------------------------------------
-		// 1 new block's bounds is less then the next's one
+		// 1 new block's bounds is less then the next one
 		// ------------------------------------------------
 		if (pNewNode->m_nEnd < pNode->m_nStart)
 		{
@@ -11783,7 +12013,7 @@ CBCGPOutlineNode* CBCGPOutlineNode::AddNode (CBCGPOutlineNode* pNewNode, BCGP_ED
 					pNewNode->m_nStart, 
 					pNewNode->m_nEnd) == FULL_IN_RANGE)
 		{
-			// All blocks covered by new one must be inserted as subnodes:
+			// All blocks covered by new one must be inserted as sub nodes:
 			m_lstNodes.RemoveAt (posSave);
 			pNode->m_pParentNode = NULL;
 			POSITION posIns = changes.m_lstInserted.Find (pNode);
@@ -11805,7 +12035,7 @@ CBCGPOutlineNode* CBCGPOutlineNode::AddNode (CBCGPOutlineNode* pNewNode, BCGP_ED
 			// -----------------------------------------------------
 			if (rangeResult == FULL_IN_RANGE)
 			{
-				// Add as subblock
+				// Add as sub block
 				pNode->AddNode (pNewNode, changes);
 				break;
 			}
@@ -11849,7 +12079,7 @@ CBCGPOutlineNode* CBCGPOutlineNode::RemoveNode (POSITION pos, BCGP_EDIT_OUTLINE_
 		if (!bRemoveSubNodes)
 		{
 			// -------------------------------------
-			// Move all subnodes to the parent node:
+			// Move all sub nodes to the parent node:
 			// -------------------------------------
 			while (!pNodeSave->m_lstNodes.IsEmpty ())
 			{
@@ -11903,10 +12133,11 @@ int CBCGPOutlineNode::Print (CString &str, int nLevel, int nCount) const
 	CString strLine;
 
 	CString strIndent (_T('\t'), nLevel);
-	strLine.Format (_T("%d#%sOutlineBlock: (%d,%d), %d subnodes\n"), 
+	strLine.Format (_T("%d#%sOutlineBlock: (%d,%d), %d subnodes %s\n"), 
 		nCount++, strIndent,
 		m_nStart, m_nEnd,
-		m_lstNodes.GetCount ());
+		m_lstNodes.GetCount (),
+		m_bCollapsed ? _T("collapsed") : _T("open"));
 
 	str += strLine;
 
@@ -12542,30 +12773,36 @@ void CBCGPEditCtrl::OnDrawOutlineButton (CDC* pDC, CRect rectButton, CBCGPOutlin
 	int nOldMode = pDC->SetBkMode (TRANSPARENT);
 
 	CPoint ptCenter = rectButton.CenterPoint ();
-	CPoint ptLeftTop = ptCenter;
-	ptLeftTop.Offset (-4, -4);
 
 	if (pRowOutlineBlock != NULL)
 	{
 		ASSERT_VALID (pRowOutlineBlock);
 		
 		// Draw button:
-		CRect rect (ptLeftTop, CSize (9, 9));
+		int nRadius = BCGP_SCALE_BY_DPI(5);
+
+		CRect rect(CPoint (ptCenter.x - nRadius, ptCenter.y - nRadius), CSize (nRadius * 2 + 1, nRadius * 2 + 1));
 		pDC->Rectangle (rect);
-		pDC->MoveTo (ptCenter.x - 2, ptCenter.y);
-		pDC->LineTo (ptCenter.x + 3, ptCenter.y);
+		
+		// Draw +/- sign:
+		CRect rectSign (CPoint (ptCenter.x - nRadius / 2, ptCenter.y - nRadius / 2), CSize(nRadius, nRadius));
+		
+		pDC->MoveTo (rectSign.left, ptCenter.y);
+		pDC->LineTo (rectSign.right, ptCenter.y);
+			
 		if (pRowOutlineBlock->m_bCollapsed)
 		{
-			pDC->MoveTo (ptCenter.x, ptCenter.y - 2);
-			pDC->LineTo (ptCenter.x, ptCenter.y + 3);
+			pDC->MoveTo (ptCenter.x, rectSign.top);
+			pDC->LineTo (ptCenter.x, rectSign.bottom);
 		}
-		
+
 		// Draw lines:
 		if (bInsideOpenBlockAtStart)
 		{
 			pDC->MoveTo (ptCenter.x, rectButton.top);
 			pDC->LineTo (ptCenter.x, rect.top + 1);
 		}
+		
 		if (bInsideOpenBlockAtEnd)
 		{
 			pDC->MoveTo (ptCenter.x, rectButton.bottom);
@@ -12581,7 +12818,7 @@ void CBCGPEditCtrl::OnDrawOutlineButton (CDC* pDC, CRect rectButton, CBCGPOutlin
 			pDC->LineTo (ptCenter.x, ptCenter.y);
 			if (bEndOfBlock)
 			{
-				pDC->LineTo (ptCenter.x + 5, ptCenter.y);
+				pDC->LineTo (ptCenter.x + BCGP_SCALE_BY_DPI(5), ptCenter.y);
 			}
 		}
 		if (bInsideOpenBlockAtEnd)
@@ -12660,7 +12897,7 @@ BOOL CBCGPEditCtrl::OnOutlineButtonClick (CBCGPOutlineNode *pOutlineNode)
 {
 	ASSERT_VALID (pOutlineNode);
 
-	RemoveSelection (FALSE, TRUE, FALSE);
+	BOOL bSel = RemoveSelection (FALSE, TRUE, FALSE);
 
 	int nVisibleLinesBefore = GetNumOfCharsInText (pOutlineNode->m_nStart, pOutlineNode->m_nEnd, g_chEOL, TRUE);
 
@@ -12670,7 +12907,14 @@ BOOL CBCGPEditCtrl::OnOutlineButtonClick (CBCGPOutlineNode *pOutlineNode)
 	m_nHiddenLines += nVisibleLinesBefore - nVisibleLinesAfter;
 	UpdateScrollBars ();
 
-	RedrawTextOffsets (pOutlineNode->m_nStart, m_strBuffer.GetLength () - 1);
+	if (bSel)
+	{
+		RedrawWindow();
+	}
+	else
+	{
+		RedrawTextOffsets (pOutlineNode->m_nStart, m_strBuffer.GetLength () - 1);
+	}
 
 	int nRowStart = GetRowStartByOffset (pOutlineNode->m_nStart, TRUE);
 	SetCaret (nRowStart);
@@ -12725,17 +12969,26 @@ void CBCGPEditCtrl::EnableOutlining (BOOL bEnable)
     }
 }
 //****************************************************************************************
-void CBCGPEditCtrl::SetLineNumbersMargin (BOOL bShow, int nMarginWidth)
+void CBCGPEditCtrl::SetLineNumbersMargin (BOOL bShow, int nMarginWidth, int nExtraMarginWidth)
 {
 	ASSERT (nMarginWidth >= 0);
 	BOOL bShowChanged = (bShow != m_bEnableLineNumbersMargin);
 	m_bEnableLineNumbersMargin = bShow;
 	m_nLineNumbersMarginWidth = nMarginWidth;
+	m_nLineNumbersMargin2Width = nExtraMarginWidth;
 
 	if (OnUpdateLineNumbersMarginWidth () || bShowChanged)
 	{
 		RecalcLayout ();
 		SetCaret (m_nCurrOffset, TRUE, FALSE);
+		RedrawWindow ();
+	}
+}
+void CBCGPEditCtrl::SetViewWhiteSpace (BOOL bViewWhiteSpace)
+{
+	if (m_bViewWhiteSpace != bViewWhiteSpace)
+	{
+		m_bViewWhiteSpace = bViewWhiteSpace;
 		RedrawWindow ();
 	}
 }
@@ -12929,6 +13182,14 @@ BOOL CBCGPEditCtrl::LoadOutlineParserXMLSettings (CString& strInBuffer)
 					bIgnore = (strIgnore == _T("TRUE"));
 				}
 				
+				BOOL bIsOneLine = FALSE;
+				CString strIsOneLine;
+				if (globalData.ExcludeTag (strBlock, _T("OneLine"), strIsOneLine))
+				{
+					strIsOneLine.MakeUpper ();
+					bIsOneLine = (strIsOneLine == _T("TRUE"));
+				}
+
 				CStringList lstKeywords; 
 				CString strKeywords;
 				if (globalData.ExcludeTag (strBlock, _T("KEYWORDS"), strKeywords))
@@ -12946,7 +13207,7 @@ BOOL CBCGPEditCtrl::LoadOutlineParserXMLSettings (CString& strInBuffer)
 				}
 
 				m_pOutlineParser->AddBlockType (strOpen, strClose, strReplace, 
-												bAllowNestedBlocks, bIgnore, &lstKeywords);
+												bAllowNestedBlocks, bIgnore, &lstKeywords, bIsOneLine);
 			}
 		}
 		
@@ -13214,7 +13475,7 @@ void CBCGPEditCtrl::ExportToHTML (CString& strHTML)
 			}
 		}
 
-		// 6) ignore hilited text
+		// 6) ignore highlighted text
 
 		// 7) User can define color of current char:
 		if (!bColorFound)
@@ -13621,7 +13882,7 @@ void CBCGPEditCtrl::LineScroll (int nLines, int nChars/* = 0*/)
     // Scroll vertically
     // -----------------
 	int nDeltaY = nLines;
-    bScrollRequired == OnScroll (SB_VERT, SB_THUMBPOSITION, m_nScrollOffsetVert + nDeltaY)
+    bScrollRequired = OnScroll (SB_VERT, SB_THUMBPOSITION, m_nScrollOffsetVert + nDeltaY)
                     || bScrollRequired;
 
 	if (bScrollRequired)
@@ -13766,7 +14027,7 @@ BOOL CBCGPEditCtrl::OnUpdateLineNumbersMarginWidth (CDC* pDC)
     }
 
     int nOldMarginWidth = m_nLineNumbersMarginAutoWidth;
-    m_nLineNumbersMarginAutoWidth = max (m_nLineNumbersMarginWidth, size.cx + 3);
+    m_nLineNumbersMarginAutoWidth = max (m_nLineNumbersMarginWidth, size.cx + 3) + m_nLineNumbersMargin2Width;
 
 	// Returns TRUE, if all margin-related things should be updated
 	return (nOldMarginWidth != m_nLineNumbersMarginAutoWidth);
@@ -14020,7 +14281,7 @@ void CBCGPEditCtrl::ExportToRTF (CString& strRTF, CArray <COLORREF, COLORREF&> &
 			}
 		}
 
-		// 6) ignore hilited text
+		// 6) ignore highlighted text
 
 		// 7) User can define color of current char:
 		if (!bColorFound)
@@ -14190,6 +14451,15 @@ LRESULT CBCGPEditCtrl::OnBCGUpdateToolTips (WPARAM wp, LPARAM)
 #endif
 	return 0;
 }
+//*************************************************************************************
+LRESULT CBCGPEditCtrl::OnPreCloseFrame(WPARAM, LPARAM)
+{
+	if (m_bIntelliSenseMode && m_pIntelliSenseWnd->GetSafeHwnd() != NULL)
+	{
+		m_pIntelliSenseWnd->SendMessage(WM_CLOSE);
+	}
+
+	return 0L;
+}
 
 #endif	// BCGP_EXCLUDE_EDIT_CTRL
-

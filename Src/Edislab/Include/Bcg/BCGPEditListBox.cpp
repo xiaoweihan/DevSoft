@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -121,8 +121,9 @@ BEGIN_MESSAGE_MAP(CBCGPEditListBase, CStatic)
     ON_MESSAGE(WM_SETFONT, OnSetFont)
     ON_MESSAGE(WM_GETFONT, OnGetFont)
 	ON_MESSAGE(WM_SETTEXT, OnSetText)
-	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
+	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -238,10 +239,13 @@ BOOL CBCGPEditListBase::AddButton (UINT uiImageResId,
 	pButton->m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
 	pButton->m_bGrayDisabled = m_bGrayDisabledButtons;
 	pButton->m_bDrawFocus = FALSE;
+	pButton->m_bNotifyCommandOnDblClick = FALSE;
 	pButton->m_bVisualManagerStyle = m_bVisualManagerStyle;
 	pButton->SetDrawText(FALSE, FALSE);
 
+	pButton->SetImageAutoScale();
 	pButton->SetImage (uiImageResId);
+
 	if (lpszTooltip != NULL)
 	{
 		CString strTooltip = lpszTooltip;
@@ -328,12 +332,13 @@ void CBCGPEditListBase::DoPaint(CDC* pDC)
 
 	if (m_bVisualManagerStyle)
 	{
-		clrText = globalData.clrBarText;
-		pDC->Draw3dRect (m_rectCaption, globalData.clrBarShadow, globalData.clrBarHilite);
+		clrText = CBCGPVisualManager::GetInstance()->OnDrawEditListCaption(pDC, this, m_rectCaption);
 	}
 	else
 	{
 		clrText = globalData.clrBtnText;
+
+		pDC->FillRect (m_rectCaption, &globalData.brBtnFace);
 		pDC->Draw3dRect (m_rectCaption, globalData.clrBtnShadow, globalData.clrBtnHilite);
 	}
 
@@ -454,15 +459,8 @@ void CBCGPEditListBase::AdjustLayout ()
 	OnSizeList ();
 }
 //************************************************************************************
-BOOL CBCGPEditListBase::OnEraseBkgnd(CDC* pDC) 
+BOOL CBCGPEditListBase::OnEraseBkgnd(CDC* /*pDC*/) 
 {
-	ASSERT_VALID (pDC);
-
-	CRect rectFill;
-	GetClientRect (rectFill);
-	rectFill.bottom = m_rectCaption.bottom;
-
-	pDC->FillRect (rectFill, m_bVisualManagerStyle ? &CBCGPVisualManager::GetInstance()->GetDlgBackBrush(GetParent ()) : &globalData.brBtnFace);
 	return TRUE;
 }
 //************************************************************************************
@@ -844,6 +842,12 @@ LRESULT CBCGPEditListBase::OnBCGSetControlVMMode (WPARAM wp, LPARAM)
 	}
 
 	return 0;
+}
+//**************************************************************************
+LRESULT CBCGPEditListBase::OnChangeVisualManager (WPARAM, LPARAM)
+{
+	SendMessageToDescendants(BCGM_CHANGEVISUALMANAGER, 0, 0, FALSE, TRUE);
+	return 0L;
 }
 
 /////////////////////////////////////////////////////////////////////////////

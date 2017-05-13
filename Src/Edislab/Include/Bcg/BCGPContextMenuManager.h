@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -38,7 +38,7 @@ public:
 	CBCGPContextMenuManager();
 	virtual ~CBCGPContextMenuManager();
 
-// Opreations:
+// Operations:
 public:
 	BOOL AddMenu (UINT uiMenuNameResId, UINT uiMenuResId);
 	BOOL AddMenu (LPCTSTR lpszName, UINT uiMenuResId);
@@ -68,13 +68,41 @@ public:
 		m_bDontCloseActiveMenu = bSet;
 	}
 
+	void SetConnectedFloatyHeight(int nHeight)
+	{
+		m_nConnectedFloatyHeight = nHeight;
+	}
+
+	int GetConnectedFloatyHeight() const
+	{
+		return m_nConnectedFloatyHeight;
+	}
+
+	BOOL IsTracking() const
+	{
+		return m_bIsTracking;
+	}
+
+	BOOL IsCheckRightMouseButton() const 
+	{ 
+		return m_bRightMouseButtonCheck; 
+	}
+
+	void SetRightMouseButtonCheck(BOOL bSet = TRUE) 
+	{ 
+		m_bRightMouseButtonCheck = bSet; 
+	}
+
 protected:
 	CMap<UINT, UINT, HMENU, HMENU>			m_Menus;
 	CMap<CString, LPCTSTR, HMENU, HMENU> 	m_MenuNames;
 	CMap<UINT, UINT, CObList*, CObList*>	m_MenuOriginalItems;
 	UINT									m_nLastCommandID;
 	BOOL									m_bTrackMode;
+	BOOL									m_bIsTracking;
 	BOOL									m_bDontCloseActiveMenu;
+	int										m_nConnectedFloatyHeight;
+	BOOL									m_bRightMouseButtonCheck;
 
 	void CopyOriginalMenuItemsToMenu (UINT uiResId, CBCGPPopupMenuBar& menuBar);
 	void CopyOriginalMenuItemsFromMenu (UINT uiResId, CBCGPPopupMenuBar& menuBar);

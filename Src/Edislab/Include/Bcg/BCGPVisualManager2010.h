@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -114,6 +114,9 @@ protected:
 					CDC* pDC, 
 					CBCGPRibbonTab* pTab, 
 					BOOL bIsActive);
+
+	virtual COLORREF OnFillRibbonBackstageLeftPane(CDC* pDC, CRect rectPanel);
+
 	virtual COLORREF OnDrawRibbonPanel (
 					CDC* pDC,
 					CBCGPRibbonPanel* pPanel, 
@@ -182,6 +185,9 @@ protected:
 	virtual COLORREF GetTreeControlFillColor(CBCGPTreeCtrl* pTreeCtrl, BOOL bIsSelected = FALSE, BOOL bIsFocused = FALSE, BOOL bIsDisabled = FALSE);
 	virtual COLORREF GetTreeControlTextColor(CBCGPTreeCtrl* pTreeCtrl, BOOL bIsSelected = FALSE, BOOL bIsFocused = FALSE, BOOL bIsDisabled = FALSE);
 
+	// IntelliSense window:
+	virtual COLORREF GetIntelliSenseFillColor(CBCGPBaseIntelliSenseLB* pCtrl, BOOL bIsSelected);
+
 #ifndef BCGP_EXCLUDE_PLANNER
 
 	//virtual COLORREF GetPlannerSeparatorColor (CBCGPPlannerView* pView);
@@ -197,8 +203,12 @@ protected:
 #ifndef BCGP_EXCLUDE_GRID_CTRL
 	virtual COLORREF OnFillReportCtrlRowBackground (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rectFill, BOOL bSelected, BOOL bGroup);
 	virtual COLORREF OnFillGridItem (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rectFill, BOOL bSelected, BOOL bActiveItem, BOOL bSortedColumn);
+	virtual COLORREF GetGridTreeLineColor (CBCGPGridCtrl* pCtrl);
 	virtual BOOL OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_GRID_COLOR_DATA& theme);
 #endif // BCGP_EXCLUDE_GRID_CTRL
+
+	// WinUITiles:
+	virtual void GetWinUITilesColors(CBCGPWinUITilesColors& colors);
 
 protected:
 	CBCGPToolBarImages		m_RibbonBtnMinimizeIcon;

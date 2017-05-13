@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,6 +18,7 @@
 #include "BCGPRibbonProgressBar.h"
 #include "BCGPVisualManager.h"
 #include "BCGPPopupMenu.h"
+#include "bcgpglobalutils.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -115,12 +116,12 @@ CSize CBCGPRibbonProgressBar::GetRegularSize (CDC* /*pDC*/)
 	{
 		if (IsVertical())
 		{
-			nWidth = (int)(.5 + globalData.GetRibbonImageScale () * nWidth);
+			nWidth = globalUtils.ScaleByDPI(nWidth);
 			nWidth -= (nWidth - m_nWidth) / 2;
 		}
 		else
 		{
-			nHeight = (int)(.5 + globalData.GetRibbonImageScale () * nHeight);
+			nHeight = globalUtils.ScaleByDPI(nHeight);
 			nHeight -= (nHeight - m_nHeight) / 2;
 		}
 	}

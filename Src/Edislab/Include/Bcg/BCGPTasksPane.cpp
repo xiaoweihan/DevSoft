@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,6 +29,8 @@
 #include "BCGPRegistry.h"
 #include "BCGPToolbarMenuButton.h"
 #include "BCGPPopupMenu.h"
+#include "bcgpglobalutils.h"
+#include "BCGPPngImage.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -47,7 +49,6 @@ static const CString strTasksPaneProfile	= _T("BCGPTasksPanes");
 
 static const int iBorderSize = 1;
 static const int iNavToolbarId = 1;
-static const int iAnimTimerId =		ID_CHECK_AUTO_HIDE_CONDITION + 1;
 static const int iScrollTimerId =	ID_CHECK_AUTO_HIDE_CONDITION + 2;
 
 static inline BOOL IsSystemCommand (UINT uiCmd)
@@ -401,8 +402,6 @@ void CBCGPTasksPaneToolBar::AdjustLayout ()
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPTasksPane
 
-clock_t CBCGPTasksPane::m_nLastAnimTime = 0;
-const int CBCGPTasksPane::m_iAnimTimerDuration = 30;
 const int CBCGPTasksPane::m_iScrollTimerDuration = 80;
 const LONG CBCGPTasksPane::m_lAccUseCursorPosValue = MAKELONG(0, 1);
 const LONG CBCGPTasksPane::m_lAccUseFocus = MAKELONG(0, 2);
@@ -422,11 +421,13 @@ CBCGPTasksPane::CBCGPTasksPane(): CBCGPDockingControlBar (), m_nMaxHistory (10)
 	m_pHotGroupCaption = NULL;
 	m_pClickedGroupCaption = NULL;
 	m_pFocusedGroupCaption = NULL;
+	m_pCurrGroup = NULL;
 	m_bCanCollapse = TRUE;
 	m_nVertScrollOffset = 0;
 	m_nVertScrollTotal = 0;
 	m_nVertScrollPage = 0;
 	m_nRowHeight = 0;
+	m_bHideSingleGroupCaption = FALSE;
 
 	m_nVertMargin = -1;	// default, use Visual Manager's settings
 	m_nHorzMargin = -1;
@@ -470,6 +471,9 @@ CBCGPTasksPane::CBCGPTasksPane(): CBCGPDockingControlBar (), m_nMaxHistory (10)
 	m_bWrapLabels = FALSE;
 
 	m_bPrecessAccFocusEvent = FALSE;
+	m_hwndHeader = NULL;
+
+	m_nAccHeaderControlsCount = 0;
 }
 
 CBCGPTasksPane::~CBCGPTasksPane()
@@ -635,6 +639,7 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 	m_nAnimGroupExtraHeight = 0;
 
 	int y = rectTasks.top - m_nVertScrollOffset * m_nRowHeight;
+	int nGroupHeight = 0;
 
 	// ---------------
 	// Get active page
@@ -647,6 +652,29 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 	ASSERT_VALID(pActivePage);
 
 	POSITION pos = NULL;
+	
+	BOOL bHideGroupCaptions = FALSE;
+	if (m_bHideSingleGroupCaption)
+	{
+		bHideGroupCaptions = TRUE;
+		int nVisibleCount = 0;
+
+		for (pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+		{
+			CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+			ASSERT_VALID (pGroup);
+
+			if (pGroup->m_bIsVisible)
+			{
+				nVisibleCount++;
+				if (nVisibleCount > 1)
+				{
+					bHideGroupCaptions = FALSE;
+					break;
+				}
+			}
+		}
+	}
 
 	// -------------
 	// Recalc groups
@@ -664,11 +692,12 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 		// Calc caption size
 		// -----------------
 		int nCaptionHeight = 0;
-		if (!pGroup->m_strName.IsEmpty())
+		if (!pGroup->m_strName.IsEmpty() && pGroup->m_bIsVisible && !bHideGroupCaptions)
 		{
 			CFont* pFontOld = dc.SelectObject (&globalData.fontBold);
 			CSize sizeText = dc.GetTextExtent (pGroup->m_strName);
 			dc.SelectObject (pFontOld);
+
 			int nVOffset = (GetGroupCaptionVertOffset() != -1 ? GetGroupCaptionVertOffset() :
 				CBCGPVisualManager::GetInstance ()->GetTasksPaneGroupCaptionVertOffset());
 			int nHeight = (GetGroupCaptionHeight() != -1 ? GetGroupCaptionHeight() : 
@@ -691,7 +720,7 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 		}
 
 		if (pGroup->m_hIcon != NULL && 
-			(pGroup->m_sizeIcon.cx < rectTasks.Width () - nCaptionHeight))
+			(pGroup->m_sizeIcon.cx < rectTasks.Width () - nCaptionHeight) && pGroup->m_bIsVisible)
 		{
 			if (nCaptionHeight < pGroup->m_sizeIcon.cy)
 			{
@@ -701,8 +730,7 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 
 		if (!bCalcHeightOnly)
 		{
-				pGroup->m_rect = CRect (rectTasks.left, y, 
-					rectTasks.right, y + nCaptionHeight);
+			pGroup->m_rect = pGroup->m_bIsVisible ? CRect (rectTasks.left, y, rectTasks.right, y + nCaptionHeight) : CRect(0, 0, 0, 0);
 		}
 
 		y += nCaptionHeight;
@@ -710,7 +738,7 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 
 		SetFont (&dc);
 
-		if (m_bCanCollapse && pGroup->m_bIsCollapsed && !pGroup->m_strName.IsEmpty() &&
+		if (m_bCanCollapse && (pGroup->m_bIsCollapsed || !pGroup->m_bIsVisible) && !pGroup->m_strName.IsEmpty() &&
 			!(m_bAnimationEnabled && pGroup == m_pAnimatedGroup && m_sizeAnim.cy > 0 && !bCalcHeightOnly))
 		{
 			if (!bCalcHeightOnly)
@@ -980,6 +1008,12 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 			{
 				pGroup->m_rectGroup = CRect (rectTasks.left, yGroup, rectTasks.right, y);
 			}
+
+			if (pGroup == m_pCurrGroup)
+			{
+				nGroupHeight = y - yGroup;
+				break;
+			}
 		}
 
 		y += (GetGroupVertOffset() != -1 ? GetGroupVertOffset() :
@@ -1055,7 +1089,7 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 
 			if (pGroup->m_pPage == pActivePage)
 			{
-				BOOL bCollapsed = m_bCanCollapse && pGroup->m_bIsCollapsed && !pGroup->m_strName.IsEmpty();
+				BOOL bCollapsed = (m_bCanCollapse && pGroup->m_bIsCollapsed && !pGroup->m_strName.IsEmpty()) || !pGroup->m_bIsVisible;
 				BOOL bAnimating = m_bAnimationEnabled && pGroup == m_pAnimatedGroup && m_sizeAnim.cy > 0;
 				for (POSITION posTask = pGroup->m_lstTasks.GetHeadPosition (); posTask != NULL;)
 				{
@@ -1094,6 +1128,12 @@ int CBCGPTasksPane::ReposTasks (BOOL bCalcHeightOnly/* = FALSE*/)
 	}
 
 	dc.SelectObject (pFontOld);
+
+	if (nGroupHeight > 0)
+	{
+		return nGroupHeight;
+	}
+
 	return y - (GetGroupVertOffset() != -1 ? GetGroupVertOffset() :
 		CBCGPVisualManager::GetInstance ()->GetTasksPaneGroupVertOffset()) +
 		m_nVertScrollOffset * m_nRowHeight +
@@ -1271,65 +1311,30 @@ void CBCGPTasksPane::SetIconsList (HIMAGELIST hIcons)
 	RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
 }
 //******************************************************************************************
-BOOL CBCGPTasksPane::SetIconsList (UINT uiImageListResID, int cx,
-							  COLORREF clrTransparent)
+BOOL CBCGPTasksPane::SetIconsList (UINT uiImageListResID, int cx, COLORREF clrTransparent, BOOL bAutoScale)
 {
 	ASSERT_VALID(this);
 
-	CBitmap bmp;
-	if (!bmp.LoadBitmap (uiImageListResID))
+	CBCGPToolBarImages images;
+	if (!images.Load(uiImageListResID))
 	{
 		TRACE(_T("Can't load bitmap: %x\n"), uiImageListResID);
 		return FALSE;
 	}
 
+	images.SetSingleImage(FALSE);
+	images.SetTransparentColor(clrTransparent);
+	images.SetImageSize(CSize(cx, images.GetImageSize().cy), TRUE);
+
+	if (bAutoScale)
+	{
+		globalUtils.ScaleByDPI(images);
+	}
+
 	CImageList icons;
-
-	BITMAP bmpObj;
-	bmp.GetBitmap (&bmpObj);
-
-	UINT nFlags = (clrTransparent == (COLORREF) -1) ? 0 : ILC_MASK;
-
-	switch (bmpObj.bmBitsPixel)
+	if (!images.ExportToImageList(icons))
 	{
-	case 4:
-	default:
-		nFlags |= ILC_COLOR4;
-		break;
-
-	case 8:
-		nFlags |= ILC_COLOR8;
-		break;
-
-	case 16:
-		nFlags |= ILC_COLOR16;
-		break;
-
-	case 24:
-		nFlags |= ILC_COLOR24;
-		break;
-
-	case 32:
-		if (clrTransparent == (COLORREF)-1)
-		{
-			nFlags |= ILC_COLOR32 | ILC_MASK;
-		}
-		else
-		{
-			nFlags |= ILC_COLOR32;
-		}
-		break;
-	}
-
-	icons.Create (cx, bmpObj.bmHeight, nFlags, 0, 0);
-
-	if (bmpObj.bmBitsPixel == 32 && clrTransparent == (COLORREF)-1)
-	{
-		icons.Add (&bmp, (CBitmap*) NULL);
-	}
-	else
-	{
-		icons.Add (&bmp, clrTransparent);
+		return FALSE;
 	}
 
 	SetIconsList (icons);
@@ -2614,6 +2619,12 @@ void CBCGPTasksPane::OnClickTask (int /*nGroupNumber*/, int /*nTaskNumber*/,
 	}
 }
 //****************************************************************************************
+BOOL CBCGPTasksPane::CanClickTask(int /*nGroupNumber*/, int /*nTaskNumber*/, 
+						   UINT /*uiCommandID*/, DWORD_PTR /*dwUserData*/)
+{
+	return TRUE;
+}
+//****************************************************************************************
 void CBCGPTasksPane::OnLButtonDown(UINT nFlags, CPoint point) 
 {
 	m_pClickedGroupCaption = GroupCaptionHitTest (point);
@@ -2652,16 +2663,6 @@ void CBCGPTasksPane::OnLButtonDown(UINT nFlags, CPoint point)
 	}
 }
 //****************************************************************************************
-
-//-----------------------------------------------------
-// My "classic " trick - how I can access to protected
-// member m_pRecentFileList?
-//-----------------------------------------------------
-class CBCGApp : public CWinApp
-{
-	friend class CBCGPTasksPane;
-};
-
 int CBCGPTasksPane::AddMRUFilesList(int nGroup, int nMaxFiles /* = 4 */)
 {
 	POSITION pos = m_lstTaskGroups.FindIndex (nGroup);
@@ -2696,7 +2697,7 @@ int CBCGPTasksPane::AddMRUFilesList(int nGroup, int nMaxFiles /* = 4 */)
 	}
 
 	CRecentFileList* pRecentFileList = 
-		((CBCGApp*) AfxGetApp ())->m_pRecentFileList;
+		((CBCGPWinApp*) AfxGetApp ())->m_pRecentFileList;
 
 	if (pRecentFileList == NULL)
 	{
@@ -2893,6 +2894,18 @@ void CBCGPTasksPane::AdjustScroll ()
 	CRect rectClient;
 	GetClientRect (rectClient);
 
+	const int nHeaderHeight = GetHeaderHeight();
+	if (nHeaderHeight > 0)
+	{
+		CWnd* pWnd = CWnd::FromHandle(m_hwndHeader);
+		if (pWnd->GetSafeHwnd() != NULL)
+		{
+			pWnd->SetWindowPos(NULL, rectClient.left, rectClient.top, rectClient.Width(), nHeaderHeight, SWP_NOACTIVATE | SWP_NOZORDER);
+		}
+
+		rectClient.top += nHeaderHeight;
+	}
+
 	if (IsToolBox ())
 	{
 		rectClient.DeflateRect (1, 1);
@@ -3036,6 +3049,17 @@ void CBCGPTasksPane::DoPaint(CDC* pDCPaint)
 
 	CRect rect;
 	GetClientRect (rect);
+
+	const int nHeaderHeight = GetHeaderHeight();
+	if (nHeaderHeight > 0)
+	{
+		CRect rectHeader = rect;
+		rectHeader.bottom = rectHeader.top + nHeaderHeight;
+
+		pDC->FillRect(rectHeader, &globalData.brBarFace);
+
+		rect.top += nHeaderHeight;
+	}
 
 	CRect rectFrame = rect;
 	rectFrame.SetRectEmpty ();
@@ -3259,6 +3283,12 @@ BOOL CBCGPTasksPane::GetPageByGroup (int nGroup, int &nPage) const
 
 	ASSERT (FALSE);
 	return FALSE;
+}
+//****************************************************************************************
+void CBCGPTasksPane::HideSingleGroupCaption (BOOL bHide/* = TRUE*/)
+{
+	m_bHideSingleGroupCaption = bHide;
+	RecalcLayout(TRUE);
 }
 //****************************************************************************************
 void CBCGPTasksPane::OnPressButtons (UINT nHit)
@@ -3855,74 +3885,46 @@ BOOL CBCGPTasksPane::LoadState (LPCTSTR lpszProfileName, int nIndex, UINT uiID)
 	return bResult;
 }
 //****************************************************************************************
+void CBCGPTasksPane::OnAnimationValueChanged(double /*dblOldValue*/, double dblNewValue)
+{
+	if (m_pAnimatedGroup != NULL && m_nRowHeight != 0)
+	{
+		ASSERT_VALID (m_pAnimatedGroup);
+		
+		m_sizeAnim.cy = (int)dblNewValue;
+		
+		CRect rectUpdate = m_rectTasks;
+		rectUpdate.top = m_pAnimatedGroup->m_rect.top - 1;
+		int nSaveTop = rectUpdate.top;
+		InvalidateRect (rectUpdate);
+		
+		RedrawWindow (NULL, NULL, RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+		
+		ReposTasks ();
+		
+		rectUpdate = m_rectTasks;
+		rectUpdate.top = min (m_pAnimatedGroup->m_rect.top - 1, nSaveTop);
+		InvalidateRect (rectUpdate);
+		
+		RedrawWindow (NULL, NULL, RDW_ERASE);
+	}
+	else
+	{
+		StopAnimation();
+	}
+}
+//****************************************************************************************
+void CBCGPTasksPane::OnAnimationFinished()
+{
+	CBCGPTasksGroup* pSaveGroup = m_pAnimatedGroup;
+	m_pAnimatedGroup = NULL;
+	OnEndAnimation (pSaveGroup);
+}
+//****************************************************************************************
 void CBCGPTasksPane::OnTimer(UINT_PTR nIDEvent) 
 {
 	switch (nIDEvent)
 	{
-	case iAnimTimerId:
-		if (m_pAnimatedGroup != NULL && m_nRowHeight != 0)
-		{
-			ASSERT_VALID (m_pAnimatedGroup);
-
-			clock_t nCurrAnimTime = clock ();
-
-			int nDuration = nCurrAnimTime - m_nLastAnimTime;
-			int nSteps = (int) (.5 + (float) nDuration / m_iAnimTimerDuration);
-
-			// speed up animation
-			const int MAX_ANIMATIONSTEPS_NUM = 9;
-			int nAnimatedGroupHeight = m_sizeAnim.cy + m_nAnimGroupExtraHeight;
-			int nStepsTotal = (int) (.5 + (float) nAnimatedGroupHeight / m_nRowHeight);
-			if (nStepsTotal > MAX_ANIMATIONSTEPS_NUM)
-			{
-				nSteps = 1 + nSteps * nStepsTotal / MAX_ANIMATIONSTEPS_NUM;
-			}			
-
-			if (m_pAnimatedGroup->m_bIsCollapsed) // collapsing
-			{
-				m_sizeAnim.cy -= nSteps * m_nRowHeight;
-			}
-			else // expanding
-			{
-				m_sizeAnim.cy += nSteps * m_nRowHeight;
-			}
-
-			CRect rectUpdate = m_rectTasks;
-			rectUpdate.top = m_pAnimatedGroup->m_rect.top - 1;
-			int nSaveTop = rectUpdate.top;
-			InvalidateRect (rectUpdate);
-
-			RedrawWindow (NULL, NULL, RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
-
-			ReposTasks ();
-
-			rectUpdate = m_rectTasks;
-			rectUpdate.top = min (m_pAnimatedGroup->m_rect.top - 1, nSaveTop);
-			InvalidateRect (rectUpdate);
-
-			RedrawWindow (NULL, NULL, RDW_ERASE);
-
-			// stop rule:
-			if (m_pAnimatedGroup->m_bIsCollapsed && m_sizeAnim.cy < 0 ||
-				!m_pAnimatedGroup->m_bIsCollapsed && m_sizeAnim.cy > m_pAnimatedGroup->m_rectGroup.Height ())
-			{
-				m_pAnimatedGroup = NULL;
-				m_sizeAnim = CSize (0, 0);
-			}
-
-			m_nLastAnimTime = nCurrAnimTime;
-		}
-		else
-		{
-			CBCGPTasksGroup* pSaveGroup = m_pAnimatedGroup;
-
-			KillTimer (iAnimTimerId);
-			m_pAnimatedGroup = NULL;
-
-			OnEndAnimation (pSaveGroup);
-		}
-		break;
-
 	case iScrollTimerId:
 		{
 			CPoint point;
@@ -4020,13 +4022,19 @@ void CBCGPTaskCmdUI::Enable(BOOL bOn)
 		return;
 	}
 
-	for (POSITION posTask = pGroup->m_lstTasks.GetHeadPosition (); posTask != NULL;)
+	int nTask = 0;
+	for (POSITION posTask = pGroup->m_lstTasks.GetHeadPosition (); posTask != NULL; nTask++)
 	{
 		CBCGPTask* pTask = (CBCGPTask*) pGroup->m_lstTasks.GetNext (posTask);
 		ASSERT_VALID (pTask);
 
 		if (pTask->m_uiCommandID == m_nID)
 		{
+			if (!pTasksPane->CanClickTask(m_nIndex, nTask, m_nID, pTask->m_dwUserData))
+			{
+				bOn = FALSE;
+			}
+
 			if (pTask->m_bEnabled != bOn)
 			{
 				pTask->m_bEnabled = bOn;
@@ -4053,7 +4061,7 @@ void CBCGPTaskCmdUI::SetText (LPCTSTR lpszText)
 	ASSERT_KINDOF(CBCGPTasksPane, pTasksPane);
 	ASSERT(m_nIndex < m_nIndexMax);
 
-	//Remove any amperstands and trailing label (ex.:"\tCtrl+S")
+	//Remove any ampersands and trailing label (ex.:"\tCtrl+S")
 	CString strNewText(lpszText);
 
 	int iOffset = strNewText.Find (_T('\t'));
@@ -4156,18 +4164,16 @@ BOOL CBCGPTasksPane::CreateNavigationToolbar ()
 		return FALSE;
 	}
 	m_wndToolBar.SetBarStyle (m_wndToolBar.GetBarStyle () & ~CBRS_GRIPPER);
-	
+	m_wndToolBar.SetWindowText(_T("TasksPane toolbar"));
 	m_wndToolBar.SetOwner (this);
 
 	// All commands will be routed via this bar, not via the parent frame:
 	m_wndToolBar.SetRouteCommandsViaFrame (FALSE);
 
 	CSize sizeNavImage = globalData.Is32BitIcons () ? CSize (16, 16) : CSize (12, 12);
-	const int nImageMargin = 4;
+	const int nImageMargin = 8;
 
 	CSize sizeNavButton = sizeNavImage + CSize (nImageMargin, nImageMargin);
-
-	const double dblImageScale = globalData.GetRibbonImageScale ();
 
 	// -----------------------
 	// Load navigation images:
@@ -4177,12 +4183,7 @@ BOOL CBCGPTasksPane::CreateNavigationToolbar ()
 		//----------------------
 		// Use default resource:
 		//----------------------
-
-		if (dblImageScale != 1.)
-		{
-			sizeNavButton = CSize ((int)(.5 + dblImageScale * sizeNavButton.cx), (int)(.5 + dblImageScale * sizeNavButton.cy));
-		}
-
+		sizeNavButton = globalUtils.ScaleByDPI(sizeNavButton);
 		m_wndToolBar.SetLockedSizes (sizeNavButton, sizeNavImage);
 
 		CBCGPLocalResource	lr;
@@ -4209,11 +4210,7 @@ BOOL CBCGPTasksPane::CreateNavigationToolbar ()
 			}
 		}
 
-		if (dblImageScale != 1.)
-		{
-			sizeNavButton = CSize ((int)(.5 + dblImageScale * sizeNavButton.cx), (int)(.5 + dblImageScale * sizeNavButton.cy));
-		}
-
+		sizeNavButton = globalUtils.ScaleByDPI(sizeNavButton);
 		m_wndToolBar.SetLockedSizes (sizeNavButton, sizeNavImage);
 
 		if (!m_wndToolBar.LoadBitmap (m_uiToolbarBmpRes, 0, 0, TRUE))
@@ -4461,10 +4458,8 @@ void CBCGPTasksPane::EnableNavigationToolbar (BOOL bEnable,
 
 	if (bReloadImages)
 	{
-		const double dblImageScale = globalData.GetRibbonImageScale ();
-
 		CSize sizeNavImage = globalData.Is32BitIcons () ? CSize (16, 16) : CSize (12, 12);
-		const int nImageMargin = 4;
+		const int nImageMargin = 8;
 
 		CSize sizeNavButton = sizeNavImage + CSize (nImageMargin, nImageMargin);
 
@@ -4475,11 +4470,7 @@ void CBCGPTasksPane::EnableNavigationToolbar (BOOL bEnable,
 			//----------------------
 			// Use default resource:
 			//----------------------
-			if (dblImageScale != 1.)
-			{
-				sizeNavButton = CSize ((int)(.5 + dblImageScale * sizeNavButton.cx), (int)(.5 + dblImageScale * sizeNavButton.cy));
-			}
-
+			sizeNavButton = globalUtils.ScaleByDPI(sizeNavButton);
 			m_wndToolBar.SetLockedSizes (sizeNavButton, sizeNavImage);
 
 			CBCGPLocalResource	lr;
@@ -4506,11 +4497,7 @@ void CBCGPTasksPane::EnableNavigationToolbar (BOOL bEnable,
 				}
 			}
 
-			if (dblImageScale != 1.)
-			{
-				sizeNavButton = CSize ((int)(.5 + dblImageScale * sizeNavButton.cx), (int)(.5 + dblImageScale * sizeNavButton.cy));
-			}
-
+			sizeNavButton = globalUtils.ScaleByDPI(sizeNavButton);
 			m_wndToolBar.SetLockedSizes (sizeNavButton, sizeNavImage);
 
 			if (!m_wndToolBar.LoadBitmap (m_uiToolbarBmpRes, 0, 0, TRUE))
@@ -4663,6 +4650,7 @@ void CBCGPTasksPane::EnableHistoryMenuButtons (BOOL bEnable)
 	{
 		bRecreateToolBar = TRUE;
 		m_wndToolBar.DestroyWindow ();
+		m_wndToolBar.CleanUpLockedImages();
 	}
 
 	m_bHistoryMenuButtons = bEnable;
@@ -4718,7 +4706,7 @@ void CBCGPTasksPane::NotifyAccessibility (int nGroupNumber, int nTaskNumber)
 		OBJID_CLIENT , CHILDID_SELF);
 }
 //*****************************************************************************************
-void CBCGPTasksPane::NotifyAccessibilityFocusEvent (BOOL bUseCursor)
+void CBCGPTasksPane::NotifyAccessibilityFocusEvent(BOOL bUseCursor/*CBCGPBaseAccessibleObject* pObject*/)
 {
 	if (globalData.IsAccessibilitySupport ())
 	{
@@ -4736,9 +4724,9 @@ void CBCGPTasksPane::NotifyAccessibilityFocusEvent (BOOL bUseCursor)
 			lParam = (LPARAM)m_lAccUseFocus;
 			m_bPrecessAccFocusEvent = TRUE;
 		}
-
+				
 		globalData.NotifyWinEvent (EVENT_OBJECT_FOCUS, GetSafeHwnd (), 
-			OBJID_CLIENT , (LONG)lParam);
+			OBJID_CLIENT, (LONG) lParam);
 	}
 }
 //*****************************************************************************************
@@ -4748,7 +4736,7 @@ BOOL CBCGPTasksPane::OnSetAccData (long lVal)
 
 	CBCGPTasksGroup* pGroup = NULL;
 	CBCGPTask* pTask = NULL;
-
+	
 	if (lVal == m_lAccUseCursorPosValue)
 	{
 		if (m_bPrecessAccFocusEvent)
@@ -4840,19 +4828,238 @@ BOOL CBCGPTasksGroup::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 	data.Clear ();
 	data.m_strAccName = m_strName;
 	data.m_nAccRole = ROLE_SYSTEM_GROUPING;
-	data.m_bAccState = STATE_SYSTEM_NORMAL;
+	data.m_bAccState = (m_bIsCollapsed) ? STATE_SYSTEM_COLLAPSED : STATE_SYSTEM_NORMAL;
 	data.m_nAccHit = 1;
 
 	if (pTaskpane != NULL && pTaskpane->IsGroupCollapseEnabled())
 	{
-		data.m_bAccState = STATE_SYSTEM_FOCUSABLE;
+		data.m_bAccState |= STATE_SYSTEM_FOCUSABLE;
 	}
-
-	data.m_rectAccLocation = m_rect;
+	CRect rc;
+	rc.UnionRect(m_rect, m_rectGroup);
+	data.m_rectAccLocation = rc;
 	pParent->ClientToScreen (&data.m_rectAccLocation);
 
 	return TRUE;
 }
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::get_accParent(IDispatch **ppdispParent)
+{
+	if (!ppdispParent)
+	{
+		return E_INVALIDARG;
+	}
+
+	*ppdispParent = NULL;
+
+	if (m_pPage == NULL)
+	{
+		return S_FALSE;
+	}
+	
+	LPDISPATCH lpDispatch = m_pPage->m_pTaskPane->GetAccessibleDispatch();
+	if (lpDispatch != NULL)
+	{
+		*ppdispParent = lpDispatch;
+		return S_OK;
+	}
+	return S_FALSE;	
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::get_accChildCount(long *pcountChildren)
+{
+	*pcountChildren = (long)m_lstTasks.GetCount();
+	return S_OK;
+}
+//*****************************************************************************
+CBCGPTask* CBCGPTasksGroup::GetAccChild(int nIndex)
+{
+	ASSERT_VALID(this);
+
+	nIndex--;
+
+	if (nIndex < 0 || nIndex >= (int)m_lstTasks.GetCount())
+	{
+		return NULL;
+	}
+
+	long count = 0;
+	for (POSITION posTask = m_lstTasks.GetHeadPosition(); posTask != NULL;)
+	{
+		CBCGPTask* pTask = (CBCGPTask*) m_lstTasks.GetNext(posTask);
+
+		if (count == nIndex)
+		{
+			return pTask;
+		}
+		count++;
+	}
+	return NULL;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::get_accChild(VARIANT varChild, IDispatch **ppdispChild)
+{
+	if (!ppdispChild)
+	{
+		return E_INVALIDARG;
+	}
+
+	*ppdispChild = NULL;
+
+	if (varChild.vt != VT_I4)
+	{
+		return E_INVALIDARG;
+	}
+	CBCGPTask* pTask = GetAccChild(varChild.lVal);
+	if (pTask == NULL)
+	{
+		return E_INVALIDARG;
+	}
+
+	*ppdispChild = pTask->GetIDispatch(TRUE);
+
+	return (*ppdispChild != NULL) ? S_OK : S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::get_accName(VARIANT varChild, BSTR *pszName)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		*pszName  = m_strName.AllocSysString ();
+		return S_OK;
+	}
+	else
+	{
+		CBCGPTask* pTask = GetAccChild(varChild.lVal);
+		if (pTask->SetACCData(m_pPage->m_pTaskPane, m_AccData))
+		{
+			return S_OK;
+		}		
+	}
+	return S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::get_accValue(VARIANT varChild, BSTR* /*pszValue*/)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		return S_FALSE;
+	}
+
+	return S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	if (!pvarRole || ((varChild.vt != VT_I4) && (varChild.lVal != CHILDID_SELF)))
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		pvarRole->vt = VT_I4;
+		pvarRole->lVal = ROLE_SYSTEM_GROUPING;
+		return S_OK;
+	}
+	else
+	{
+		CBCGPTask* pTask = GetAccChild(varChild.lVal);
+		if (pTask->SetACCData(m_pPage->m_pTaskPane, m_AccData))
+		{
+			return S_OK;
+		}
+	}
+	return S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::get_accState(VARIANT varChild, VARIANT *pvarState)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		pvarState->vt = VT_I4;
+		pvarState->lVal = (m_bIsCollapsed) ? STATE_SYSTEM_COLLAPSED : STATE_SYSTEM_NORMAL;
+		
+		return S_OK;
+	}
+	else
+	{
+		CBCGPTask* pTask = GetAccChild(varChild.lVal);
+		if (pTask->SetACCData(m_pPage->m_pTaskPane, m_AccData))
+		{
+			return S_OK;
+		}
+	}
+	return S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
+{
+	if (!pvarChild)
+	{
+		return E_INVALIDARG;
+	}
+
+	pvarChild->vt = VT_I4;
+	pvarChild->lVal = CHILDID_SELF;
+	
+	long count = 0;
+	CPoint pt(xLeft, yTop);
+
+	m_pPage->m_pTaskPane->ScreenToClient(&pt);
+
+	for (POSITION posTask = m_lstTasks.GetHeadPosition(); posTask != NULL; count++)
+	{
+		CBCGPTask* pTask = (CBCGPTask*) m_lstTasks.GetNext(posTask);
+		ASSERT_VALID(pTask);
+
+		if (pTask->m_rect.PtInRect(pt))
+		{
+			pvarChild->lVal = count;
+			pvarChild->vt = VT_DISPATCH;
+			pvarChild->pdispVal = pTask->GetIDispatch(TRUE);
+
+			if (pvarChild->pdispVal != NULL)
+			{
+				return S_OK;
+			}
+			return S_FALSE;
+		}
+	}
+	return S_OK;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksGroup::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild)
+{
+	if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight)
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		CRect rc;
+		rc.UnionRect(m_rect, m_rectGroup);
+		m_pPage->m_pTaskPane->ClientToScreen(&rc);
+
+		*pxLeft = rc.left;
+		*pyTop = rc.top;
+		*pcxWidth = rc.Width();
+		*pcyHeight = rc.Height();
+
+		return S_OK;
+	}
+	else
+	{
+		CBCGPTask* pTask = GetAccChild(varChild.lVal);
+		if (pTask->SetACCData(m_pPage->m_pTaskPane, m_AccData))
+		{
+			return S_OK;
+		}
+	}
+	return S_FALSE;
+}
+
 //*****************************************************************************************
 BOOL CBCGPTask::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 {
@@ -4860,24 +5067,241 @@ BOOL CBCGPTask::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 	ASSERT_VALID (pParent);
 
 	data.Clear ();
-	data.m_strAccName = m_strName;
-	data.m_strAccValue = m_strName;
-	data.m_nAccRole = ROLE_SYSTEM_LINK;
-	data.m_bAccState = STATE_SYSTEM_FOCUSABLE;
+	if (m_bIsSeparator)
+	{
+		data.m_strAccName = _T("Separator");
+	}
+	else if (m_hwndTask != NULL)
+	{
+		data.m_strAccName = m_pGroup->m_strName;
+	}
+	else
+	{
+		data.m_strAccName = m_strName;
+	}
 
+	data.m_strAccValue = m_strName;
+
+	if (m_hwndTask != NULL)
+	{
+		data.m_nAccRole = ROLE_SYSTEM_CLIENT;
+	}
+	else if (m_uiCommandID == 0 || m_bIsSeparator)
+	{
+		data.m_nAccRole = ROLE_SYSTEM_STATICTEXT;
+	}
+	else
+	{
+		data.m_nAccRole = ROLE_SYSTEM_LINK;
+	}
+	data.m_bAccState = STATE_SYSTEM_FOCUSABLE;
+	
+	if (m_pGroup != NULL && m_pGroup->m_bIsCollapsed)
+	{
+		data.m_bAccState = STATE_SYSTEM_INVISIBLE;
+		return TRUE;
+	}
+	
 	if (!m_bEnabled)
 	{
 		data.m_bAccState |= STATE_SYSTEM_UNAVAILABLE;
 	}
 
 	data.m_nAccHit = 1;
-	data.m_strAccDefAction = L"Press";
+	if (!m_bIsSeparator && m_hwndTask == NULL)
+	{
+		data.m_strAccDefAction = L"Press";
+	}
+
 	data.m_rectAccLocation = m_rect;
 	pParent->ClientToScreen (&data.m_rectAccLocation);
 
 	return TRUE;
 }
 //*****************************************************************************************
+HRESULT CBCGPTask::get_accParent(IDispatch **ppdispParent)
+{
+	if (!ppdispParent)
+	{
+		return E_INVALIDARG;
+	}
+
+	*ppdispParent = NULL;
+
+	if (m_pGroup == NULL)
+	{
+		return S_FALSE;
+	}
+	
+	LPDISPATCH lpDispatch = m_pGroup->GetIDispatch(TRUE);
+	if (lpDispatch != NULL)
+	{
+		*ppdispParent = lpDispatch;
+		return S_OK;
+	}
+	return S_FALSE;	
+}
+//*****************************************************************************************
+HRESULT CBCGPTask::get_accName(VARIANT varChild, BSTR *pszName)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		if (m_bIsSeparator)
+		{
+			CString strName;
+			strName = _T("Separator");
+			*pszName = strName.AllocSysString();
+			return S_OK;
+		}
+		if (m_hwndTask != NULL)
+		{
+			*pszName = m_pGroup->m_strName.AllocSysString();
+			return S_OK;
+		}
+		*pszName  = m_strName.AllocSysString ();
+		return S_OK;
+	}
+	return S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTask::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	if (!pvarRole || ((varChild.vt != VT_I4) && (varChild.lVal != CHILDID_SELF)))
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		pvarRole->vt = VT_I4;	
+		if (m_hwndTask != NULL)
+		{
+			pvarRole->lVal = ROLE_SYSTEM_CLIENT;
+		}
+		else if (m_uiCommandID == 0 || m_bIsSeparator)
+		{
+			pvarRole->lVal = ROLE_SYSTEM_STATICTEXT;
+		}
+		else
+		{
+			pvarRole->lVal = ROLE_SYSTEM_LINK;
+		}
+		return S_OK;
+	}
+	return S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTask::get_accState(VARIANT varChild, VARIANT *pvarState)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		pvarState->vt = VT_I4;
+		if (m_pGroup != NULL && m_pGroup->m_bIsCollapsed)
+		{
+			pvarState->lVal = STATE_SYSTEM_INVISIBLE;
+			return S_OK;
+		}
+
+		pvarState->lVal = STATE_SYSTEM_FOCUSABLE;
+
+		if (!m_bEnabled)
+		{
+			pvarState->lVal |= STATE_SYSTEM_UNAVAILABLE;
+		}
+
+		return S_OK;
+	}
+
+	return S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTask::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
+{
+	if (!pvarChild)
+	{
+		return E_INVALIDARG;
+	}
+	
+	CPoint pt(xLeft, yTop);
+	m_pGroup->m_pPage->m_pTaskPane->ScreenToClient(&pt);
+
+	pvarChild->vt = VT_I4;
+	pvarChild->lVal = CHILDID_SELF;
+
+	if (m_hwndTask != NULL)
+	{
+		CWnd* pChildWnd = CWnd::FromHandle(m_hwndTask);
+		if (pChildWnd != NULL)
+		{
+			pvarChild->lVal = 1;
+			pvarChild->vt = VT_DISPATCH;
+			pvarChild->pdispVal = NULL;
+
+			AccessibleObjectFromWindow(m_hwndTask, (DWORD) OBJID_CLIENT, IID_IAccessible, (void**) &pvarChild->pdispVal);
+
+			if (pvarChild->pdispVal != NULL)
+			{
+				return S_OK;
+			}
+			return S_FALSE;
+		}
+	}
+	return S_OK;
+}
+//*****************************************************************************************
+HRESULT  CBCGPTask::get_accChildCount(long *pcountChildren)
+{
+	*pcountChildren = (m_hwndTask != NULL) ? 1 : 0;
+	return S_OK;
+}
+//*****************************************************************************************
+HRESULT   CBCGPTask::get_accChild(VARIANT varChild, IDispatch **ppdispChild)
+{
+	if (!ppdispChild)
+	{
+		return E_INVALIDARG;
+	}
+
+	*ppdispChild = NULL;
+
+	if (varChild.vt != VT_I4)
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal >= 1))
+	{
+		return AccessibleObjectFromWindow(m_hwndTask, (DWORD) OBJID_CLIENT, IID_IAccessible, (void**) ppdispChild);
+	}
+
+	return (*ppdispChild != NULL) ? S_OK : S_FALSE;
+}
+
+//*****************************************************************************************
+HRESULT CBCGPTask::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild)
+{
+	HRESULT hr = S_OK;
+
+	if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight)
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		CRect rc(&m_rect);
+		m_pGroup->m_pPage->m_pTaskPane->ClientToScreen(&rc);
+
+		*pxLeft = rc.left;
+		*pyTop = rc.top;
+		*pcxWidth = rc.Width();
+		*pcyHeight = rc.Height();
+
+		return S_OK;
+	}
+	return hr;
+}
+///*****************************************************************************************
 BOOL CBCGPTasksPanePage::SetACCData (CWnd* /*pParent*/, CBCGPAccessibilityData& data)
 {
 	ASSERT_VALID (this);
@@ -4895,7 +5319,14 @@ BOOL CBCGPTasksPanePage::SetACCData (CWnd* /*pParent*/, CBCGPAccessibilityData& 
 BOOL CBCGPTasksPane::ProcessKeyboard (UINT nKey)
 {
 	ASSERT_VALID (this);
-	const BOOL bShift = ::GetAsyncKeyState (VK_SHIFT) & 0x8000;
+
+	const BOOL bShift = ::GetAsyncKeyState(VK_SHIFT) & 0x8000;
+
+	const BOOL bCtrl = ::GetAsyncKeyState (VK_CONTROL) & 0x8000;
+	if (bCtrl)
+	{
+		return FALSE;
+	}
 
 	switch (nKey)
 	{
@@ -5013,7 +5444,7 @@ void CBCGPTasksPane::OnHotGroupCaption (CBCGPTasksGroup* pGroup)
 		globalData.IsAccessibilitySupport ())
 	{
 		m_bPrecessAccFocusEvent = FALSE;
-		NotifyAccessibilityFocusEvent (TRUE);
+		NotifyAccessibilityFocusEvent(TRUE);
 	}
 }
 //*************************************************************************************
@@ -5132,19 +5563,36 @@ void CBCGPTasksPane::DoGroupCaptionClick(CBCGPTasksGroup* pClickGroupCaption, BO
 
 	ASSERT_VALID (pClickGroupCaption);
 
-	pClickGroupCaption->m_bIsCollapsed = !pClickGroupCaption->m_bIsCollapsed;
+	if (IsAnimated() && m_pAnimatedGroup == pClickGroupCaption)
+	{
+		return;
+	}
 
-	if (m_bAnimationEnabled && !bDisableAnimation)
+	if (m_bAnimationEnabled && !bDisableAnimation && !IsAnimated())
 	{
 		m_pAnimatedGroup = pClickGroupCaption;
 		m_sizeAnim = m_pAnimatedGroup->m_rectGroup.Size ();
 
-		SetTimer (iAnimTimerId, m_iAnimTimerDuration, NULL);
-		m_nLastAnimTime = clock ();
+		double total = (double)GetGroupHeight(m_pAnimatedGroup);
+		double rows = m_nRowHeight == 0 ? 1 : (total / m_nRowHeight);
+
+		double start = m_pAnimatedGroup->m_bIsCollapsed ? 0.0 : total;
+		double finish = m_pAnimatedGroup->m_bIsCollapsed ? total : 0.0;
+
+		double duration = min(0.5, rows * 0.05);
+
+		pClickGroupCaption->m_bIsCollapsed = !pClickGroupCaption->m_bIsCollapsed;
+
+		StartAnimation(start, finish, duration, CBCGPAnimationManager::BCGPANIMATION_AccelerateDecelerate);
+	}
+	else
+	{
+		pClickGroupCaption->m_bIsCollapsed = !pClickGroupCaption->m_bIsCollapsed;
 	}
 
 	AdjustScroll ();
 	ReposTasks ();
+
 	RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
 }
 //*****************************************************************************************
@@ -5250,7 +5698,18 @@ void CBCGPTasksPane::OnPrev()
 		}
 	}
 	while (pTask == NULL && pGroup != NULL);
-	
+
+	if (!IsToolBox() && m_hwndHeader != NULL && m_pFocusedTask == NULL && pGroup == NULL && m_pFocusedGroupCaption != NULL)
+	{
+		m_pFocusedGroupCaption = NULL;
+		
+		::SetFocus(m_hwndHeader);
+		RedrawWindow();
+		
+		NotifyAccessibilityFocusEvent (FALSE);
+		return;
+	}
+
 	OnChangeFocus (pTask, pGroup);
 }
 //*****************************************************************************************
@@ -5394,5 +5853,351 @@ BOOL CBCGPTasksPane::OnGestureEventPan(const CPoint& ptFrom, const CPoint& ptTo,
 	
 	return TRUE;
 }
+//*****************************************************************************************
+int CBCGPTasksPane::GetHeaderHeight()
+{
+	ASSERT_VALID(this);
 
+	if (m_hwndHeader == NULL)
+	{
+		return 0;
+	}
+
+	CWnd* pWnd = CWnd::FromHandle(m_hwndHeader);
+	if (pWnd->GetSafeHwnd() == NULL)
+	{
+		return 0;
+	}
+
+	CRect rectHeader;
+	pWnd->GetWindowRect(rectHeader);
+
+	return rectHeader.Height();
+}
+//*****************************************************************************************
+int CBCGPTasksPane::GetGroupHeight(CBCGPTasksGroup* pGroup)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pGroup);
+	
+	if (!pGroup->m_bIsCollapsed)
+	{
+		return pGroup->m_rectGroup.Height();
+	}
+
+	m_pCurrGroup = pGroup;
+	pGroup->m_bIsCollapsed = FALSE;
+
+	int nHeight = ReposTasks(TRUE);
+
+	m_pCurrGroup = NULL;
+	pGroup->m_bIsCollapsed = TRUE;
+
+	return nHeight;
+}
+//****************************************************************************************
+int  CBCGPTasksPane::GetGroupCount(CBCGPTasksPanePage* pPage)
+{
+	int count = 0;	
+	POSITION pos = NULL;
+
+	for (pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+		ASSERT_VALID (pGroup);
+
+		if (pGroup->m_pPage == pPage)
+		{
+			count++;			
+		}
+	}
+	return count;
+}
+//****************************************************************************************
+long CBCGPTasksPane::AccGetChildCount()
+{
+	CBCGPTasksPanePage* pActivePage = NULL;
+	POSITION posPage = m_lstTasksPanes.FindIndex (m_arrHistoryStack[m_iActivePage]);
+
+	ASSERT(posPage != NULL);
+
+	pActivePage = (CBCGPTasksPanePage*) m_lstTasksPanes.GetAt (posPage);
+	return GetGroupCount(pActivePage);	
+}
+//*****************************************************************************************
+CBCGPBaseAccessibleObject* CBCGPTasksPane::AccessibleObjectByIndex(long lVal)
+{
+	long count = 1 + m_nAccHeaderControlsCount;
+
+	CBCGPTasksPanePage* pActivePage = NULL;
+	POSITION posPage = m_lstTasksPanes.FindIndex (m_arrHistoryStack[m_iActivePage]);
+	ASSERT(posPage != NULL);
+
+	pActivePage = (CBCGPTasksPanePage*) m_lstTasksPanes.GetAt (posPage);
+	ASSERT_VALID(pActivePage);
+
+	POSITION pos = NULL;
+
+	for (pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+		ASSERT_VALID (pGroup);
+
+		if (pGroup->m_pPage == pActivePage)
+		{
+			if (count == lVal)
+			{
+				return pGroup;
+			}
+			count++;
+		}
+	}
+	return NULL;
+}
+
+//*****************************************************************************************
+long CBCGPTasksPane::ChildIndexByObject(CBCGPBaseAccessibleObject* pObject)
+{
+	long count = 1 + m_nAccHeaderControlsCount;
+
+	CBCGPTasksPanePage* pActivePage = NULL;
+	POSITION posPage = m_lstTasksPanes.FindIndex (m_arrHistoryStack[m_iActivePage]);
+	ASSERT(posPage != NULL);
+
+	pActivePage = (CBCGPTasksPanePage*) m_lstTasksPanes.GetAt (posPage);
+	ASSERT_VALID(pActivePage);
+
+	POSITION pos = NULL;
+
+	for (pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+		ASSERT_VALID (pGroup);
+
+		if (pGroup->m_pPage == pActivePage)
+		{
+			count++;
+			if (pGroup == pObject)
+			{
+				return count;
+			}
+
+			for (POSITION posTask = pGroup->m_lstTasks.GetHeadPosition (); posTask != NULL;)
+			{
+				count++;
+				CBCGPTask* pTask = (CBCGPTask*) pGroup->m_lstTasks.GetNext (posTask);
+				ASSERT_VALID (pTask);
+
+				if (pTask == pObject)
+				{
+					return count;
+				}
+			}
+		}
+	}
+
+	return -1;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksPane::get_accChildCount(long *pcountChildren)
+{
+	if (!IsVisible())
+	{
+		return 0;	
+	}
+
+	m_nAccHeaderControlsCount = 0;
+
+	if (m_wndToolBar.IsVisible())
+	{
+		m_nAccHeaderControlsCount++;
+	}
+
+	*pcountChildren = AccGetChildCount() + m_nAccHeaderControlsCount;
+	return S_OK;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksPane::get_accChild(VARIANT varChild, IDispatch **ppdispChild)
+{
+	if (!ppdispChild)
+    {
+        return E_INVALIDARG;
+    }
+
+    *ppdispChild = NULL;
+
+    if (varChild.vt != VT_I4)
+    {
+        return E_INVALIDARG;
+    }
+
+	if ((m_wndToolBar.IsVisible()) && (varChild.vt == VT_I4) && (varChild.lVal == m_nAccHeaderControlsCount))
+	{
+		return AccessibleObjectFromWindow(m_wndToolBar.GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)ppdispChild);
+	}
+	if ((varChild.vt == VT_I4) && (varChild.lVal > m_nAccHeaderControlsCount))
+	{
+		CBCGPBaseAccessibleObject*	pAccObject = AccessibleObjectByIndex(varChild.lVal);
+		if (pAccObject != NULL)
+		{
+			*ppdispChild = pAccObject->GetIDispatch(TRUE);
+		}
+	}
+    return (*ppdispChild != NULL) ? S_OK : S_FALSE;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksPane::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
+{
+	if (!pvarChild)
+	{
+		return E_INVALIDARG;
+	}
+
+	CPoint pt(xLeft, yTop);
+	ScreenToClient(&pt);
+		
+	CRect rcToolBar;
+	m_wndToolBar.GetWindowRect(&rcToolBar);
+	ScreenToClient(&rcToolBar);
+
+	if (rcToolBar.PtInRect(pt))
+	{
+		pvarChild->lVal = 1;
+		pvarChild->pdispVal = NULL;
+		pvarChild->vt = VT_DISPATCH;
+
+		AccessibleObjectFromWindow(m_wndToolBar.GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)&pvarChild->pdispVal);
+
+		if (pvarChild->pdispVal != NULL)
+		{
+			return S_OK;
+		}
+		return S_FALSE;
+	}
+	else
+	{
+		long count = 1 + m_nAccHeaderControlsCount;
+
+		CBCGPTasksPanePage* pActivePage = NULL;
+		POSITION posPage = m_lstTasksPanes.FindIndex (m_arrHistoryStack[m_iActivePage]);
+		ASSERT(posPage != NULL);
+
+		pActivePage = (CBCGPTasksPanePage*) m_lstTasksPanes.GetAt (posPage);
+		ASSERT_VALID(pActivePage);
+
+		POSITION pos = NULL;
+
+		for (pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL; )
+		{
+			CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+			ASSERT_VALID (pGroup);
+		
+			if (pGroup->m_pPage == pActivePage)
+			{
+				CRect rect;
+				rect.UnionRect(pGroup->m_rect, pGroup->m_rectGroup);
+
+				if (rect.PtInRect(pt))
+				{
+					pvarChild->lVal = count;
+					pvarChild->vt = VT_DISPATCH;
+					pvarChild->pdispVal = pGroup->GetIDispatch(TRUE);
+
+					count++;
+					if (pvarChild->pdispVal != NULL)
+					{
+						return S_OK;
+					}		
+					return S_FALSE;
+				}
+			}
+		}
+	}
+
+	pvarChild->vt = VT_I4;
+	pvarChild->lVal = CHILDID_SELF;
+
+	return S_OK;
+}
+//*****************************************************************************************
+HRESULT CBCGPTasksPane::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild)
+{
+	HRESULT hr = S_OK;
+
+	if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight)
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		CRect rc;
+		GetWindowRect(rc);
+
+		*pxLeft = rc.left;
+		*pyTop = rc.top;
+		*pcxWidth = rc.Width();
+		*pcyHeight = rc.Height();
+
+		return S_OK;
+	}
+	else
+	{
+		if (m_wndToolBar.IsVisible() && varChild.lVal == 1 + m_nAccHeaderControlsCount)
+		{
+			CRect rcToolBar;
+			m_wndToolBar.GetWindowRect(&rcToolBar);
+		
+			*pxLeft = rcToolBar.left;
+			*pyTop = rcToolBar.top;
+			*pcxWidth = rcToolBar.Width();
+			*pcyHeight = rcToolBar.Height();
+		}
+		else if (varChild.lVal >= (1 + m_nAccHeaderControlsCount) && m_iActivePage >= 0)
+		{
+			CBCGPTasksPanePage* pActivePage = NULL;
+			POSITION posPage = m_lstTasksPanes.FindIndex (m_arrHistoryStack[m_iActivePage]);
+			ASSERT(posPage != NULL);
+
+			pActivePage = (CBCGPTasksPanePage*) m_lstTasksPanes.GetAt (posPage);
+			ASSERT_VALID(pActivePage);
+
+			POSITION pos = NULL;
+
+			long count = 0;
+			for (pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+			{
+				CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+				ASSERT_VALID (pGroup);
+
+				if (pGroup->m_pPage == pActivePage)
+				{
+					count++;
+					if (count + (1 + m_nAccHeaderControlsCount) == varChild.lVal)
+					{
+						pGroup->SetACCData(this, m_AccData);
+						return S_OK;
+					}
+				}
+			}
+		}
+		else
+		{
+			hr = S_FALSE;
+		}
+	}
+
+	return hr;
+}
+//*****************************************************************************************
+LPDISPATCH CBCGPTasksPane::GetAccessibleDispatch()
+{
+	if (m_pStdObject != NULL)
+	{
+		m_pStdObject->AddRef();
+		return m_pStdObject;
+	}
+
+	return NULL;
+}
 #endif // BCGP_EXCLUDE_TASK_PANE

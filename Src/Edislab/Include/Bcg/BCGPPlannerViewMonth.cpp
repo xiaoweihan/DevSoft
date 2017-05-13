@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,7 @@
 #ifndef BCGP_EXCLUDE_PLANNER
 
 #include "BCGPPlannerManagerCtrl.h"
+#include "BCGPMath.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -48,6 +49,7 @@ CBCGPPlannerViewMonth::CBCGPPlannerViewMonth()
 	, m_bDrawTimeFinish  (TRUE)
 	, m_bDrawTimeAsIcons (FALSE)
 	, m_bCompressWeekend (TRUE)
+	, m_WeekBarType      (BCGP_PLANNER_WEEKBAR_FIRST)
 	, m_nDuration        (35)
 {
 	m_DateEnd = m_DateStart + COleDateTimeSpan (m_nDuration - 1, 23, 59, 59);
@@ -92,12 +94,25 @@ void CBCGPPlannerViewMonth::AdjustScrollSizes ()
 void CBCGPPlannerViewMonth::AdjustLayout (CDC* /*pDC*/, const CRect& /*rectClient*/)
 {
 	m_nHeaderHeight = m_nRowHeight;
+	if ((GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED) == BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED)
+	{
+		m_nHeaderHeight = (m_nHeaderHeight * 5) / 4;
+	}
+
 	m_nWeekBarWidth = 0;
 
-	if ((GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_WEEK_BAR) ==
+	if ((GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_WEEK_BAR) ==
 			BCGP_PLANNER_DRAW_VIEW_WEEK_BAR)
 	{
-		m_nWeekBarWidth = m_nHeaderHeight + 3;
+		if ((GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_WEEK_BAR_FULL_WIDTH) ==
+			BCGP_PLANNER_DRAW_VIEW_WEEK_BAR_FULL_WIDTH)
+		{
+			m_nWeekBarWidth = GetCaptionHeight();
+		}
+		else
+		{
+			m_nWeekBarWidth = m_nRowHeight + 3;
+		}
 	}
 
 	m_rectApps.left += m_nWeekBarWidth;
@@ -114,6 +129,10 @@ void CBCGPPlannerViewMonth::AdjustRects ()
 	const int nRows    = nDays / 7;
 	const int dxColumn = CBCGPPlannerView::round (m_rectApps.Width () / (m_bCompressWeekend ? 6.0 : 7.0)) - 1;
 	const int dxRow    = CBCGPPlannerView::round (m_rectApps.Height () / (double)nRows) - 1;
+	const BOOL bFullWidth = (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_WEEK_BAR_FULL_WIDTH) == 
+		BCGP_PLANNER_DRAW_VIEW_WEEK_BAR_FULL_WIDTH;
+	const BOOL bFullHeight = (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_WEEK_BAR_FULL_HEIGHT) == 
+		BCGP_PLANNER_DRAW_VIEW_WEEK_BAR_FULL_HEIGHT;
 
 	const int nDayStart = (IsCompressWeekend () && CBCGPPlannerManagerCtrl::GetFirstDayOfWeek () == 0)
 		? 1
@@ -183,15 +202,28 @@ void CBCGPPlannerViewMonth::AdjustRects ()
 			nIndex = 2;
 		}
 
+		const int nCaptionHeight = GetCaptionHeight ();
 		m_WeekRects.SetSize (nRows);
 
 		for (iRow = 0; iRow < nRows; iRow++)
 		{
 			CRect rect (m_ViewRects[nIndex]);
 			rect.right = m_rectApps.left;
-			rect.left  = rect.right - m_nRowHeight;
 
-			rect.top    += m_nRowHeight;
+			if (bFullWidth)
+			{
+				rect.left = rect.right - nCaptionHeight;
+			}
+			else
+			{
+				rect.left = rect.right - m_nRowHeight;
+			}
+
+			if (!bFullHeight)
+			{
+				rect.top += nCaptionHeight;
+			}
+
 			rect.InflateRect (0, 1);
 
 			m_WeekRects[iRow] = rect;
@@ -248,6 +280,7 @@ void CBCGPPlannerViewMonth::AdjustAppointments ()
 
 	COleDateTimeSpan spanDay (1, 0, 0, 0);
 	const int delta = m_nRowHeight + 2;
+	const int nCaptionHeight = GetCaptionHeight ();
 
 	XBCGPAppointmentArray arAllOrMulti;
 
@@ -280,7 +313,7 @@ void CBCGPPlannerViewMonth::AdjustAppointments ()
 	for (int nDay = 0; nDay < nDays; nDay ++)
 	{
 		CRect rect (m_ViewRects [nDay]);
-		rect.top += m_nRowHeight + 1;
+		rect.top += nCaptionHeight + 1;
 		rect.DeflateRect (1, 0);
 
 		BOOL bTopEq    = TRUE;
@@ -533,19 +566,20 @@ void CBCGPPlannerViewMonth::OnDrawClient (CDC* pDC, const CRect& rect)
 		pDC->SelectObject (pOldPen);
 	}
 
-	DWORD dwFlags = GetPlanner ()->GetDrawFlags ();
-	BOOL bBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD) ==
+	const DWORD dwFlags = GetDrawFlags ();
+	const BOOL bBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD) ==
 			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD;
-	BOOL bCompact = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
+	const BOOL bBoldFC = !bBold && (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD_FC) ==
+			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD_FC;
+	const BOOL bCompact = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
 			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT;
+	const BOOL bExtended = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED) ==
+			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED;
 
-	HFONT hOldFont = NULL;
-	if (bBold)
-	{
-		hOldFont = SetCurrFont (pDC, bBold);
-	}
+	HFONT hOldFont = SetCurrFont (pDC, bBold, bExtended);
 
 	const BOOL bDateBeforeMonth = CBCGPPlannerView::IsDateBeforeMonth ();
+	const int nCaptionHeight = GetCaptionHeight ();
 
 	for (iRow = 0; iRow < nRows; iRow++)
 	{
@@ -563,7 +597,7 @@ void CBCGPPlannerViewMonth::OnDrawClient (CDC* pDC, const CRect& rect)
 			visualManager->PreparePlannerBackItem (bToday, bSelected);
 			OnFillPlanner (pDC, rectDayCaption, bIsWorking);
 
-			rectDayCaption.bottom = rectDayCaption.top + m_nRowHeight + 1;
+			rectDayCaption.bottom = rectDayCaption.top + nCaptionHeight + 1;
 
 			CString strFormat (_T("d"));
 			CString strDate;
@@ -719,8 +753,19 @@ void CBCGPPlannerViewMonth::OnDrawClient (CDC* pDC, const CRect& rect)
 			COLORREF clrText = OnFillPlannerCaption (
 				pDC, rectDayCaption, bToday, bSelected, FALSE);
 
+			HFONT hOldFontFC = NULL;
+			if (bBoldFC && (bToday || day.GetDay() == 1))
+			{
+				hOldFontFC = SetCurrFont (pDC, TRUE, bExtended);
+			}
+
 			DrawCaptionText (pDC, rectDayCaption, strDate, clrText, bCompact ? DT_LEFT : DT_RIGHT,
 				bToday && bSelected);
+
+			if (hOldFontFC != NULL)
+			{
+				::SelectObject (pDC->GetSafeHdc (), hOldFontFC);
+			}
 
 			day += COleDateTimeSpan (1, 0, 0, 0);
 		}
@@ -750,12 +795,27 @@ void CBCGPPlannerViewMonth::OnDrawHeader (CDC* pDC, const CRect& rectHeader)
 		);
 
 	const int nEnd = m_bCompressWeekend ? 6 : 7;
+	const BOOL bBold = (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD) ==
+			BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD;
+	const BOOL bBoldFC = !bBold && (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD_CUR) ==
+			BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD_CUR;
+	const BOOL bExtended = (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED) ==
+			BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED;
+	const BOOL bUpper = (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_HEADER_UPPER) ==
+			BCGP_PLANNER_DRAW_VIEW_HEADER_UPPER;
+
+	COleDateTime dayCurrent = COleDateTime::GetCurrentTime ();
+	dayCurrent.SetDateTime (dayCurrent.GetYear (), dayCurrent.GetMonth (), 
+		dayCurrent.GetDay (), 0, 0, 0);
+	const int nDayOfWeekCurrent = (m_DateStart <= dayCurrent && dayCurrent <= m_DateEnd)
+									? dayCurrent.GetDayOfWeek()
+									: -1;
 
 	CStringArray sa;
 	sa.SetSize (nEnd);
 
 	int iColumn = 0;
-
+	int iColumnCurrent = -1;
 	for (iColumn = 0; iColumn < nEnd; iColumn++)
 	{
 		CString strDate;
@@ -782,6 +842,11 @@ void CBCGPPlannerViewMonth::OnDrawHeader (CDC* pDC, const CRect& rectHeader)
 					strDate += _T("/");
 				}
 
+				if (day.GetDayOfWeek() == nDayOfWeekCurrent)
+				{
+					iColumnCurrent = iColumn;
+				}
+
 				day += COleDateTimeSpan (1, 0, 0, 0);
 			}
 		}
@@ -797,21 +862,50 @@ void CBCGPPlannerViewMonth::OnDrawHeader (CDC* pDC, const CRect& rectHeader)
 
 			strDate.ReleaseBuffer ();
 
+			if (day.GetDayOfWeek() == nDayOfWeekCurrent)
+			{
+				iColumnCurrent = iColumn;
+			}
+
 			day += COleDateTimeSpan (1, 0, 0, 0);
+		}
+
+		if (bUpper)
+		{
+			strDate.MakeUpper();
 		}
 
 		sa.SetAt (iColumn, strDate);
 	}
+
+	HFONT hOldFont = SetCurrFont (pDC, bBold, bExtended);
 
 	for (iColumn = 0; iColumn < nEnd; iColumn++)
 	{
 		// Draw caption bar (on top):
 		visualManager->PreparePlannerCaptionBackItem (TRUE);
 		COLORREF clrText = OnFillPlannerCaption (
-			pDC, rectDayCaption, FALSE, FALSE, FALSE);
+			pDC, rectDayCaption, iColumn == iColumnCurrent, FALSE, FALSE);
+
+		HFONT hOldFontFC = NULL;
+		if (bBoldFC && (iColumn == iColumnCurrent))
+		{
+			hOldFontFC = SetCurrFont (pDC, TRUE, bExtended);
+		}
+
 		DrawCaptionText (pDC, rectDayCaption, sa[iColumn], clrText);
 
+		if (hOldFontFC != NULL)
+		{
+			::SelectObject(pDC->GetSafeHdc(), hOldFontFC);
+		}
+
 		rectDayCaption.OffsetRect (dxColumn + 1, 0);
+	}
+
+	if (hOldFont != NULL)
+	{
+		::SelectObject (pDC->GetSafeHdc (), hOldFont);
 	}
 }
 
@@ -833,7 +927,15 @@ void CBCGPPlannerViewMonth::OnDrawWeekBar (CDC* pDC, const CRect& rectBar)
 
 	const BOOL bDateBeforeMonth = CBCGPPlannerView::IsDateBeforeMonth ();
 
+	BCGP_PLANNER_WEEKBAR type = GetWeekBarType();
+	if (type == BCGP_PLANNER_WEEKBAR_DEFAULT)
+	{
+		type = (BCGP_PLANNER_WEEKBAR)bcg_clamp(visualManager->GetPlannerWeekBarType(), BCGP_PLANNER_WEEKBAR_FIRST + 1, BCGP_PLANNER_WEEKBAR_LAST);
+	}
+
 	CStringArray saFormat;
+
+	if (type == BCGP_PLANNER_WEEKBAR_DAYS)
 	{
 		CString strMonthFmt (_T("MMM"));
 		CString strSep (_T(" "));
@@ -878,6 +980,10 @@ void CBCGPPlannerViewMonth::OnDrawWeekBar (CDC* pDC, const CRect& rectBar)
 	COleDateTime day2 (day1);
 	day2 += COleDateTimeSpan (6, 0, 0, 0);
 
+	const int nDayStart = (IsCompressWeekend () && CBCGPPlannerManagerCtrl::GetFirstDayOfWeek () == 0)
+		? 1
+		: CBCGPPlannerManagerCtrl::GetFirstDayOfWeek ();
+
 	COleDateTimeSpan span (7, 0, 0, 0);
 
 	for (int iRow = 0; iRow < nRows; iRow++)
@@ -895,54 +1001,84 @@ void CBCGPPlannerViewMonth::OnDrawWeekBar (CDC* pDC, const CRect& rectBar)
 
 			rect.DeflateRect (1, 1);
 
-			SYSTEMTIME st1;
-			day1.GetAsSystemTime (st1);
-			SYSTEMTIME st2;
-			day2.GetAsSystemTime (st2);
+			CString strText;
 
-			CString strDate1;
-			CString strDate2;
-
-			if (day1.GetMonth () == day2.GetMonth ())
+			if (type == BCGP_PLANNER_WEEKBAR_DAYS)
 			{
-				strDate1.GetBuffer (_MAX_PATH);
-				::GetDateFormat (LOCALE_USER_DEFAULT, 0, &st1, 
-					saFormat[0], (LPTSTR)(LPCTSTR)strDate1, _MAX_PATH);
-				strDate1.ReleaseBuffer ();
+				SYSTEMTIME st1;
+				day1.GetAsSystemTime (st1);
+				SYSTEMTIME st2;
+				day2.GetAsSystemTime (st2);
 
-				strDate2.GetBuffer (_MAX_PATH);
-				::GetDateFormat (LOCALE_USER_DEFAULT, 0, &st2, 
-					saFormat[1], (LPTSTR)(LPCTSTR)strDate2, _MAX_PATH);
-				strDate2.ReleaseBuffer ();
+				CString strDate1;
+				CString strDate2;
+
+				if (day1.GetMonth () == day2.GetMonth ())
+				{
+					strDate1.GetBuffer (_MAX_PATH);
+					::GetDateFormat (LOCALE_USER_DEFAULT, 0, &st1, 
+						saFormat[0], (LPTSTR)(LPCTSTR)strDate1, _MAX_PATH);
+					strDate1.ReleaseBuffer ();
+
+					strDate2.GetBuffer (_MAX_PATH);
+					::GetDateFormat (LOCALE_USER_DEFAULT, 0, &st2, 
+						saFormat[1], (LPTSTR)(LPCTSTR)strDate2, _MAX_PATH);
+					strDate2.ReleaseBuffer ();
+				}
+				else
+				{
+					strDate1.GetBuffer (_MAX_PATH);
+					::GetDateFormat (LOCALE_USER_DEFAULT, 0, &st1, 
+						saFormat[2], (LPTSTR)(LPCTSTR)strDate1, _MAX_PATH);
+					strDate1.ReleaseBuffer ();
+
+					strDate2.GetBuffer (_MAX_PATH);
+					::GetDateFormat (LOCALE_USER_DEFAULT, 0, &st2, 
+						saFormat[2], (LPTSTR)(LPCTSTR)strDate2, _MAX_PATH);
+					strDate2.ReleaseBuffer ();
+				}
+
+				strText = strDate1 + _T(" - ") + strDate2;
 			}
-			else
+			else if (type == BCGP_PLANNER_WEEKBAR_NUMBERS)
 			{
-				strDate1.GetBuffer (_MAX_PATH);
-				::GetDateFormat (LOCALE_USER_DEFAULT, 0, &st1, 
-					saFormat[2], (LPTSTR)(LPCTSTR)strDate1, _MAX_PATH);
-				strDate1.ReleaseBuffer ();
+				COleDateTime dtWeek(day1);
+				if (day1.GetYear() < day2.GetYear())
+				{
+					dtWeek.SetDate(day2.GetYear(), 1, 1);
+				}
 
-				strDate2.GetBuffer (_MAX_PATH);
-				::GetDateFormat (LOCALE_USER_DEFAULT, 0, &st2, 
-					saFormat[2], (LPTSTR)(LPCTSTR)strDate2, _MAX_PATH);
-				strDate2.ReleaseBuffer ();
+				int nOffset1 = (COleDateTime(dtWeek.GetYear(), 1, 1, 0, 0, 0).GetDayOfWeek () + 6 - nDayStart) % 7;
+				int nOffset2 = (dtWeek.GetDayOfWeek () + 6 - nDayStart) % 7;
+				int nWeekNumber = (dtWeek.GetDayOfYear () - (nOffset2 - nOffset1)) / 7 + 1;
+				if (nWeekNumber == 54)
+				{
+					nWeekNumber = 1;
+				}
+
+				strText.Format (_T("%d"), nWeekNumber);
 			}
-
-			CString strText = strDate1 + _T(" - ") + strDate2;
-
-			CSize szText (pDC->GetTextExtent (strText));
-
-			CRect rectText (rect);
-			rectText.left = rectText.left + (rect.Width () - szText.cy + 1) / 2;
-
-			rectText.top = rectText.bottom;
-			if (szText.cx < rect.Height ())
+			else if (type == CBCGPPlannerView::BCGP_PLANNER_WEEKBAR_CUSTOM)
 			{
-				rectText.top -= (rect.Height () - szText.cx + 1) / 2;
+				GetWeekBarText(day1, day2, strText);
 			}
-			rectText.bottom = rect.top;
 
-			pDC->DrawText (strText, rectText, DT_SINGLELINE);
+			if (!strText.IsEmpty())
+			{
+				CSize szText (pDC->GetTextExtent (strText));
+
+				CRect rectText (rect);
+				rectText.left = rectText.left + (rect.Width () - szText.cy + 1) / 2;
+
+				rectText.top = rectText.bottom;
+				if (szText.cx < rect.Height ())
+				{
+					rectText.top -= (rect.Height () - szText.cx + 1) / 2;
+				}
+				rectText.bottom = rect.top;
+
+				pDC->DrawText (strText, rectText, DT_SINGLELINE);
+			}
 		}
 
 		day1 += span;
@@ -1318,6 +1454,24 @@ BOOL CBCGPPlannerViewMonth::IsCompressWeekend () const
 	return m_bCompressWeekend;
 }
 
+void CBCGPPlannerViewMonth::SetWeekBarType (CBCGPPlannerView::BCGP_PLANNER_WEEKBAR type)
+{
+	if (m_WeekBarType != type)
+	{
+		m_WeekBarType = type;
+
+		if ((GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_WEEK_BAR) == BCGP_PLANNER_DRAW_VIEW_WEEK_BAR)
+		{
+			CBCGPPlannerView::AdjustLayout ();
+		}
+	}
+}
+
+CBCGPPlannerView::BCGP_PLANNER_WEEKBAR CBCGPPlannerViewMonth::GetWeekBarType () const
+{
+	return m_WeekBarType;
+}
+
 BOOL CBCGPPlannerViewMonth::CanCaptureAppointment (BCGP_PLANNER_HITTEST hitCapturedAppointment) const
 {
 	if (IsReadOnly ())
@@ -1337,6 +1491,7 @@ CBCGPPlannerViewMonth::HitTestArea (const CPoint& point) const
 	if (hit == BCGP_PLANNER_HITTEST_CLIENT)
 	{
 		const int nDuration = GetViewDuration ();
+		const int nCaptionHeight = GetCaptionHeight ();
 
 		for (int i = 0; i < nDuration; i++)
 		{
@@ -1346,7 +1501,7 @@ CBCGPPlannerViewMonth::HitTestArea (const CPoint& point) const
 
 			if (rt.PtInRect (point))
 			{
-				rt.bottom = rt.top + min(rt.Height (), m_nRowHeight);
+				rt.bottom = rt.top + min(rt.Height (), nCaptionHeight);
 
 				if (rt.PtInRect (point))
 				{

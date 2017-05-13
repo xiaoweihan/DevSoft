@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -157,6 +157,9 @@ public:
 		return m_bIsBindError;
 	}
 
+	virtual BOOL IsTransformSupported() const { return TRUE; }
+	virtual void SetRotateTransform(double dblAngle, const CBCGPPoint& ptCenter);
+
 protected:
 	virtual LPVOID CreateGeometry(CBCGPGeometry& geometry);
 	virtual BOOL DestroyGeometry(CBCGPGeometry& geometry);
@@ -205,6 +208,7 @@ protected:
 	ID2D1RenderTarget*			m_pRenderTarget;
 	ID2D1Layer*					m_pCurrlayer;
 	CBCGPRect					m_rectClip;
+	BOOL						m_bAxisAlignedClipWasPushed;
 	CBCGPPolygonGeometry		m_CurrGeometry;
 	BOOL						m_bIsBindError;
 	CBitmap						m_bmpPrint;

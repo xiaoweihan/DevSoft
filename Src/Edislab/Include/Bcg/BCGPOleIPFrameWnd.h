@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -213,8 +213,9 @@ protected:
 	BOOL ShowPopupMenu (CBCGPPopupMenu* pMenuPopup);
 
 public:
-	virtual BOOL OnShowPopupMenu (CBCGPPopupMenu* /*pMenuPopup*/)
+	virtual BOOL OnShowPopupMenu (CBCGPPopupMenu* pMenuPopup)
 	{
+		UNREFERENCED_PARAMETER(pMenuPopup);
 		return TRUE;
 	}
 
@@ -233,13 +234,17 @@ public:
 		return FALSE;
 	}
 
-	virtual BOOL OnMenuButtonToolHitTest (CBCGPToolbarButton* /*pButton*/, TOOLINFO* /*pTI*/)
+	virtual BOOL OnMenuButtonToolHitTest (CBCGPToolbarButton* pButton, TOOLINFO* pTI)
 	{
+		UNREFERENCED_PARAMETER(pButton);
+		UNREFERENCED_PARAMETER(pTI);
 		return FALSE;
 	}
 
-	virtual BOOL GetToolbarButtonToolTipText (CBCGPToolbarButton* /*pButton*/, CString& /*strTTText*/)
+	virtual BOOL GetToolbarButtonToolTipText (CBCGPToolbarButton* pButton, CString& strTTText)
 	{
+		UNREFERENCED_PARAMETER(pButton);
+		UNREFERENCED_PARAMETER(strTTText);
 		return FALSE;
 	}
 

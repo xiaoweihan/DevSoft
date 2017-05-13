@@ -1,7 +1,7 @@
 // BCGMultiDocTemplate.h: interface for the CBCGMultiDocTemplate class.
 //
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 // to protected member 'uiMenuResId' of CMultiDocTemplate!
 //--------------------------------------------------------
 
+#pragma warning (push)
 #pragma warning (disable : 4510 4610)
 
 class CBCGPMultiDocTemplate : public CMultiDocTemplate  
@@ -32,6 +33,6 @@ public:
 	}
 };
 
-#pragma warning (default : 4510 4610)
+#pragma warning (pop)
 
 #endif // !defined(AFX_BCGPMULTIDOCTEMPLATE_H__916B7A46_556A_11D2_B110_FD3F2C81B152__INCLUDED_)

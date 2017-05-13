@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,14 +20,16 @@
 #endif // _MSC_VER > 1000
 
 #include <afxpriv.h> //for CPreviewView
+
 #include "BCGPToolBar.h"
+#include "BCGPScrollBar.h"
 #include "BCGCBPro.h"
 
 class CBCGPStatusBar;
 class CBCGPRibbonBar;
 class CBCGPRibbonButton;
 
-BCGCBPRODLLEXPORT void BCGPPrintPreview (CView* pView);
+BCGCBPRODLLEXPORT void BCGPPrintPreview (CView* pView, CRuntimeClass* pRTI = NULL);
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPPrintPreviewToolBar toolbar
@@ -52,7 +54,7 @@ protected:
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPPrintPreviewView window
 
-class BCGCBPRODLLEXPORT CBCGPPrintPreviewView : public CPreviewView
+class BCGCBPRODLLEXPORT CBCGPPrintPreviewView : public TBCGPInternalScrollBarWrapperWnd<CPreviewView>
 {
 protected:
 	CBCGPPrintPreviewView();           // protected constructor used by dynamic creation
@@ -73,7 +75,9 @@ protected:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPPrintPreviewView)
 	//}}AFX_VIRTUAL
+
 	void OnDisplayPageNumber(UINT nPage, UINT nPagesDisplayed);
+	virtual BOOL IsInternalScrollBarThemed() const;
 
 // Implementation
 protected:

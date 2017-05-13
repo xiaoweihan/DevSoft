@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,6 +27,9 @@
 #include "BCGPDialog.h"
 #include "bcgprores.h"
 #include "KeyAssign.h"
+#include "BCGPButton.h"
+#include "BCGPComboBox.h"
+#include "BCGPListBox.h"
 #include "BCGPRibbonCommandsListBox.h"
 
 class CBCGPBaseRibbonElement;
@@ -47,13 +50,13 @@ public:
 	enum { IDD = IDD_BCGBARRES_RIBBON_KEYBOARD_DLG };
 	CStatic	m_wndAssignedToTitle;
 	CKeyAssign	m_wndNewKey;
-	CComboBox	m_wndViewTypeList;
+	CBCGPComboBox	m_wndViewTypeList;
 	CStatic	m_wndViewIcon;
-	CButton	m_wndRemoveButton;
-	CListBox	m_wndCurrentKeysList;
+	CBCGPButton	m_wndRemoveButton;
+	CBCGPListBox	m_wndCurrentKeysList;
 	CBCGPRibbonCommandsListBox	m_wndCommandsList;
-	CListBox	m_wndCategoryList;
-	CButton	m_wndAssignButton;
+	CBCGPListBox	m_wndCategoryList;
+	CBCGPButton	m_wndAssignButton;
 	CString	m_strDesrcription;
 	CString	m_strAssignedTo;
 	//}}AFX_DATA

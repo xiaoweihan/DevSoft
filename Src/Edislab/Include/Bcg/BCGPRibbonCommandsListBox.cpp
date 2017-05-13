@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "BCGPRibbonCommandsListBox.h"
 #include "BCGPRibbonBar.h"
 #include "BCGPRibbonCategory.h"
+#include "BCGPRibbonPanel.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -40,6 +41,7 @@ CBCGPRibbonCommandsListBox::CBCGPRibbonCommandsListBox(CBCGPRibbonBar* pRibbonBa
 	m_nTextOffset = 0;
 	m_bDrawDefaultIcon = bDrawDefaultIcon;
 	m_bCommandsOnly = bCommandsOnly;
+	m_bSimpleDraw = FALSE;
 
 	if (bIncludeSeparator)
 	{
@@ -59,7 +61,7 @@ CBCGPRibbonCommandsListBox::~CBCGPRibbonCommandsListBox()
 	}
 }
 
-BEGIN_MESSAGE_MAP(CBCGPRibbonCommandsListBox, CListBox)
+BEGIN_MESSAGE_MAP(CBCGPRibbonCommandsListBox, CBCGPListBox)
 	//{{AFX_MSG_MAP(CBCGPRibbonCommandsListBox)
 	ON_WM_DRAWITEM_REFLECT()
 	ON_WM_MEASUREITEM_REFLECT()
@@ -70,18 +72,8 @@ END_MESSAGE_MAP()
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPRibbonCommandsListBox message handlers
 
-void CBCGPRibbonCommandsListBox::DrawItem(LPDRAWITEMSTRUCT lpDIS) 
+void CBCGPRibbonCommandsListBox::OnDrawItemContent(CDC* pDC, CRect rect, int nIndex)
 {
-	CDC* pDC = CDC::FromHandle(lpDIS->hDC);
-	ASSERT_VALID (pDC);
-
-	CRect rect = lpDIS->rcItem;
-
-	if (lpDIS->itemID == (UINT)-1)
-	{
-		return;
-	}
-
 	int cxExtent = GetHorizontalExtent();
 	if (cxExtent > rect.Width())
 	{
@@ -91,45 +83,40 @@ void CBCGPRibbonCommandsListBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 	int cxScroll = GetScrollPos(SB_HORZ);
 	rect.OffsetRect(-cxScroll, 0);
 	
-	BOOL bIsRibbonImageScale = globalData.IsRibbonImageScaleEnabled ();
-	globalData.EnableRibbonImageScale (FALSE);
-
 	pDC->SetBkMode (TRANSPARENT);
 
-	BOOL bIsHighlighted = 
-		(lpDIS->itemState & ODS_SELECTED) && (lpDIS->itemState & ODS_FOCUS);
-	BOOL bIsSelected = (lpDIS->itemState & ODS_SELECTED);
-
-	CBCGPBaseRibbonElement* pCommand = (CBCGPBaseRibbonElement*) GetItemData (lpDIS->itemID);
-	ASSERT_VALID (pCommand);
-
 	CString strText;
-	GetText (lpDIS->itemID, strText);
+	GetText(nIndex, strText);
 
-	if (bIsHighlighted)
+	if (m_bSimpleDraw)
 	{
-		::FillRect (pDC->GetSafeHdc (), rect, GetSysColorBrush (COLOR_HIGHLIGHT));
-		pDC->SetTextColor (GetSysColor (COLOR_HIGHLIGHTTEXT));
-	}
-	else if (bIsSelected)
-	{
-		pDC->FillRect (rect, &globalData.brBtnFace);
-		pDC->SetTextColor (globalData.clrBtnText);
+		const int xMargin = 3;
+		rect.DeflateRect(xMargin, 0);
+		
+		pDC->DrawText (strText, rect, DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 	}
 	else
 	{
-		pDC->FillRect (rect, &globalData.brWindow);
-		pDC->SetTextColor (globalData.clrWindowText);
+		CBCGPBaseRibbonElement* pCommand = (CBCGPBaseRibbonElement*) GetItemData (nIndex);
+		ASSERT_VALID (pCommand);
+
+		pCommand->m_bIsDrawingOnList = TRUE;
+		
+		BOOL bDrawDefaultIconSaved = pCommand->m_bDrawDefaultIcon;
+		pCommand->m_bDrawDefaultIcon = m_bDrawDefaultIcon;
+
+		BOOL bIsSelected = GetCurSel() == nIndex;
+		BOOL bIsHighlighted = bIsSelected && (GetFocus() == this);
+
+		pCommand->OnDrawOnList (pDC, strText, m_nTextOffset, rect, bIsSelected, bIsHighlighted);
+
+		pCommand->m_bDrawDefaultIcon = bDrawDefaultIconSaved;
+		pCommand->m_bIsDrawingOnList = FALSE;
 	}
-
-	BOOL bDrawDefaultIconSaved = pCommand->m_bDrawDefaultIcon;
-	pCommand->m_bDrawDefaultIcon = m_bDrawDefaultIcon;
-
-	pCommand->OnDrawOnList (pDC, strText, m_nTextOffset, rect, bIsSelected, bIsHighlighted);
-
-	pCommand->m_bDrawDefaultIcon = bDrawDefaultIconSaved;
-
-	globalData.EnableRibbonImageScale (bIsRibbonImageScale);
+}
+//******************************************************************************
+void CBCGPRibbonCommandsListBox::DrawItem(LPDRAWITEMSTRUCT /*lpDIS*/) 
+{
 }
 //******************************************************************************
 void CBCGPRibbonCommandsListBox::MeasureItem(LPMEASUREITEMSTRUCT lpMIS)
@@ -148,7 +135,7 @@ void CBCGPRibbonCommandsListBox::MeasureItem(LPMEASUREITEMSTRUCT lpMIS)
 	dc.SelectObject (pOldFont);
 }
 //******************************************************************************
-void CBCGPRibbonCommandsListBox::FillFromCategory (CBCGPRibbonCategory* pCategory)
+void CBCGPRibbonCommandsListBox::FillFromCategory (CBCGPRibbonCategory* pCategory, BOOL bExcludeDefaultPanelButtons/* = FALSE*/)
 {
 	ASSERT_VALID (this);
 
@@ -166,7 +153,7 @@ void CBCGPRibbonCommandsListBox::FillFromCategory (CBCGPRibbonCategory* pCategor
 	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arElements;
 	pCategory->GetElements (arElements);
 
-	FillFromArray (arElements, TRUE, TRUE);
+	FillFromArray (arElements, TRUE, TRUE, bExcludeDefaultPanelButtons);
 
 	if (m_pSeparator != NULL)
 	{
@@ -177,15 +164,12 @@ void CBCGPRibbonCommandsListBox::FillFromCategory (CBCGPRibbonCategory* pCategor
 //******************************************************************************
 void CBCGPRibbonCommandsListBox::FillFromArray (
 		const CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arElements, BOOL bDeep,
-		BOOL bIgnoreSeparators)
+		BOOL bIgnoreSeparators, BOOL bExcludeDefaultPanelButtons)
 {
 	ASSERT_VALID (this);
 
 	ResetContent ();
 	m_nTextOffset = 0;
-
-	BOOL bIsRibbonImageScale = globalData.IsRibbonImageScaleEnabled ();
-	globalData.EnableRibbonImageScale (FALSE);
 
 	for (int i = 0; i < arElements.GetSize (); i++)
 	{
@@ -193,6 +177,11 @@ void CBCGPRibbonCommandsListBox::FillFromArray (
 		ASSERT_VALID (pElem);
 
 		if (bIgnoreSeparators && pElem->IsKindOf (RUNTIME_CLASS (CBCGPRibbonSeparator)))
+		{
+			continue;
+		}
+
+		if (bExcludeDefaultPanelButtons && pElem->IsKindOf (RUNTIME_CLASS (CBCGPRibbonDefaultPanelButton)))
 		{
 			continue;
 		}
@@ -208,12 +197,10 @@ void CBCGPRibbonCommandsListBox::FillFromArray (
 	{
 		SetCurSel (0);
 	}
-
-	globalData.EnableRibbonImageScale (bIsRibbonImageScale);
 }
 //******************************************************************************
 void CBCGPRibbonCommandsListBox::FillFromIDs (const CList<UINT,UINT>& lstCommands,
-											  BOOL bDeep)
+											  BOOL bDeep, BOOL bExcludeDefaultPanelButtons)
 {
 	ASSERT_VALID (this);
 	ASSERT_VALID (m_pRibbonBar);
@@ -241,6 +228,12 @@ void CBCGPRibbonCommandsListBox::FillFromIDs (const CList<UINT,UINT>& lstCommand
 		}
 
 		ASSERT_VALID (pElem);
+
+		if (bExcludeDefaultPanelButtons && pElem->IsKindOf (RUNTIME_CLASS (CBCGPRibbonDefaultPanelButton)))
+		{
+			continue;
+		}
+
 		arElements.Add (pElem);
 	}
 
@@ -302,15 +295,9 @@ BOOL CBCGPRibbonCommandsListBox::AddCommand (CBCGPBaseRibbonElement* pCmd, BOOL 
 	}
 
 	// Not found, add new:
-
 	if (m_nTextOffset == 0)
 	{
-		BOOL bIsRibbonImageScale = globalData.IsRibbonImageScaleEnabled ();
-		globalData.EnableRibbonImageScale (FALSE);
-
 		m_nTextOffset = pCmd->GetImageSize (CBCGPBaseRibbonElement::RibbonImageSmall).cx + 2;
-
-		globalData.EnableRibbonImageScale (bIsRibbonImageScale);
 	}
 
 	nIndex = pCmd->AddToListBox (this, bDeep);		
@@ -325,7 +312,7 @@ BOOL CBCGPRibbonCommandsListBox::AddCommand (CBCGPBaseRibbonElement* pCmd, BOOL 
 //******************************************************************************
 void CBCGPRibbonCommandsListBox::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar) 
 {
-	CListBox::OnHScroll(nSBCode, nPos, pScrollBar);
+	CBCGPListBox::OnHScroll(nSBCode, nPos, pScrollBar);
 	RedrawWindow();
 }
 

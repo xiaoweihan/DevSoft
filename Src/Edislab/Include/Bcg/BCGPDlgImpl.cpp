@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,8 @@
 #include "BCGPPopupMenu.h"
 #include "BCGPToolbarMenuButton.h"
 #include "BCGPDropDownList.h"
+#include "BCGPRibbonButton.h"
+#include "BCGPTooltipManager.h"
 #else
 #define FindDestBar	FindDestintationToolBar
 #endif
@@ -36,12 +38,16 @@
 #include "BCGPGroup.h"
 #include "BCGPStatic.h"
 #include "BCGPEdit.h"
+#include "BCGPMenuButton.h"
+#include "BCGPGridCtrl.h"
 #include "BCGPComboBox.h"
 #include "BCGPVisualManager.h"
 #include "BCGPScrollBar.h"
 #include "BCGPSpinButtonCtrl.h"
 #include "BCGPFormView.h"
 #include "BCGPGlobalUtils.h"
+#include "BCGPLocalResource.h"
+#include "BCGProRes.h"
 
 #ifndef _BCGSUITE_
 #include "BCGPRibbonElementHostCtrl.h"
@@ -51,6 +57,8 @@
 #include "RegPath.h"
 #include "BCGPRegistry.h"
 #include "BCGPWorkspace.h"
+#include "BCGPPopupDlg.h"
+
 extern CBCGPWorkspace*	g_pWorkspace;
 #else
 CString AFXGetRegPath(LPCTSTR lpszPostFix, LPCTSTR lpszProfileName = NULL);
@@ -59,6 +67,10 @@ CString AFXGetRegPath(LPCTSTR lpszPostFix, LPCTSTR lpszProfileName = NULL);
 static const CString strDialogsProfile = _T("BCGDialogs");
 
 #define REG_DLG_SECTION_FMT_STR		_T("%sBCGPDialog-%s")
+
+#ifndef SM_CXPADDEDBORDER
+	#define SM_CXPADDEDBORDER 92
+#endif
 
 #ifndef _BCGSUITE_
 #define visualManagerMFC	CBCGPVisualManager::GetInstance ()
@@ -76,10 +88,16 @@ static char THIS_FILE[]=__FILE__;
 
 HHOOK CBCGPDlgImpl::m_hookMouse = NULL;
 CBCGPDlgImpl* CBCGPDlgImpl::m_pMenuDlgImpl = NULL;
+CMap<CBCGPDlgImpl::BCGPControlClass,CBCGPDlgImpl::BCGPControlClass,CRuntimeClass*,CRuntimeClass*> CBCGPDlgImpl::m_mapSubclassedCtrlsRTI;
+
+static const int nTooltipMaxWidth	= 640;
+static const UINT nInfoToolTipID	= 101;
 
 UINT BCGM_ONSETCONTROLAERO = ::RegisterWindowMessage (_T("BCGM_ONSETCONTROLAERO"));
 UINT BCGM_ONSETCONTROLVMMODE = ::RegisterWindowMessage (_T("BCGM_ONSETCONTROLVMMODE"));
 UINT BCGM_ONSETCONTROLBACKSTAGEMODE = ::RegisterWindowMessage (_T("BCGM_ONSETCONTROBACKSTAGEMMODE"));
+UINT BCGM_ONCLICKINFOTIP = ::RegisterWindowMessage (_T("BCGM_ONCLICKINFOTIP"));
+UINT BCGM_ONDRAWCUSTOMINFOTIP = ::RegisterWindowMessage (_T("BCGM_ONDRAWCUSTOMINFOTIP"));
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -103,7 +121,11 @@ CBCGPDlgImpl::CBCGPDlgImpl(CWnd& dlg) :
 	m_bLoadWindowPlacement(FALSE),
 	m_bWindowPlacementIsSet(FALSE),
 	m_bDragClientArea(FALSE),
-	m_pShadow(NULL)
+	m_pShadow(NULL),
+	m_pToolTipInfo(NULL),
+	m_hwndInfoTipCurr(NULL),
+	m_BkgrLocation(0),
+	m_bDisableShadows(FALSE)
 {
 	m_AeroMargins.cxLeftWidth = 0;
 	m_AeroMargins.cxRightWidth = 0;
@@ -141,6 +163,60 @@ CBCGPDlgImpl::~CBCGPDlgImpl()
 #endif
 }
 //*******************************************************************************************
+void CBCGPDlgImpl::SetControlInfoTip(UINT nCtrlID, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	if (nCtrlID == 0 || nCtrlID == IDC_STATIC)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	if (m_Dlg.GetSafeHwnd() == NULL)
+	{
+		CString strInfoTip = (lpszInfoTip == NULL) ? _T("") : lpszInfoTip;
+		if (strInfoTip.IsEmpty())
+		{
+			m_mapCtrlInfoTipDelayed.RemoveKey(nCtrlID);
+		}
+		else
+		{
+			m_mapCtrlInfoTipDelayed.SetAt(nCtrlID, CBCGPControlInfoTip(NULL, lpszInfoTip, dwVertAlign, style, bIsClickable));
+		}
+
+		return;
+	}
+
+	SetControlInfoTip(m_Dlg.GetDlgItem(nCtrlID), lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
+}
+//*******************************************************************************************
+void CBCGPDlgImpl::SetControlInfoTip(CWnd* pWndCtrl, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	HWND hwndCtrl = pWndCtrl->GetSafeHwnd();
+	if (hwndCtrl == NULL || !::IsWindow(hwndCtrl))
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	CString strInfoTip = (lpszInfoTip == NULL) ? _T("") : lpszInfoTip;
+	if (strInfoTip.IsEmpty())
+	{
+		m_mapCtrlInfoTip.RemoveKey(hwndCtrl);
+	}
+	else
+	{
+		m_mapCtrlInfoTip.SetAt(hwndCtrl, CBCGPControlInfoTip(pWndCtrl, lpszInfoTip, dwVertAlign, style, bIsClickable, ptOffset));
+	}
+
+	if (bRedrawInfoTip && m_Dlg.GetSafeHwnd() != NULL)
+	{
+		CRect rect;
+		GetControlInfoTipRect(pWndCtrl, rect, dwVertAlign, ptOffset);
+
+		m_Dlg.RedrawWindow(rect);
+	}
+}
+//*******************************************************************************************
 BOOL CBCGPDlgImpl::ProcessMouseClick (POINT pt)
 {
 	if (!CBCGPToolBar::IsCustomizeMode () &&
@@ -156,65 +232,62 @@ BOOL CBCGPDlgImpl::ProcessMouseClick (POINT pt)
 			//--------------------------------------------
 			// Maybe secondary click on the parent button?
 			//--------------------------------------------
-			CBCGPToolbarMenuButton* pParentButton = 
-				CBCGPPopupMenu::GetActiveMenu()->GetParentButton ();
-			if (pParentButton != NULL)
+			CRect rectParentBtn;
+			CWnd* pWndParent = CBCGPPopupMenu::GetActiveMenu()->GetParentArea (rectParentBtn);
+
+			if (pWndParent != NULL)
 			{
-				CWnd* pWndParent = pParentButton->GetParentWnd ();
-				if (pWndParent != NULL)
+				CBCGPPopupMenuBar* pWndParentPopupMenuBar = 
+					DYNAMIC_DOWNCAST (CBCGPPopupMenuBar, pWndParent);
+
+				CPoint ptClient = pt;
+				pWndParent->ScreenToClient (&ptClient);
+
+				if (rectParentBtn.PtInRect (ptClient))
 				{
-					CBCGPPopupMenuBar* pWndParentPopupMenuBar = 
-						DYNAMIC_DOWNCAST (CBCGPPopupMenuBar, pWndParent);
-
-					CPoint ptClient = pt;
-					pWndParent->ScreenToClient (&ptClient);
-
-					if (pParentButton->Rect ().PtInRect (ptClient))
+					//-------------------------------------------------------
+					// If user clicks second time on the parent button,
+					// we should close an active menu on the toolbar/menubar
+					// and leave it on the popup menu:
+					//-------------------------------------------------------
+					if (pWndParentPopupMenuBar == NULL &&
+						!CBCGPPopupMenu::GetActiveMenu()->InCommand ())
 					{
-						//-------------------------------------------------------
-						// If user clicks second time on the parent button,
-						// we should close an active menu on the toolbar/menubar
-						// and leave it on the popup menu:
-						//-------------------------------------------------------
-						if (pWndParentPopupMenuBar == NULL &&
-							!CBCGPPopupMenu::GetActiveMenu()->InCommand ())
-						{
-							//----------------------------------------
-							// Toolbar/menu bar: close an active menu!
-							//----------------------------------------
-							CBCGPPopupMenu::GetActiveMenu()->SendMessage (WM_CLOSE);
-						}
-
-						return TRUE;
+						//----------------------------------------
+						// Toolbar/menu bar: close an active menu!
+						//----------------------------------------
+						CBCGPPopupMenu::GetActiveMenu()->SendMessage (WM_CLOSE);
 					}
 
-					if (pWndParentPopupMenuBar != NULL)
+					return TRUE;
+				}
+
+				if (pWndParentPopupMenuBar != NULL)
+				{
+					pWndParentPopupMenuBar->CloseDelayedSubMenu ();
+					
+					CBCGPPopupMenu* pWndParentPopupMenu = 
+						DYNAMIC_DOWNCAST (CBCGPPopupMenu, 
+						pWndParentPopupMenuBar->GetParent ());
+
+					if (pWndParentPopupMenu != NULL)
 					{
-						pWndParentPopupMenuBar->CloseDelayedSubMenu ();
-						
-						CBCGPPopupMenu* pWndParentPopupMenu = 
-							DYNAMIC_DOWNCAST (CBCGPPopupMenu, 
-							pWndParentPopupMenuBar->GetParent ());
+						CBCGPPopupMenu::MENUAREA_TYPE clickAreaParent = 
+							pWndParentPopupMenu->CheckArea (pt);
 
-						if (pWndParentPopupMenu != NULL)
+						switch (clickAreaParent)
 						{
-							CBCGPPopupMenu::MENUAREA_TYPE clickAreaParent = 
-								pWndParentPopupMenu->CheckArea (pt);
+						case CBCGPPopupMenu::MENU:
+						case CBCGPPopupMenu::TEAROFF_CAPTION:
+						case CBCGPPopupMenu::LOGO:
+							return FALSE;
 
-							switch (clickAreaParent)
-							{
-							case CBCGPPopupMenu::MENU:
-							case CBCGPPopupMenu::TEAROFF_CAPTION:
-							case CBCGPPopupMenu::LOGO:
-								return FALSE;
+						case CBCGPPopupMenu::SHADOW_RIGHT:
+						case CBCGPPopupMenu::SHADOW_BOTTOM:
+							pWndParentPopupMenu->SendMessage (WM_CLOSE);
+							m_Dlg.SetFocus ();
 
-							case CBCGPPopupMenu::SHADOW_RIGHT:
-							case CBCGPPopupMenu::SHADOW_BOTTOM:
-								pWndParentPopupMenu->SendMessage (WM_CLOSE);
-								m_Dlg.SetFocus ();
-
-								return TRUE;
-							}
+							return TRUE;
 						}
 					}
 				}
@@ -256,19 +329,25 @@ BOOL CBCGPDlgImpl::ProcessMouseMove (POINT pt)
 		m_Dlg.GetParent()->SendMessage (WM_MOUSEMOVE, 0, MAKELPARAM (-1, -1));
 	}
 
-	if (!CBCGPToolBar::IsCustomizeMode () &&
-		CBCGPPopupMenu::GetActiveMenu() != NULL)
+	if (!CBCGPToolBar::IsCustomizeMode ())
 	{
-		CRect rectMenu;
-		CBCGPPopupMenu::GetActiveMenu()->GetWindowRect (rectMenu);
-
-		if (rectMenu.PtInRect (pt) ||
-			CBCGPPopupMenu::GetActiveMenu()->GetMenuBar ()->FindDestBar (pt) != NULL)
+#ifndef _BCGSUITE_
+		CBCGPPopupMenu* pActivePopup = CBCGPPopupMenu::GetSafeActivePopupMenu();
+#else
+		CBCGPPopupMenu* pActivePopup = CBCGPPopupMenu::GetActiveMenu();
+#endif
+		if (pActivePopup != NULL)
 		{
-			return FALSE;	// Default processing
-		}
+			CRect rectMenu;
+			pActivePopup->GetWindowRect (rectMenu);
 
-		return TRUE;		// Active menu "capturing"
+			if (rectMenu.PtInRect (pt) || pActivePopup->GetMenuBar ()->FindDestBar (pt) != NULL)
+			{
+				return FALSE;	// Default processing
+			}
+
+			return TRUE;		// Active menu "capturing"
+		}
 	}
 
 	return FALSE;	// Default processing
@@ -276,6 +355,24 @@ BOOL CBCGPDlgImpl::ProcessMouseMove (POINT pt)
 //**************************************************************************************
 BOOL CBCGPDlgImpl::PreTranslateMessage(MSG* pMsg) 
 {
+   	switch (pMsg->message)
+	{
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_LBUTTONUP:
+	case WM_RBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_MOUSEMOVE:
+		if (m_pToolTipInfo->GetSafeHwnd () != NULL)
+		{
+			m_pToolTipInfo->RelayEvent(pMsg);
+		}
+		break;
+	}
+	
 	switch (pMsg->message)
 	{
 	case WM_SYSKEYDOWN:
@@ -301,7 +398,8 @@ BOOL CBCGPDlgImpl::PreTranslateMessage(MSG* pMsg)
 		//-----------------------------------------
 		// Pass keyboard action to the active menu:
 		//-----------------------------------------
-		if (CBCGPPopupMenu::GetActiveMenu() != NULL && ::IsWindow (CBCGPPopupMenu::GetActiveMenu()->m_hWnd))
+		if (CBCGPPopupMenu::GetActiveMenu() != NULL && ::IsWindow (CBCGPPopupMenu::GetActiveMenu()->m_hWnd) &&
+			CBCGPPopupMenu::GetActiveMenu()->IsWindowVisible())
 		{
 			//-------------------------------------------------------
 			// Check if the dialog is not located on the active menu:
@@ -313,7 +411,7 @@ BOOL CBCGPDlgImpl::PreTranslateMessage(MSG* pMsg)
 
 				CBCGPPopupMenu::GetActiveMenu()->SendMessage (WM_KEYDOWN, (int) pMsg->wParam);
 
-				if (!bIsDropList)
+				if (!bIsDropList || pMsg->wParam == VK_DOWN || pMsg->wParam == VK_UP)
 				{
 					return TRUE;
 				}
@@ -408,7 +506,7 @@ BOOL CBCGPDlgImpl::PreTranslateMessage(MSG* pMsg)
 			return TRUE;
 		}
 
-		if (pMsg->message == WM_NCRBUTTONUP && pMsg->hwnd == m_Dlg.GetSafeHwnd () && IsOwnerDrawCaption ())
+		if (pMsg->message == WM_NCRBUTTONUP && pMsg->hwnd == m_Dlg.GetSafeHwnd () && IsOwnerDrawCaption () && (m_Dlg.GetStyle() & WS_SYSMENU) == WS_SYSMENU)
 		{
 			CPoint pt (BCG_GET_X_LPARAM(pMsg->lParam), BCG_GET_Y_LPARAM(pMsg->lParam));
 
@@ -449,7 +547,17 @@ BOOL CBCGPDlgImpl::PreTranslateMessage(MSG* pMsg)
 			{
 				ASSERT_VALID(pActivePopupMenu);
 
-				if (pActivePopupMenu->IsScrollable ())
+				if (DYNAMIC_DOWNCAST(CBCGPDlgPopupMenu, pActivePopupMenu))
+				{
+					CWnd* pWnd = CWnd::FromHandle(pMsg->hwnd);
+					CPoint pt(BCG_GET_X_LPARAM(pMsg->lParam), BCG_GET_Y_LPARAM(pMsg->lParam));
+
+					if (pWnd->GetSafeHwnd() != NULL && CWnd::WindowFromPoint(pt) == pWnd)
+					{
+						pWnd->SendMessage(WM_MOUSEWHEEL, pMsg->wParam, pMsg->lParam);
+					}
+				}
+				else if (pActivePopupMenu->IsScrollable ())
 				{
 					pActivePopupMenu->SendMessage (WM_MOUSEWHEEL, pMsg->wParam, pMsg->lParam);
 				}
@@ -476,8 +584,23 @@ BOOL CBCGPDlgImpl::PreTranslateMessage(MSG* pMsg)
 	case WM_MOUSEMOVE:
 		{
 			CPoint pt (BCG_GET_X_LPARAM(pMsg->lParam), BCG_GET_Y_LPARAM(pMsg->lParam));
-			CWnd* pWnd = CWnd::FromHandle (pMsg->hwnd);
 
+			if (m_pToolTipInfo->GetSafeHwnd () != NULL && pMsg->hwnd == m_Dlg.GetSafeHwnd() && !m_mapCtrlInfoTip.IsEmpty())
+			{
+				CString strDescription;
+				CString strTipText;
+				BOOL bIsClickable = FALSE;
+
+				HWND hwnd = GetControlInfoTipFromPoint(pt, strTipText, strDescription, bIsClickable);
+				
+				if (hwnd != m_hwndInfoTipCurr)
+				{
+					m_pToolTipInfo->Pop();
+					m_hwndInfoTipCurr = hwnd;
+				}
+			}
+
+			CWnd* pWnd = CWnd::FromHandle (pMsg->hwnd);
 			if (pWnd != NULL)
 			{
 				pWnd->ClientToScreen (&pt);
@@ -575,18 +698,20 @@ void CBCGPDlgImpl::OnDestroy ()
 	}
 
 	SavePlacement();
+
+	CBCGPTooltipManager::DeleteToolTip(m_pToolTipInfo);
 }
 //****************************************************************************************
-BOOL CBCGPDlgImpl::OnCommand (WPARAM wParam, LPARAM /*lParam*/)
+BOOL CBCGPDlgImpl::OnCommand (WPARAM wParam, LPARAM lParam)
 {
-	if (HIWORD (wParam) == 1)
+	if (HIWORD(wParam) == 1 && lParam == 0)
 	{
 		UINT uiCmd = LOWORD (wParam);
 
 		CBCGPToolBar::AddCommandUsage (uiCmd);
 
 		//---------------------------
-		// Simmulate ESC keystroke...
+		// Simulate ESC keystroke...
 		//---------------------------
 		if (CBCGPPopupMenu::GetActiveMenu() != NULL && ::IsWindow (CBCGPPopupMenu::GetActiveMenu()->m_hWnd))
 		{
@@ -631,8 +756,8 @@ void CBCGPDlgImpl::OnNcActivate (BOOL& bActive)
 	if (IsOwnerDrawCaption ())
 	{
 		visualManagerMFC->OnNcActivate (&m_Dlg, bActive);
-		m_Dlg.RedrawWindow (CRect (0, 0, 0, 0), NULL,
-			RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOCHILDREN);
+		m_Dlg.RedrawWindow (NULL, NULL,
+            RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | (m_Dlg.IsZoomed() ? RDW_ERASE : RDW_NOCHILDREN));
 	}
 
 	if (bStayActive)
@@ -674,7 +799,69 @@ void CBCGPDlgImpl::OnActivate(UINT nState, CWnd* pWndOther)
 		m_Dlg.RedrawWindow(NULL, NULL, RDW_FRAME | RDW_UPDATENOW);
 	}
 
-	AdjustShadow((nState & WA_INACTIVE) == 0);
+	AdjustShadow(nState != WA_INACTIVE);
+
+	UpdateToolTipsRect();
+}
+//*************************************************************************************
+void CBCGPDlgImpl::SetSubclassControlRTI(BCGPControlClass idClass, CRuntimeClass* pRTI)
+{
+	if (idClass < BCGPCONTROLSCLASS_First || idClass > BCGPCONTROLSCLASS_Last)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	if (pRTI == NULL)
+	{
+		m_mapSubclassedCtrlsRTI.RemoveKey(idClass);
+	}
+	else
+	{
+		m_mapSubclassedCtrlsRTI.SetAt(idClass, pRTI);
+	}
+}
+//*************************************************************************************
+CWnd* CBCGPDlgImpl::CreateSubclassedCtrl(BCGPControlClass idClass)
+{
+	CRuntimeClass* pRTI = m_mapSubclassedCtrlsRTI[idClass];
+	if (pRTI == NULL)
+	{
+		switch (idClass)
+		{
+		case BCGPCONTROLSCLASS_Button:
+			return new CBCGPButton;
+			
+		case BCGPCONTROLSCLASS_GroupBox:
+			return new CBCGPGroup;
+			
+		case BCGPCONTROLSCLASS_Progress:
+			return new CBCGPProgressCtrl;
+			
+		case BCGPCONTROLSCLASS_TrackBar:
+			return new CBCGPSliderCtrl;
+			
+		case BCGPCONTROLSCLASS_Edit:
+			return new CBCGPEdit;
+			
+		case BCGPCONTROLSCLASS_ComboBox:
+			return new CBCGPComboBox;
+			
+		case BCGPCONTROLSCLASS_ScrollBar:
+			return new CBCGPScrollBar;
+			
+		case BCGPCONTROLSCLASS_UpDown:
+			return new CBCGPSpinButtonCtrl;
+			
+		case BCGPCONTROLSCLASS_Static:
+			return new CBCGPStatic;
+		}
+
+		ASSERT(FALSE);
+		return NULL;
+	}
+
+	return (CWnd*)pRTI->CreateObject();
 }
 //*************************************************************************************
 void CBCGPDlgImpl::EnableVisualManagerStyle (BOOL bEnable, BOOL bNCArea, const CList<UINT,UINT>* plstNonSubclassedItems)
@@ -682,14 +869,14 @@ void CBCGPDlgImpl::EnableVisualManagerStyle (BOOL bEnable, BOOL bNCArea, const C
 	m_bVisualManagerStyle = bEnable;
 	m_bVisualManagerNCArea = bNCArea;
 
-	if (m_Dlg.GetSafeHwnd () == NULL)
-	{
-		return;
-	}
-
 	if (m_lstNonSubclassedItems.IsEmpty() && plstNonSubclassedItems != NULL)
 	{
 		m_lstNonSubclassedItems.AddTail((CList<UINT,UINT>*)plstNonSubclassedItems);
+	}
+
+	if (m_Dlg.GetSafeHwnd () == NULL)
+	{
+		return;
 	}
 
 	CWnd* pWndChild = m_Dlg.GetWindow (GW_CHILD);
@@ -742,42 +929,42 @@ void CBCGPDlgImpl::EnableVisualManagerStyle (BOOL bEnable, BOOL bNCArea, const C
 
 			if (strClass == STATIC_CLASS)
 			{
-				pWndSubclassedCtrl = new CBCGPStatic;
+				pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_Static);
 			}
 			else if (strClass == BUTTON_CLASS)
 			{
 				if ((pWndChild->GetStyle () & 0xF) == BS_GROUPBOX)
 				{
-					pWndSubclassedCtrl = new CBCGPGroup;
+					pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_GroupBox);
 				}
 				else
 				{
-					pWndSubclassedCtrl = new CBCGPButton;
+					pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_Button);
 				}
 			}
 			else if (strClass == PROGRESS_CLASS)
 			{
-				pWndSubclassedCtrl = new CBCGPProgressCtrl;
+				pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_Progress);
 			}
 			else if (strClass == TRACKBAR_CLASS)
 			{
-				pWndSubclassedCtrl = new CBCGPSliderCtrl;
+				pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_TrackBar);
 			}
 			else if (strClass == EDIT_CLASS)
 			{
-				pWndSubclassedCtrl = new CBCGPEdit;
+				pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_Edit);
 			}
 			else if (strClass == COMBOBOX_CLASS)
 			{
-				pWndSubclassedCtrl = new CBCGPComboBox;
+				pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_ComboBox);
 			}
 			else if (strClass == SCROLLBAR_CLASS)
 			{
-				pWndSubclassedCtrl = new CBCGPScrollBar;
+				pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_ScrollBar);
 			}
 			else if (strClass == UPDOWN_CLASS)
 			{
-				pWndSubclassedCtrl = new CBCGPSpinButtonCtrl;
+				pWndSubclassedCtrl = CreateSubclassedCtrl(BCGPCONTROLSCLASS_UpDown);
 			}
 
 			if (pWndSubclassedCtrl != NULL)
@@ -813,14 +1000,8 @@ BOOL CBCGPDlgImpl::EnableAero (BCGPMARGINS& margins)
 		return TRUE;
 	}
 
-#if _MSC_VER < 1700 || !defined(_BCGSUITE_)
-	BOOL bRes = globalData.DwmExtendFrameIntoClientArea (m_Dlg.GetSafeHwnd (), &m_AeroMargins);
-	BOOL bIsAeroEnabled = globalData.DwmIsCompositionEnabled ();
-#else
-	BOOL bRes = SUCCEEDED(DwmExtendFrameIntoClientArea (m_Dlg.GetSafeHwnd (), &m_AeroMargins));
-	BOOL bIsAeroEnabled = FALSE;
-	DwmIsCompositionEnabled (&bIsAeroEnabled);
-#endif
+	BOOL bRes = BCGCBProDwmExtendFrameIntoClientArea(m_Dlg.GetSafeHwnd (), &m_AeroMargins);
+	BOOL bIsAeroEnabled = BCGCBProDwmIsCompositionEnabled();
 
 	CRect rectClient;
 	m_Dlg.GetClientRect (rectClient);
@@ -913,12 +1094,7 @@ BOOL CBCGPDlgImpl::HasAeroMargins () const
 //********************************************************************************************************
 void CBCGPDlgImpl::ClearAeroAreas (CDC* pDC)
 {
-#if _MSC_VER < 1700 || !defined(_BCGSUITE_)
-	BOOL bIsAeroEnabled = globalData.DwmIsCompositionEnabled ();
-#else
-	BOOL bIsAeroEnabled = FALSE;
-	DwmIsCompositionEnabled (&bIsAeroEnabled);
-#endif
+	BOOL bIsAeroEnabled = BCGCBProDwmIsCompositionEnabled();
 
 	if (!HasAeroMargins () || m_Dlg.GetSafeHwnd () == NULL || !bIsAeroEnabled)
 	{
@@ -1007,7 +1183,7 @@ HBRUSH CBCGPDlgImpl::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 
 			if (m_bVisualManagerStyle)
 			{
-				pDC->SetTextColor (globalData.clrBarText);
+				pDC->SetTextColor (visualManager->GetDlgTextColor(&m_Dlg));
 			}
 
 			if (m_bTransparentStaticCtrls && (pWnd->GetStyle () & SS_ICON) != SS_ICON)
@@ -1073,6 +1249,17 @@ BOOL CBCGPDlgImpl::OnNcCalcSize(BOOL /*bCalcValidRects*/, NCCALCSIZE_PARAMS FAR*
 
 	if (IsOwnerDrawCaption ())
 	{
+		if (!CBCGPGlobalUtils::IsXPPlatformToolset() && !m_Dlg.IsIconic() && 
+			(m_Dlg.GetStyle() & WS_MAXIMIZE) == 0 && 
+			(m_Dlg.GetStyle() & WS_THICKFRAME) == 0 &&
+			!IsLayoutEnabled() && m_bHasCaption)
+		{
+			CSize size;
+			size.cx = ::GetSystemMetrics(SM_CXPADDEDBORDER) + ::GetSystemMetrics(SM_CXBORDER);
+			size.cy = ::GetSystemMetrics(SM_CXPADDEDBORDER) + ::GetSystemMetrics(SM_CXBORDER);
+			::InflateRect(&lpncsp->rgrc[0], -size.cx, -size.cy);
+		}
+
 		lpncsp->rgrc[0].top += GetCaptionHeight ();
 	}
 
@@ -1081,7 +1268,7 @@ BOOL CBCGPDlgImpl::OnNcCalcSize(BOOL /*bCalcValidRects*/, NCCALCSIZE_PARAMS FAR*
 //********************************************************************************
 CRect CBCGPDlgImpl::GetCaptionRect ()
 {
-	if ((m_Dlg.GetStyle () & WS_CAPTION) == 0 && !m_bHasCaption)
+	if ((m_Dlg.GetStyle () & WS_CAPTION) != WS_CAPTION && !m_bHasCaption)
 	{
 		return CRect(0, 0, 0, 0);
 	}
@@ -1096,13 +1283,13 @@ CRect CBCGPDlgImpl::GetCaptionRect ()
 
 	CRect rectWnd;
 	m_Dlg.GetWindowRect (&rectWnd);
-
 	m_Dlg.ScreenToClient (&rectWnd);
 
+	int cyCaption = GetCaptionHeight();
 	int cyOffset = szSystemBorder.cy;
-	if (!m_Dlg.IsIconic ())
+	if (!m_Dlg.IsIconic () || (m_Dlg.IsIconic () && (m_Dlg.GetStyle() & WS_CHILD) == 0))
 	{
-		cyOffset += GetCaptionHeight ();
+		cyOffset += cyCaption;
 	}
 
 	rectWnd.OffsetRect (szSystemBorder.cx, cyOffset);
@@ -1110,12 +1297,13 @@ CRect CBCGPDlgImpl::GetCaptionRect ()
 	CRect rectCaption (	rectWnd.left + szSystemBorder.cx, 
 						rectWnd.top + szSystemBorder.cy, 
 						rectWnd.right - szSystemBorder.cx, 
-						rectWnd.top + szSystemBorder.cy + GetCaptionHeight ());
+						rectWnd.top + szSystemBorder.cy + cyCaption);
 
 	if (m_Dlg.IsIconic ())
 	{
+		rectCaption.left  += GetSystemMetrics(SM_CXFIXEDFRAME);
 		rectCaption.right -= GetSystemMetrics(SM_CXFIXEDFRAME);
-		rectCaption.top   += GetSystemMetrics(SM_CYFIXEDFRAME);
+		rectCaption.OffsetRect (0, (rectWnd.Height () - rectCaption.Height ()) / 2);
 	}
 
 	return rectCaption;
@@ -1150,25 +1338,28 @@ void CBCGPDlgImpl::UpdateCaption ()
 		{
 			m_lstCaptionSysButtons.AddTail (new CBCGPFrameCaptionButton (HTCLOSE_BCG));
 
-			if ((dwStyle & WS_MAXIMIZEBOX) == WS_MAXIMIZEBOX)
+			if ((m_Dlg.GetExStyle() & WS_EX_TOOLWINDOW) == 0)
 			{
-				m_lstCaptionSysButtons.AddTail (new CBCGPFrameCaptionButton (HTMAXBUTTON_BCG));
-			}
+				BOOL bHelp = TRUE;
+				if ((dwStyle & WS_MAXIMIZEBOX) == WS_MAXIMIZEBOX)
+				{
+					m_lstCaptionSysButtons.AddTail (new CBCGPFrameCaptionButton (HTMAXBUTTON_BCG));
+					bHelp = FALSE;
+				}
 
-			if ((dwStyle & WS_MINIMIZEBOX) == WS_MINIMIZEBOX)
-			{
-				m_lstCaptionSysButtons.AddTail (new CBCGPFrameCaptionButton (HTMINBUTTON_BCG));
-			}
+				if ((dwStyle & WS_MINIMIZEBOX) == WS_MINIMIZEBOX)
+				{
+					m_lstCaptionSysButtons.AddTail (new CBCGPFrameCaptionButton (HTMINBUTTON_BCG));
+					bHelp = FALSE;
+				}
 
 #ifndef _BCGSUITE_
-			if ((dwStyle & DS_CONTEXTHELP) == DS_CONTEXTHELP)
-			{
-				if (!m_Dlg.IsKindOf (RUNTIME_CLASS (CPropertySheet)))
+				if (bHelp && ((m_Dlg.GetExStyle() & WS_EX_CONTEXTHELP) == WS_EX_CONTEXTHELP))
 				{
 					m_lstCaptionSysButtons.AddTail (new CBCGPFrameCaptionButton (HTHELPBUTTON_BCG));
 				}
-			}
 #endif
+			}
 		}
 	}
 
@@ -1178,7 +1369,7 @@ void CBCGPDlgImpl::UpdateCaption ()
     if (!visualManagerMFC->OnUpdateNcButtons(&m_Dlg, m_lstCaptionSysButtons, rectCaption))
 #endif
     {
-	    CSize sizeButton = visualManagerMFC->GetNcBtnSize (FALSE);
+	    CSize sizeButton = visualManagerMFC->GetNcBtnSize ((m_Dlg.GetExStyle() & WS_EX_TOOLWINDOW) == WS_EX_TOOLWINDOW);
 	    sizeButton.cy = min (sizeButton.cy, rectCaption.Height () - 2);
 
 	    int x = rectCaption.right - sizeButton.cx;
@@ -1244,6 +1435,13 @@ void CBCGPDlgImpl::UpdateCaptionButtons()
 				BOOL bGrayed = pSysMenu->GetMenuState (SC_MINIMIZE, MF_BYCOMMAND) & MF_GRAYED;
 				pButton->m_bEnabled = bGrayed ? FALSE : TRUE;
 			}
+
+#ifndef _BCGSUITE_
+			if (pButton->GetHit () == HTHELPBUTTON_BCG)
+			{
+				pButton->m_bEnabled = TRUE;
+			}
+#endif
 		}
 	}
 
@@ -1278,7 +1476,14 @@ UINT CBCGPDlgImpl::OnNcHitTest (CPoint point)
 
 			if (rectClient.PtInRect(point) && CWnd::WindowFromPoint(ptScreen)->GetSafeHwnd() == m_Dlg.GetSafeHwnd())
 			{
-				return HTCAPTION;
+				CString strInfo;
+				CString strDescription;
+				BOOL bIsClickable = FALSE;
+
+				if (GetControlInfoTipFromPoint(point, strInfo, strDescription, bIsClickable) == NULL)
+				{
+					return HTCAPTION;
+				}
 			}
 		}
 	}
@@ -1288,11 +1493,17 @@ UINT CBCGPDlgImpl::OnNcHitTest (CPoint point)
 		return HTNOWHERE;
 	}
 
-	const CSize szSystemBorder(globalUtils.GetSystemBorders (&m_Dlg));
+	CSize szSystemBorder(globalUtils.GetSystemBorders (&m_Dlg));
+
+	if (m_Dlg.IsIconic ())
+	{
+		szSystemBorder = CSize (0, 0);
+	}
 
 	int cxOffset = szSystemBorder.cx;
 	int cyOffset = szSystemBorder.cy;
-	if (!m_Dlg.IsIconic ())
+
+	if (!m_Dlg.IsIconic () || (m_Dlg.IsIconic () && (m_Dlg.GetStyle() & WS_CHILD) == 0))
 	{
 		cyOffset += GetCaptionHeight ();
 	}
@@ -1320,7 +1531,7 @@ UINT CBCGPDlgImpl::OnNcHitTest (CPoint point)
 	CRect rectCaption = GetCaptionRect ();
 	if (rectCaption.PtInRect (point))
 	{
-		if ((m_Dlg.GetExStyle () & WS_EX_TOOLWINDOW) == 0)
+		if ((m_Dlg.GetStyle() & WS_SYSMENU) == WS_SYSMENU && (m_Dlg.GetExStyle () & WS_EX_TOOLWINDOW) == 0)
 		{
 			CRect rectSysMenu = rectCaption;
 			rectSysMenu.right = rectSysMenu.left + ::GetSystemMetrics (SM_CXSMICON) + 2 +
@@ -1361,8 +1572,29 @@ void CBCGPDlgImpl::OnLButtonDown(CPoint /*point*/)
 	}
 }
 //*************************************************************************
-void CBCGPDlgImpl::OnLButtonUp(CPoint /*point*/)
+BOOL CBCGPDlgImpl::ProcessInfoTipClick(CPoint point)
 {
+	CString strTipText;
+	CString strDescription;
+	BOOL bIsClickable = FALSE;
+	HWND hwndCtrl = GetControlInfoTipFromPoint(point, strTipText, strDescription, bIsClickable);
+	
+	if (hwndCtrl != NULL && bIsClickable)
+	{
+		m_Dlg.SendMessage(BCGM_ONCLICKINFOTIP, 0, (LPARAM)hwndCtrl);
+		return TRUE;
+	}
+
+	return FALSE;
+}
+//*************************************************************************
+void CBCGPDlgImpl::OnLButtonUp(CPoint point)
+{
+	if (ProcessInfoTipClick(point))
+	{
+		return;
+	}
+
 	if (!IsOwnerDrawCaption ())
 	{
 		return;
@@ -1591,39 +1823,42 @@ void CBCGPDlgImpl::OnChangeVisualManager ()
 			globalData.EnableWindowAero(m_Dlg.GetSafeHwnd(), CBCGPVisualManager::GetInstance()->IsDWMCaptionSupported());
 		}
 
-		if (CBCGPVisualManager::GetInstance ()->IsSmallSystemBorders() &&
-			m_bVisualManagerNCArea && IsOwnerDrawCaption())
+		if (!m_bDisableShadows)
 		{
-			if (globalData.m_bShowFrameLayeredShadows)
+			if (CBCGPVisualManager::GetInstance ()->CanShowFrameShadows() &&
+				m_bVisualManagerNCArea && IsOwnerDrawCaption())
 			{
-				if (m_pShadow == NULL)
+				if (globalData.m_bShowFrameLayeredShadows)
 				{
-					BOOL bInteraction = (m_Dlg.GetStyle() & WS_THICKFRAME) != 0 || IsLayoutEnabled();
+					if (m_pShadow == NULL)
+					{
+						BOOL bInteraction = (m_Dlg.GetStyle() & WS_THICKFRAME) != 0 || IsLayoutEnabled();
 
-					m_pShadow = new CBCGPShadowManager(&m_Dlg, bInteraction);
-					m_pShadow->Create(CSize(6, 6));
+						m_pShadow = new CBCGPShadowManager(&m_Dlg, bInteraction);
+						m_pShadow->Create(CSize(6, 6));
+					}
+					else
+					{
+						m_pShadow->UpdateBaseColor();
+					}
 				}
 				else
 				{
-					m_pShadow->UpdateBaseColor();
+					globalUtils.EnableWindowShadow(&m_Dlg, TRUE);
 				}
 			}
 			else
 			{
-				globalUtils.EnableWindowShadow(&m_Dlg, TRUE);
-			}
-		}
-		else
-		{
-			if (!globalData.m_bShowFrameLayeredShadows)
-			{
-				globalUtils.EnableWindowShadow(&m_Dlg, FALSE);
-			}
+				if (!globalData.m_bShowFrameLayeredShadows)
+				{
+					globalUtils.EnableWindowShadow(&m_Dlg, FALSE);
+				}
 
-			if (m_pShadow != NULL)
-			{
-				delete m_pShadow;
-				m_pShadow = NULL;
+				if (m_pShadow != NULL)
+				{
+					delete m_pShadow;
+					m_pShadow = NULL;
+				}
 			}
 		}
 
@@ -1716,17 +1951,12 @@ int CBCGPDlgImpl::GetCaptionHeight ()
 		return 0;
 	}
 
-	if ((m_Dlg.GetStyle () & WS_CAPTION) == 0 && !m_bHasCaption)
+	if ((m_Dlg.GetStyle () & WS_CAPTION) != WS_CAPTION && !m_bHasCaption)
 	{
 		return 0;
 	}
 
-	if (m_Dlg.GetExStyle () & WS_EX_TOOLWINDOW)
-	{
-		return ::GetSystemMetrics (SM_CYSMCAPTION);
-	}
-	
-	return ::GetSystemMetrics (SM_CYCAPTION);
+	return ::GetSystemMetrics ((m_Dlg.GetExStyle () & WS_EX_TOOLWINDOW) == WS_EX_TOOLWINDOW ? SM_CYSMCAPTION : SM_CYCAPTION);
 }
 //********************************************************************************
 void CBCGPDlgImpl::OnGetMinMaxInfo (MINMAXINFO FAR* lpMMI)
@@ -1739,7 +1969,7 @@ void CBCGPDlgImpl::OnGetMinMaxInfo (MINMAXINFO FAR* lpMMI)
 		CRect rectWindow;
 		m_Dlg.GetWindowRect (&rectWindow);
 
-		if (m_Dlg.IsIconic ())
+		if (m_Dlg.IsIconic () || m_Dlg.IsZoomed ())
 		{
 			WINDOWPLACEMENT wp;
 			wp.length = sizeof (WINDOWPLACEMENT);
@@ -1887,17 +2117,9 @@ int CBCGPDlgImpl::OnCreate()
 		BOOL bIsCompositionEnabled = FALSE;
 
 	#if !defined(_BCGSUITE_)
-
 		bIsCompositionEnabled = CBCGPVisualManager::GetInstance()->IsDWMCaptionSupported();
-
 	#else
-
-		#if _MSC_VER < 1700
-			bIsCompositionEnabled = globalData.DwmIsCompositionEnabled ();
-		#else
-			DwmIsCompositionEnabled (&bIsCompositionEnabled);
-		#endif
-
+		bIsCompositionEnabled = BCGCBProDwmIsCompositionEnabled();
 	#endif
 
 		if (m_bVisualManagerNCArea && IsOwnerDrawCaption() && !bIsCompositionEnabled)
@@ -1990,12 +2212,154 @@ void CBCGPDlgImpl::DrawResizeBox(CDC* pDC)
 	}
 }
 //****************************************************************************
+void CBCGPDlgImpl::GetControlInfoTipRect(CWnd* pWndCtrl, CRect& rect, DWORD dwVertAlign, const CPoint& ptOffset)
+{
+	ASSERT(pWndCtrl->GetSafeHwnd() != NULL);
+
+	pWndCtrl->GetWindowRect(rect);
+	m_Dlg.ScreenToClient(rect);
+	
+	const int nSize = globalUtils.ScaleByDPI(16);
+
+	int nVertOffset = 0;
+
+	switch (dwVertAlign)
+	{
+	case DT_VCENTER:
+		nVertOffset = (rect.Height() - nSize) / 2;
+		break;
+
+	case DT_BOTTOM:
+		nVertOffset = rect.Height() - nSize;
+		break;
+	}
+	
+	rect.OffsetRect(rect.Width() + nSize / 3 + ptOffset.x, nVertOffset + ptOffset.y);
+
+	rect.right = rect.left + nSize;
+	rect.bottom = rect.top + nSize;
+}
+//****************************************************************************
+void CBCGPDlgImpl::DrawControlInfoTips(CDC* pDC)
+{
+	ASSERT_VALID(pDC);
+
+	for (POSITION pos = m_mapCtrlInfoTip.GetStartPosition(); pos != NULL;)
+	{
+		HWND hwndCtrl = NULL;
+		CBCGPControlInfoTip info;
+
+		m_mapCtrlInfoTip.GetNextAssoc(pos, hwndCtrl, info);
+
+		CWnd* pWnd = CWnd::FromHandle(hwndCtrl);
+
+		if (pWnd->GetSafeHwnd() != NULL && pWnd->IsWindowVisible())
+		{
+			CRect rectWnd;
+			GetControlInfoTipRect(pWnd, rectWnd, info.m_dwVertAlign, info.m_ptOffset);
+
+			info.m_rect = m_mapCtrlInfoTip[hwndCtrl].m_rect = rectWnd;
+
+			if (info.m_style == CBCGPControlInfoTip::BCGPINFOTIP_Custom)
+			{
+				if (m_Dlg.SendMessage(BCGM_ONDRAWCUSTOMINFOTIP, (WPARAM)pDC->GetSafeHdc(), (LPARAM)&info) == 0)
+				{				
+					if (m_bVisualManagerStyle)
+					{
+						CBCGPVisualManager::GetInstance()->OnDrawControlInfoTip(pDC, rectWnd, pWnd);
+					}
+					else
+					{
+						CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::OnDrawControlInfoTip(pDC, rectWnd, pWnd);
+					}
+				}
+			}
+			else
+			{
+				if (m_InfotipIcons.GetCount() == 0)
+				{
+					CBCGPLocalResource locaRes;
+
+					CSize sizeIcon(16, 16);
+					UINT nResID = IDB_BCGBARRES_INFOTIP_ICONS24;
+
+					if (globalData.Is32BitIcons())
+					{
+#ifndef _BCGSUITE_
+						double dblScale = globalData.GetRibbonImageScale();
+
+						if (dblScale > 1.51)
+						{
+							nResID = IDB_BCGBARRES_INFOTIP_ICONS200;
+							sizeIcon = CSize(32, 32);
+						}
+						else if (dblScale > 1.26)
+						{
+							nResID = IDB_BCGBARRES_INFOTIP_ICONS150;
+							sizeIcon = CSize(24, 24);
+						}
+						else if (dblScale > 1.1)
+						{
+							nResID = IDB_BCGBARRES_INFOTIP_ICONS125;
+							sizeIcon = CSize(20, 20);
+						}
+						else
+#endif
+						{
+							nResID = IDB_BCGBARRES_INFOTIP_ICONS100;
+						}
+					}
+
+					m_InfotipIcons.SetImageSize(sizeIcon);
+					m_InfotipIcons.SetTransparentColor(RGB(255, 0, 255));
+
+					if (!m_InfotipIcons.Load(nResID))
+					{
+						TRACE0("CBCGPDlgImpl::DrawControlInfoTips: cannot load info tip icons!\n");
+						return;
+					}
+				}
+
+				int nIndex = (int)info.m_style;
+				m_InfotipIcons.DrawEx(pDC, rectWnd, nIndex, CBCGPToolBarImages::ImageAlignHorzCenter, CBCGPToolBarImages::ImageAlignVertCenter);
+			}
+		}
+	}
+}
+//****************************************************************************
+HWND CBCGPDlgImpl::GetControlInfoTipFromPoint(CPoint point, CString& strInfo, CString& strDescription, BOOL& bIsClickable)
+{
+	if (m_mapCtrlInfoTip.IsEmpty())
+	{
+		return NULL;
+	}
+
+	for (POSITION pos = m_mapCtrlInfoTip.GetStartPosition(); pos != NULL;)
+	{
+		HWND hwndCtrl = NULL;
+		CBCGPControlInfoTip info;
+		
+		m_mapCtrlInfoTip.GetNextAssoc(pos, hwndCtrl, info);
+
+		if (info.m_rect.PtInRect(point))
+		{
+			strInfo = info.m_strText;
+			strDescription = info.m_strDescription;
+			bIsClickable = info.m_bIsClickable;
+
+			return hwndCtrl;
+		}
+	}
+
+	return NULL;
+}
+//****************************************************************************
 void CBCGPDlgImpl::EnableBackstageMode()
 {
 	m_bBackstageMode = TRUE;
 	m_bTransparentStaticCtrls = FALSE;
 
-#ifndef _BCGSUITE_
+#if (!defined _BCGSUITE_) && (!defined BCGP_EXCLUDE_RIBBON)
 	m_bIsWhiteBackground = CBCGPVisualManager::GetInstance ()->IsRibbonBackstageWhiteBackground();
 #else
 	m_bIsWhiteBackground = TRUE;
@@ -2077,10 +2441,13 @@ BOOL CBCGPDlgImpl::LoadPlacement(LPCTSTR lpszProfileName)
 		return FALSE;
 	}
 
-	CString strSection;
-	if (!GetPlacementSection(lpszProfileName, strSection))
+	CString strSection(m_strWindowPlacementProfile);
+	if (strSection.IsEmpty())
 	{
-		return FALSE;
+		if (!GetPlacementSection(lpszProfileName, strSection))
+		{
+			return FALSE;
+		}
 	}
 
 	WINDOWPLACEMENT wp;
@@ -2155,10 +2522,13 @@ BOOL CBCGPDlgImpl::SavePlacement(LPCTSTR lpszProfileName)
 		return FALSE;
 	}
 
-	CString strSection;
-	if (!GetPlacementSection(lpszProfileName, strSection))
+	CString strSection(m_strWindowPlacementProfile);
+	if (strSection.IsEmpty())
 	{
-		return FALSE;
+		if (!GetPlacementSection(lpszProfileName, strSection))
+		{
+			return FALSE;
+		}
 	}
 
 	WINDOWPLACEMENT wp;
@@ -2179,11 +2549,24 @@ BOOL CBCGPDlgImpl::SavePlacement(LPCTSTR lpszProfileName)
 
 	m_bWindowPlacementIsSet = FALSE;
 
-	RECT rectDesktop;
-	SystemParametersInfo(SPI_GETWORKAREA,0,(PVOID)&rectDesktop,0);
-	OffsetRect(&wp.rcNormalPosition, rectDesktop.left, rectDesktop.top);
+	CRect rectWnd = wp.rcNormalPosition;
 
-	return	reg.Write (_T("WindowRect"), CRect(wp.rcNormalPosition)) &&
+	RECT rectDesktop;
+	SystemParametersInfo(SPI_GETWORKAREA, 0, (PVOID)&rectDesktop, 0);
+	rectWnd.OffsetRect(rectDesktop.left, rectDesktop.top);
+
+#ifndef _BCGSUITE_
+	if (g_pWorkspace != NULL)
+	{
+		if (!m_Dlg.IsZoomed() && !m_Dlg.IsIconic() && g_pWorkspace->m_bIsAeroSnapPlacement)
+		{
+			// GetWindowPlacement doesn't work correctly in AeroSnap mode:
+			m_Dlg.GetWindowRect(rectWnd);
+		}
+	}
+#endif
+
+	return	reg.Write (_T("WindowRect"), rectWnd) &&
 			reg.Write (_T("Flags"), (int)wp.flags) &&
 			reg.Write (_T("ShowCmd"), (int)wp.showCmd);
 }
@@ -2207,8 +2590,17 @@ BOOL CBCGPDlgImpl::SetPlacement(WINDOWPLACEMENT& wp)
 	else
 	{
 		CRect rect(wp.rcNormalPosition);
-		m_Dlg.SetWindowPos (&CWnd::wndTop, rect.left, rect.top, rect.Width (), rect.Height (),
- 			SWP_NOZORDER | SWP_NOOWNERZORDER);
+
+		if (IsLayoutEnabled())
+		{
+			m_Dlg.SetWindowPos (&CWnd::wndTop, rect.left, rect.top, rect.Width (), rect.Height (),
+ 				SWP_NOZORDER | SWP_NOOWNERZORDER);
+		}
+		else
+		{
+			m_Dlg.SetWindowPos (&CWnd::wndTop, rect.left, rect.top, -1, -1,
+				SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOSIZE);
+		}
 	}
 
 	return TRUE;
@@ -2225,3 +2617,412 @@ void CBCGPDlgImpl::AdjustShadow(BOOL bActive)
 	UNREFERENCED_PARAMETER(bActive);
 #endif
 }
+//********************************************************************************
+void CBCGPDlgImpl::OnSysCommand(UINT nID, LPARAM /*lParam*/)
+{
+#ifndef _BCGSUITE_
+	if (m_pShadow != NULL && ((nID & 0xFFF0) == SC_MINIMIZE))
+	{
+		m_pShadow->Show(FALSE);
+	}
+#else
+	UNREFERENCED_PARAMETER(nID);
+#endif
+}
+//********************************************************************************
+void CBCGPDlgImpl::CreateTooltipInfo()
+{
+	CBCGPTooltipManager::CreateToolTip(m_pToolTipInfo, &m_Dlg, BCGP_TOOLTIP_TYPE_DEFAULT);
+
+	if (m_pToolTipInfo->GetSafeHwnd() != NULL)
+	{
+		m_pToolTipInfo->SetMaxTipWidth(nTooltipMaxWidth);
+		
+		CRect rectDummy (0, 0, 0, 0);
+		m_pToolTipInfo->AddTool(&m_Dlg, LPSTR_TEXTCALLBACK, &rectDummy, nInfoToolTipID);
+		
+		UpdateToolTipsRect();
+	}
+
+	if (!m_mapCtrlInfoTipDelayed.IsEmpty())
+	{
+		for (POSITION pos = m_mapCtrlInfoTipDelayed.GetStartPosition(); pos != NULL;)
+		{
+			UINT nCtrlID = 0;
+			CBCGPControlInfoTip info;
+			
+			m_mapCtrlInfoTipDelayed.GetNextAssoc(pos, nCtrlID, info);
+			
+			if ((info.m_hWnd = m_Dlg.GetDlgItem(nCtrlID)->GetSafeHwnd()) != NULL)
+			{
+				m_mapCtrlInfoTip[info.m_hWnd] = info;
+			}
+		}
+
+		m_mapCtrlInfoTipDelayed.RemoveAll();
+	}
+}
+//********************************************************************************
+BOOL CBCGPDlgImpl::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResult*/)
+{
+	static CString strTipText;
+
+	if (m_mapCtrlInfoTip.IsEmpty() || m_pToolTipInfo->GetSafeHwnd () == NULL || pNMH->hwndFrom != m_pToolTipInfo->GetSafeHwnd ())
+	{
+		return FALSE;
+	}
+	
+	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
+	{
+		return FALSE;
+	}
+	
+	LPNMTTDISPINFO	pTTDispInfo	= (LPNMTTDISPINFO) pNMH;
+	ASSERT((pTTDispInfo->uFlags & TTF_IDISHWND) == 0);
+	
+	CPoint point;
+	
+	::GetCursorPos (&point);
+	m_Dlg.ScreenToClient (&point);
+
+	CString strDescription;
+	BOOL bIsClickable = FALSE;
+
+	if (GetControlInfoTipFromPoint(point, strTipText, strDescription, bIsClickable) == NULL)
+	{
+		return FALSE;
+	}
+	
+	if (strTipText.IsEmpty ())
+	{
+		return TRUE;
+	}
+	
+	CBCGPToolTipCtrl* pToolTip = DYNAMIC_DOWNCAST(CBCGPToolTipCtrl, m_pToolTipInfo);
+	if (pToolTip != NULL)
+	{
+		ASSERT_VALID(pToolTip);
+		pToolTip->SetDescription(strDescription);
+	}
+	
+	pTTDispInfo->lpszText = const_cast<LPTSTR> ((LPCTSTR) strTipText);
+	return TRUE;
+}
+//***************************************************************************************************************
+void CBCGPDlgImpl::UpdateToolTipsRect()
+{
+	if (m_pToolTipInfo->GetSafeHwnd () != NULL)
+	{
+		CRect rectToolTipClient;
+		m_Dlg.GetClientRect (rectToolTipClient);
+
+		m_pToolTipInfo->SetToolRect(&m_Dlg, nInfoToolTipID, rectToolTipClient);
+	}
+}
+//***************************************************************************************************************
+BOOL CBCGPDlgImpl::OnSetCursor()
+{
+	CPoint point;
+	
+	::GetCursorPos (&point);
+	m_Dlg.ScreenToClient(&point);
+	
+	CString strTipText;
+	CString strDescription;
+	BOOL bIsClickable = FALSE;
+
+	if (GetControlInfoTipFromPoint(point, strTipText, strDescription, bIsClickable) == NULL || !bIsClickable)
+	{
+		return FALSE;
+	}
+
+	::SetCursor (globalData.GetHandCursor ());
+	return TRUE;
+}
+//**************************************************************************************************************
+void CBCGPDlgImpl::DrawBackgroundImage(CDC* pDC, CRect rectClient)
+{
+	if (!m_Background.IsValid())
+	{
+		return;
+	}
+
+	CSize sizeBkgrBitmap = m_Background.GetImageSize();
+	
+	if (m_BkgrLocation != 0 /*BACKGR_TILE*/)
+	{
+		CPoint ptImage = rectClient.TopLeft ();
+		
+		switch (m_BkgrLocation)
+		{
+		case 1 /*BACKGR_TOPLEFT*/:
+			break;
+			
+		case 2 /*BACKGR_TOPRIGHT*/:
+			ptImage.x = rectClient.right - sizeBkgrBitmap.cx;
+			break;
+			
+		case 3 /*BACKGR_BOTTOMLEFT*/:
+			ptImage.y = rectClient.bottom - sizeBkgrBitmap.cy;
+			break;
+			
+		case 4 /*BACKGR_BOTTOMRIGHT*/:
+			ptImage.x = rectClient.right - sizeBkgrBitmap.cx;
+			ptImage.y = rectClient.bottom - sizeBkgrBitmap.cy;
+			break;
+		}
+		
+		m_Background.DrawEx(pDC, CRect(ptImage, sizeBkgrBitmap), 0);
+	}
+	else
+	{
+		// Tile background image:
+		for (int x = rectClient.left; x < rectClient.Width (); x += sizeBkgrBitmap.cx)
+		{
+			for (int y = rectClient.top; y < rectClient.Height (); y += sizeBkgrBitmap.cy)
+			{
+				m_Background.DrawEx(pDC, CRect(CPoint(x, y), sizeBkgrBitmap), 0);
+			}
+		}
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPParentEditPtr
+
+void CBCGPParentEditPtr::ClosePopupDlg(LPCTSTR lpszEditValue, BOOL bOK, DWORD_PTR dwUserData)
+{
+	if (m_pParentEdit->GetSafeHwnd() == NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+	
+	if (lpszEditValue != NULL && bOK)
+	{
+		m_pParentEdit->SetWindowText(lpszEditValue);
+	}
+	
+	m_pParentEdit->ClosePopupDlg(bOK, dwUserData);
+}
+//********************************************************************************
+void CBCGPParentEditPtr::OnDestroyPopupDlg()
+{
+	if (m_pParentEdit != NULL)
+	{
+		m_pParentEdit->m_pPopupDlg = NULL;
+		m_pParentEdit->RedrawWindow(NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+	}
+}
+//********************************************************************************
+CWnd* CBCGPParentEditPtr::GetParentArea(CRect& rectParentBtn)
+{
+	if (m_pParentEdit->GetSafeHwnd() == NULL)
+	{
+		ASSERT(FALSE);
+		return NULL;
+	}
+	
+	m_pParentEdit->GetWindowRect(rectParentBtn);
+	m_pParentEdit->ScreenToClient(rectParentBtn);
+	
+	return m_pParentEdit;
+}
+//********************************************************************************
+void CBCGPParentEditPtr::GetParentText(CString& strEditValue)
+{
+	if (m_pParentEdit->GetSafeHwnd() != NULL)
+	{
+		m_pParentEdit->GetWindowText(strEditValue);
+	}
+}
+//*****************************************************************************
+void CBCGPParentEditPtr::SetParentText(const CString& strEditValue)
+{
+	if (m_pParentEdit->GetSafeHwnd() != NULL)
+	{
+		m_pParentEdit->SetWindowText(strEditValue);
+	}
+}
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPParentGridItemPtr
+
+void CBCGPParentGridItemPtr::ClosePopupDlg(LPCTSTR lpszEditValue, BOOL bOK, DWORD_PTR dwUserData)
+{
+	if (m_pParentGridItem == NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	m_pParentGridItem->ClosePopupDlg(lpszEditValue, bOK, dwUserData);
+}
+//*****************************************************************************
+void CBCGPParentGridItemPtr::OnDestroyPopupDlg()
+{
+	if (m_pParentGridItem != NULL)
+	{
+		m_pParentGridItem->m_pPopupDlg = NULL;
+	}
+}
+//*****************************************************************************
+CWnd* CBCGPParentGridItemPtr::GetParentArea(CRect& rectParentBtn)
+{
+	if (m_pParentGridItem == NULL)
+	{
+		ASSERT(FALSE);
+		return NULL;
+	}
+	
+	rectParentBtn = m_pParentGridItem->GetButtonRect ();
+	return m_pParentGridItem->GetOwnerList ();
+}
+//*****************************************************************************
+void CBCGPParentGridItemPtr::GetParentText(CString& strEditValue)
+{
+	if (m_pParentGridItem != NULL)
+	{
+		ASSERT_VALID(m_pParentGridItem);
+
+		strEditValue = m_pParentGridItem->FormatItem ();
+	}
+}
+//*****************************************************************************
+void CBCGPParentGridItemPtr::SetParentText(const CString& strEditValue)
+{
+	if (m_pParentGridItem != NULL)
+	{
+		ASSERT_VALID(m_pParentGridItem);
+		m_pParentGridItem->SetValue((LPCTSTR)strEditValue);
+	}
+}
+
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPParentMenuButtonPtr
+
+void CBCGPParentMenuButtonPtr::ClosePopupDlg(LPCTSTR lpszEditValue, BOOL bOK, DWORD_PTR dwUserData)
+{
+	if (m_pParentMenuButton->GetSafeHwnd() == NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+	
+	if (lpszEditValue != NULL && bOK)
+	{
+		m_pParentMenuButton->SetWindowText(lpszEditValue);
+	}
+	
+	m_pParentMenuButton->ClosePopupDlg(bOK, dwUserData);
+}
+//********************************************************************************
+void CBCGPParentMenuButtonPtr::OnDestroyPopupDlg()
+{
+	if (m_pParentMenuButton != NULL)
+	{
+		m_pParentMenuButton->m_pPopupDlg = NULL;
+		m_pParentMenuButton->RedrawWindow(NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+	}
+}
+//********************************************************************************
+CWnd* CBCGPParentMenuButtonPtr::GetParentArea(CRect& rectParentBtn)
+{
+	if (m_pParentMenuButton->GetSafeHwnd() == NULL)
+	{
+		ASSERT(FALSE);
+		return NULL;
+	}
+	
+	m_pParentMenuButton->GetWindowRect(rectParentBtn);
+	m_pParentMenuButton->ScreenToClient(rectParentBtn);
+	
+	return m_pParentMenuButton;
+}
+//********************************************************************************
+void CBCGPParentMenuButtonPtr::GetParentText(CString& strEditValue)
+{
+	if (m_pParentMenuButton->GetSafeHwnd() != NULL)
+	{
+		m_pParentMenuButton->GetWindowText(strEditValue);
+	}
+}
+//*****************************************************************************
+void CBCGPParentMenuButtonPtr::SetParentText(const CString& strEditValue)
+{
+	if (m_pParentMenuButton->GetSafeHwnd() != NULL)
+	{
+		m_pParentMenuButton->SetWindowText(strEditValue);
+	}
+}
+
+#if (!defined _BCGSUITE_) && (!defined BCGP_EXCLUDE_RIBBON)
+
+void CBCGPParentRibbonButtonPtr::ClosePopupDlg(LPCTSTR lpszEditValue, BOOL bOK, DWORD_PTR dwUserData)
+{
+	if (m_pParentRibbonButton == NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	m_pParentRibbonButton->ClosePopupDlg(lpszEditValue, bOK, dwUserData);
+}
+//*****************************************************************************
+void CBCGPParentRibbonButtonPtr::OnDestroyPopupDlg()
+{
+	if (m_pParentRibbonButton != NULL)
+	{
+		m_pParentRibbonButton->m_pPopupDlg = NULL;
+		m_pParentRibbonButton->Redraw();
+	}
+}
+//*****************************************************************************
+CWnd* CBCGPParentRibbonButtonPtr::GetParentArea(CRect& rectParentBtn)
+{
+	if (m_pParentRibbonButton == NULL)
+	{
+		ASSERT(FALSE);
+		return NULL;
+	}
+
+	CWnd* pWndParent = m_pParentRibbonButton->GetParentWnd();
+	if (pWndParent->GetSafeHwnd() == NULL)
+	{
+		ASSERT(FALSE);
+		return NULL;
+	}
+	
+	rectParentBtn = m_pParentRibbonButton->GetMenuRect();
+	
+	if (rectParentBtn.IsRectEmpty())
+	{
+		rectParentBtn = m_pParentRibbonButton->GetRect();
+	}
+
+	return pWndParent;
+}
+//*****************************************************************************
+void CBCGPParentRibbonButtonPtr::GetParentText(CString& strEditValue)
+{
+	if (m_pParentRibbonButton != NULL)
+	{
+		ASSERT_VALID(m_pParentRibbonButton);
+		m_pParentRibbonButton->OnGetPopupDlgText(strEditValue);
+	}
+}
+//*****************************************************************************
+void CBCGPParentRibbonButtonPtr::SetParentText(const CString& strEditValue)
+{
+	if (m_pParentRibbonButton != NULL)
+	{
+		ASSERT_VALID(m_pParentRibbonButton);
+		m_pParentRibbonButton->OnSetPopupDlgText(strEditValue);
+	}
+}
+
+#endif

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -53,6 +53,35 @@ AFX_INLINE void SafeRelease(Interface **ppInterfaceToRelease)
 		(*ppInterfaceToRelease) = NULL;
 	}
 }
+
+class CBCGPModifyBrushOpacity
+{
+public:
+	CBCGPModifyBrushOpacity(const CBCGPBrush& brush, CBCGPGraphicsManager* pGM) :
+		m_brush((CBCGPBrush&)brush)
+	{
+		m_dblCurrentOpacity = pGM->GetCurrentOpacity();
+		m_dblSavedOpacity = m_brush.GetOpacity();
+
+		if (m_dblCurrentOpacity >= 0)
+		{
+			m_brush.SetOpacity(m_dblCurrentOpacity * m_dblSavedOpacity);
+		}
+	}
+
+	~CBCGPModifyBrushOpacity()
+	{
+		if (m_dblCurrentOpacity >= 0)
+		{
+			m_brush.SetOpacity(m_dblSavedOpacity);
+		}
+	}
+
+protected:
+	CBCGPBrush&	m_brush;
+	double		m_dblCurrentOpacity;
+	double		m_dblSavedOpacity;
+};
 
 IMPLEMENT_DYNCREATE(CBCGPGraphicsManagerD2D, CBCGPGraphicsManager)
 
@@ -553,6 +582,7 @@ CBCGPGraphicsManagerD2D::CBCGPGraphicsManagerD2D(CDC* pDC, BOOL bDoubleBuffering
 	m_pRenderTarget = NULL;
 	m_bIsBindError = FALSE;
 	m_pBmpPrintOld = NULL;
+	m_bAxisAlignedClipWasPushed = FALSE;
 
 	if (InitD2D())
 	{
@@ -613,6 +643,7 @@ CBCGPGraphicsManagerD2D::CBCGPGraphicsManagerD2D(const CBCGPRect& rectDest, CBCG
 	m_pRenderTarget = NULL;
 	m_bIsBindError = FALSE;
 	m_pBmpPrintOld = NULL;
+	m_bAxisAlignedClipWasPushed = FALSE;
 }
 
 CBCGPGraphicsManagerD2D::~CBCGPGraphicsManagerD2D()
@@ -793,7 +824,15 @@ BOOL CBCGPGraphicsManagerD2D::BeginDraw()
 
 		const CBCGPSize sizeDest = m_rectDest.Size();
 
-		HRESULT hr = pGMOrig->m_dcRenderTarget->CreateCompatibleRenderTarget(D2DSize(sizeDest), &m_pBitmapRenderTarget);
+		D2D1_SIZE_F sizeD2D = D2DSize(sizeDest);
+		
+		D2D1_PIXEL_FORMAT pixelFormat;
+		pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+		pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+
+		HRESULT hr = pGMOrig->m_dcRenderTarget->CreateCompatibleRenderTarget(&sizeD2D,
+			NULL, &pixelFormat, D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_GDI_COMPATIBLE,
+			&m_pBitmapRenderTarget);
 
 		if (FAILED(hr))
 		{
@@ -807,7 +846,7 @@ BOOL CBCGPGraphicsManagerD2D::BeginDraw()
 		}
 
 		m_pRenderTarget = m_pBitmapRenderTarget;
-		FillRectangle(CBCGPRect(0, 0, sizeDest.cx, sizeDest.cy), CBCGPBrush(CBCGPColor()));
+		FillRectangle(CBCGPRect(0, 0, sizeDest.cx, sizeDest.cy), CBCGPBrush(CBCGPColor(), 0.0));
 	}
 	else
 	{
@@ -935,6 +974,7 @@ void CBCGPGraphicsManagerD2D::DrawLine(
 	}
 
 	BOOL bPixelOffset = m_bCheckLineOffsets ? (fabs(ptFrom.x - ptTo.x) < .1 || fabs(ptFrom.y - ptTo.y) < .1) : FALSE;
+	CBCGPModifyBrushOpacity mo(brush, this);
 
 	m_pRenderTarget->DrawLine(D2DPoint(this, ptFrom, bPixelOffset), D2DPoint(this, ptTo, bPixelOffset), pD2DBrush, 
 		(float)lineWidth, CreateStrokeStyle(pStrokeStyle, lineWidth));
@@ -962,6 +1002,8 @@ void CBCGPGraphicsManagerD2D::DrawLines(
 	}
 
 	ID2D1StrokeStyle* pD2DStrokeStyle = CreateStrokeStyle(pStrokeStyle, lineWidth);
+
+	CBCGPModifyBrushOpacity mo(brush, this);
 
 	for (int i = 0; i < nSize - 1; i++)
 	{
@@ -992,6 +1034,8 @@ void CBCGPGraphicsManagerD2D::DrawScatter(
 	
 	const float dblLineWidth = (float)max(1.0, 0.25 * dblPointSize);
 
+	CBCGPModifyBrushOpacity mo(brush, this);
+
 	for (int i = 0; i < nSize; i++)
 	{
 		m_pRenderTarget->DrawLine(
@@ -1021,6 +1065,8 @@ void CBCGPGraphicsManagerD2D::DrawRectangle(
 		return;
 	}
 
+	CBCGPModifyBrushOpacity mo(brush, this);
+
 	m_pRenderTarget->DrawRectangle(D2DRect(this, rect, TRUE), pD2DBrush, (float) lineWidth,
 		CreateStrokeStyle(pStrokeStyle, lineWidth));
 }
@@ -1033,9 +1079,11 @@ void CBCGPGraphicsManagerD2D::FillRectangle(
 		return;
 	}
 
+	CBCGPModifyBrushOpacity mo(brush, this);
+
 	if (brush.GetGradientType() == CBCGPBrush::BCGP_GRADIENT_BEVEL)
 	{
-		DrawBeveledRectangle(rect, brush);
+		DrawBeveledRectangle(rect, brush, brush.GetBevelSize());
 	}
 	else
 	{
@@ -1064,6 +1112,8 @@ void CBCGPGraphicsManagerD2D::DrawRoundedRectangle(
 		return;
 	}
 
+	CBCGPModifyBrushOpacity mo(brush, this);
+
 	m_pRenderTarget->DrawRoundedRectangle(D2DRoundedRect(this, rect), pD2DBrush, (float)lineWidth,
 		CreateStrokeStyle(pStrokeStyle, lineWidth));
 }
@@ -1081,6 +1131,8 @@ void CBCGPGraphicsManagerD2D::FillRoundedRectangle(
 	{
 		return;
 	}
+
+	CBCGPModifyBrushOpacity mo(brush, this);
 
 	m_pRenderTarget->FillRoundedRectangle(D2DRoundedRect(this, rect), pD2DBrush);
 
@@ -1120,6 +1172,8 @@ void CBCGPGraphicsManagerD2D::DrawEllipse(
 		return;
 	}
 
+	CBCGPModifyBrushOpacity mo(brush, this);
+
 	m_pRenderTarget->DrawEllipse(D2DEllipse(this, ellipse), pD2DBrush, (float) lineWidth,
 		CreateStrokeStyle(pStrokeStyle, lineWidth));
 }
@@ -1142,6 +1196,8 @@ void CBCGPGraphicsManagerD2D::FillEllipse(
 	{
 		return;
 	}
+
+	CBCGPModifyBrushOpacity mo(brush, this);
 
 	if (brush.GetGradientType() == CBCGPBrush::BCGP_GRADIENT_BEVEL)
 	{
@@ -1317,7 +1373,11 @@ void CBCGPGraphicsManagerD2D::DrawGeometry(
 	}
 
 	ID2D1Geometry* pGeometry = (ID2D1Geometry*)CreateGeometry((CBCGPGeometry&)geometry);
-	ASSERT(pGeometry != NULL);
+	if (pGeometry == NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
 
 	CBCGPRect rectGradient = m_rectCurrGradient;
 	if (rectGradient.IsRectEmpty())
@@ -1333,6 +1393,8 @@ void CBCGPGraphicsManagerD2D::DrawGeometry(
 	{
 		return;
 	}
+
+	CBCGPModifyBrushOpacity mo(brush, this);
 
 	m_pRenderTarget->DrawGeometry(pGeometry, pD2DBrush, (float)lineWidth,
 		CreateStrokeStyle(pStrokeStyle, lineWidth));
@@ -1352,7 +1414,11 @@ void CBCGPGraphicsManagerD2D::FillGeometry(
 	}
 
 	ID2D1Geometry* pGeometry = (ID2D1Geometry*)CreateGeometry((CBCGPGeometry&)geometry);
-	ASSERT(pGeometry != NULL);
+	if (pGeometry == NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
 
 	CBCGPRect rectGradient = m_rectCurrGradient;
 	if (rectGradient.IsRectEmpty())
@@ -1368,6 +1434,8 @@ void CBCGPGraphicsManagerD2D::FillGeometry(
 	{
 		return;
 	}
+
+	CBCGPModifyBrushOpacity mo(brush, this);
 
 	m_pRenderTarget->FillGeometry(pGeometry, pD2DBrush);
 
@@ -1415,7 +1483,12 @@ void CBCGPGraphicsManagerD2D::DrawImage(
 		break;
 	}
 
-	m_pRenderTarget->DrawBitmap(pBitmap, D2DRect(this, rectImage), (FLOAT)opacity,
+	if (m_dblCurrentOpacity != -1.0)
+	{
+		opacity *= m_dblCurrentOpacity;
+	}
+
+	m_pRenderTarget->DrawBitmap(pBitmap, D2DRect(this, rectImage), (FLOAT)bcg_clamp(opacity, 0.0, 1.0),
 		interpolationModeD2D, rectSrc.IsRectEmpty() ? NULL : &rectSrcD2D);
 }
 
@@ -1432,7 +1505,7 @@ static DWRITE_MATRIX MakeRotateTransform(
     float cosA = cosf(angle);
 
     // If the angle is axis aligned, we'll make it a clean matrix.
-    if (fmod(angle, 90.0f) == 0)
+    if (fmod(angle, 90.0f) == 0.0f)
     {
         sinA = floorf(sinA + .5f);
         cosA = floorf(cosA + .5f);
@@ -1455,6 +1528,22 @@ static DWRITE_MATRIX MakeRotateTransform(
     return matrix;
 }
 
+void CBCGPGraphicsManagerD2D::SetRotateTransform(double dblAngle, const CBCGPPoint& ptCenter)
+{
+	if (m_pRenderTarget == NULL)
+	{
+		return;
+	}
+	
+	DWRITE_MATRIX transform = MakeRotateTransform(
+		float(bcg_deg2rad(-dblAngle)), float(ptCenter.x), float(ptCenter.y));
+
+	D2D1_MATRIX_3X2_F matrix;
+	memcpy(&matrix, &transform, sizeof(matrix));
+
+	m_pRenderTarget->SetTransform(matrix);
+}
+
 void CBCGPGraphicsManagerD2D::DrawText(
 	const CString& strText, const CBCGPRect& rectText, const CBCGPTextFormat& textFormat,
 	const CBCGPBrush& foregroundBrush)
@@ -1471,6 +1560,8 @@ void CBCGPGraphicsManagerD2D::DrawText(
 	{
 		return;
 	}
+
+	CBCGPModifyBrushOpacity mo(foregroundBrush, this);
 
 	double centerX = rectText.CenterPoint().x;
 	double centerY = rectText.CenterPoint().y;
@@ -1540,7 +1631,7 @@ void CBCGPGraphicsManagerD2D::DrawText(
 
 	CONST WCHAR* pStr = T2CW(strText);
 
-	if (textFormat.IsUnderline() || textFormat.IsStrikethrough())
+	if (textFormat.IsUnderline() || textFormat.IsStrikethrough() || textFormat.IsEndEllipsis())
 	{
 		IDWriteTextLayout* pTextLayout = NULL;
 
@@ -1557,8 +1648,19 @@ void CBCGPGraphicsManagerD2D::DrawText(
 			pTextLayout->SetUnderline(textFormat.IsUnderline(), range);
 			pTextLayout->SetStrikethrough(textFormat.IsStrikethrough(), range);
 
+			IDWriteInlineObject* pInlineObject = NULL;
+
+			if (textFormat.IsEndEllipsis())
+			{
+				m_pWriteFactory->CreateEllipsisTrimmingSign(pTextLayout, &pInlineObject);
+
+				DWRITE_TRIMMING trimming = { DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
+				pTextLayout->SetTrimming(&trimming, pInlineObject);
+			}
+
 			m_pRenderTarget->DrawTextLayout(D2DPoint(this, rectText.TopLeft()), pTextLayout, pD2DBrush, options);
 
+			SafeRelease(&pInlineObject);
 			pTextLayout->Release();
 		}
 	}
@@ -2385,11 +2487,13 @@ void CBCGPGraphicsManagerD2D::SetClipRect(const CBCGPRect& rectClip, int nFlags)
 		return;
 	}
 
-	if (!m_rectClip.IsRectEmpty())
+	if (m_bAxisAlignedClipWasPushed)
 	{
 		m_pRenderTarget->PopAxisAlignedClip();
-		m_rectClip.SetRectEmpty();
+		m_bAxisAlignedClipWasPushed = FALSE;
 	}
+
+	m_rectClip.SetRectEmpty();
 
 	if (nFlags != RGN_COPY)
 	{
@@ -2400,7 +2504,9 @@ void CBCGPGraphicsManagerD2D::SetClipRect(const CBCGPRect& rectClip, int nFlags)
 	ReleaseClipArea();
 
 	m_pRenderTarget->PushAxisAlignedClip(D2DRect(this, rectClip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+
 	m_rectClip = rectClip;
+	m_bAxisAlignedClipWasPushed = TRUE;
 }
 
 void CBCGPGraphicsManagerD2D::SetClipArea(const CBCGPGeometry& geometry, int nFlags)
@@ -2420,11 +2526,13 @@ void CBCGPGraphicsManagerD2D::SetClipArea(const CBCGPGeometry& geometry, int nFl
 		m_pCurrlayer = NULL;
 	}
 
-	if (!m_rectClip.IsRectEmpty())
+	if (m_bAxisAlignedClipWasPushed)
 	{
 		m_pRenderTarget->PopAxisAlignedClip();
-		m_rectClip.SetRectEmpty();
+		m_bAxisAlignedClipWasPushed = FALSE;
 	}
+
+	m_rectClip.SetRectEmpty();
 
 	if (m_CurrGeometry.IsNull() || nFlags == RGN_COPY)
 	{
@@ -2475,15 +2583,13 @@ void CBCGPGraphicsManagerD2D::ReleaseClipArea()
 		m_pCurrlayer = NULL;
 	}
 
-	if (!m_rectClip.IsRectEmpty())
+	if (m_pRenderTarget != NULL && m_bAxisAlignedClipWasPushed)
 	{
-		if (m_pRenderTarget != NULL)
-		{
-			m_pRenderTarget->PopAxisAlignedClip();
-		}
-
-		m_rectClip.SetRectEmpty();
+		m_pRenderTarget->PopAxisAlignedClip();
 	}
+
+	m_bAxisAlignedClipWasPushed = FALSE;
+	m_rectClip.SetRectEmpty();
 
 	DestroyGeometry(m_CurrGeometry);
 }
@@ -2543,7 +2649,11 @@ void CBCGPGraphicsManagerD2D::GetGeometryBoundingRect(const CBCGPGeometry& geome
 	rectOut.SetRectEmpty();
 
 	ID2D1Geometry* pGeometry = (ID2D1Geometry*)CreateGeometry((CBCGPGeometry&)geometry);
-	ASSERT(pGeometry != NULL);
+	if (pGeometry == NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
 
 	D2D1_RECT_F rect;
 	pGeometry->GetBounds(NULL, &rect);
@@ -3189,7 +3299,6 @@ BOOL CBCGPGraphicsManagerD2D::IsGraphicsManagerValid(CBCGPGraphicsManager* pGM)
 	}
 
 	TRACE0("You cannot use the same D2D resource with the different graphics managers!\n");
-	ASSERT(FALSE);
 
 	return FALSE;
 }

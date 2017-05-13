@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,7 @@
 
 #include "BCGCBPro.h"
 #include "BCGPGraphicsManager.h"
+#include "BCGPGlobalUtils.h"
 
 struct BCGCBPRODLLEXPORT BCGPChartShadowType
 {
@@ -37,11 +38,13 @@ struct BCGCBPRODLLEXPORT BCGPChartShadowType
 		m_nAngle = -1;
 		m_nDistance = 3;
 		m_color = CBCGPColor::DarkGray;
+		m_colorDark = CBCGPColor(RGB(50, 50, 50));
 	}
 
 	BOOL		m_bDisplayShadow;	
 
 	CBCGPColor	m_color;
+	CBCGPColor	m_colorDark;
 	int			m_nTransparencyPercent;	// 0 - 100
 	int			m_nAngle;				// - 1- default series angle, 0 - 360 - custom angle
 	int			m_nDistance;
@@ -399,48 +402,15 @@ struct BCGCBPRODLLEXPORT BCGPChartFormatSelection : public BCGPChartFormatArea
 	SelectionType	m_selectionType;
 };
 
-struct BCGCBPRODLLEXPORT BCGPChartFormatPlotArea : public BCGPChartFormatArea
-{
-	BCGPChartFormatPlotArea()
-	{
-		Reset();
-	}
-
-	void Reset()
-	{
-		BCGPChartFormatArea::Reset();
-		m_nXRotation = 120;
-		m_nYRotation = 90;
-		m_nDepth = 100;
-		m_nHeight = 100;
-		m_bEnable3DFormat = FALSE;
-	}
-
-	const BCGPChartFormatPlotArea& operator=(const BCGPChartFormatPlotArea& src)
-	{
-		BCGPChartFormatArea::operator=(src);
-
-		m_nXRotation = src.m_nXRotation;
-		m_nYRotation = src.m_nYRotation;
-		m_nDepth = src.m_nDepth;
-		m_nHeight = src.m_nDepth;
-		m_bEnable3DFormat = src.m_bEnable3DFormat;
-
-		return *this;
-	}
-
-	BOOL	m_bEnable3DFormat;
-
-	int		m_nXRotation;
-	int		m_nYRotation;
-
-	int		m_nDepth; // percent from base
-	int		m_nHeight; // percent from base
-};
-
 struct BCGCBPRODLLEXPORT BCGPChartFormatLabel : public BCGPChartFormatArea
 {
-	static CString m_strDefaultFontFamily;
+	static CString	m_strDefaultFontFamily;
+	static BOOL		m_bDefaultFontIsScaledByDPI;
+
+	static float GetFontSize(float fSizeInitial)
+	{
+		return m_bDefaultFontIsScaledByDPI ? globalUtils.ScaleByDPI(fSizeInitial) : fSizeInitial;
+	}
 
 	BCGPChartFormatLabel()
 	{
@@ -467,7 +437,7 @@ struct BCGCBPRODLLEXPORT BCGPChartFormatLabel : public BCGPChartFormatArea
 		m_brTextColor.Empty();
 		m_brFillColor.Empty();
 
-		m_textFormat.Create(m_strDefaultFontFamily, m_bIsThumbnailMode ? 8.0f : 12.0f);
+		m_textFormat.Create(m_strDefaultFontFamily, m_bIsThumbnailMode ? 8.0f : BCGPChartFormatLabel::GetFontSize(12.0f));
 		m_textFormat.SetTextAlignment(CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_CENTER);
 		m_textFormat.SetTextVerticalAlignment(CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_CENTER);
 	}
@@ -562,6 +532,8 @@ struct BCGCBPRODLLEXPORT BCGPChartDataLabelOptions
 
 		m_bIncludeLegendKeyInLabel = FALSE;
 		m_bDropLineToMarker = TRUE;
+
+		m_bOverlapsArea = FALSE;
 	}
 
 	const BCGPChartDataLabelOptions& operator=(const BCGPChartDataLabelOptions& src)
@@ -589,6 +561,8 @@ struct BCGCBPRODLLEXPORT BCGPChartDataLabelOptions
 		m_dblLineCount = src.m_dblLineCount;
 		m_strDataFormat = src.m_strDataFormat;
 
+		m_bOverlapsArea = src.m_bOverlapsArea;
+
 		m_szScaleRatio = src.m_szScaleRatio;
 
 		return *this;
@@ -615,6 +589,8 @@ struct BCGCBPRODLLEXPORT BCGPChartDataLabelOptions
 
 	CString				m_strLabelSeparator;
 	CString				m_strDataFormat;
+
+	BOOL				m_bOverlapsArea;
 
 	double	GetDistanceFromMarker() const 
 	{
@@ -1331,6 +1307,23 @@ protected:
 	double m_dblColorChangeStep;
 };
 
+struct BCGCBPRODLLEXPORT CBCGPChartColors
+{
+	CBCGPColor	m_clrText;
+	CBCGPColor	m_clrFill;
+	CBCGPColor	m_clrOutline;
+	CBCGPColor	m_clrPlotter;
+	CBCGPColor	m_clrSel;
+	CBCGPColor	m_colorScrollBar;
+	CBCGPColor	m_colorScrollBarGradient;
+	double		m_dblInterlaceOpacity;
+
+	CBCGPChartColors()
+	{
+		m_dblInterlaceOpacity = 0.04;
+	}
+};
+
 struct BCGCBPRODLLEXPORT CBCGPChartTheme
 {
 public:
@@ -1362,6 +1355,16 @@ public:
 		CT_FLAT_2014_2,
 		CT_FLAT_2014_3,
 		CT_FLAT_2014_4,
+		CT_FLAT_2015_1,
+		CT_FLAT_2015_2,
+		CT_FLAT_2015_3,
+		CT_FLAT_2015_4,
+		CT_FLAT_2015_5,
+		CT_FLAT_2016_1,
+		CT_FLAT_2016_2,
+		CT_FLAT_2016_3,
+		CT_FLAT_2016_4,
+		CT_FLAT_2016_5,
 	};
 
 	// Custom (user-defined) theme helper:
@@ -1463,6 +1466,16 @@ public:
 	{
 		m_bIsFlatTheme = bSet;
 	}
+	
+	BOOL IsVisualManagerTheme() const
+	{
+		return m_bVisualManagerTheme;
+	}
+
+	void SetVisualManagerTheme(BOOL bSet = TRUE)
+	{
+		m_bVisualManagerTheme = bSet;
+	}
 
 protected:
 	CBCGPChartTheme::ChartTheme		m_themeType;
@@ -1470,6 +1483,7 @@ protected:
 
 	double							m_dblOpacity;
 	BOOL							m_bIsFlatTheme;
+	BOOL							m_bVisualManagerTheme;
 };
 
 #endif // !defined(AFX_BCGPCHARTFORMAT_H__32FC7098_1F70_4941_BA09_C5662C5F2878__INCLUDED_)

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -23,6 +23,57 @@
 #include "bcgcbpro.h"
 #include "BCGPGraphicsManager.h"
 #include "BCGPVisualContainer.h"
+#include "BCGPPopupWindow.h"
+
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPInfoTipOptions
+
+struct BCGCBPRODLLEXPORT CBCGPInfoTipOptions
+{
+	BOOL		m_bRoundedCorners;
+	BOOL		m_bShadow;
+	BYTE		m_nTransparency;	// 255 - opaque, 0 - invisible
+	SIZE		m_szPadding;
+	COLORREF	m_clrFill;
+	COLORREF	m_clrText;
+	COLORREF	m_clrBorder;
+	int			m_nStemSize;
+
+	CBCGPPopupWindow::BCGPPopupWindowStemLocation	m_StemLocation;
+
+	CBCGPInfoTipOptions()
+	{
+		m_bRoundedCorners = TRUE;
+		m_bShadow = TRUE;
+		m_nTransparency = 240;
+		m_szPadding.cx = 5;
+		m_szPadding.cy = 2;
+		m_clrFill = (COLORREF)-1;
+		m_clrText = (COLORREF)-1;
+		m_clrBorder = (COLORREF)-1;
+		m_nStemSize = 10;
+		m_StemLocation = CBCGPPopupWindow::BCGPPopupWindowStemLocation_None;
+	}
+
+	const CBCGPInfoTipOptions& operator= (const CBCGPInfoTipOptions& src)
+	{
+		m_bRoundedCorners = src.m_bRoundedCorners;
+		m_bShadow		  = src.m_bShadow;
+		m_nTransparency	  = src.m_nTransparency;
+		m_szPadding		  = src.m_szPadding;
+		m_clrFill		  =	src.m_clrFill;
+		m_clrText		  =	src.m_clrText;
+		m_clrBorder		  =	src.m_clrBorder;
+		m_nStemSize		  = src.m_nStemSize;
+		m_StemLocation	  = src.m_StemLocation;
+		
+		return *this;
+	}
+};
+
+#endif
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPBaseVisualCtrl window
@@ -43,6 +94,11 @@ public:
 
 	void EnableTooltip(BOOL bEnable = TRUE, BOOL bTooltipTrackingMode = FALSE);
 	BOOL IsTooltipEnabled() const {return m_bIsTooltip;}
+
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+	void EnableInfoTip(BOOL bEnable = TRUE, CBCGPInfoTipOptions* pOptions = NULL);
+	BOOL IsInfoTipEnabled() const {return m_bUsePopupWindowInTrackingMode;}
+#endif
 
 	BOOL CreatePopup(const CRect& rect, BYTE nTransparency = 255 /* from 0 to 255 */, CWnd* pWndOwner = NULL);
 	static BOOL HasActivePopup()
@@ -73,6 +129,9 @@ public:
 
 public:
 	virtual void InitCtrl() = 0;
+	virtual void OnAfterCreateWnd() {}
+	virtual void OnBeforeDestroyWnd() {}
+	virtual void OnWndEnabled(BOOL /*bEnable*/) {}
 
 	virtual CBCGPRect GetRect() = 0;
 	virtual void SetRect(const CBCGPRect& rect, BOOL bRedraw = FALSE) = 0;
@@ -150,6 +209,7 @@ public:
 
 	// Tooltip:
 	virtual BOOL OnGetToolTip(const CBCGPPoint& pt, CString& strToolTip, CString& strDescr) = 0;
+	virtual COLORREF GetInfoTipColor(const CBCGPPoint& /*pt*/, int /*nColor*/) { return (COLORREF)-1; }
 
 	BOOL IsFocused() const
 	{
@@ -173,6 +233,12 @@ public:
 
 	// Printing support
 	virtual BOOL DoPrint(CDC* pDC = NULL, CPrintInfo* pInfo = NULL);
+
+	// Non-client area:
+	virtual void OnCalcBorderSize(CBCGPRect& /*rectNCArea*/) {}
+	virtual void OnNcDraw(CBCGPGraphicsManager* /*pGM*/, const CBCGPRect& /*rect*/) {};
+	virtual BOOL OnNcMouseDown(int /*nButton*/, const CBCGPPoint& /*pt*/) { return FALSE; }
+	virtual void OnNcMouseUp(int /*nButton*/, const CBCGPPoint& /*pt*/) {}
 
 protected:
 	virtual CBCGPBaseAccessibleObject* GetVisualBaseObject() = 0;	// Returns CBCGPBaseVisualObject or CBCGPVisualContainer
@@ -198,6 +264,11 @@ protected:
 	afx_msg void OnKeyUp(UINT nChar, UINT nRepCnt, UINT nFlags);
 	afx_msg void OnNcDestroy();
 	afx_msg BOOL OnNcCreate(LPCREATESTRUCT lpCreateStruct);
+	afx_msg void OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR* lpncsp);
+	afx_msg void OnNcLButtonDown(UINT nHitTest, CPoint point);
+	afx_msg void OnNcLButtonUp(UINT nHitTest, CPoint point);
+	afx_msg void OnNcPaint();
+	afx_msg BCGNcHitTestType OnNcHitTest(CPoint point);
 	//}}AFX_MSG
 	afx_msg LRESULT OnBCGUpdateToolTips(WPARAM, LPARAM);
 	afx_msg BOOL OnTTNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult);
@@ -206,12 +277,14 @@ protected:
 	afx_msg LRESULT OnGestureEvent(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnTabletQuerySystemGestureStatus(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnPrintClient(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnPrint(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnGetObject(WPARAM wParam, LPARAM lParam);
 	DECLARE_MESSAGE_MAP()
 
 	static LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam);
 
 	void InitTooltip();
+	void DeleteInfoTip();
 
 	CBCGPGraphicsManager*	m_pGM;
 	double					m_dblScale;
@@ -219,6 +292,7 @@ protected:
 	BOOL					m_bIsTracked;
 	BOOL					m_bIsTooltip;
 	CToolTipCtrl*			m_pToolTip;
+	CBCGPPopupWindow*		m_pInfoTip;
 	BOOL					m_bToolTipCleared;
 	BOOL					m_bTooltipTrackingMode;
 	CString					m_strLastDisplayedToolTip;
@@ -227,9 +301,16 @@ protected:
 	UINT					m_nDlgCode;
 	BOOL					m_bIsPopup;
 	BYTE					m_nPopupAlpha;
+	BYTE					m_nPopupAlphaAnimated;
 	static HHOOK			m_hookMouse;
 	static HWND				m_hwndHookedPopup;
 	static BOOL				m_bInPaint;
+
+	BOOL					m_bUsePopupWindowInTrackingMode;
+
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+	CBCGPInfoTipOptions		m_InfoTipOptions;
+#endif
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -526,6 +607,17 @@ public:
 		return FALSE;
 	}
 
+	virtual COLORREF GetInfoTipColor(const CBCGPPoint& pt, int nColor)
+	{
+		CBCGPBaseVisualObject* pVisualObject = GetVisualObject();
+		if (pVisualObject != NULL && pVisualObject->GetRect().PtInRect(pt))
+		{
+			return pVisualObject->GetInfoTipColor(pt, nColor);
+		}
+		
+		return (COLORREF)-1;
+	}
+
 	virtual CBCGPBaseAccessibleObject* GetVisualBaseObject()
 	{
 		return GetVisualObject();
@@ -561,6 +653,36 @@ public:
 			pVisualObject->OnClickAndHoldEvent(nID, point);
 		}
 	}
+
+	virtual void OnAfterCreateWnd()
+	{
+		CBCGPBaseVisualObject* pVisualObject = GetVisualObject();
+		if (pVisualObject != NULL)
+		{
+			pVisualObject->OnAfterCreateWnd();
+		}
+	}
+
+	virtual void OnBeforeDestroyWnd()
+	{
+		CBCGPBaseVisualObject* pVisualObject = GetVisualObject();
+		if (pVisualObject != NULL)
+		{
+			pVisualObject->OnBeforeDestroyWnd();
+		}
+	}
+
+	virtual void OnWndEnabled(BOOL bEnable)
+	{
+		CBCGPBaseVisualObject* pVisualObject = GetVisualObject();
+		if (pVisualObject != NULL)
+		{
+			pVisualObject->OnWndEnabled(bEnable);
+		}
+	}
+
+	afx_msg LRESULT OnChangeVisualManager(WPARAM, LPARAM);
+	DECLARE_MESSAGE_MAP()
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -571,9 +693,10 @@ class BCGCBPRODLLEXPORT CBCGPVisualContainerCtrl : public CBCGPBaseVisualCtrl
 	DECLARE_SERIAL(CBCGPVisualContainerCtrl)
 
 public:
-	CBCGPVisualContainerCtrl()
+	CBCGPVisualContainerCtrl(CRuntimeClass* pContainerRTI = NULL) :
+		m_pContainer(NULL)
 	{
-		m_pContainer = NULL;
+		SetContainerRTI(pContainerRTI);
 	}
 
 	virtual ~CBCGPVisualContainerCtrl()
@@ -588,19 +711,38 @@ public:
 	{
 		if (m_pContainer == NULL)
 		{
-			m_pContainer = new CBCGPVisualContainer;
+			if (m_pContainerRTI != NULL)
+			{
+				m_pContainer = DYNAMIC_DOWNCAST(CBCGPVisualContainer, m_pContainerRTI->CreateObject());
+			}
+			else
+			{
+				m_pContainer = new CBCGPVisualContainer;
+			}
 		}
 
 		return m_pContainer;
 	}
 
-protected:
+	void SetContainerRTI(CRuntimeClass* pContainerRTI)
+	{
+		ASSERT(m_pContainer == NULL);
+
+		m_pContainerRTI = pContainerRTI;
+
+		if (m_pContainerRTI != NULL)
+		{
+			ASSERT(m_pContainerRTI->IsDerivedFrom(RUNTIME_CLASS(CBCGPVisualContainer)));
+		}
+	}
+
 	virtual void InitCtrl()
 	{
 		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
 		if (pVisualContainer != NULL)
 		{
 			pVisualContainer->SetOwner(this, FALSE);
+			pVisualContainer->m_bNCScrollBars = TRUE;
 		}
 	}
 
@@ -644,6 +786,7 @@ protected:
 		}
 	}
 
+protected:
 	virtual BOOL OnMouseDown(int nButton, const CBCGPPoint& pt)
 	{
 		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
@@ -823,6 +966,17 @@ protected:
 		return FALSE;
 	}
 
+	virtual COLORREF GetInfoTipColor(const CBCGPPoint& pt, int nColor)
+	{
+		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+		if (pVisualContainer != NULL && pVisualContainer->GetRect().PtInRect(pt))
+		{
+			return pVisualContainer->GetInfoTipColor(pt, nColor);
+		}
+		
+		return (COLORREF)-1;
+	}
+
 	virtual void OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip)
 	{
 		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
@@ -832,6 +986,7 @@ protected:
 		}
 	}
 
+public:
 	virtual BOOL CopyToClipboard()
 	{
 		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
@@ -896,6 +1051,7 @@ protected:
 		return pVisualContainer->ExportToFile(strFilePath, m_pGM, TRUE);
 	}
 
+protected:
 	virtual CBCGPBaseAccessibleObject* GetVisualBaseObject()
 	{
 		return GetVisualContainer();
@@ -932,7 +1088,78 @@ protected:
 		}
 	}
 
+	virtual void OnCalcBorderSize(CBCGPRect& rectNCArea)
+	{
+		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+		if (pVisualContainer != NULL)
+		{
+			pVisualContainer->OnCalcBorderSize(rectNCArea);
+		}
+	}
+
+	virtual void OnNcDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rect)
+	{
+		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+		if (pVisualContainer != NULL)
+		{
+			pVisualContainer->OnNcDraw(pGM, rect);
+		}
+	}
+
+	virtual BOOL OnNcMouseDown(int nButton, const CBCGPPoint& pt)
+	{
+		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+		if (pVisualContainer != NULL)
+		{
+			return pVisualContainer->OnNcMouseDown(nButton, pt);
+		}
+
+		return FALSE;
+	}
+
+	virtual void OnNcMouseUp(int nButton, const CBCGPPoint& pt)
+	{
+		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+		if (pVisualContainer != NULL)
+		{
+			pVisualContainer->OnNcMouseUp(nButton, pt);
+		}
+	}
+
+	virtual void OnAfterCreateWnd()
+	{
+		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+		if (pVisualContainer != NULL)
+		{
+			pVisualContainer->OnAfterCreateWnd();
+		}
+	}
+
+	virtual void OnBeforeDestroyWnd()
+	{
+		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+		if (pVisualContainer != NULL)
+		{
+			pVisualContainer->OnBeforeDestroyWnd();
+		}
+	}
+
+	virtual void OnWndEnabled(BOOL bEnable)
+	{
+		CBCGPVisualContainer* pVisualContainer = GetVisualContainer();
+		if (pVisualContainer != NULL)
+		{
+			pVisualContainer->OnWndEnabled(bEnable);
+		}
+	}
+
+	virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
+
+	CRuntimeClass*			m_pContainerRTI;
 	CBCGPVisualContainer*	m_pContainer;
+
+	afx_msg LRESULT OnChangeVisualManager(WPARAM, LPARAM);
+	DECLARE_MESSAGE_MAP()
 };
 
 /////////////////////////////////////////////////////////////////////////////

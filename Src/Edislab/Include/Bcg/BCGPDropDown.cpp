@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,6 +29,7 @@
 #include "TrackMouse.h"
 #include "BCGPVisualManager.h"
 #include "BCGPDrawManager.h"
+#include "BCGPGlobalUtils.h"
 #include "bcgprores.h"
 
 #ifdef _DEBUG
@@ -62,12 +63,13 @@ BOOL CBCGPDropDownToolBar::OnSendCommand(const CBCGPToolbarButton* pButton)
 	pParent->m_pParentBtn->SetDefaultCommand (pButton->m_nID);
 	
 	//----------------------------------
-	// Send command to the parent frame:
+	// Send command to the owner:
 	//----------------------------------
 	CFrameWnd* pParentFrame = GetParentFrame ();
 	ASSERT_VALID (pParentFrame);
 	
 	GetOwner()->PostMessage(WM_COMMAND, pButton->m_nID);
+
 	pParentFrame->DestroyWindow ();
 	return TRUE;
 }
@@ -75,6 +77,23 @@ BOOL CBCGPDropDownToolBar::OnSendCommand(const CBCGPToolbarButton* pButton)
 void CBCGPDropDownToolBar::OnUpdateCmdUI(CFrameWnd* /*pTarget*/, BOOL bDisableIfNoHndler)
 {
 	CBCGPToolBar::OnUpdateCmdUI ((CFrameWnd*)GetCommandTarget(), bDisableIfNoHndler);
+}
+//*************************************************************************************
+void CBCGPDropDownToolBar::GetMessageString(UINT nID, CString& strMessageString) const
+{
+	if (nID != 0 && nID != (UINT)-1)
+	{
+		CFrameWnd* pParent = GetParentFrame();
+		if (pParent->GetSafeHwnd() != NULL)
+		{
+			pParent = pParent->GetParentFrame();
+
+			if (pParent->GetSafeHwnd() != NULL)
+			{
+				pParent->GetMessageString(nID, strMessageString);
+			}
+		}
+	}
 }
 
 BEGIN_MESSAGE_MAP(CBCGPDropDownToolBar, CBCGPToolBar)
@@ -228,12 +247,11 @@ void CBCGPDropDownToolBar::OnLButtonUp(UINT nFlags, CPoint point)
 
 static const int iBorderSize = 2;
 
-CString	CBCGPDropDownFrame::m_strClassName;
-
 IMPLEMENT_SERIAL(CBCGPDropDownFrame, CMiniFrameWnd, VERSIONABLE_SCHEMA | 1)
 
 CBCGPDropDownFrame::CBCGPDropDownFrame()
 {
+	m_pWndToolBar = NULL;
 	m_x = m_y = 0;
 	m_pParentBtn = NULL;
 	m_bAutoDestroyParent = TRUE;
@@ -243,11 +261,17 @@ CBCGPDropDownFrame::CBCGPDropDownFrame()
 //****************************************************************************************
 CBCGPDropDownFrame::~CBCGPDropDownFrame()
 {
-	m_wndToolBar.m_Buttons.RemoveAll ();	// toolbar has references to original buttons!
-
-	if (m_bAutoDestroy)
+	if (m_pWndToolBar != NULL)
 	{
-		m_wndToolBar.DestroyWindow();
+		m_pWndToolBar->m_Buttons.RemoveAll ();	// toolbar has references to original buttons!
+
+		if (m_bAutoDestroy && m_pWndToolBar->GetSafeHwnd() != NULL)
+		{
+			m_pWndToolBar->DestroyWindow();
+		}
+
+		delete m_pWndToolBar;
+		m_pWndToolBar = NULL;
 	}
 }
 
@@ -273,13 +297,10 @@ BOOL CBCGPDropDownFrame::Create (CWnd* pWndParent, int x, int y, CBCGPDropDownTo
 	
 	BCGPlaySystemSound (BCGSOUND_MENU_POPUP);
 	
-	if (m_strClassName.IsEmpty ())
-	{
-		m_strClassName = ::AfxRegisterWndClass (
+	CString strClassName = ::AfxRegisterWndClass(
 			CS_SAVEBITS,
 			::LoadCursor(NULL, IDC_ARROW),
 			(HBRUSH)(COLOR_BTNFACE + 1), NULL);
-	}
 
 	m_pWndOriginToolbar = pWndOriginToolbar;
 
@@ -317,7 +338,7 @@ BOOL CBCGPDropDownFrame::Create (CWnd* pWndParent, int x, int y, CBCGPDropDownTo
 	CRect rect (x, y, x, y);
 	BOOL bCreated = CMiniFrameWnd::CreateEx (
 		dwStyleEx,
-		m_strClassName, m_strCaption,
+		strClassName, m_strCaption,
 		dwStyle, rect,
 		pWndParent->GetOwner () == NULL ? 
 			pWndParent : pWndParent->GetOwner ());
@@ -332,8 +353,9 @@ BOOL CBCGPDropDownFrame::Create (CWnd* pWndParent, int x, int y, CBCGPDropDownTo
 //****************************************************************************************
 int CBCGPDropDownFrame::OnCreate(LPCREATESTRUCT lpCreateStruct) 
 {
-	ASSERT_VALID (m_pWndOriginToolbar);
-	ASSERT (m_pWndOriginToolbar->m_bLocked);
+	ASSERT_VALID(m_pWndOriginToolbar);
+	ASSERT(m_pWndOriginToolbar->m_bLocked);
+	ASSERT(m_pWndToolBar == NULL);
 
 	if (CMiniFrameWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
@@ -343,41 +365,48 @@ int CBCGPDropDownFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	
 	BOOL bHorz = pParentBar == NULL ? TRUE : pParentBar->IsHorizontal ();
 	DWORD style = bHorz? CBRS_ORIENT_VERT : CBRS_ORIENT_HORZ;
+
+	m_pWndToolBar = DYNAMIC_DOWNCAST(CBCGPDropDownToolBar, m_pWndOriginToolbar->GetRuntimeClass()->CreateObject());
+	if (m_pWndToolBar == NULL)
+	{
+		ASSERT(FALSE);
+		return -1;
+	}
 	
-	if (!m_wndToolBar.CreateEx(this, TBSTYLE_FLAT, WS_CHILD | WS_VISIBLE | style, 
+	if (!m_pWndToolBar->CreateEx(this, TBSTYLE_FLAT, WS_CHILD | WS_VISIBLE | style, 
 		CRect(1, 1, 1, 1), AFX_IDW_TOOLBAR + 39))
 	{
 		TRACE(_T ("Can't create toolbar bar\n"));
 		return -1;
 	}
 
-	m_wndToolBar.m_bLocked = TRUE;
+	m_pWndToolBar->m_bLocked = TRUE;
 
 	//------------------------------
 	// "Clone" the original toolbar:
 	//------------------------------
-	m_pWndOriginToolbar->m_ImagesLocked.CopyTemp (m_wndToolBar.m_ImagesLocked);
-	m_pWndOriginToolbar->m_ColdImagesLocked.CopyTemp (m_wndToolBar.m_ColdImagesLocked);
-	m_pWndOriginToolbar->m_DisabledImagesLocked.CopyTemp (m_wndToolBar.m_DisabledImagesLocked);
-	m_pWndOriginToolbar->m_LargeImagesLocked.CopyTemp(m_wndToolBar.m_LargeImagesLocked);
-	m_pWndOriginToolbar->m_LargeColdImagesLocked.CopyTemp(m_wndToolBar.m_LargeColdImagesLocked);
-	m_pWndOriginToolbar->m_LargeDisabledImagesLocked.CopyTemp(m_wndToolBar.m_LargeDisabledImagesLocked);
+	m_pWndOriginToolbar->m_ImagesLocked.CopyTemp (m_pWndToolBar->m_ImagesLocked);
+	m_pWndOriginToolbar->m_ColdImagesLocked.CopyTemp (m_pWndToolBar->m_ColdImagesLocked);
+	m_pWndOriginToolbar->m_DisabledImagesLocked.CopyTemp (m_pWndToolBar->m_DisabledImagesLocked);
+	m_pWndOriginToolbar->m_LargeImagesLocked.CopyTemp(m_pWndToolBar->m_LargeImagesLocked);
+	m_pWndOriginToolbar->m_LargeColdImagesLocked.CopyTemp(m_pWndToolBar->m_LargeColdImagesLocked);
+	m_pWndOriginToolbar->m_LargeDisabledImagesLocked.CopyTemp(m_pWndToolBar->m_LargeDisabledImagesLocked);
 
-	m_wndToolBar.m_sizeButtonLocked = m_pWndOriginToolbar->m_sizeButtonLocked;
-	m_wndToolBar.m_sizeImageLocked = m_pWndOriginToolbar->m_sizeImageLocked;
-	m_wndToolBar.m_sizeCurButtonLocked = m_pWndOriginToolbar->m_sizeCurButtonLocked;
-	m_wndToolBar.m_sizeCurImageLocked = m_pWndOriginToolbar->m_sizeCurImageLocked;
+	m_pWndToolBar->m_sizeButtonLocked = m_pWndOriginToolbar->m_sizeButtonLocked;
+	m_pWndToolBar->m_sizeImageLocked = m_pWndOriginToolbar->m_sizeImageLocked;
+	m_pWndToolBar->m_sizeCurButtonLocked = m_pWndOriginToolbar->m_sizeCurButtonLocked;
+	m_pWndToolBar->m_sizeCurImageLocked = m_pWndOriginToolbar->m_sizeCurImageLocked;
 
-	m_wndToolBar.m_dwStyle &= ~CBRS_GRIPPER;
+	m_pWndToolBar->m_dwStyle &= ~CBRS_GRIPPER;
 
-	m_wndToolBar.SetOwner (m_pWndOriginToolbar->GetOwner());
-	m_wndToolBar.SetRouteCommandsViaFrame (m_pWndOriginToolbar->GetRouteCommandsViaFrame ());
+	m_pWndToolBar->SetOwner (m_pWndOriginToolbar->GetOwner());
+	m_pWndToolBar->SetRouteCommandsViaFrame (m_pWndOriginToolbar->GetRouteCommandsViaFrame ());
 
-	m_wndToolBar.m_Buttons.AddTail (&m_pWndOriginToolbar->m_Buttons);
+	m_pWndToolBar->m_Buttons.AddTail (&m_pWndOriginToolbar->m_Buttons);
 		
 	RecalcLayout ();
 	::ReleaseCapture();
-	m_wndToolBar.SetCapture ();
+	m_pWndToolBar->SetCapture ();
 
 	return 0;
 }
@@ -386,9 +415,9 @@ void CBCGPDropDownFrame::OnSize(UINT nType, int cx, int cy)
 {
 	CMiniFrameWnd::OnSize(nType, cx, cy);
 	
-	if (m_wndToolBar.GetSafeHwnd () != NULL)
+	if (m_pWndToolBar->GetSafeHwnd () != NULL)
 	{
-		m_wndToolBar.SetWindowPos (NULL, iBorderSize, iBorderSize, 
+		m_pWndToolBar->SetWindowPos (NULL, iBorderSize, iBorderSize, 
 			cx - iBorderSize * 2, cy - iBorderSize * 2, 
 			SWP_NOZORDER | SWP_NOACTIVATE);
 	}
@@ -403,8 +432,11 @@ void CBCGPDropDownFrame::OnPaint()
 
 	dc.FillRect(rectClient, &globalData.brBarFace);
 	
-	CRect rectBorderSize(iBorderSize, iBorderSize, iBorderSize, iBorderSize);
-	CBCGPVisualManager::GetInstance()->OnDrawFloatingToolbarBorder(&dc, &m_wndToolBar, rectClient, rectBorderSize);
+	if (m_pWndToolBar->GetSafeHwnd() != NULL)
+	{
+		CRect rectBorderSize(iBorderSize, iBorderSize, iBorderSize, iBorderSize);
+		CBCGPVisualManager::GetInstance()->OnDrawFloatingToolbarBorder(&dc, m_pWndToolBar, rectClient, rectBorderSize);
+	}
 }
 //****************************************************************************************
 int CBCGPDropDownFrame::OnMouseActivate(CWnd* /*pDesktopWnd*/, UINT /*nHitTest*/, UINT /*message*/) 
@@ -423,7 +455,7 @@ void CBCGPDropDownFrame::RecalcLayout (BOOL /*bNotify*/)
 #endif // _DEBUG
 	
 	if (!::IsWindow (m_hWnd) ||
-		!::IsWindow (m_wndToolBar.m_hWnd))
+		!::IsWindow (m_pWndToolBar->GetSafeHwnd()))
 	{
 		return;
 	}
@@ -433,7 +465,7 @@ void CBCGPDropDownFrame::RecalcLayout (BOOL /*bNotify*/)
 	
 	BOOL bHorz = pParentBar->IsHorizontal ();
 	
-	CSize size = m_wndToolBar.CalcSize(bHorz);
+	CSize size = m_pWndToolBar->CalcSize(bHorz);
 	size.cx += iBorderSize * 3;
 	size.cy += iBorderSize * 4;
 	
@@ -763,11 +795,7 @@ void CBCGPDropDownToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolB
 	//----------------------
 	FillInterior (pDC, rect, bHighlight);
 
-	int nCurrArrowSize = nArrowSize;
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		nCurrArrowSize = (int) (globalData.GetRibbonImageScale () * nCurrArrowSize);
-	}
+	int nCurrArrowSize = globalUtils.ScaleByDPI(nArrowSize);
 	
 	int nActualArrowSize = 
 		CBCGPToolBar::IsLargeIcons () ? nCurrArrowSize * 2 : nCurrArrowSize;
@@ -784,12 +812,7 @@ void CBCGPDropDownToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolB
 		BOOL bImage = m_bImage;
 		m_bInternalDraw = TRUE;
 
-		CSize sizeDest = m_pToolBar->GetImageSize ();
-		if (globalData.GetRibbonImageScale () != 1.)
-		{
-			double dblImageScale = globalData.GetRibbonImageScale ();
-			sizeDest = CSize ((int)(.5 + sizeDest.cx * dblImageScale), (int)(.5 + sizeDest.cy * dblImageScale));
-		}
+		CSize sizeDest = globalUtils.ScaleByDPI(m_pToolBar->GetImageSize ());
 
 		CBCGPToolBarImages& images = (m_pToolBar->m_bLargeIcons && m_pToolBar->m_LargeImagesLocked.GetCount () > 0) ?
 				m_pToolBar->m_LargeImagesLocked : m_pToolBar->m_ImagesLocked;
@@ -803,8 +826,8 @@ void CBCGPDropDownToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolB
 		}
 		else
 		{
-			m_pToolBar->m_pUserImages->SetTransparentColor (globalData.clrBtnFace);
-			bImageWasPrepared = m_pToolBar->m_pUserImages->PrepareDrawImage (ds, sizeDest);
+			m_pToolBar->GetUserImages()->SetTransparentColor (globalData.clrBtnFace);
+			bImageWasPrepared = m_pToolBar->GetUserImages()->PrepareDrawImage (ds, sizeDest);
 		}
 	
 		m_iImage	 = m_iSelectedImage;
@@ -837,7 +860,7 @@ void CBCGPDropDownToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolB
 		if (m_bLocalUserButton)
 		{
 			m_bUserButton = m_bLocalUserButton;
-			CBCGPToolbarButton::OnDraw(pDC, rect, m_pToolBar->m_pUserImages, bHorz,  bCustomizeMode, bHighlight,  FALSE, bGrayDisabledButtons);
+			CBCGPToolbarButton::OnDraw(pDC, rect, m_pToolBar->GetUserImages(), bHorz,  bCustomizeMode, bHighlight,  FALSE, bGrayDisabledButtons);
 			m_bUserButton = FALSE;
 		}
 		else
@@ -865,7 +888,7 @@ void CBCGPDropDownToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolB
 			}
 			else
 			{
-				m_pToolBar->m_pUserImages->EndDrawImage (ds);
+				m_pToolBar->GetUserImages()->EndDrawImage (ds);
 			}
 		}
 
@@ -1104,7 +1127,7 @@ BOOL CBCGPDropDownToolbarButton::DropDownToolbar (CWnd* pWnd)
 	
 	//---------------------------------------------------------------
 	// Define a new menu position. Place the menu in the right side
-	// of the current menu in the poup menu case or under the current 
+	// of the current menu in the popup menu case or under the current 
 	// item by default:
 	//---------------------------------------------------------------
 	CPoint point;
@@ -1161,11 +1184,7 @@ SIZE CBCGPDropDownToolbarButton::OnCalculateSize (CDC* pDC, const CSize& sizeDef
 	m_iImage = -1;
 	m_bImage = bImage;
 
-	int nCurrArrowSize = nArrowSize;
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		nCurrArrowSize = (int) (globalData.GetRibbonImageScale () * nCurrArrowSize);
-	}
+	int nCurrArrowSize = globalUtils.ScaleByDPI(nArrowSize);
 
 	int nArrowWidth = CBCGPToolBar::IsLargeIcons () ? nCurrArrowSize + 2 : nCurrArrowSize / 2 + 1;
 	sizeBtn.cx += nArrowWidth;

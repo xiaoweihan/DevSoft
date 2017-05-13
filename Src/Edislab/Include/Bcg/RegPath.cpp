@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -33,10 +33,14 @@ CString BCGPGetRegPath (LPCTSTR lpszPostFix, LPCTSTR lpszProfileName)
 	else
 	{
 		CWinApp* pApp = AfxGetApp ();
+		if (pApp == NULL)
+		{
+			return strReg;
+		}
+
 		ASSERT_VALID (pApp);
 
-		if (pApp->m_pszRegistryKey == NULL ||
-			pApp->m_pszProfileName == NULL)
+		if (pApp->m_pszRegistryKey == NULL || pApp->m_pszProfileName == NULL)
 		{
 			TRACE (_T("BCGPGetRegPath error: please call SetRegistryKey in your application InitInstance\n"));
 			return strReg;

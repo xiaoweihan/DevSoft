@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -64,8 +64,6 @@ public:
 	virtual CSize GetToolTipImageSize(int& nRibbonImageType) const;
 	virtual void OnDrawTooltipImage(CDC* pDC, RibbonImageType type, const CRect& rectImage);
 
-	virtual CSize GetKeyTipSize (CDC* /*pDC*/) { return CSize(0, 0); }
-
 	virtual void CopyFrom(const CBCGPBaseRibbonElement& src);
 };
 
@@ -85,7 +83,8 @@ public:
 		LPCTSTR				lpszText, 
 		int					nSmallImageIndex,
 		int					nLargeImageIndex,
-		CBCGPToolBarImages& imagesPalette);
+		CBCGPToolBarImages& imagesPalette,
+		int					nColumns = 2);
 	
 	CBCGPRibbonQuickStepsButton (
 		UINT				nID,
@@ -93,7 +92,8 @@ public:
 		int					nSmallImageIndex,
 		int					nLargeImageIndex,
 		UINT				uiImagesPaletteResID = 0,
-		int					cxPaletteImage = 16);
+		int					cxPaletteImage = 16,
+		int					nColumns = 2);
 
 	virtual ~CBCGPRibbonQuickStepsButton();
 
@@ -113,10 +113,21 @@ public:
 	void AddQuickStep(CBCGPRibbonQuickStep* pQuickStep);
 
 // Overrides:
+public:
+	virtual void SetComboMode(BOOL bSet = TRUE, BOOL bDrawCheckFrameAroundImage = FALSE)
+	{
+		UNREFERENCED_PARAMETER(bSet);
+		UNREFERENCED_PARAMETER(bDrawCheckFrameAroundImage);
+		
+		ASSERT(FALSE);
+		CBCGPRibbonPaletteButton::SetComboMode(FALSE, FALSE);
+	}
+
 protected:
 	virtual void OnDrawPaletteIcon (CDC* pDC, CRect rectIcon, int nIconIndex, CBCGPRibbonPaletteIcon* pIcon, COLORREF clrText);
 	virtual CSize GetItemSize() const;
 	virtual void CopyFrom (const CBCGPBaseRibbonElement& src);
+	virtual BOOL IsAlwaysSmallIcons() const { return TRUE; }
 };
 
 #endif // BCGP_EXCLUDE_RIBBON

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -82,6 +82,8 @@ public:
 										BOOL bIsHighlighted, BOOL bIsPressed);
 	virtual void OnDrawOutlookBarSplitter (CDC* pDC, CRect rectSplitter);
 	virtual void OnFillOutlookBarCaption (CDC* pDC, CRect rectCaption, COLORREF& clrText);
+	virtual COLORREF OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption);
+
 	virtual void OnFillButtonInterior (CDC* pDC,
 		CBCGPToolbarButton* pButton, CRect rect, CBCGPVisualManager::BCGBUTTON_STATE state);
 
@@ -89,10 +91,7 @@ public:
 		CBCGPToolbarButton* pButton, CRect rect, CBCGPVisualManager::BCGBUTTON_STATE state);
 	virtual void OnDrawSeparator (CDC* pDC, CBCGPBaseControlBar* pBar, CRect rect, BOOL bIsHoriz);
 
-	virtual int GetToolBarCustomizeButtonMargin () const
-	{
-		return 1;
-	}
+	virtual int GetToolBarCustomizeButtonMargin () const;
 
 	virtual COLORREF GetToolbarDisabledColor () const
 	{
@@ -184,11 +183,6 @@ public:
 	virtual void OnFillAutoHideButtonBackground (CDC* pDC, CRect rect, CBCGPAutoHideButton* pButton);
 	virtual void OnDrawAutoHideButtonBorder (CDC* pDC, CRect rectBounds, CRect rectBorderSize, CBCGPAutoHideButton* pButton);
 
-	virtual BOOL DrawPushButtonWinXP (CDC* pDC, CRect rect, CBCGPButton* pButton, UINT uiState)	
-	{	
-		return DrawPushButton (pDC, rect, pButton, uiState);
-	}
-
 	virtual BOOL DrawComboDropButtonWinXP (CDC* pDC, CRect rect,
 										BOOL bDisabled,
 										BOOL bIsDropped,
@@ -246,6 +240,7 @@ public:
 #ifndef BCGP_EXCLUDE_POPUP_WINDOW
 	virtual void OnFillPopupWindowBackground (CDC* pDC, CRect rect);
 	virtual void OnDrawPopupWindowBorder (CDC* pDC, CRect rect);
+	virtual COLORREF GetPopupWindowBorderBorderColor();
 	virtual void OnDrawPopupWindowRoundedBorder (CDC* pDC, CRect rect, CBCGPPopupWindow* pPopupWnd, int nCornerRadius);
 	virtual COLORREF OnDrawPopupWindowCaption (CDC* pDC, CRect rectCaption, CBCGPPopupWindow* pPopupWnd);
 	virtual COLORREF GetPopupWindowCaptionTextColor(CBCGPPopupWindow* pPopupWnd, BOOL bButton);
@@ -289,7 +284,9 @@ public:
 	virtual void OnFillGridSelectAllAreaBackground (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect, BOOL bPressed);
 	virtual void OnDrawGridSelectAllMarker(CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect, int nPadding, BOOL bPressed);
 	virtual BOOL OnDrawGridSelectAllAreaBorder (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect, BOOL bPressed);
+	virtual void OnDrawGridGroupUnderline (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rectFill);
 	virtual void OnDrawGridSelectionBorder (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect);
+	virtual COLORREF GetGridTreeLineColor (CBCGPGridCtrl* pCtrl);
 	virtual BOOL OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_GRID_COLOR_DATA& theme);
 
 	// Report control:
@@ -362,6 +359,9 @@ public:
 	virtual COLORREF OnFillRibbonPanelCaption (CDC* pDC, CBCGPRibbonPanel* pPanel, CRect rectCaption);
 
 #endif
+
+	// WinUITiles:
+	virtual void GetWinUITilesColors(CBCGPWinUITilesColors& colors);
 
 protected:
 	WinXpTheme	m_WinXPTheme;

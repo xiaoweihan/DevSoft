@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,8 @@
 #include "BCGPRibbonBackstagePageRecent.h"
 #include "BCGPLocalResource.h"
 #include "BCGPWorkspace.h"
+#include "BCGPFrameWnd.h"
+#include "BCGPMDIFrameWnd.h"
 
 extern CBCGPWorkspace*	g_pWorkspace;
 
@@ -69,6 +71,8 @@ void CBCGPRibbonBackstageViewItemForm::CommonConstruct()
 	m_clrWatermarkBaseColor = (COLORREF)-1;
 	m_bImageMirror = FALSE;
 	m_nRecentFlags = 0xFFFF;
+	m_nPrintMaxZoomLevel = 100;
+	m_rectCaption.SetRectEmpty();
 }
 //**************************************************************************
 CBCGPRibbonBackstageViewItemForm::~CBCGPRibbonBackstageViewItemForm()
@@ -99,7 +103,7 @@ void CBCGPRibbonBackstageViewItemForm::SetWaterMarkImage(UINT uiWaterMarkResID, 
 	if (uiWaterMarkResID != 0)
 	{
 		m_Watermark.Load(uiWaterMarkResID);
-		m_Watermark.SetSingleImage();
+		m_Watermark.SetSingleImage(FALSE);
 
 		m_sizeWaterMark = m_Watermark.GetImageSize();
 
@@ -111,11 +115,36 @@ void CBCGPRibbonBackstageViewItemForm::SetWaterMarkImage(UINT uiWaterMarkResID, 
 	}
 }
 //**************************************************************************
+void CBCGPRibbonBackstageViewItemForm::OnDraw (CDC* pDC)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pDC);
+
+	if (m_rectCaption.IsRectEmpty())
+	{
+		return;
+	}
+
+	CBCGPVisualManager::GetInstance()->OnFillRibbonBackstageForm(pDC, m_pWndForm, m_rectCaption);
+
+	CFont* pOldFont = pDC->SelectObject(&globalData.fontHeader);
+	pDC->SetTextColor(CBCGPVisualManager::GetInstance()->GetRibbonBackstageTextColor());
+	pDC->SetBkMode(TRANSPARENT);
+	
+	CRect rectText = m_rectCaption;
+	rectText.DeflateRect(globalUtils.ScaleByDPI(10), 0);
+
+	pDC->DrawText(m_strText, rectText, DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+	pDC->SelectObject(pOldFont);
+}
+//**************************************************************************
 void CBCGPRibbonBackstageViewItemForm::OnAfterChangeRect (CDC* pDC)
 {
 	SetLayoutReady(FALSE);
 
 	CBCGPBaseRibbonElement::OnAfterChangeRect(pDC);
+
+	m_rectCaption.SetRectEmpty();
 
 	if (m_rect.IsRectEmpty ())
 	{
@@ -165,6 +194,33 @@ void CBCGPRibbonBackstageViewItemForm::OnAfterChangeRect (CDC* pDC)
 	}
 
 	CRect rectWindow = m_rect;
+	
+	CBCGPRibbonBackstageViewPanel* pParentPanel = DYNAMIC_DOWNCAST(CBCGPRibbonBackstageViewPanel, GetParentPanel());
+	if (pParentPanel != NULL && pDC != NULL)
+	{
+		ASSERT_VALID(pDC);
+		ASSERT_VALID(pParentPanel);
+
+		BOOL bReserveSpaceForCaption = FALSE;
+
+		if (pParentPanel->m_PageTransitionEffect == CBCGPPageTransitionManager::BCGPPageTransitionNone)
+		{
+			bReserveSpaceForCaption = !m_strText.IsEmpty();
+		}
+		else
+		{
+			bReserveSpaceForCaption = pParentPanel->m_bHasCaptions;
+		}
+
+		if (bReserveSpaceForCaption)
+		{
+			m_rectCaption = m_rect;
+			m_rectCaption.bottom = m_rectCaption.top + GetCaptionHeight();
+			
+			rectWindow.top = m_rectCaption.bottom;
+		}
+	}
+
 	CRect rectWatermark(0, 0, 0, 0);
 
 	if (m_sizeWaterMark != CSize(0, 0))
@@ -198,6 +254,8 @@ void CBCGPRibbonBackstageViewItemForm::OnAfterChangeRect (CDC* pDC)
 			pParentPanel->GetParentMenuBar()->GetClientRect(rectPanel);
 
 			pParentPanel->GetParentMenuBar()->PostMessage(WM_SIZE, MAKEWPARAM(rectPanel.Width(), rectPanel.Height()));
+
+			pParentPanel->GetParentMenuBar()->RedrawWindow(m_rectCaption);
 		}
 	}
 
@@ -231,6 +289,7 @@ void CBCGPRibbonBackstageViewItemForm::CopyFrom (const CBCGPBaseRibbonElement& s
 	m_clrWatermarkBaseColor = src.m_clrWatermarkBaseColor;
 	m_bImageMirror = src.m_bImageMirror;
 	m_nRecentFlags = src.m_nRecentFlags;
+	m_nPrintMaxZoomLevel = src.m_nPrintMaxZoomLevel;
 }
 //**************************************************************************
 CWnd* CBCGPRibbonBackstageViewItemForm::OnCreateFormWnd()
@@ -261,11 +320,17 @@ CWnd* CBCGPRibbonBackstageViewItemForm::OnCreateFormWnd()
 		pRecentFrom->SetFlags(m_nRecentFlags);
 	}
 
+	CBCGPRibbonBackstagePagePrint* pPrintFrom = DYNAMIC_DOWNCAST(CBCGPRibbonBackstagePagePrint, pForm);
+	if (pPrintFrom != NULL)
+	{
+		pPrintFrom->SetMaxZoomLevel(m_nPrintMaxZoomLevel);
+	}
+
 	if (!pForm->Create(m_nDlgTemplateID, GetParentWnd()))
 	{
 		ASSERT(FALSE);
 		delete pForm;
-		pForm = NULL;
+		return NULL;
 	}
 
 	pForm->EnableVisualManagerStyle();
@@ -276,8 +341,23 @@ CWnd* CBCGPRibbonBackstageViewItemForm::OnCreateFormWnd()
 	pForm->GetWindowRect(&rectClient);
 
 	m_sizeDlg = rectClient.Size();
+	m_sizeDlg.cy += GetCaptionHeight();
 
 	return pForm;
+}
+//**************************************************************************
+int CBCGPRibbonBackstageViewItemForm::GetCaptionHeight()
+{
+	CClientDC dc(NULL);
+	CFont* pOldFont = dc.SelectObject(&globalData.fontHeader);
+	
+	TEXTMETRIC tm;
+	dc.GetTextMetrics (&tm);
+	
+	int nHeight = tm.tmHeight + globalUtils.ScaleByDPI(10);
+	
+	dc.SelectObject(pOldFont);
+	return nHeight;
 }
 //**************************************************************************
 void CBCGPRibbonBackstageViewItemForm::OnChangeVisualManager()
@@ -302,6 +382,100 @@ void CBCGPRibbonBackstageViewItemForm::OnChangeVisualManager()
 		m_WatermarkColorized.AddaptColors(m_clrWatermarkBaseColor, clrMainButton);
 	}
 }
+//**************************************************************************
+BOOL CBCGPRibbonBackstageViewItemForm::SetACCData(CWnd* pParent, CBCGPAccessibilityData& data)
+{
+	ASSERT_VALID (this);
+	
+	data.Clear ();
+	
+	data.m_strAccName = m_strText.IsEmpty() ? _T("Ribbon Backstage View") : m_strText;
+	data.m_nAccRole = ROLE_SYSTEM_PANE;
+	data.m_bAccState = STATE_SYSTEM_READONLY;
+	
+	data.m_rectAccLocation = m_rect;
+	pParent->ClientToScreen (&data.m_rectAccLocation);
+	
+	return TRUE;
+}
+
+class CBCGPBackstagePropertySheetCtrl : public CBCGPPropertySheetCtrl
+{
+protected:
+	virtual void OnDrawPageHeader(CDC* pDC, int nPage, CRect rectHeader)
+	{
+		ASSERT_VALID(pDC);
+
+		CPropertyPage* pPage = GetPage(nPage);
+		if (pPage->GetSafeHwnd() != NULL)
+		{
+			CString strName;
+			pPage->GetWindowText(strName);
+
+			CFont* pOldFont = pDC->SelectObject(&globalData.fontCaption);
+			ASSERT_VALID(pOldFont);
+
+			COLORREF clrTextOld = pDC->SetTextColor(CBCGPVisualManager::GetInstance()->GetRibbonBackstageInfoTextColor());
+			pDC->SetBkMode(TRANSPARENT);
+
+			int xMargin = 0;
+			if (!m_PageXMargins.Lookup(pPage->GetSafeHwnd(), xMargin))
+			{
+				xMargin = globalUtils.ScaleByDPI(20);
+
+				for (CWnd* pWnd = pPage->GetWindow(GW_CHILD); pWnd != NULL; pWnd = pWnd->GetWindow(GW_HWNDNEXT))
+				{
+					if (pWnd->GetStyle() & WS_VISIBLE)
+					{
+						CRect rectCtrl;
+						pWnd->GetWindowRect(rectCtrl);
+
+						pPage->ScreenToClient(rectCtrl);
+
+						xMargin = min(xMargin, rectCtrl.left);
+					}
+				}
+
+				m_PageXMargins.SetAt(pPage->GetSafeHwnd(), xMargin);
+			}
+
+			rectHeader.left += xMargin;
+			rectHeader.OffsetRect(0, 1);
+
+			int nTextHeight = pDC->DrawText(strName, rectHeader, DT_SINGLELINE | DT_VCENTER | DT_NOCLIP | DT_NOPREFIX);
+
+			pDC->SetTextColor(clrTextOld);
+			pDC->SelectObject(pOldFont);
+
+			if (!globalData.IsHighContastMode () && CBCGPVisualManager::GetInstance ()->IsUnderlineListBoxCaption(&m_wndList))
+			{
+				CRect rectSeparator = rectHeader;
+				rectSeparator.top = rectHeader.CenterPoint().y + nTextHeight / 2;
+				rectSeparator.bottom = rectSeparator.top + 1;
+
+				CBCGPStatic ctrl;
+				ctrl.m_bBackstageMode = TRUE;
+
+				if (CBCGPVisualManager::GetInstance ()->IsOwnerDrawDlgSeparator(&ctrl))
+				{
+					CBCGPVisualManager::GetInstance ()->OnDrawDlgSeparator(pDC, &ctrl, rectSeparator, TRUE);
+				}
+				else
+				{
+					CPen pen (PS_SOLID, 1, globalData.clrBtnShadow);
+					CPen* pOldPen = (CPen*)pDC->SelectObject (&pen);
+					
+					pDC->MoveTo(rectSeparator.left, rectSeparator.top);
+					pDC->LineTo(rectSeparator.right, rectSeparator.top);
+					
+					pDC->SelectObject(pOldPen);
+				}
+			}
+		}
+	}
+
+	CMap<HWND, HWND, int, int&>	m_PageXMargins;
+};
 
 /////////////////////////////////////////////////////////////////////////
 // CBCGPRibbonBackstageViewItemPropertySheet
@@ -311,19 +485,23 @@ IMPLEMENT_DYNCREATE(CBCGPRibbonBackstageViewItemPropertySheet, CBCGPRibbonBackst
 CBCGPRibbonBackstageViewItemPropertySheet::CBCGPRibbonBackstageViewItemPropertySheet()
 {
 	m_nIconsListResID = 0;
+	m_bIconsAutoScale = FALSE;
 	m_nIconWidth = 0;
 	m_PageTransitionEffect = CBCGPPageTransitionManager::BCGPPageTransitionNone;
 	m_nPageTransitionTime = 300;
 	m_bUseDefaultPageTransitionEffect = TRUE;
+	m_bDefaultPageHeader = FALSE;
 }
 //**************************************************************************
-CBCGPRibbonBackstageViewItemPropertySheet::CBCGPRibbonBackstageViewItemPropertySheet(UINT nIconsListResID, int nIconWidth)
+CBCGPRibbonBackstageViewItemPropertySheet::CBCGPRibbonBackstageViewItemPropertySheet(UINT nIconsListResID, int nIconWidth, BOOL bIconsAutoScale, BOOL bDefaultPageHeader)
 {
 	m_nIconsListResID = nIconsListResID;
 	m_nIconWidth = nIconWidth;
+	m_bIconsAutoScale = bIconsAutoScale;
 	m_PageTransitionEffect = CBCGPPageTransitionManager::BCGPPageTransitionNone;
 	m_nPageTransitionTime = 300;
 	m_bUseDefaultPageTransitionEffect = TRUE;
+	m_bDefaultPageHeader = bDefaultPageHeader;
 }
 //**************************************************************************
 CBCGPRibbonBackstageViewItemPropertySheet::~CBCGPRibbonBackstageViewItemPropertySheet()
@@ -366,9 +544,11 @@ void CBCGPRibbonBackstageViewItemPropertySheet::CopyFrom (const CBCGPBaseRibbonE
 	m_arCaptions.Copy(src.m_arCaptions);
 	m_nIconsListResID = src.m_nIconsListResID;
 	m_nIconWidth = src.m_nIconWidth;
+	m_bIconsAutoScale = src.m_bIconsAutoScale;
 	m_PageTransitionEffect = src.m_PageTransitionEffect;
 	m_bUseDefaultPageTransitionEffect = src.m_bUseDefaultPageTransitionEffect;
 	m_nPageTransitionTime = src.m_nPageTransitionTime;
+	m_bDefaultPageHeader = src.m_bDefaultPageHeader;
 }
 //**************************************************************************
 void CBCGPRibbonBackstageViewItemPropertySheet::OnSetBackstageWatermarkRect(CRect rectWatermark)
@@ -437,11 +617,27 @@ void CBCGPRibbonBackstageViewItemPropertySheet::SetLayoutReady(BOOL bReady)
 	}
 }
 //**************************************************************************
+int CBCGPRibbonBackstageViewItemPropertySheet::GetHeaderHeight()
+{
+	if (!m_bDefaultPageHeader)
+	{
+		return 0;
+	}
+
+	CBCGPPropertySheetCtrl* pPropSheet = DYNAMIC_DOWNCAST(CBCGPPropertySheetCtrl, m_pWndForm);
+	if (pPropSheet->GetSafeHwnd() != NULL)
+	{
+		return pPropSheet->GetHeaderHeight();
+	}
+
+	return 0;
+}
+//**************************************************************************
 CWnd* CBCGPRibbonBackstageViewItemPropertySheet::OnCreateFormWnd()
 {
 	ASSERT_VALID (this);
 
-	CBCGPPropertySheetCtrl* pForm = new CBCGPPropertySheetCtrl;
+	CBCGPBackstagePropertySheetCtrl* pForm = new CBCGPBackstagePropertySheetCtrl;
 	if (pForm == NULL)
 	{
 		ASSERT(FALSE);
@@ -452,9 +648,14 @@ CWnd* CBCGPRibbonBackstageViewItemPropertySheet::OnCreateFormWnd()
 	pForm->EnableLayout();
 	pForm->SetLook(CBCGPPropertySheet::PropSheetLook_List, -1);
 
+	if (m_bDefaultPageHeader)
+	{
+		pForm->m_bSyncHeaderHeightWithListItemHeight = TRUE;
+	}
+
 	if (m_nIconsListResID != 0)
 	{
-		pForm->SetIconsList (m_nIconsListResID, m_nIconWidth);
+		pForm->SetIconsList (m_nIconsListResID, m_nIconWidth, m_bIconsAutoScale);
 	}
 
 	pForm->m_bBackstageMode = TRUE;
@@ -478,11 +679,18 @@ CWnd* CBCGPRibbonBackstageViewItemPropertySheet::OnCreateFormWnd()
 		}
 	}
 
-	if (!pForm->Create(GetParentWnd(), WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_VISIBLE, 0))
+	CWnd* pParent = GetParentWnd();
+	pParent->LockWindowUpdate();
+
+	BOOL bRes = pForm->Create(pParent, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0);
+
+	pParent->UnlockWindowUpdate();
+
+	if (!bRes)
 	{
 		ASSERT(FALSE);
 		delete pForm;
-		pForm = NULL;
+		return NULL;
 	}
 
 	CRect rectClient;
@@ -490,6 +698,7 @@ CWnd* CBCGPRibbonBackstageViewItemPropertySheet::OnCreateFormWnd()
 
 	m_sizeDlg = rectClient.Size();
 	m_sizeDlg.cx += pForm->GetNavBarWidth();
+	m_sizeDlg.cy += GetCaptionHeight();
 
 	return pForm;
 }
@@ -505,12 +714,14 @@ IMPLEMENT_DYNCREATE(CBCGPRibbonBackstageViewPanel, CBCGPRibbonMainPanel)
 
 CBCGPRibbonBackstageViewPanel::CBCGPRibbonBackstageViewPanel()
 {
+	m_bIsStartPage = FALSE;
 	m_pSelected = NULL;
 	m_pNewSelected = NULL;
 	m_bSelectedByMouseClick = FALSE;
 	m_rectRight.SetRectEmpty();
 	m_sizeRightView = CSize(0, 0);
 	m_bInAdjustScrollBars = FALSE;
+	m_bHasCaptions = FALSE;
 }
 //********************************************************************************
 CBCGPRibbonBackstageViewPanel::~CBCGPRibbonBackstageViewPanel()
@@ -586,7 +797,7 @@ void CBCGPRibbonBackstageViewPanel::Repos (CDC* pDC, const CRect& rect)
 				CBCGPBaseRibbonElement* pElem = m_arElements [i];
 				ASSERT_VALID (pElem);
 
-				if (!pElem->IsDisabled() && pElem->GetBackstageAttachedView() != NULL)
+				if (!pElem->IsDisabled() && pElem->GetBackstageAttachedView() != NULL && !pElem->IsHiddenInAppMode())
 				{
 					m_pSelected = pElem;
 					m_pSelected->m_bIsChecked = TRUE;
@@ -599,6 +810,11 @@ void CBCGPRibbonBackstageViewPanel::Repos (CDC* pDC, const CRect& rect)
 		{
 			m_pHighlighted = m_pSelected;
 		}
+	}
+
+	if (m_bIsStartPage)
+	{
+		m_rectMenuElements.right = m_rectMenuElements.left;
 	}
 
 	m_rectRight = rect;
@@ -643,7 +859,8 @@ CBCGPBaseRibbonElement* CBCGPRibbonBackstageViewPanel::MouseButtonDown (CPoint p
 }
 //********************************************************************************
 CBCGPRibbonButton* CBCGPRibbonBackstageViewPanel::AddPrintPreview(UINT uiCommandID, LPCTSTR lpszLabel,
-																  UINT uiWaterMarkResID, COLORREF clrBase)
+																  UINT uiWaterMarkResID, COLORREF clrBase,
+																  int nPrintMaxZoomLevel)
 {
 	ASSERT_VALID(this);
 	ASSERT(lpszLabel != NULL);
@@ -657,6 +874,7 @@ CBCGPRibbonButton* CBCGPRibbonBackstageViewPanel::AddPrintPreview(UINT uiCommand
 
 	ASSERT_VALID(pFormPrint);
 
+	pFormPrint->m_nPrintMaxZoomLevel = nPrintMaxZoomLevel;
 	pFormPrint->SetWaterMarkImage(uiWaterMarkResID, clrBase);
 
 	return AddView (uiCommandID, lpszLabel, pFormPrint);
@@ -725,11 +943,13 @@ BOOL CBCGPRibbonBackstageViewPanel::AttachViewToItem(UINT uiID, CBCGPRibbonBacks
 	}
 
 	pItem->AddSubItem(pView);
+
 	return TRUE;
 }
 //********************************************************************************
 BOOL CBCGPRibbonBackstageViewPanel::AttachPrintPreviewToItem(UINT uiID, BOOL bByCommand,
-															 UINT uiWaterMarkResID, COLORREF clrBase)
+															 UINT uiWaterMarkResID, COLORREF clrBase,
+															 int nPrintMaxZoomLevel)
 {
 	CBCGPRibbonBackstageViewItemForm* pFormPrint = NULL;
 
@@ -741,6 +961,7 @@ BOOL CBCGPRibbonBackstageViewPanel::AttachPrintPreviewToItem(UINT uiID, BOOL bBy
 	ASSERT_VALID(pFormPrint);
 
 	pFormPrint->SetWaterMarkImage(uiWaterMarkResID, clrBase);
+	pFormPrint->m_nPrintMaxZoomLevel = nPrintMaxZoomLevel;
 
 	return AttachViewToItem(uiID, pFormPrint, bByCommand);
 }
@@ -834,7 +1055,30 @@ void CBCGPRibbonBackstageViewPanel::ReposActiveForm()
 				ASSERT_VALID (m_pMainButton);
 				ASSERT_VALID (m_pMainButton->GetParentRibbonBar ());
 
+				m_bHasCaptions = m_pMainButton->GetParentRibbonBar()->HasBackstagePageCaptions();
+
 				pView->SetRect(m_rectRight);
+
+				if (m_bHasCaptions)
+				{
+					if (pView->m_strText.IsEmpty())
+					{
+						pView->m_strText = pSelected->m_strText;
+
+						if (!pView->m_strText.IsEmpty())
+						{
+							static const CString strDummyAmpSeq = _T("\001\001");
+							
+							pView->m_strText.Replace (_T("&&"), strDummyAmpSeq);
+							pView->m_strText.Remove (_T('&'));
+							pView->m_strText.Replace (strDummyAmpSeq, _T("&"));
+						}
+					}
+				}
+				else
+				{
+					pView->m_strText.Empty();
+				}
 
 				CClientDC dc(m_pMainButton->GetParentRibbonBar());
 
@@ -843,6 +1087,27 @@ void CBCGPRibbonBackstageViewPanel::ReposActiveForm()
 
 				pView->OnAfterChangeRect(&dc);
 				m_sizeRightView = pView->GetSize(&dc);
+
+				CBCGPRibbonBackstageViewItemPropertySheet* pPropSheetView = DYNAMIC_DOWNCAST(CBCGPRibbonBackstageViewItemPropertySheet, pView);
+				if (pPropSheetView != NULL)
+				{
+					ASSERT_VALID(pPropSheetView);
+					m_sizeRightView.cy += pPropSheetView->GetHeaderHeight();
+				}
+				
+				if (m_bIsStartPage)
+				{
+					CBCGPRibbonBackstageViewItemForm* pForm = DYNAMIC_DOWNCAST(CBCGPRibbonBackstageViewItemForm, pView);
+					if (pForm != NULL)
+					{
+						CBCGPDialog* pDlg = DYNAMIC_DOWNCAST(CBCGPDialog, pForm->m_pWndForm);
+						if (pDlg != NULL)
+						{
+							pDlg->m_bIsRibbonStartPage = TRUE;
+							m_pMainButton->GetParentRibbonBar()->m_nStartPageLeftPaneWidth = pDlg->GetRibbonStartPageLeftPaneWidth();
+						}
+					}
+				}
 
 				dc.SelectObject (pOldFont);
 
@@ -922,6 +1187,16 @@ int CBCGPRibbonBackstageViewPanel::FindFormPageIndex(CRuntimeClass* pClass, BOOL
 	return -1;
 }
 //**********************************************************************************
+void CBCGPRibbonBackstageViewPanel::CopyFrom (CBCGPRibbonPanel& s)
+{
+	CBCGPRibbonMainPanel::CopyFrom(s);
+
+	CBCGPRibbonBackstageViewPanel& src = (CBCGPRibbonBackstageViewPanel&)s;
+	
+	m_bIsStartPage = src.m_bIsStartPage;
+	m_bHasCaptions = src.m_bHasCaptions;
+}
+//**********************************************************************************
 BOOL CBCGPRibbonBackstageViewPanel::OnKey (UINT nChar)
 {
 	if (!m_rectPageTransition.IsRectEmpty())
@@ -981,6 +1256,8 @@ void CBCGPRibbonBackstageViewPanel::SelectView(CBCGPBaseRibbonElement* pElem)
 	{
 		return;
 	}
+
+	BOOL bRedrawCaption = FALSE;
 
 	if (pElem != m_pSelected && pElem->GetBackstageAttachedView() != NULL)
 	{
@@ -1044,6 +1321,10 @@ void CBCGPRibbonBackstageViewPanel::SelectView(CBCGPBaseRibbonElement* pElem)
 					}
 				}
 			}
+			else
+			{
+				bRedrawCaption = m_bHasCaptions;
+			}
 
 			CBCGPBaseRibbonElement* pView = m_pSelected->GetBackstageAttachedView();
 			if (pView != NULL)
@@ -1066,6 +1347,15 @@ void CBCGPRibbonBackstageViewPanel::SelectView(CBCGPBaseRibbonElement* pElem)
 
 		RedrawElement(m_pSelected);
 	}
+
+	if (bRedrawCaption && m_pSelected != NULL && GetParentMenuBar()->GetSafeHwnd() != NULL)
+	{
+		CBCGPRibbonBackstageViewItemForm* pView = DYNAMIC_DOWNCAST(CBCGPRibbonBackstageViewItemForm, m_pSelected->GetBackstageAttachedView());
+		if (pView != NULL)
+		{
+			GetParentMenuBar()->RedrawWindow(pView->m_rectCaption);
+		}
+	}
 }
 //**********************************************************************************
 void CBCGPRibbonBackstageViewPanel::DoPaint(CDC* pDC)
@@ -1079,6 +1369,12 @@ void CBCGPRibbonBackstageViewPanel::DoPaint(CDC* pDC)
 	{
 		CBCGPVisualManager::GetInstance()->OnFillRibbonBackstageForm(pDC, NULL, m_rectPageTransition);
 		DoDrawTransition(pDC, FALSE);
+	}
+
+	if (!m_rectScrollCorner.IsRectEmpty())
+	{
+		CBrush br(globalData.clrBarLight);
+		pDC->FillRect(m_rectScrollCorner, &br);
 	}
 }
 //**********************************************************************************
@@ -1142,7 +1438,11 @@ void CBCGPRibbonBackstageViewPanel::AdjustScrollBars()
 	const int cxScroll = ::GetSystemMetrics (SM_CXVSCROLL);
 	const int cyScroll = ::GetSystemMetrics (SM_CYHSCROLL);
 
-	int nTotalWidth = m_rectMenuElements.Width() + m_sizeRightView.cx;
+	int nTotalWidth = m_sizeRightView.cx;
+	if (!m_bIsStartPage)
+	{
+		nTotalWidth += m_rectMenuElements.Width();
+	}
 
 	BOOL bHasVertScrollBar = FALSE;
 	BOOL bHasHorzScrollBar = m_pScrollBarHorz->GetSafeHwnd() != NULL && nTotalWidth > m_rect.Width();
@@ -1273,6 +1573,14 @@ void CBCGPRibbonBackstageViewPanel::AdjustScrollBars()
 		m_pMainButton->GetParentRibbonBar()->SetBackstageHorzOffset(m_nScrollOffsetHorz);
 	}
 
+	if (m_pMainButton != NULL)
+	{
+		ASSERT_VALID (m_pMainButton);
+		ASSERT_VALID (m_pMainButton->GetParentRibbonBar ());
+
+		m_pMainButton->GetParentRibbonBar()->SetBackstageHorzScroll(bHasHorzScrollBar);
+	}
+
 	m_bInAdjustScrollBars = FALSE;
 }
 
@@ -1322,13 +1630,7 @@ void CBCGPRecentFilesListBox::OnDrawItemContent(CDC* pDC, CRect rect, int nIndex
 		HICON hIcon = m_arIcons[nIndex];
 		if (hIcon != NULL)
 		{
-			CSize sizeIcon = CSize (32, 32);
-
-			if (globalData.GetRibbonImageScale () != 1.)
-			{
-				sizeIcon.cx = (int) (.5 + globalData.GetRibbonImageScale () * sizeIcon.cx);
-				sizeIcon.cy = (int) (.5 + globalData.GetRibbonImageScale () * sizeIcon.cy);
-			}
+			CSize sizeIcon = globalUtils.ScaleByDPI(CSize (32, 32));
 
 			::DrawIconEx (pDC->GetSafeHdc (), 
 				rect.left + 3, 
@@ -1387,16 +1689,7 @@ void CBCGPRecentFilesListBox::SetFoldersMode(BOOL bSet)
 		}
 	}
 }
-
-//-----------------------------------------------------
-// My "classic " trick - how I can access to protected
-// member m_pRecentFileList?
-//-----------------------------------------------------
-class CBCGPApp : public CWinApp
-{
-	friend class CBCGPRecentFilesListBox;
-};
-
+//**********************************************************************************************
 int CBCGPRecentFilesListBox::AddItem(const CString& strFilePath, UINT nCmd, BOOL bPin)
 {
 	if (strFilePath.IsEmpty())
@@ -1420,7 +1713,9 @@ int CBCGPRecentFilesListBox::AddItem(const CString& strFilePath, UINT nCmd, BOOL
 	_tmakepath_s (path, drive, dir, NULL, NULL);
 	_tmakepath_s (name, NULL, NULL, fname, ext);
 #endif
+	
 	CString strItem;
+	CString strToolTip = strFilePath;
 
 	if (m_bFoldersMode)
 	{
@@ -1436,6 +1731,8 @@ int CBCGPRecentFilesListBox::AddItem(const CString& strFilePath, UINT nCmd, BOOL
 		{
 			strItem = strPath.Right(strPath.GetLength() - nIndex - 1);
 		}
+
+		strToolTip = strPath;
 	}
 	else
 	{
@@ -1452,29 +1749,58 @@ int CBCGPRecentFilesListBox::AddItem(const CString& strFilePath, UINT nCmd, BOOL
 		nIndex = AddString(strItem);
 		SetItemData(nIndex, (DWORD_PTR)nCmd);
 
+		SetItemToolTip(nIndex, strToolTip);
+
 		if (bPin)
 		{
 			SetItemPinned(nIndex);
 		}
 
+		HICON hIcon = NULL;
 		CString strFile = m_bFoldersMode ? path : strFilePath;
 
-		SHFILEINFO sfi;
-		if (::SHGetFileInfo (strFile, 0, &sfi, sizeof(SHFILEINFO),
-			SHGFI_ICON | SHGFI_SHELLICONSIZE | SHGFI_LARGEICON))
+		CFrameWnd* pParentFrame = BCGCBProGetTopLevelFrame (this);
+
+		CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, pParentFrame);
+		if (pMainFrame != NULL)
 		{
-			m_arIcons.Add(sfi.hIcon);
+			hIcon = pMainFrame->OnGetRecentFileIcon(this, strFile, nIndex);
 		}
-		else
+		else	// Maybe, SDI frame...
 		{
-			m_arIcons.Add(NULL);
+			CBCGPFrameWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPFrameWnd, pParentFrame);
+			if (pFrame != NULL)
+			{
+				hIcon = pFrame->OnGetRecentFileIcon(this, strFile, nIndex);
+			}
 		}
+
+		m_arIcons.Add(hIcon);
 	}
 
 	return nIndex;
 }
 //***********************************************************************************************	
 void CBCGPRecentFilesListBox::FillList(LPCTSTR lpszSelectedPath/* = NULL*/)
+{
+	CStringArray arRecent;
+	arRecent.SetSize(CBCGPWinApp::_GetRecentFilesCount());
+
+	for (int i = 0; i < CBCGPWinApp::_GetRecentFilesCount(); i++)
+	{
+		arRecent[i] = CBCGPWinApp::_GetRecentFilePath(i);
+	}
+
+	CStringArray arPinned;
+	if (g_pWorkspace != NULL) 
+	{
+		arPinned.Copy(g_pWorkspace->GetPinnedPaths(!m_bFoldersMode));
+	}
+
+	FillList(arRecent, arPinned, lpszSelectedPath);
+}
+//***********************************************************************************************	
+void CBCGPRecentFilesListBox::FillList(const CStringArray& arRecent, const CStringArray& arPinned, LPCTSTR lpszSelectedPath/* = NULL*/)
 {
 	ASSERT(GetSafeHwnd() != NULL);
 
@@ -1486,18 +1812,13 @@ void CBCGPRecentFilesListBox::FillList(LPCTSTR lpszSelectedPath/* = NULL*/)
 	m_nHighlightedItem = -1;
 	m_bIsPinHighlighted = FALSE;
 
-	int cyIcon = 32;
-
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		cyIcon = (int) (.5 + globalData.GetRibbonImageScale () * cyIcon);
-	}
-
+	int cyIcon = globalUtils.ScaleByDPI(32);
 	int nItemHeight = max(cyIcon + 4, globalData.GetTextHeight () * 5 / 2);
 	
 	SetItemHeight(-1, nItemHeight);
 
-	for (int i = 0; i < m_arIcons.GetSize(); i++)
+	int i = 0;
+	for (i = 0; i < m_arIcons.GetSize(); i++)
 	{
 		HICON hIcon = m_arIcons[i];
 		if (hIcon != NULL)
@@ -1511,22 +1832,17 @@ void CBCGPRecentFilesListBox::FillList(LPCTSTR lpszSelectedPath/* = NULL*/)
 	BOOL bHasPinnedItems = FALSE;
 
 	// Add "pinned" items first
-	if (g_pWorkspace != NULL)
+	for (i = 0; i < (int)arPinned.GetSize(); i++)
 	{
-		const CStringArray& ar = g_pWorkspace->GetPinnedPaths(!m_bFoldersMode);
-
-		for (int i = 0; i < (int)ar.GetSize(); i++)
+		int nIndex = AddItem(arPinned[i], 0, TRUE);
+		if (nIndex >= 0 && lpszSelectedPath != NULL && arPinned[i] == lpszSelectedPath)
 		{
-			int nIndex = AddItem(ar[i], 0, TRUE);
-			if (nIndex >= 0 && lpszSelectedPath != NULL && ar[i] == lpszSelectedPath)
-			{
-				SetCurSel(nIndex);
-			}
+			SetCurSel(nIndex);
+		}
 
-			if (nIndex >= 0)
-			{
-				bHasPinnedItems = TRUE;
-			}
+		if (nIndex >= 0)
+		{
+			bHasPinnedItems = TRUE;
 		}
 	}
 
@@ -1537,20 +1853,14 @@ void CBCGPRecentFilesListBox::FillList(LPCTSTR lpszSelectedPath/* = NULL*/)
 	}
 
 	// Add MRU files:
-	CRecentFileList* pMRUFiles = 
-		((CBCGPApp*) AfxGetApp ())->m_pRecentFileList;
-
-	if (pMRUFiles != NULL)
+	for (i = 0; i < (int)arRecent.GetSize(); i++)
 	{
-		for (int i = 0; i < pMRUFiles->GetSize (); i++)
-		{
-			CString strPath = (*pMRUFiles)[i];
+		CString strPath = arRecent[i];
 
-			int nIndex = AddItem(strPath, (ID_FILE_MRU_FILE1 + i));
-			if (nIndex >= 0 && lpszSelectedPath != NULL && strPath == lpszSelectedPath)
-			{
-				SetCurSel(nIndex);
-			}
+		int nIndex = AddItem(strPath, (ID_FILE_MRU_FILE1 + i));
+		if (nIndex >= 0 && lpszSelectedPath != NULL && strPath == lpszSelectedPath)
+		{
+			SetCurSel(nIndex);
 		}
 	}
 
@@ -1607,6 +1917,20 @@ void CBCGPRecentFilesListBox::OnMouseMove(UINT nFlags, CPoint point)
 	}
 }
 //***********************************************************************************************
+BOOL CBCGPRecentFilesListBox::CloseBackstageView()
+{
+	for (CWnd* pParent = GetParent(); pParent->GetSafeHwnd() != NULL; pParent = pParent->GetParent())
+	{
+		if (DYNAMIC_DOWNCAST(CBCGPRibbonBackstageView, pParent) != NULL)
+		{
+			pParent->SendMessage(WM_CLOSE);
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+//***********************************************************************************************
 void CBCGPRecentFilesListBox::OnChooseRecentFile(UINT uiCmd)
 {
 	CFrameWnd* pParentFrame = BCGCBProGetTopLevelFrame (this);
@@ -1615,15 +1939,7 @@ void CBCGPRecentFilesListBox::OnChooseRecentFile(UINT uiCmd)
 		pParentFrame->PostMessage(WM_COMMAND, uiCmd);
 	}
 
-	CWnd* pParentDlg = GetParent();
-	if (pParentDlg != NULL)
-	{
-		CBCGPRibbonBackstageView* pBackstageView = DYNAMIC_DOWNCAST(CBCGPRibbonBackstageView, pParentDlg->GetParent());
-		if (pBackstageView != NULL)
-		{
-			pBackstageView->SendMessage(WM_CLOSE);
-		}
-	}
+	CloseBackstageView();
 }
 //***********************************************************************************************	
 static void _BCGPAppendFilterSuffix(CString& filter, OPENFILENAME& ofn,
@@ -1663,15 +1979,7 @@ void CBCGPRecentFilesListBox::OnChoosePinnedFile(LPCTSTR lpszFile)
 {
 	ASSERT(lpszFile != NULL);
 
-	CWnd* pParentDlg = GetParent();
-	if (pParentDlg != NULL)
-	{
-		CBCGPRibbonBackstageView* pBackstageView = DYNAMIC_DOWNCAST(CBCGPRibbonBackstageView, pParentDlg->GetParent());
-		if (pBackstageView != NULL)
-		{
-			pBackstageView->SendMessage(WM_CLOSE);
-		}
-	}
+	CloseBackstageView();
 
 	if (AfxGetApp() == NULL)
 	{
@@ -1688,15 +1996,7 @@ void CBCGPRecentFilesListBox::OnChooseRecentFolder(LPCTSTR lpszFolder)
 
 	CFileDialog dlgFile(TRUE, NULL, NULL, OFN_HIDEREADONLY | OFN_FILEMUSTEXIST, NULL, BCGCBProGetTopLevelFrame(this));
 
-	CWnd* pParentDlg = GetParent();
-	if (pParentDlg != NULL)
-	{
-		CBCGPRibbonBackstageView* pBackstageView = DYNAMIC_DOWNCAST(CBCGPRibbonBackstageView, pParentDlg->GetParent());
-		if (pBackstageView != NULL)
-		{
-			pBackstageView->SendMessage(WM_CLOSE);
-		}
-	}
+	CloseBackstageView();
 
 	if (AfxGetApp() == NULL)
 	{

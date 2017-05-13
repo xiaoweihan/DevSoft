@@ -1,6 +1,6 @@
 // BCGColorDialog.cpp : implementation file
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -197,6 +197,11 @@ BOOL CBCGPColorDialog::OnInitDialog()
 		TRACE0 ("CBCGPColorDialog::OnInitDialog(): Can't create the property sheet.....\n");
 	}
 
+	m_pPropSheet->SetActivePage(0);
+	
+	CRect rectPage1Initial;
+	m_pPropSheet->GetWindowRect(rectPage1Initial);
+
 	m_pPropSheet->SetWindowPos(NULL, rectListWnd.left, rectListWnd.top, rectListWnd.Width(),
 				rectListWnd.Height(), SWP_NOZORDER | SWP_NOACTIVATE);
 
@@ -210,7 +215,19 @@ BOOL CBCGPColorDialog::OnInitDialog()
 
 	m_btnColorSelect.SetImage (IDB_BCGBARRES_COLOR_PICKER);
 
-	m_pPropSheet->SetActivePage (0);
+	CRect rectPage1Current;
+	m_pPropSheet->GetWindowRect(rectPage1Current);
+
+	int cy = rectPage1Initial.Height() - rectPage1Current.Height();
+	if (cy > 0)
+	{
+		// Resize the dialog:
+		CRect rectThis;
+		GetWindowRect(rectThis);
+
+		SetWindowPos(NULL, -1, -1, rectThis.Width(), rectThis.Height() + cy, SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+		m_pPropSheet->SetWindowPos(NULL, -1, -1, rectListWnd.Width(), rectListWnd.Height() + cy, SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+	}
 
 	m_hcurPicker = AfxGetApp()->LoadCursor (IDC_BCGBARRES_COLOR);
 
@@ -247,6 +264,8 @@ void CBCGPColorDialog::OnDestroy()
 
 void CBCGPColorDialog::SetNewColor (COLORREF rgb)
 {
+	COLORREF clrNewSaved = m_NewColor;
+
 	m_NewColor = rgb;
 
 	if (globalData.m_nBitsPerPixel == 8) // 256 colors
@@ -263,6 +282,8 @@ void CBCGPColorDialog::SetNewColor (COLORREF rgb)
 
 	m_wndColors.Invalidate ();
 	m_wndColors.UpdateWindow ();
+
+	OnNewColorChanged(clrNewSaved, m_NewColor);
 }
 
 void CBCGPColorDialog::OnSysColorChange() 
@@ -520,7 +541,7 @@ BOOL CBCGPColorDialog::PreTranslateMessage(MSG* pMsg)
 				EmptyClipboard ();
 
 				CString strText;
-				strText.Format (_T("RGB (%d, %d, %d)"),
+				strText.Format (_T("RGB(%d, %d, %d)"),
 					GetRValue (m_NewColor),
 					GetGValue (m_NewColor),
 					GetBValue (m_NewColor));

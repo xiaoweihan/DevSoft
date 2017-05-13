@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -43,11 +43,12 @@
 #include "BCGPEditBrushDlg.h"
 #include "BCGPTextFormatDlg.h"
 #include "BCGPToolBarImages.h"
+#include "bcgpaccessibility.h"
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPProp object
 
-class BCGCBPRODLLEXPORT CBCGPProp : public CObject
+class BCGCBPRODLLEXPORT CBCGPProp  : public CBCGPBaseAccessibleObject
 {
 	DECLARE_DYNAMIC(CBCGPProp)
 
@@ -84,16 +85,17 @@ public:
 
 // Operations:
 public:
-	int GetExpandedSubItems (BOOL bIncludeHidden = TRUE) const;
+	int GetExpandedSubItems (BOOL bIncludeHidden = TRUE, BOOL bCalcRows = FALSE) const;
 	BOOL AddSubItem (CBCGPProp* pProp);
 	BOOL RemoveSubItem (CBCGPProp*& pProp, BOOL bDelete = TRUE);
 	void RemoveAllSubItems();
 
-	BOOL AddOption (LPCTSTR lpszOption, BOOL bInsertUnique = TRUE);
+	BOOL AddOption (LPCTSTR lpszOption, BOOL bInsertUnique = TRUE, DWORD_PTR dwData = 0);
 	void RemoveAllOptions ();
 
 	int GetOptionCount () const;
 	LPCTSTR GetOption (int nIndex) const;
+	DWORD_PTR GetOptionData(int nIndex) const;
 
 	BOOL SelectOption(int nIndex);
 	int GetSelectedOption() const;
@@ -101,7 +103,7 @@ public:
 	virtual CBCGPProp* HitTest (CPoint point, CBCGPProp::ClickArea* pnArea = NULL);
 
 	void Expand (BOOL bExpand = TRUE);
-	void Redraw ();
+	void Redraw(BOOL bWithSubItems = FALSE);
 	void RedrawButton ();
 	void RedrawMenuButton ();
 	void RedrawState();
@@ -111,10 +113,22 @@ public:
 	virtual void ResetOriginalValue ();
 	virtual void CommitModifiedValue ();
 
-	void Show (BOOL bShow = TRUE, BOOL bAdjustLayout = TRUE);
+	virtual void Show (BOOL bShow = TRUE, BOOL bAdjustLayout = TRUE);
 
 	void SetState(LPCTSTR lpszToolTip, TCHAR cIndicator = _T('!'), COLORREF clrState = RGB(255, 0, 0), BOOL bDrawBorder = TRUE, int nStateWidth = 0 /* Default is a row height */);
 	void CleanState();
+
+	BOOL HasState() const
+	{
+		return m_bHasState;
+	}
+
+// IAccessible
+	virtual HRESULT get_accParent(IDispatch **ppdispParent);
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual BOOL SetACCData(CWnd* pParent, CBCGPAccessibilityData& data);
+	virtual LPCTSTR GetAccDefaultAction();
+	virtual BOOL OnAccDefaultAction();
 
 protected:
 	void Init ();
@@ -170,7 +184,11 @@ public:
 	virtual void OnClickMenuButton (CPoint point);
 	virtual void OnRClickMenuButton (CPoint /*point*/) {}
 
-	virtual void OnRClickValue (CPoint /*point*/, BOOL /*bSelChanged*/) {}
+	virtual void OnRClickValue (CPoint point, BOOL bSelChanged) 
+	{
+		UNREFERENCED_PARAMETER(point);
+		UNREFERENCED_PARAMETER(bSelChanged);
+	}
 
 	virtual void OnPosSizeChanged (CRect /*rectOld*/) {}
 
@@ -179,8 +197,6 @@ public:
 
 	virtual void AdjustButtonRect ();
 	virtual void AdjustInPlaceEditRect (CRect& rectEdit, CRect& rectSpin);
-
-	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
 
 	virtual BOOL NoInplaceEdit() const { return FALSE; }
 	virtual BOOL IsButtonVisible() const;
@@ -206,13 +222,21 @@ public:
 	virtual CBCGPProp* FindSubItemByData (DWORD_PTR dwData) const;
 	virtual CBCGPProp* FindSubItemByID (UINT nID) const;
 
+	virtual BOOL OnRotateListValue (BOOL bForward);
+
+	virtual int GetRowsNumber() const
+	{
+		return 1;
+	}
+
 protected:
 	virtual HBRUSH OnCtlColor(CDC* pDC, UINT nCtlColor);
 	virtual CComboBox* CreateCombo (CWnd* pWndParent, CRect rect);
 	virtual void OnDestroyWindow ();
 
-	virtual BOOL OnKillFocus (CWnd* /*pNewWnd*/)
+	virtual BOOL OnKillFocus (CWnd* pNewWnd)
 	{
+		UNREFERENCED_PARAMETER(pNewWnd);
 		return TRUE;
 	}
 
@@ -222,6 +246,8 @@ protected:
 	}
 
 	virtual BOOL HasButton () const;
+	virtual BOOL HasList () const;
+	virtual BOOL HasSpin () const;
 
 	virtual BOOL IsProcessFirstClick () const
 	{
@@ -237,7 +263,6 @@ protected:
 	virtual BOOL IsValueChanged () const;
 
 	virtual BOOL OnActivateByTab ();
-	virtual BOOL OnRotateListValue (BOOL bForward);
 
 	virtual BOOL OnCommand (WPARAM /*wParam*/)
 	{
@@ -251,6 +276,8 @@ protected:
 	BOOL PasteInternal(BOOL bCheckOnly);
 
 	virtual void SetFilter(const CString& strFilter);
+
+	int GetHeight() const;
 
 // Attributes
 public:
@@ -320,7 +347,7 @@ public:
 	virtual BOOL IsSelected () const;
 	int GetHierarchyLevel () const;
 
-	void Enable (BOOL bEnable = TRUE);
+	void Enable (BOOL bEnable = TRUE, BOOL bIncludeSubItems = FALSE);
 	BOOL IsEnabled () const
 	{
 		return m_bEnabled;
@@ -335,6 +362,16 @@ public:
 	BOOL IsAllowEdit () const
 	{
 		return m_bAllowEdit;
+	}
+
+	void AllowCopy(BOOL bAllow = TRUE)
+	{
+		m_bAllowCopy = bAllow;
+	}
+	
+	BOOL IsAllowCopy() const
+	{
+		return m_bAllowCopy;
 	}
 
 	CRect GetRect () const
@@ -384,6 +421,15 @@ public:
 	COLORREF GetStateColor() const { return m_clrState; }
 	BOOL IsDrawStateColorBorder() const { return m_bDrawStateBorder; }
 
+	void SetValueTextColor(COLORREF clrValue, BOOL bRedraw =  TRUE);	// (COLORREF)-1 - default color
+	COLORREF GetValueTextColor() const { return m_clrTextValue; }
+
+	void ShowMenuButton(BOOL bShow, BOOL bRedraw = TRUE);
+	BOOL IsMenuButtonVisible() const
+	{
+		return m_bIsMenuButtonVisible;
+	}
+
 public:
 	// Data output formats
 	static CString	m_strFormatChar;
@@ -402,20 +448,21 @@ protected:
 	CString			m_strName;		// Property name
 	_variant_t		m_varValue;		// Property value
 	_variant_t		m_varValueOrig;	// Property original value
-	CBCGPPropList*	m_pWndList;		// Pointer to the PropertyList window
+	CBCGPPropList*	m_pWndList;		// Pointer to the property list window
 	DWORD_PTR		m_dwData;		// User-defined data
 	CString			m_strDescr;		// Property description
 	CString			m_strEditMask;	// Property edit mask (see CBCGPMaskEdit for description)
 	CString			m_strEditTempl;	// Property edit template (see CBCGPMaskEdit for description)
 	CString			m_strValidChars;// Property edit valid chars (see CBCGPMaskEdit for description)
-	CString			m_strButtonText;// Purch button text (default - "...")
+	CString			m_strButtonText;// Push button text (default - "...")
 
 	CStringList		m_lstOptions;	// List of combobox items
+	CList<DWORD_PTR, DWORD_PTR>	m_lstOptionsData;	// Combobox options data
 
-	BOOL			m_bInPlaceEdit;	// Is in InPalce editing mode
+	BOOL			m_bInPlaceEdit;	// Is in InPlace editing mode
 
 	CWnd*			m_pWndInPlace;	// Pointer to InPlace editing window
-	CComboBox*		m_pWndCombo;	// Pointer to combbox
+	CComboBox*		m_pWndCombo;	// Pointer to combobox
 	CSpinButtonCtrl*	m_pWndSpin;		// Pointer to spin button
 
 	CRect			m_Rect;			// Property rectangle (in the prop.list coordinates)
@@ -428,16 +475,21 @@ protected:
 	
 	BOOL			m_bGroup;		// Is property group?
 	BOOL			m_bExpanded;	// Is property expanded (for groups only)
-	BOOL			m_bEnabled;		// Is propperty enabled?
+	BOOL			m_bEnabled;		// Is property enabled?
 	BOOL			m_bAllowEdit;	// Is property editable?
+	BOOL			m_bAllowCopy;	// Is copy to clipboard available?
 	BOOL			m_bIsValueList;	// This is a value list group?
+	BOOL			m_bGroupHasValue;// Is group has value?
 	DWORD			m_dwFlags;		// Property flags
 
 	CBCGPProp*		m_pParent;		// Parent property (NULL for top-level properties)
-	CList<CBCGPProp*, CBCGPProp*>	m_lstSubItems;	// Sub-properies list
+	CList<CBCGPProp*, CBCGPProp*>	m_lstSubItems;	// Sub-properties list
+
+	BOOL			m_bChildNotify;
 
 	BOOL			m_bNameIsTrancated;
 	BOOL			m_bValueIsTrancated;
+	BOOL			m_bDescriptionTruncated;
 
 	int				m_nMinValue;
 	int				m_nMaxValue;
@@ -455,8 +507,12 @@ protected:
 	COLORREF		m_clrState;			// State indicator color (red by default)
 	BOOL			m_bDrawStateBorder;	// TRUE if draw border around edit box; FALSE - otherwise
 
+	COLORREF		m_clrTextValue;		// Custom text color
+
 	int				m_nDropDownWidth;
 	BOOL			m_bDrawMenuButton;
+
+	BOOL			m_bIsMenuButtonVisible;
 
 	static CLIPFORMAT	m_cFormat;
 };
@@ -488,6 +544,11 @@ public:
 	virtual BOOL OnUpdateValue ();
 	virtual CString FormatProperty ();
 	virtual BOOL ParseValue(const CString& str);
+	virtual BOOL SerializeValue(CString& str);
+	virtual BOOL IsEditAvailable()
+	{
+		return IsEnabled();
+	}
 
 protected:
 	virtual BOOL OnKillFocus (CWnd* pNewWnd)
@@ -511,7 +572,7 @@ protected:
 
 	virtual BOOL IsCopyAvailable() const
 	{
-		return TRUE;
+		return IsAllowCopy();
 	}
 
 // Attributes
@@ -534,7 +595,7 @@ protected:
 	COLORREF					m_Color;			// Color value
 	COLORREF					m_ColorOrig;		// Original color value
 	COLORREF					m_ColorAutomatic;	// Automatic (default) color value
-	CString						m_strAutoColor;		// Atomatic color label
+	CString						m_strAutoColor;		// Automatic color label
 	BOOL						m_bStdColorDlg;		// Use standard Windows color dialog
 	CString						m_strOtherColor;	// Alternative color label
 	CColorPopup*				m_pPopup;
@@ -584,7 +645,7 @@ protected:
 
 	virtual BOOL IsCopyAvailable() const
 	{
-		return TRUE;
+		return IsAllowCopy();
 	}
 
 	virtual BOOL SerializeValue(CString& str);
@@ -650,7 +711,7 @@ protected:
 
 	virtual BOOL IsCopyAvailable() const
 	{
-		return TRUE;
+		return IsAllowCopy();
 	}
 
 	virtual BOOL SerializeValue(CString& str);
@@ -721,9 +782,11 @@ class BCGCBPRODLLEXPORT CBCGPFileProp : public CBCGPProp
 
 // Construction
 public:
-	CBCGPFileProp(const CString& strName, const CString& strFolderName, DWORD_PTR dwData = 0, LPCTSTR lpszDescr = NULL);
+	CBCGPFileProp(const CString& strName, const CString& strFolderName, 
+		DWORD_PTR dwData = 0, LPCTSTR lpszDescr = NULL, UINT ulFlags = BIF_RETURNONLYFSDIRS);
 
-	CBCGPFileProp(const CString& strName, UINT nID, const CString& strFolderName, DWORD_PTR dwData = 0, LPCTSTR lpszDescr = NULL);
+	CBCGPFileProp(const CString& strName, UINT nID, const CString& strFolderName, 
+				DWORD_PTR dwData = 0, LPCTSTR lpszDescr = NULL, UINT ulFlags = BIF_RETURNONLYFSDIRS);
 
 	CBCGPFileProp(const CString& strName, BOOL bOpenFileDialog, const CString& strFileName, 
 				LPCTSTR lpszDefExt = NULL,
@@ -748,12 +811,14 @@ protected:
 
 	BOOL m_bIsFolder;
 
-	// File open dialog atributes:
+	// File open dialog attributes:
 	BOOL	m_bOpenFileDialog;	// TRUE - use "File Open/Save" diaog; otherwise - folder selection dialog
 
 	DWORD	m_dwFileOpenFlags;
 	CString	m_strDefExt;
 	CString m_strFilter;
+
+	UINT	m_nFolderBrowseFlags;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -818,6 +883,23 @@ protected:
 };
 
 /////////////////////////////////////////////////////////////////////////////
+// CBCGPDateTimePropAttributes data structure
+
+struct BCGCBPRODLLEXPORT CBCGPDateTimePropAttributes
+{
+	CBCGPDateTimePropAttributes();
+
+	int				m_monthFormat;			// 0 - short, 1 - long, 2 - numeric
+	int				m_dateFormat;			// -1 - system, 0 - Month-Day-Year, 1 - Day-Month-Year, 2 - Year-Month-Day
+	COleDateTime	m_MinDate;
+	COleDateTime	m_MaxDate;
+	BOOL			m_type2DigitsInYear;
+	long			m_maxYear2Digits;
+	int				m_nFirstDayOfWeek;		// 0 - 6
+	int				m_nMaxWeekDayCharacters;
+};
+
+/////////////////////////////////////////////////////////////////////////////
 // CBCGPDateTimeProp object
 
 class BCGCBPRODLLEXPORT CBCGPDateTimeProp : public CBCGPProp
@@ -828,11 +910,13 @@ class BCGCBPRODLLEXPORT CBCGPDateTimeProp : public CBCGPProp
 public:
 	CBCGPDateTimeProp(const CString& strName, const COleDateTime& date, 
 		LPCTSTR lpszDescr = NULL, DWORD_PTR dwData = 0,
-		UINT nFlags = CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME);
+		UINT nFlags = CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME,
+		const CBCGPDateTimePropAttributes* pAttributes = NULL);
 
 	CBCGPDateTimeProp(const CString& strName, UINT nID, const COleDateTime& date, 
 		LPCTSTR lpszDescr = NULL, DWORD_PTR dwData = 0,
-		UINT nFlags = CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME);
+		UINT nFlags = CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME,
+		const CBCGPDateTimePropAttributes* pAttributes = NULL);
 
 	virtual ~CBCGPDateTimeProp();
 
@@ -861,7 +945,7 @@ public:
 
 	virtual BOOL IsCopyAvailable() const
 	{
-		return TRUE;
+		return IsAllowCopy();
 	}
 
 // Attributes
@@ -873,10 +957,59 @@ public:
 	}
 
 protected:
-	UINT				m_nFlags;
-	CBCGPDateTimeCtrl	m_wndDateTime;
+	UINT						m_nFlags;
+	CBCGPDateTimeCtrl			m_wndDateTime;
+	CBCGPDateTimePropAttributes	m_Attributes;
 
 	void SetCtrlState(CBCGPDateTimeCtrl& wnd);
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPBitwiseProp object
+
+class BCGCBPRODLLEXPORT CBCGPBitwiseProp  : public CBCGPProp
+{
+	DECLARE_DYNAMIC(CBCGPBitwiseProp)
+
+public:
+	CBCGPBitwiseProp(const CString& strName, const CStringArray& arFlagNames, ULONG ulFlags, DWORD_PTR dwData = 0, LPCTSTR lpszDescr = NULL, const CStringArray* parFlagDescriptions = NULL);
+	CBCGPBitwiseProp(const CString& strName, UINT nID, const CStringArray& arFlagNames, ULONG ulFlags, DWORD_PTR dwData = 0, LPCTSTR lpszDescr = NULL, const CStringArray* parFlagDescriptions = NULL);
+
+	virtual ~CBCGPBitwiseProp();
+
+	virtual void SetValue (const _variant_t& varValue);
+	void Rebuild(const CStringArray& arFlagNames, ULONG ulFlags, const CStringArray* parFlagDescriptions = NULL);
+
+protected:
+	virtual CString FormatProperty();
+	virtual BOOL SerializeValue(CString& str);
+	virtual BOOL ParseValue(const CString& str);
+	
+	virtual BOOL IsEditAvailable() { return FALSE; }
+	virtual BOOL OnEdit (LPPOINT /*lptClick*/) { return FALSE; }
+	virtual BOOL NoInplaceEdit() const { return TRUE; }
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPMultilineEditProp object
+
+class BCGCBPRODLLEXPORT CBCGPMultilineEditProp : public CBCGPProp
+{
+	DECLARE_DYNAMIC(CBCGPMultilineEditProp)
+		
+public:
+	CBCGPMultilineEditProp(const CString& strName, const CString& strValue, int nRows, LPCTSTR lpszDescr = NULL, DWORD_PTR dwData = 0);
+	CBCGPMultilineEditProp(const CString& strName, UINT nID, const CString& strValue, int nRows, LPCTSTR lpszDescr = NULL, DWORD_PTR dwData = 0);
+	
+	virtual ~CBCGPMultilineEditProp();
+
+	virtual int GetRowsNumber() const
+	{
+		return m_nRows;
+	}
+
+protected:
+	int	m_nRows;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -899,6 +1032,7 @@ class BCGCBPRODLLEXPORT CBCGPPropertiesToolBar : public CBCGPToolBar
 	CBCGPPropertiesToolBar(CBCGPToolBarImages& customImages) : m_CustomImages(customImages)
 	{
 		m_nDefaultButtons = 0;
+		m_bIsLocal = customImages.GetCount() == 0;
 	}
 
 	virtual void OnUpdateCmdUI(CFrameWnd* /*pTarget*/, BOOL bDisableIfNoHndler)	
@@ -924,7 +1058,8 @@ class BCGCBPRODLLEXPORT CBCGPPropertiesToolBar : public CBCGPToolBar
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPPropList window
 
-#define BCGPROPLIST_ID_INPLACE 3
+#define BCGPROPLIST_ID_INPLACE			3
+#define BCGPROPLIST_ID_INPLACE_COMBO	(SHRT_MAX - 1)
 
 BCGCBPRODLLEXPORT extern UINT BCGM_PROPERTY_CHANGED;
 BCGCBPRODLLEXPORT extern UINT BCGM_PROPERTY_COMMAND_CLICKED;
@@ -932,6 +1067,8 @@ BCGCBPRODLLEXPORT extern UINT BCGM_PROPERTY_MENU_ITEM_SELECTED;
 BCGCBPRODLLEXPORT extern UINT BCGM_PROPERTY_GET_MENU_ITEM_STATE;
 BCGCBPRODLLEXPORT extern UINT BCGM_PROPERTYLIST_SORTING_MODE_CHANGED;
 BCGCBPRODLLEXPORT extern UINT BCGM_PROPERTYLIST_LAYOUT_CHANGED;
+BCGCBPRODLLEXPORT extern UINT BCGM_PROPERTY_GROUP_CHANGING;
+BCGCBPRODLLEXPORT extern UINT BCGM_PROPERTY_GROUP_CHANGED;
 
 class BCGCBPRODLLEXPORT CBCGPPropList : public CBCGPWnd
 {
@@ -973,16 +1110,21 @@ public:
 	virtual void SetPropertiesFilter(LPCTSTR lpszFilter);
 	virtual BOOL IsPropertyMatchedToFilter(CBCGPProp* pProp, const CString& strFilter) const;
 
-	void EnableContextMenu(BOOL bEnable = TRUE, UINT nMenuFlags = BCGP_PROPLIST_MENU_ALL);
+	void EnableContextMenu(BOOL bEnable = TRUE, UINT nMenuFlags = BCGP_PROPLIST_MENU_ALL, BOOL bAllowCopyPasteGroups = FALSE);
 	BOOL IsContextMenuEnabled() const
 	{
 		return m_bContextMenu;
 	}
 
-	void EnableDescriptionArea (BOOL bEnable = TRUE);
+	void EnableDescriptionArea (BOOL bEnable = TRUE, BOOL bShowMoreIndicator = FALSE);
 	BOOL IsDescriptionArea () const
 	{
 		return m_bDescriptionArea;
+	}
+	
+	BOOL IsDescriptionShowMoreIndicator() const
+	{
+		return m_bDescriptionShowMoreIndicator;
 	}
 
 	int GetDescriptionHeight () const
@@ -1050,7 +1192,12 @@ public:
 	void SetCustomMenuItems(const CStringList& lstMenuItemNames);
 
 	void SetBoolLabels (LPCTSTR lpszTrue, LPCTSTR lpszFalse);
+	
 	void SetListDelimiter (TCHAR c);
+	TCHAR GetListDelimiter() const
+	{
+		return m_cListDelimeter;
+	}
 
 	CRect GetListRect () const
 	{
@@ -1180,6 +1327,13 @@ public:
 		return m_ScrollBarStyle;
 	}
 
+	void EnableVerticalScrollBar(BOOL bEnable = TRUE, BOOL bAdjustLayout = TRUE);
+
+	BOOL IsVerticalScrollBarEnabled() const
+	{
+		return m_bVerticalScrollBarEnabled;
+	}
+
 	CBCGPGraphicsManager* GetGraphicsManager()
 	{
 		if (m_pGM == NULL)
@@ -1194,6 +1348,16 @@ public:
 		return m_pGM;
 	}
 
+	BOOL IsInternalDlgModal() const
+	{
+		return m_bIsInternalDlgModal;
+	}
+
+	void SetInternalDlgModal(BOOL bSet)
+	{
+		m_bIsInternalDlgModal = bSet;
+	}
+
 protected:
 	BOOL					m_bToolBar;				// Show embedded toolbar
 	CBCGPPropertiesToolBar	m_wndToolBar;			// Property list embedded toolbar
@@ -1205,7 +1369,7 @@ protected:
 	UINT					m_nCustomToolbarBitmapID;
 	BOOL					m_bNeedToUpdate;
 	
-	BOOL					m_bFilterBox;	// Show serach box
+	BOOL					m_bFilterBox;	// Show search box
 	CBCGPEdit				m_wndFilter;	// Search box
 	CString					m_strFilterPrompt;
 
@@ -1213,12 +1377,15 @@ protected:
 	BOOL		m_bHeaderCtrl;			// Is header control visible?
 
 	BOOL		m_bDescriptionArea;		// Does description area enabled?
+	BOOL		m_bDescriptionShowMoreIndicator;
 	int			m_nDescrHeight;			// Description area height
 	int			m_nDescrRows;			// Number of rows in description area
+	CRect		m_rectDescr;			// Description area
 
 	BOOL		m_bContextMenu;			// Is advanced context menu enabled?
 
 	UINT		m_nItemMenuFlags;		// Item menu flags (0 - don't show the menu)
+	BOOL		m_bAllowCopyPasteGroups;
 	CStringList	m_lstCustomMenuItems;	// List of custom menu items
 
 	CStringList	m_lstCommands;			// List of command names
@@ -1240,9 +1407,10 @@ protected:
 	CString		m_strTrue;				// Customized boolean value (e.g. "Yes")
 	CString		m_strFalse;				// Customized boolean value (e.g. "No")
 
-	TCHAR		m_cListDelimeter;		// Customized list delimeter character
+	TCHAR		m_cListDelimeter;		// Customized list delimiter character
 
-	CBCGPScrollBar	m_wndScrollVert;		// Vertical scroll bar
+	CBCGPScrollBar	m_wndScrollVert;	// Vertical scroll bar
+	BOOL		m_bVerticalScrollBarEnabled;
 	CBCGPScrollBar::BCGPSB_STYLE 
 				m_ScrollBarStyle;		// Scroll bars style
 
@@ -1250,12 +1418,14 @@ protected:
 	CFont		m_fontBold;				// Property list bold font
 	int			m_nEditLeftMargin;		// Edit control left margin
 	int			m_nBoldEditLeftMargin;	// Edit control left margin (bold font)
+	int			m_nEditTopMargin;		// Edit control top margin
+	int			m_nBoldEditTopMargin;	// Edit control top margin (bold font)
 
 	int			m_nBorderSize;			// Control border size
 
 	int			m_nToolbarHeight;		// Toolbar height
 	int			m_nHeaderHeight;		// Header control height
-	CRect		m_rectList;				// Properies area
+	CRect		m_rectList;				// Properties area
 	int			m_nRowHeight;			// Height of the single row
 	int			m_nLeftColumnWidth;		// Width of the left ("Name") column
 
@@ -1286,12 +1456,13 @@ protected:
 	CBCGPProp*	m_pTracked;				// Currently tracked item
 	
 	BOOL		m_bFocused;				// Control has focus
+	BOOL		m_bIsInternalDlgModal;		// Is internal dialog (such as Font or Brush) displayed now.
 
 	COLORREF	m_clrGray;				// Special gray color
 
 	BOOL		m_bControlBarColors;	// Use colors of the parent control bar
 	BOOL		m_bGroupNameFullWidth;	// Display group name in the whole row
-	BOOL		m_bShowDragContext;		// Show context while dragging spliters
+	BOOL		m_bShowDragContext;		// Show context while dragging splitters
 
 	CString		m_strFilter;
 	BOOL		m_bOutOfFilter;
@@ -1357,7 +1528,7 @@ public:
 	COleDateTime GetDateTimePropertyValue(UINT nID) const;
 	const LOGFONT* GetFontPropertyValue(UINT nID) const;
 
-	BOOL EnableProperty(UINT nID, BOOL bEnable = TRUE);
+	BOOL EnableProperty(UINT nID, BOOL bEnable = TRUE, BOOL bIncludeSubItems = FALSE);
 	BOOL SelectPropertyOption(UINT nID, int nIndex);
 
 	void RedrawProperty(UINT nID);
@@ -1387,13 +1558,19 @@ public:
 	//}}AFX_VIRTUAL
 
 public:
-	virtual void OnChangeSelection (CBCGPProp* /*pNewSel*/, CBCGPProp* /*pOldSel*/) {}
+	virtual void OnChangeSelection (CBCGPProp* pNewSel, CBCGPProp* pOldSel) 
+	{
+		UNREFERENCED_PARAMETER(pNewSel);
+		UNREFERENCED_PARAMETER(pOldSel);
+	}
 
 	virtual BOOL EditItem (CBCGPProp* pProp, LPPOINT lptClick = NULL);
 	virtual void OnClickButton (CPoint point);
 	virtual BOOL EndEditItem (BOOL bUpdateData = TRUE);
-	virtual BOOL ValidateItemData (CBCGPProp* /*pProp*/)
+
+	virtual BOOL ValidateItemData (CBCGPProp* pProp)
 	{
+		UNREFERENCED_PARAMETER(pProp);
 		return TRUE;
 	}
 
@@ -1401,9 +1578,7 @@ public:
 	
 	virtual void InitToolBar();
 	virtual void InitHeader();
-
-	virtual BOOL OnSetAccData (long lVal);
-
+	
 protected:
 	virtual void OnDraw(CDC* pDC);
 	virtual void Init ();
@@ -1423,8 +1598,13 @@ protected:
 	virtual int CompareProps (const CBCGPProp* pProp1, const CBCGPProp* pProp2) const;
 
 	virtual void NotifyAccessibility (CBCGPProp* pProp);
-
+	
+	virtual UINT GetToolBarResourceID(BOOL bHot);
 	virtual void SetupToolbarCustomButtons();
+
+	virtual void OnPropertyGroupChanged(CBCGPProp* pProp, BOOL bNotify) const;
+
+	virtual void OnChangeVisualMode();
 
 // Implementation
 public:
@@ -1434,8 +1614,13 @@ public:
 	// Accessibility support:
 	//----------------------
 	CBCGPProp* m_pAccProp;
+	long       m_nAccFirstPropertyOffset;
 
 // IAccessible
+protected:
+	long FindAccPropIndex(CBCGPProp* pParentProp, CBCGPProp* pTargetProp,  long& index);
+	CBCGPProp* FindPropByIndex(CBCGPProp* prop, int& lCurrIndex, long lVal);
+
 public:
 	virtual HRESULT get_accChildCount(long *pcountChildren);
 	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
@@ -1450,10 +1635,18 @@ public:
 	virtual HRESULT get_accFocus(VARIANT *pvarChild);
 	virtual HRESULT get_accSelection(VARIANT *pvarChildren);
 	virtual HRESULT get_accDefaultAction(VARIANT varChild, BSTR *pszDefaultAction);
+	virtual HRESULT accDoDefaultAction(VARIANT varChild);
+	virtual HRESULT accNavigate(long navDir, VARIANT varStart, VARIANT *pvarEndUpAt);
 
 	virtual HRESULT accSelect(long flagsSelect, VARIANT varChild);
 	virtual HRESULT accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild);
 	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
+
+	virtual BOOL OnSetAccData(long lVal);
+	LPDISPATCH GetAccessibleDispatch();
+	CBCGPProp* AccessiblePropByIndex(long lVal);
+	long GetAccChildIndex(CBCGPProp* pTargetProp);
+	long FindAllPropertiesCount(CBCGPProp* prop = NULL);
 
 	// Generated message map functions
 protected:
@@ -1495,6 +1688,7 @@ protected:
 	afx_msg void OnCloseCombo();
 	afx_msg void OnEditKillFocus();
 	afx_msg void OnComboKillFocus();
+	afx_msg void OnButtonKillFocus();
 	afx_msg BOOL OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult);
 	afx_msg LRESULT OnGetObject (WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnPrintClient(WPARAM wp, LPARAM lp);
@@ -1505,10 +1699,11 @@ protected:
 	afx_msg void OnToolbarAlphabetical();
 	afx_msg void OnUpdateToolbarAlphabetical(CCmdUI* pCmdUI);
 	afx_msg void OnFilter();
+	afx_msg LRESULT OnBCGSetControlVMMode(WPARAM wp, LPARAM lp);
 	DECLARE_MESSAGE_MAP()
 
 	//------------------
-	// Internal helpres:
+	// Internal helpers:
 	//------------------
 	HFONT SetCurrFont (CDC* pDC);
 	void TrackHeader (int nOffset);
@@ -1518,7 +1713,7 @@ protected:
 
 	void SetScrollSizes ();
 
-	int GetTotalItems (BOOL bIncludeHidden = TRUE) const;
+	int GetTotalItems (BOOL bIncludeHidden = TRUE, BOOL bCalcRows = FALSE) const;
 	void ReposProperties ();
 
 	void CreateBoldFont ();

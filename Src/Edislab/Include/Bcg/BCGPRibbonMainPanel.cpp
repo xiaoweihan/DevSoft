@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -80,7 +80,9 @@ protected:
 		CRect rectText = m_rect;
 		rectText.DeflateRect (LABEL_MARGIN_X, 0);
 
-		CFont* pOldFont = pDC->SelectObject (&globalData.fontBold);;
+		CBCGPRibbonBar* pTopLevelRibbon = GetTopLevelRibbonBar();
+
+		CFont* pOldFont = pDC->SelectObject((pTopLevelRibbon->GetSafeHwnd() != NULL) ? pTopLevelRibbon->GetBoldFont() : &globalData.fontBold);
 		ASSERT_VALID (pOldFont);
 
 		DoDrawText (pDC, m_strText, rectText, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
@@ -266,9 +268,25 @@ protected:
 			return CBCGPRibbonButton::NotifyCommand(bWithDelay);
 		}
 
-		AfxGetApp()->OpenDocumentFile(GetToolTip());
+		CString strFilePath = GetToolTip();
+
+		if (bWithDelay)
+		{
+			CBCGPRibbonBar* pTopLevelRibbon = GetTopLevelRibbonBar();
+			if (pTopLevelRibbon != NULL)
+			{
+				ASSERT_VALID(pTopLevelRibbon);
+				pTopLevelRibbon->DoOpenPinnedFile(strFilePath);
+
+				return TRUE;
+			}
+		}
+
+		AfxGetApp()->OpenDocumentFile(strFilePath);
 		return TRUE;
 	}
+
+	virtual BOOL QueryElements(const CStringArray& /*arWords*/, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& /*arButtons*/, int /*nMaxResults*/, BOOL /*bDescription*/, BOOL /*bAll*/) { return FALSE; }
 
 	BOOL	m_bHasPin;
 	BOOL	m_bIsPinned;
@@ -400,15 +418,6 @@ CSize CBCGPRibbonRecentFilesList::GetRegularSize (CDC* pDC)
 		cy);
 }
 
-//-----------------------------------------------------
-// My "classic " trick - how I can access to protected
-// member m_pRecentFileList?
-//-----------------------------------------------------
-class CBCGPApp : public CWinApp
-{
-	friend class CBCGPRibbonRecentFilesList;
-};
-
 static CString PrepareDisplayName(int nIndex, const CString & strName)
 {
 	CString strOut;
@@ -489,41 +498,35 @@ void CBCGPRibbonRecentFilesList::FillList ()
 	//---------------
 	// Add MRU items:
 	//---------------
-	CRecentFileList* pMRUFiles = 
-		((CBCGPApp*) AfxGetApp ())->m_pRecentFileList;
-
-	if (pMRUFiles != NULL)
+	for (int i = 0; i < CBCGPWinApp::_GetRecentFilesCount(); i++)
 	{
-		for (int i = 0; i < pMRUFiles->GetSize (); i++)
+		CString strName;
+		if (CBCGPWinApp::_GetRecentFileDisplayName(strName, i, szCurDir, nCurDir))
 		{
-			CString strName;
-			if (pMRUFiles->GetDisplayName (strName, i, szCurDir, nCurDir))
+			CString strPath = CBCGPWinApp::_GetRecentFilePath(i);
+			BOOL bAlreadyExist = FALSE;
+
+			for (int j = 0; j < m_arButtons.GetSize(); j++)
 			{
-				CString strPath = (*pMRUFiles)[i];
-				BOOL bAlreadyExist = FALSE;
-
-				for (int j = 0; j < m_arButtons.GetSize(); j++)
+				if (strPath.CompareNoCase(m_arButtons[j]->GetToolTip()) == 0)
 				{
-					if (strPath.CompareNoCase(m_arButtons[j]->GetToolTip()) == 0)
-					{
-						bAlreadyExist = TRUE;
-						break;
-					}
+					bAlreadyExist = TRUE;
+					break;
 				}
+			}
 
-				if (!bAlreadyExist)
-				{
-					CBCGPRecentFileButton* pFile = new CBCGPRecentFileButton;
-					
-					pFile->SetText (PrepareDisplayName(iNumOfFiles, strName));
-					pFile->SetID (ID_FILE_MRU_FILE1 + i);
-					pFile->SetToolTipText (strPath);
-					pFile->m_bHasPin = m_bShowPins;
+			if (!bAlreadyExist)
+			{
+				CBCGPRecentFileButton* pFile = new CBCGPRecentFileButton;
+				
+				pFile->SetText (PrepareDisplayName(iNumOfFiles, strName));
+				pFile->SetID (ID_FILE_MRU_FILE1 + i);
+				pFile->SetToolTipText (strPath);
+				pFile->m_bHasPin = m_bShowPins;
 
-					AddButton (pFile);
+				AddButton (pFile);
 
-					iNumOfFiles++;
-				}
+				iNumOfFiles++;
 			}
 		}
 	}
@@ -827,8 +830,7 @@ void CBCGPRibbonMainPanel::Repos (CDC* pDC, const CRect& rect)
 		
 		CSize sizeRecentList = m_pElemOnRight->GetSize (pDC);
 
-		int nDefaultWidth =
-			globalData.GetRibbonImageScale () == 1. ? m_nRightPaneWidth : (int) (globalData.GetRibbonImageScale () *  m_nRightPaneWidth);
+		int nDefaultWidth = globalUtils.ScaleByDPI(m_nRightPaneWidth);
 
 		sizeRecentList.cx = max (sizeRecentList.cx, nDefaultWidth);
 
@@ -859,12 +861,14 @@ void CBCGPRibbonMainPanel::Repos (CDC* pDC, const CRect& rect)
 	//---------------------------------
 	if (m_nBottomElementsNum > 0 && !m_bSearchMode)
 	{
-		int x = rect.left + m_nFullWidth - m_nXMargin;
+		const int nXMargin = max(m_nXMargin, 2);
+
+		int x = rect.left + m_nFullWidth - nXMargin;
 		int nRowHeight = 0;
 
 		y = m_rectMenuElements.bottom + m_nYMargin;
 
-		int xLeft = rect.left + m_nXMargin;
+		int xLeft = rect.left + nXMargin;
 
 		if (m_pSearchBox != NULL)
 		{
@@ -913,10 +917,10 @@ void CBCGPRibbonMainPanel::Repos (CDC* pDC, const CRect& rect)
 
 			if (x - sizeElem.cx < xLeft)
 			{
-				x = rect.left + m_nFullWidth - m_nXMargin;
+				x = rect.left + m_nFullWidth - nXMargin;
 				y += nRowHeight; 
 				nRowHeight = 0;
-				xLeft = rect.left + m_nXMargin;
+				xLeft = rect.left + nXMargin;
 			}
 
 			CRect rectElem = CRect (CPoint (x - sizeElem.cx, y), sizeElem);
@@ -1409,7 +1413,10 @@ void CBCGPRibbonMainPanel::OnSearch (const CString& str)
 
 		for (int i = 0; i < arSearchResults.GetSize (); i++)
 		{
-			if (!pRibbonBar->OnFilterSearchResult(arSearchResults[i]))
+			CBCGPBaseRibbonElement* pResElement = arSearchResults[i];
+			ASSERT_VALID(pResElement);
+
+			if (pResElement->IsHiddenInAppMode() || !pRibbonBar->OnFilterSearchResult(pResElement))
 			{
 				continue;
 			}
@@ -1424,9 +1431,9 @@ void CBCGPRibbonMainPanel::OnSearch (const CString& str)
 					CBCGPRibbonCmdUI state;
 					state.m_pOther = m_pParentMenuBar;
 
-					arSearchResults[i]->OnUpdateCmdUI(&state, pTarget, TRUE);
+					pResElement->OnUpdateCmdUI(&state, pTarget, TRUE);
 					
-					if (arSearchResults[i]->IsDisabled())
+					if (pResElement->IsDisabled())
 					{
 						continue;
 					}
@@ -1434,13 +1441,13 @@ void CBCGPRibbonMainPanel::OnSearch (const CString& str)
 			}
 
 			CBCGPBaseRibbonElement* pElement = (CBCGPBaseRibbonElement*)
-				arSearchResults [i]->GetRuntimeClass()->CreateObject ();
+				pResElement->GetRuntimeClass()->CreateObject ();
 			ASSERT_VALID(pElement);
 
 			pElement->m_bSearchResultMode = TRUE;
-			pElement->CopyFrom (*arSearchResults [i]);
+			pElement->CopyFrom (*pResElement);
 			pElement->SetParentMenu (DYNAMIC_DOWNCAST (CBCGPRibbonPanelMenuBar, GetParentWnd ()));
-			pElement->m_pOriginal = arSearchResults [i];
+			pElement->m_pOriginal = pResElement;
 
 			if (pElement->m_strText.IsEmpty ())
 			{
@@ -1460,7 +1467,7 @@ void CBCGPRibbonMainPanel::OnSearch (const CString& str)
 
 	CClientDC dc (pRibbonBar);
 
-	CFont* pOldFont = dc.SelectObject (pRibbonBar->GetFont ());
+	CFont* pOldFont = dc.SelectObject (IsBackstageView() ? pRibbonBar->GetBackstageViewItemFont() : pRibbonBar->GetFont());
 	ASSERT (pOldFont != NULL);
 
 	m_bReposAfterSearch = TRUE;

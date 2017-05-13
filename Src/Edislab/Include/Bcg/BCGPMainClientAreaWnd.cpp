@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,11 +29,18 @@
 #include "BCGPRegistry.h"
 #include "BCGPLocalResource.h"
 #include "bcgprores.h"
+#include "BCGPDrawManager.h"
 
 extern CBCGPWorkspace* g_pWorkspace;
+static HWND g_MDIChildDragWnd = NULL;
+static HWND g_hwdTopMDIClientArea = NULL;
 
-#define REG_SECTION_FMT						_T("%sMDIClientArea-%d")
-#define REG_ENTRY_MDITABS_STATE				_T ("MDITabsState")
+CString CBCGPMainClientAreaWnd::m_strRegSectionFmt = _T("%sMDIClientArea-%d");
+
+#define REG_ENTRY_MDITABS_STATE			_T ("MDITabsState")
+#define REG_ENTRY_MDI_FRAME_RECT		_T("MDIFrameRect")
+#define REG_ENTRY_MDI_FRAME_FLAGS		_T("MDIFrameFlags")
+#define REG_ENTRY_MDI_FRAME_SHOW_CMD	_T("MDIFrameShowCmd")
 
 static const CString strMDIClientAreaProfile	= _T("MDIClientArea");
 
@@ -50,6 +57,402 @@ IMPLEMENT_DYNAMIC(CBCGPMainClientAreaWnd, CWnd)
 #define UM_UPDATE_TABS		(WM_USER + 101)
 #define RESIZE_MARGIN		40
 #define NEW_GROUP_MARGIN	40
+
+class CBCGPDragRectWnd : public CWnd
+{
+public:
+	CBCGPDragRectWnd()
+	{
+	}
+	
+	BOOL Create(const CRect& rect, CWnd* pWndOwner)
+	{
+		CString strClassName = globalData.RegisterWindowClass (_T("BCGPTrackingWnd"));
+		
+		DWORD dwExStyle = WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+		if (globalData.IsWindowsLayerSupportAvailable())
+		{
+			dwExStyle |= WS_EX_LAYERED;
+		}
+
+		if (!CWnd::CreateEx(dwExStyle, strClassName,  _T (""), WS_POPUP | MFS_SYNCACTIVE,  rect, pWndOwner == NULL ? AfxGetMainWnd() : pWndOwner, 0))
+		{
+			return FALSE;
+		}
+		
+		if (globalData.IsWindowsLayerSupportAvailable())
+		{
+			globalData.SetLayeredAttrib(GetSafeHwnd (), 0, 127, LWA_ALPHA);
+		}
+
+		if (pWndOwner != NULL)
+		{
+			SetOwner(pWndOwner);
+		}
+		
+		ShowWindow(SW_SHOWNOACTIVATE);
+		return TRUE;
+	}
+
+	// Generated message map functions
+protected:
+	//{{AFX_MSG(CBCGPDragRectWnd)
+	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
+	afx_msg void OnPaint();
+	//}}AFX_MSG
+	DECLARE_MESSAGE_MAP()
+
+	virtual void PostNcDestroy();
+};
+
+BEGIN_MESSAGE_MAP(CBCGPDragRectWnd, CWnd)
+//{{AFX_MSG_MAP(CBCGPDragRectWnd)
+	ON_WM_ERASEBKGND()
+	ON_WM_PAINT()
+//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+BOOL CBCGPDragRectWnd::OnEraseBkgnd(CDC* /*pDC*/) 
+{
+	return TRUE;
+}
+//*******************************************************************************
+void CBCGPDragRectWnd::OnPaint() 
+{
+	CPaintDC dc(this); // device context for painting
+	
+	CRect rect;
+	GetClientRect(&rect);
+	
+	COLORREF colorFill = RGB(47, 103, 190);
+	
+    if (globalData.IsWindowsLayerSupportAvailable () && globalData.m_nBitsPerPixel > 8)
+    {
+        CBrush brFill (CBCGPDrawManager::PixelAlpha (colorFill, 105));
+		dc.FillRect (rect, &brFill);
+    }
+    else
+    {
+		CBrush brFill (CBCGPDrawManager::PixelAlpha (RGB (
+			255 - GetRValue (colorFill), 
+			255 - GetGValue (colorFill), 
+			255 - GetBValue (colorFill)), 
+			50));
+		
+		CBrush* pBrushOld = dc.SelectObject (&brFill);
+		dc.PatBlt (0, 0, rect.Width (), rect.Height (), PATINVERT);
+		dc.SelectObject (pBrushOld);
+    }
+}
+//*******************************************************************************
+void CBCGPDragRectWnd::PostNcDestroy()
+{
+	CWnd::PostNcDestroy();
+	delete this;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPMDIChildDragWnd window
+
+class CBCGPMDIChildDragWnd : public CWnd
+{
+	// Construction
+public:
+	CBCGPMDIChildDragWnd(HWND hwnMainArea);
+	
+	// Attributes
+public:
+	CList<CBCGPMDIChildWnd*, CBCGPMDIChildWnd*>	m_lstMDIChild;
+	HWND										m_hwnMainArea;
+	HWND										m_hwndDropMDIFrame;
+	CBitmap										m_bmpScreenShot;
+	CBCGPTabWnd*								m_pWndTab;
+	
+	// Operations
+public:
+	void MoveToCursor();
+	
+	// Overrides
+	// ClassWizard generated virtual function overrides
+	//{{AFX_VIRTUAL(CBCGPMDIChildDragWnd)
+public:
+	virtual BOOL Create(CList<CBCGPMDIChildWnd*, CBCGPMDIChildWnd*>* plstMDIChild, CBCGPTabWnd* pTabWnd);
+
+protected:
+	virtual void PostNcDestroy();
+	//}}AFX_VIRTUAL
+	
+	// Implementation
+public:
+	virtual ~CBCGPMDIChildDragWnd();
+	
+	// Generated message map functions
+protected:
+	//{{AFX_MSG(CBCGPMDIChildDragWnd)
+	afx_msg void OnPaint();
+	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
+	//}}AFX_MSG
+	DECLARE_MESSAGE_MAP()
+};
+
+CBCGPMDIChildDragWnd::CBCGPMDIChildDragWnd(HWND hwnMainArea)
+{
+	m_hwnMainArea = hwnMainArea;
+	m_hwndDropMDIFrame = NULL;
+	m_pWndTab = NULL;
+}
+
+CBCGPMDIChildDragWnd::~CBCGPMDIChildDragWnd()
+{
+	if (m_hwndDropMDIFrame != NULL && ::IsWindow(m_hwndDropMDIFrame))
+	{
+		CBCGPMDIFrameWnd* pDropMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, CWnd::FromHandlePermanent(m_hwndDropMDIFrame));
+		if (pDropMDIFrame != NULL)
+		{
+			ASSERT_VALID(pDropMDIFrame);
+			pDropMDIFrame->m_wndClientArea.DrawNewGroupRect(NULL);
+		}
+	}
+}
+
+BEGIN_MESSAGE_MAP(CBCGPMDIChildDragWnd, CWnd)
+	//{{AFX_MSG_MAP(CBCGPMDIChildDragWnd)
+	ON_WM_PAINT()
+	ON_WM_ERASEBKGND()
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPMDIChildDragWnd message handlers
+
+BOOL CBCGPMDIChildDragWnd::Create(CList<CBCGPMDIChildWnd*, CBCGPMDIChildWnd*>* plstMDIChild, CBCGPTabWnd* pTabWnd)
+{
+	ASSERT_VALID(pTabWnd);
+
+	m_lstMDIChild.AddHead(plstMDIChild);
+	if (m_lstMDIChild.IsEmpty())
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+	CBCGPMDIChildWnd* pActiveMDIChildFrame = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, pTabWnd->GetActiveWnd());
+	if (pActiveMDIChildFrame == NULL)
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+	ASSERT_VALID(pActiveMDIChildFrame);
+
+	if (g_pWorkspace != NULL)
+	{
+		g_pWorkspace->CreateScreenshot(m_bmpScreenShot, pActiveMDIChildFrame);
+	}
+
+	m_pWndTab = pTabWnd;
+
+	CRect rect;
+	pActiveMDIChildFrame->GetClientRect(rect);
+	pActiveMDIChildFrame->ClientToScreen (&rect);
+
+	rect.bottom += m_pWndTab->GetTabsHeight();
+
+	CString strClassName = ::AfxRegisterWndClass (
+		CS_SAVEBITS,
+		::LoadCursor(NULL, IDC_ARROW),
+		(HBRUSH)(COLOR_BTNFACE + 1), NULL);
+
+	BOOL bRes = CreateEx (WS_EX_TOOLWINDOW | WS_EX_TOPMOST, strClassName, NULL, WS_POPUP | WS_DISABLED, rect, NULL, 0);
+
+	g_MDIChildDragWnd = GetSafeHwnd();
+	return bRes;
+}
+//*******************************************************************************
+void CBCGPMDIChildDragWnd::OnPaint() 
+{
+	CPaintDC dc(this); // device context for painting
+	
+	CRect rectClient;
+	GetClientRect (rectClient);
+
+	dc.FillRect (rectClient, &globalData.brBarFace);
+
+	int nTabsHeight = m_pWndTab->GetTabsHeight();
+	int xOffset = 0;
+	
+	for (POSITION pos = m_lstMDIChild.GetHeadPosition(); pos != NULL;)
+	{
+		CBCGPMDIChildWnd* pWndMDIChild = m_lstMDIChild.GetNext(pos);
+		ASSERT_VALID(pWndMDIChild);
+
+		int nTab = m_pWndTab->GetTabFromHwnd(pWndMDIChild->GetSafeHwnd());
+
+		if (nTab >= 0)
+		{
+			CRect rectTab;
+			m_pWndTab->GetTabRect(nTab, rectTab);
+
+			CPoint ptOffset = rectTab.TopLeft();
+			ptOffset.x -= 5 + xOffset;
+
+			if (m_pWndTab->GetLocation() == CBCGPBaseTabWnd::LOCATION_BOTTOM)
+			{
+				ptOffset.y -= rectClient.Height() - nTabsHeight - 2;
+			}
+			else
+			{
+				ptOffset.y -= 3;
+			}
+
+			CBCGPTabInfo* pTabInfo = (CBCGPTabInfo*) m_pWndTab->m_arTabs[nTab];
+			ASSERT_VALID(pTabInfo);
+
+			CRect rectCloseSaved = pTabInfo->m_rectClose;
+			if (!pTabInfo->m_rectClose.IsRectEmpty())
+			{
+				pTabInfo->m_rectClose.OffsetRect(-ptOffset);
+			}
+
+			rectTab.OffsetRect(-ptOffset);
+
+			CFont* pOldFont = NULL;
+			
+			if (m_pWndTab->m_bIsActiveTabBold && m_pWndTab->m_hFontCustom == NULL && !m_pWndTab->IsCaptionFont())
+			{
+				dc.SelectObject(&globalData.fontBold);
+			}
+			else
+			{
+				dc.SelectObject(m_pWndTab->GetTabFont());
+			}
+
+			dc.SetBkMode(TRANSPARENT);
+
+			COLORREF	clrDark;
+			COLORREF	clrBlack;
+			COLORREF	clrHighlight;
+			COLORREF	clrFace;
+			COLORREF	clrDarkShadow;
+			COLORREF	clrLight;
+			CBrush*		pbrFace = NULL;
+			CBrush*		pbrBlack = NULL;
+			
+			CBCGPVisualManager::GetInstance ()->GetTabFrameColors (
+				m_pWndTab, clrDark, clrBlack, clrHighlight, clrFace, clrDarkShadow, clrLight,
+				pbrFace, pbrBlack);
+
+			CBCGPPenSelector ps(dc, clrDark);
+
+			CBCGPVisualManager::GetInstance()->OnDrawTab(&dc, rectTab, nTab, TRUE, m_pWndTab);
+
+			dc.SelectObject(pOldFont);
+
+			pTabInfo->m_rectClose = rectCloseSaved;
+
+			xOffset += rectTab.Width();
+		}
+	}
+
+	if (m_bmpScreenShot.GetSafeHandle() != NULL)
+	{
+		CRect rectView = rectClient;
+
+		if (m_pWndTab->GetLocation() == CBCGPBaseTabWnd::LOCATION_TOP)
+		{
+			rectView.top += nTabsHeight;
+		}
+		else
+		{
+			rectView.bottom -= nTabsHeight;
+		}
+
+		dc.DrawState(rectView.TopLeft(), rectView.Size(), m_bmpScreenShot, DSS_NORMAL);
+	}
+
+	dc.Draw3dRect(rectClient, globalData.clrBarShadow, globalData.clrBarShadow);
+}
+//*******************************************************************************
+BOOL CBCGPMDIChildDragWnd::OnEraseBkgnd(CDC* /*pDC*/) 
+{
+	return TRUE;
+}
+//*******************************************************************************
+void CBCGPMDIChildDragWnd::PostNcDestroy() 
+{
+	g_MDIChildDragWnd = NULL;
+
+	CWnd::PostNcDestroy();
+	delete this;
+}
+//*******************************************************************************
+void CBCGPMDIChildDragWnd::MoveToCursor()
+{
+	CBCGPMDIChildWnd* pWndMDIChild = m_lstMDIChild.GetHead();
+	ASSERT_VALID(pWndMDIChild);
+
+	CRect rectWnd;
+	GetWindowRect (&rectWnd);
+
+	CPoint ptScreen;
+	GetCursorPos(&ptScreen);
+
+	CPoint ptOffset(rectWnd.Width() / 2, ::GetSystemMetrics(SM_CYCAPTION) / 2);
+
+	if (m_pWndTab->GetSafeHwnd() != NULL)
+	{
+		int nTab = m_pWndTab->GetTabFromHwnd(pWndMDIChild->GetSafeHwnd());
+		if (nTab >= 0)
+		{
+			CRect rectTab;
+			m_pWndTab->GetTabRect(nTab, rectTab);
+
+			ptOffset = CPoint(rectTab.Width() / 2, rectTab.Height() / 2);
+
+			if (m_pWndTab->GetLocation() == CBCGPBaseTabWnd::LOCATION_BOTTOM)
+			{
+				ptOffset.y += rectWnd.Height() - rectTab.Height();
+			}
+		}
+	}
+	
+	SetWindowPos(&wndTop,  ptScreen.x - ptOffset.x,  ptScreen.y - ptOffset.y,
+		-1, -1, SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+
+	ShowWindow(SW_SHOWNOACTIVATE);
+	m_hwndDropMDIFrame = NULL;
+
+	const CList<CFrameWnd*, CFrameWnd*>& lstFrames = CBCGPFrameImpl::GetFrameList();
+
+	for (POSITION pos = lstFrames.GetHeadPosition(); pos != NULL;)
+	{
+		CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, lstFrames.GetNext(pos));
+
+		if (pMDIFrame->GetSafeHwnd() != NULL && pMDIFrame->m_wndClientArea.GetSafeHwnd() != m_hwnMainArea)
+		{
+			CRect rectClientArea;
+			pMDIFrame->m_wndClientArea.GetWindowRect(rectClientArea);
+
+			if (rectClientArea.PtInRect(ptScreen))
+			{
+				if (m_hwndDropMDIFrame == NULL)
+				{
+					pMDIFrame->m_wndClientArea.OnDragForeignMDIChild(pWndMDIChild);
+					m_hwndDropMDIFrame = pMDIFrame->GetSafeHwnd();
+				}
+			}
+			else
+			{
+				pMDIFrame->m_wndClientArea.OnDragForeignMDIChild(NULL);
+			}
+		}
+	}
+
+	if (m_hwndDropMDIFrame == NULL)
+	{
+		::SetCursor (AfxGetApp ()->LoadStandardCursor (IDC_ARROW));
+	}
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMDITabParams
@@ -71,7 +474,9 @@ CBCGPMDITabParams::CBCGPMDITabParams ()
 	m_bReuseRemovedTabGroups= FALSE;
 	m_bActiveTabBoldFont	= TRUE;
 	m_bTabsCaptionFont		= FALSE;
+	m_bTabMultipleSelection	= FALSE;
 }
+
 void CBCGPMDITabParams::Serialize (CArchive& ar)
 {
 	if (ar.IsStoring ())
@@ -102,32 +507,53 @@ void CBCGPMDITabParams::Serialize (CArchive& ar)
 		ar >> m_nTabBorderSize;
 	}
 }
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMainClientAreaWnd
 
 CBCGPMainClientAreaWnd::CBCGPMainClientAreaWnd()
 {
-	m_bTabIsVisible		= FALSE;
-	m_bTabIsEnabled		= FALSE;
+	m_bTabIsVisible				= FALSE;
+	m_bTabIsEnabled				= FALSE;
 
-	m_bIsMDITabbedGroup	= FALSE;
-	m_groupAlignment	= GROUP_NO_ALIGN;
-	m_nResizeMargin		= RESIZE_MARGIN;
-	m_nNewGroupMargin	= NEW_GROUP_MARGIN;
+	m_bIsMDITabbedGroup			= FALSE;
+	m_groupAlignment			= GROUP_NO_ALIGN;
+	m_nResizeMargin				= RESIZE_MARGIN;
+	m_nNewGroupMargin			= NEW_GROUP_MARGIN;
 
-	m_bDisableUpdateTabs	= FALSE;
-	m_bInsideDragComplete	= FALSE;
+	m_bDisableUpdateTabs		= FALSE;
+	m_bInsideDragComplete		= FALSE;
 
 	m_rectNewTabGroup.SetRectEmpty ();
-	m_nTotalResizeRest	= 0;
+	m_nTotalResizeRest			= 0;
 
-	m_bActive			= FALSE;
+	m_bActive					= FALSE;
+	m_bLastActiveTab			= FALSE;
 
-	m_bLastActiveTab	= FALSE;
+	m_bEnableTearOffMDIChildren	= FALSE;
+	m_pWndMDIChildDrag			= NULL;
+	m_bDetachMDIChildrenOnly	= FALSE;
+
+	m_pDragRectWnd				= NULL;
+
+	m_ScrollHorz.SendPosBeforeEndThumb(FALSE);
+	m_ScrollVert.SendPosBeforeEndThumb(FALSE);
 }
 //*************************************************************************************
 CBCGPMainClientAreaWnd::~CBCGPMainClientAreaWnd()
 {
+	if (m_pWndMDIChildDrag != NULL)
+	{
+		m_pWndMDIChildDrag->DestroyWindow ();
+		m_pWndMDIChildDrag = NULL;
+	}
+
+	if (m_pDragRectWnd != NULL)
+	{
+		m_pDragRectWnd->DestroyWindow();
+		m_pDragRectWnd = NULL;
+	}
+
 	while (!m_lstTabbedGroups.IsEmpty ())
 	{
 		delete m_lstTabbedGroups.RemoveTail ();
@@ -146,10 +572,10 @@ CBCGPMainClientAreaWnd::~CBCGPMainClientAreaWnd()
 	{
 		for (POSITION pos = m_mapTabIcons.GetStartPosition(); pos != NULL;)
 		{
-			CWnd* pWnd = NULL;
+			UINT_PTR hWnd = NULL;
 			CImageList* pImageList = NULL;
 
-			m_mapTabIcons.GetNextAssoc(pos, pWnd, pImageList);
+			m_mapTabIcons.GetNextAssoc(pos, hWnd, pImageList);
 			if (pImageList != NULL)
 			{
 				delete pImageList;
@@ -180,14 +606,14 @@ void CBCGPMainClientAreaWnd::EnableMDITabs (BOOL bEnable,
 		UpdateTabs ();
 		if (!IsKeepClientEdge ())
 		{
-			ModifyStyleEx (WS_EX_CLIENTEDGE, 0);
+			ModifyStyleEx (WS_EX_CLIENTEDGE, 0, SWP_FRAMECHANGED);
 		}
 	}
 	else
 	{
 		if (!IsKeepClientEdge ())
 		{
-			ModifyStyleEx (0, WS_EX_CLIENTEDGE);
+			ModifyStyleEx (0, WS_EX_CLIENTEDGE, SWP_FRAMECHANGED);
 		}
 	}
 
@@ -255,7 +681,7 @@ void CBCGPMainClientAreaWnd::EnableMDITabbedGroups (BOOL bEnable, const CBCGPMDI
 	{
 		if (!IsKeepClientEdge ())
 		{
-			ModifyStyleEx (0, WS_EX_CLIENTEDGE);
+			ModifyStyleEx (0, WS_EX_CLIENTEDGE, SWP_FRAMECHANGED);
 		}
 
 		if (globalData.bIsWindowsVista)
@@ -297,7 +723,7 @@ void CBCGPMainClientAreaWnd::EnableMDITabbedGroups (BOOL bEnable, const CBCGPMDI
 
 	if (!IsKeepClientEdge ())
 	{
-		ModifyStyleEx (WS_EX_CLIENTEDGE, 0);
+		ModifyStyleEx (WS_EX_CLIENTEDGE, 0, SWP_FRAMECHANGED);
 	}
 
 	POSITION pos = NULL;
@@ -360,6 +786,7 @@ void CBCGPMainClientAreaWnd::ApplyParams (CBCGPTabWnd* pTabWnd)
 	pTabWnd->m_bActivateLastVisibleTab = TRUE;
 	pTabWnd->m_bActivateTabOnRightClick = TRUE;
 	pTabWnd->SetCaptionFont(m_mdiTabParams.m_bTabsCaptionFont);
+	pTabWnd->EnableMultipleSelection(m_mdiTabParams.m_bTabMultipleSelection);
 
 	pTabWnd->m_bIsMDITab = TRUE;
 }
@@ -368,6 +795,8 @@ BEGIN_MESSAGE_MAP(CBCGPMainClientAreaWnd, CWnd)
 	//{{AFX_MSG_MAP(CBCGPMainClientAreaWnd)
 	ON_WM_ERASEBKGND()
 	ON_WM_STYLECHANGING()
+	ON_WM_NCPAINT()
+	ON_WM_NCACTIVATE()
 	//}}AFX_MSG_MAP
 	ON_MESSAGE(WM_MDISETMENU,OnSetMenu)
 	ON_MESSAGE(WM_MDIREFRESHMENU, OnMDIRefreshMenu)
@@ -398,6 +827,11 @@ LRESULT CBCGPMainClientAreaWnd::OnSetMenu (WPARAM wp, LPARAM lp)
 		}
 	}
 	else
+	{
+		wp = NULL;
+	}
+
+	if (pMainFrame->m_bIsMDIChildDetached)
 	{
 		wp = NULL;
 	}
@@ -451,6 +885,31 @@ LRESULT CBCGPMainClientAreaWnd::OnMDIDestroy(WPARAM wParam, LPARAM)
 {
 	LRESULT lRes = 0;
 	CBCGPMDIFrameWnd* pParentFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, GetParentFrame ());
+
+	BOOL bCloseParent = FALSE;
+
+	if (pParentFrame->m_bIsMDIChildDetached && !pParentFrame->m_bClosing)
+	{
+		int nCount = 0;
+
+		CWnd* pWndChild = GetWindow (GW_CHILD);
+		while (pWndChild != NULL && nCount < 2)
+		{
+			ASSERT_VALID (pWndChild);
+			
+			if (DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, pWndChild) != NULL)
+			{
+				nCount++;
+			}
+
+			pWndChild = pWndChild->GetNextWindow ();
+		}
+
+		if (nCount == 1)
+		{
+			bCloseParent = TRUE;
+		}
+	}
 	
 	CBCGPMDIChildWnd* pMDIChild = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, CWnd::FromHandle ((HWND)wParam));
 	BOOL bTabHeightChanged = FALSE;
@@ -558,6 +1017,11 @@ LRESULT CBCGPMainClientAreaWnd::OnMDIDestroy(WPARAM wParam, LPARAM)
 	{
 		SetRedraw (TRUE);
 		GetParent ()->RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+	}
+
+	if (bCloseParent)
+	{
+		pParentFrame->PostMessage(WM_CLOSE);
 	}
 
 	return lRes;
@@ -1029,8 +1493,17 @@ void CBCGPMainClientAreaWnd::SetActiveTab (HWND hwnd)
 					CBCGPTabWnd* pPrevActiveWnd = FindActiveTabWnd ();
 					if (pPrevActiveWnd != NULL)
 					{
+						BOOL bRedraw = pPrevActiveWnd->ClearSelectedTabs();
 						pPrevActiveWnd->SetActiveInMDITabGroup (FALSE);
-						pPrevActiveWnd->InvalidateTab (pPrevActiveWnd->GetActiveTab ());
+
+						if (bRedraw)
+						{
+							RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+						}
+						else
+						{
+							pPrevActiveWnd->InvalidateTab (pPrevActiveWnd->GetActiveTab ());
+						}
 					}
 
 					pTabWnd->SetActiveInMDITabGroup (TRUE);
@@ -1077,6 +1550,7 @@ CBCGPTabWnd* CBCGPMainClientAreaWnd::CreateTabGroup (CBCGPTabWnd* pWndTab)
 
 			if (pWndTab != NULL && ::IsWindow (pWndTab->GetSafeHwnd ()))
 			{
+				ASSERT_VALID (pWndTab);
 				bResused = TRUE;
 			}
 		}
@@ -1092,9 +1566,10 @@ CBCGPTabWnd* CBCGPMainClientAreaWnd::CreateTabGroup (CBCGPTabWnd* pWndTab)
 			{
 				pWndTab = new CBCGPTabWnd;
 			}
-		}
 
-		ASSERT_VALID (pWndTab);
+			ASSERT_VALID (pWndTab);
+			pWndTab->SetMDIFocused(m_bActive);
+		}
 	}
 
 	if (m_mdiTabParams.m_bTabCustomTooltips)
@@ -1154,7 +1629,7 @@ CBCGPTabWnd* CBCGPMainClientAreaWnd::CreateTabGroup (CBCGPTabWnd* pWndTab)
 	else 
 	{
 		CImageList* pImageList = NULL;
-		if (m_mapTabIcons.Lookup (pWndTab, pImageList) && 
+		if (m_mapTabIcons.Lookup ((UINT_PTR)pWndTab->GetSafeHwnd(), pImageList) && 
 			pImageList != NULL)
 		{
 			pImageList->DeleteImageList ();
@@ -1162,7 +1637,7 @@ CBCGPTabWnd* CBCGPMainClientAreaWnd::CreateTabGroup (CBCGPTabWnd* pWndTab)
 		else
 		{
 			pImageList = new CImageList;
-			m_mapTabIcons.SetAt (pWndTab, pImageList);
+			m_mapTabIcons.SetAt ((UINT_PTR)pWndTab->GetSafeHwnd(), pImageList);
 		}
 
 		pImageList->Create (
@@ -1234,10 +1709,10 @@ void CBCGPMainClientAreaWnd::UpdateTabs (BOOL bSetActiveTabVisible/* = FALSE*/)
 
 			if (hIcon != NULL)
 			{
-				if (!m_mapIcons.Lookup (hIcon, iIcon))
+				if (!m_mapIcons.Lookup ((UINT_PTR)hIcon, iIcon))
 				{
 					iIcon = m_TabIcons.Add (hIcon);
-					m_mapIcons.SetAt (hIcon, iIcon);
+					m_mapIcons.SetAt ((UINT_PTR)hIcon, iIcon);
 
 					if (m_TabIcons.GetImageCount () == 1)
 					{
@@ -1295,6 +1770,18 @@ void CBCGPMainClientAreaWnd::UpdateTabs (BOOL bSetActiveTabVisible/* = FALSE*/)
 			pWndChild->GetWindowText (strTabLabel);
 		}
 
+		//----------------
+		// Get tab colors:
+		//----------------
+		COLORREF clrBkTab = (COLORREF)-1;
+		COLORREF clrTextTab = (COLORREF)-1;
+
+		if (pMDIChild != NULL)
+		{
+			clrBkTab = pMDIChild->GetMDITabBkColor();
+			clrTextTab = pMDIChild->GetMDITabTextColor();
+		}
+
 		int iTabIndex = m_wndTab.GetTabFromHwnd (pWndChild->GetSafeHwnd ());
 		if (iTabIndex >= 0)
 		{
@@ -1322,6 +1809,16 @@ void CBCGPMainClientAreaWnd::UpdateTabs (BOOL bSetActiveTabVisible/* = FALSE*/)
 					//-----------------------------
 					m_wndTab.SetTabIcon (iTabIndex, iIcon);
 					bRecalcLayout = TRUE;
+				}
+
+				if (m_wndTab.GetTabBkColor(iTabIndex) != clrBkTab)
+				{
+					m_wndTab.SetTabBkColor(iTabIndex, clrBkTab);
+				}
+
+				if (m_wndTab.GetTabTextColor(iTabIndex) != clrTextTab)
+				{
+					m_wndTab.SetTabTextColor(iTabIndex, clrTextTab);
 				}
 			}
 			else
@@ -1398,8 +1895,27 @@ void CBCGPMainClientAreaWnd::UpdateMDITabbedGroups (BOOL bSetActiveTabVisible)
 		// always modify style
 		pMDIChild->ModifyStyle (CBCGPMDIChildWnd::m_dwExcludeStyle | WS_MAXIMIZE | WS_SYSMENU, 0, SWP_NOZORDER);	
 
-		BOOL bIsShowTab = pMDIChild->CanShowOnMDITabs () && (pWndChild->GetStyle () & WS_VISIBLE);
+		BOOL bIsShowTab = pMDIChild->CanShowOnMDITabs();
+		if (bIsShowTab && (pWndChild->GetStyle () & WS_VISIBLE) == 0)
+		{
+			bIsShowTab = FALSE;
+
+			COleServerDoc* pDoc = DYNAMIC_DOWNCAST(COleServerDoc, pMDIChild->GetActiveDocument());
+			if (pDoc != NULL)
+			{
+				ASSERT_VALID(pDoc);
+
+				if (pDoc->IsEmbedded())
+				{
+					bIsShowTab = TRUE;
+				}
+			}
+		}
+
 		CString strTabLabel = pMDIChild->GetFrameText ();		
+
+		COLORREF clrBkTab = pMDIChild->GetMDITabBkColor();
+		COLORREF clrTextTab = pMDIChild->GetMDITabTextColor();
 
 		CBCGPTabWnd* pRelatedTabWnd = pMDIChild->GetRelatedTabGroup ();
 
@@ -1426,6 +1942,27 @@ void CBCGPMainClientAreaWnd::UpdateMDITabbedGroups (BOOL bSetActiveTabVisible)
 
 			pMDIChild->SetRelatedTabGroup (pRelatedTabWnd);
 			pRelatedTabWnd->AddTab (pWndChild, strTabLabel);
+
+			int iTabIndex = pRelatedTabWnd->GetTabsNum() - 1;
+
+			if (iTabIndex == 0)	// 1-st tab
+			{
+				CWnd* pFocus = GetFocus();
+				if (pFocus->GetSafeHwnd () != NULL && (IsChild (pFocus) || pFocus->GetSafeHwnd () == GetSafeHwnd ()))
+				{
+					pRelatedTabWnd->SetMDIFocused();
+				}
+			}
+
+			if (clrBkTab != (COLORREF)-1)
+			{
+				pRelatedTabWnd->SetTabBkColor(iTabIndex, clrBkTab);
+			}
+			
+			if (m_wndTab.GetTabTextColor(iTabIndex) != clrTextTab)
+			{
+				pRelatedTabWnd->SetTabTextColor(iTabIndex, clrTextTab);
+			}
 
 			if (!pRelatedTabWnd->IsWindowVisible ())
 			{
@@ -1475,7 +2012,7 @@ void CBCGPMainClientAreaWnd::UpdateMDITabbedGroups (BOOL bSetActiveTabVisible)
 		}
 
 		CImageList* pImageList = NULL;
-		m_mapTabIcons.Lookup (pRelatedTabWnd, pImageList);
+		m_mapTabIcons.Lookup ((UINT_PTR)pRelatedTabWnd->GetSafeHwnd(), pImageList);
 
 		if (pImageList != NULL)
 		{
@@ -1591,6 +2128,12 @@ void CBCGPMainClientAreaWnd::OnStyleChanging (int nStyleType, LPSTYLESTRUCT lpSt
 		lpStyleStruct->styleNew = lpStyleStruct->styleOld & ~WS_EX_CLIENTEDGE;
 	}
 	
+	CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, GetParentFrame());
+	if (pMainFrame->GetSafeHwnd() != NULL)
+	{
+		pMainFrame->OnMDIClientAreaStyleChanging(nStyleType, lpStyleStruct);
+	}
+
 	CWnd::OnStyleChanging (nStyleType, lpStyleStruct);
 }
 //*************************************************************************************
@@ -1664,6 +2207,11 @@ LRESULT CBCGPMainClientAreaWnd::OnDragComplete (WPARAM wp, LPARAM lp)
 	{
 		return 0;
 	}
+
+	::SetCursor (AfxGetApp ()->LoadStandardCursor (IDC_ARROW));
+	DrawNewGroupRect(NULL);
+	m_rectNewTabGroup.SetRectEmpty ();
+
 	CBCGPTabWnd* pTabWndToResize = (CBCGPTabWnd*) (wp);
 	LPRECT lpRectResized = (LPRECT) (lp);
 
@@ -1715,18 +2263,83 @@ LRESULT CBCGPMainClientAreaWnd::OnTabGroupMouseMove (WPARAM /*wp*/, LPARAM lp)
 		return 0;
 	}
 
+	m_bDetachMDIChildrenOnly = FALSE;
+
 	if (m_lstTabbedGroups.GetCount () == 1 && pTabWnd->GetTabsNum () == 1)
 	{
-		return 0;
+		if (m_bEnableTearOffMDIChildren)
+		{
+			m_bDetachMDIChildrenOnly = TRUE;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+
+	if (m_pWndMDIChildDrag == NULL && m_bEnableTearOffMDIChildren)
+	{
+		CList<CBCGPMDIChildWnd*, CBCGPMDIChildWnd*>	lstMDIChild;
+
+		CList<int, int> lstSelectedTabs;
+		if (pTabWnd->GetSelectedTabs(lstSelectedTabs) > 0)
+		{
+			CList<HWND, HWND> lstTabWnds;
+			POSITION pos = NULL;
+			
+			for (pos = lstSelectedTabs.GetHeadPosition(); pos != NULL;)
+			{
+				int nIndex = lstSelectedTabs.GetNext(pos);
+
+				CBCGPMDIChildWnd* pMDIChildFrame = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, pTabWnd->GetTabWnd(nIndex));
+				if (pMDIChildFrame != NULL)
+				{
+					ASSERT_VALID(pMDIChildFrame);
+
+					if (pMDIChildFrame->CanBeDetached())
+					{
+						lstMDIChild.AddTail(pMDIChildFrame);
+					}
+				}
+			}
+		}
+		else
+		{
+			CBCGPMDIChildWnd* pMDIChildFrame = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, pTabWnd->GetActiveWnd());
+			if (pMDIChildFrame != NULL)
+			{
+				ASSERT_VALID(pMDIChildFrame);
+
+				if (pMDIChildFrame->CanBeDetached())
+				{
+					lstMDIChild.AddTail(pMDIChildFrame);
+				}
+			}
+		}
+
+		if (!lstMDIChild.IsEmpty())
+		{
+			m_pWndMDIChildDrag = new CBCGPMDIChildDragWnd(GetSafeHwnd());
+			ASSERT_VALID (m_pWndMDIChildDrag);
+
+			m_pWndMDIChildDrag->Create(&lstMDIChild, pTabWnd);
+			g_hwdTopMDIClientArea = GetSafeHwnd();
+		}
 	}
 
 	CPoint point(BCG_GET_X_LPARAM(lp), BCG_GET_Y_LPARAM(lp));
 
-	if (pTabWnd->IsPtInTabArea (point))
+	if (pTabWnd->IsPtInTabArea (point) && GetSafeHwnd() == g_hwdTopMDIClientArea)
 	{
 		::SetCursor (AfxGetApp ()->LoadStandardCursor (IDC_ARROW));
-		DrawNewGroupRect (NULL, m_rectNewTabGroup);
+		DrawNewGroupRect(NULL);
 		m_rectNewTabGroup.SetRectEmpty ();
+
+		if (m_pWndMDIChildDrag->GetSafeHwnd() != NULL)
+		{
+			m_pWndMDIChildDrag->ShowWindow(SW_HIDE);
+		}
+
 		return 0;
 	}
 
@@ -1746,12 +2359,36 @@ LRESULT CBCGPMainClientAreaWnd::OnTabGroupMouseMove (WPARAM /*wp*/, LPARAM lp)
 		globalData.m_hcurNoMoveTab = AfxGetApp ()->LoadCursor (IDC_BCGBARRES_NO_MOVE_TAB);
 	}
 
-	if (!rectWnd.PtInRect (pointScreen))
-	{
-		::SetCursor (globalData.m_hcurNoMoveTab);
+	BOOL bContinueMove = !rectWnd.PtInRect (pointScreen);
 
-		DrawNewGroupRect (NULL, m_rectNewTabGroup);
+	if (!bContinueMove && m_pWndMDIChildDrag->GetSafeHwnd() != NULL && m_pWndMDIChildDrag->m_hwndDropMDIFrame != NULL)
+	{
+		CBCGPMDIFrameWnd* pDropMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, CWnd::FromHandlePermanent(m_pWndMDIChildDrag->m_hwndDropMDIFrame));
+		if (pDropMDIFrame != NULL)
+		{
+			ASSERT_VALID(pDropMDIFrame);
+			
+			CRect rectDropFrame;
+			pDropMDIFrame->GetWindowRect(rectDropFrame);
+			
+			bContinueMove = rectDropFrame.PtInRect(pointScreen);
+		}
+	}
+
+	if (bContinueMove)
+	{
+		DrawNewGroupRect(NULL);
 		m_rectNewTabGroup.SetRectEmpty ();
+
+		if (m_pWndMDIChildDrag->GetSafeHwnd() != NULL)
+		{
+			m_pWndMDIChildDrag->MoveToCursor();
+		}
+		else
+		{
+			::SetCursor (globalData.m_hcurNoMoveTab);
+		}
+
 		return TRUE;
 	}
 
@@ -1761,85 +2398,195 @@ LRESULT CBCGPMainClientAreaWnd::OnTabGroupMouseMove (WPARAM /*wp*/, LPARAM lp)
 
 	if (pHoveredTabWnd == NULL)
 	{
-		DrawNewGroupRect (NULL, m_rectNewTabGroup);
+		DrawNewGroupRect(NULL);
 		m_rectNewTabGroup.SetRectEmpty ();
+
+		if (m_pWndMDIChildDrag->GetSafeHwnd() != NULL)
+		{
+			m_pWndMDIChildDrag->MoveToCursor();
+		}
+
 		return 0;
 	}
 
-	CRect rectScreenHoveredWnd;
-	pHoveredTabWnd->GetWindowRect (rectScreenHoveredWnd);
-
-	CRect rectMargin = rectScreenHoveredWnd;
-
-	BOOL bCalcVertRect = TRUE;
-
-	if (m_groupAlignment == GROUP_NO_ALIGN)
+	if (!m_bDetachMDIChildrenOnly)
 	{
-		bCalcVertRect = rectScreenHoveredWnd.right - pointScreen.x < 
-						rectScreenHoveredWnd.bottom - pointScreen.y;
-	}
-	else
-	{
-		bCalcVertRect = m_groupAlignment == GROUP_VERT_ALIGN;
-	}
+		CRect rectScreenHoveredWnd;
+		pHoveredTabWnd->GetWindowRect (rectScreenHoveredWnd);
 
-	if (m_groupAlignment == GROUP_VERT_ALIGN || bCalcVertRect)
-	{
-		rectMargin.left = rectScreenHoveredWnd.right - m_nNewGroupMargin;
-		bCalcVertRect = TRUE;
-	}
-	else if (m_groupAlignment == GROUP_HORZ_ALIGN || !bCalcVertRect)
-	{
-		rectMargin.top  = rectScreenHoveredWnd.bottom - m_nNewGroupMargin; 
-		bCalcVertRect = FALSE;
-	}
+		CRect rectMargin = rectScreenHoveredWnd;
 
-	CRect rectNew = rectScreenHoveredWnd;
+		BOOL bCalcVertRect = TRUE;
 
-	bCalcVertRect ? rectNew.left = rectScreenHoveredWnd.right - rectScreenHoveredWnd.Width () / 2:
-					rectNew.top = rectScreenHoveredWnd.bottom - rectScreenHoveredWnd.Height () / 2; 
-
-	if (!rectMargin.PtInRect (pointScreen)) 
-	{
-		if (pHoveredTabWnd == pTabWnd)
+		if (m_groupAlignment == GROUP_NO_ALIGN)
 		{
-			rectNew.SetRectEmpty ();
+			bCalcVertRect = rectScreenHoveredWnd.right - pointScreen.x < 
+							rectScreenHoveredWnd.bottom - pointScreen.y;
 		}
 		else
 		{
-			CPoint pointClient = pointScreen;
-			pHoveredTabWnd->ScreenToClient (&pointClient);
-			if (pHoveredTabWnd->IsPtInTabArea (pointClient))
-			{
-				pHoveredTabWnd->GetWndArea (rectNew);
-				pHoveredTabWnd->ClientToScreen (rectNew);
-			}
-			else
+			bCalcVertRect = m_groupAlignment == GROUP_VERT_ALIGN;
+		}
+
+		if (m_groupAlignment == GROUP_VERT_ALIGN || bCalcVertRect)
+		{
+			rectMargin.left = rectScreenHoveredWnd.right - m_nNewGroupMargin;
+			bCalcVertRect = TRUE;
+		}
+		else if (m_groupAlignment == GROUP_HORZ_ALIGN || !bCalcVertRect)
+		{
+			rectMargin.top  = rectScreenHoveredWnd.bottom - m_nNewGroupMargin; 
+			bCalcVertRect = FALSE;
+		}
+
+		CRect rectNew = rectScreenHoveredWnd;
+
+		bCalcVertRect ? rectNew.left = rectScreenHoveredWnd.right - rectScreenHoveredWnd.Width () / 2:
+						rectNew.top = rectScreenHoveredWnd.bottom - rectScreenHoveredWnd.Height () / 2; 
+
+		if (!rectMargin.PtInRect (pointScreen)) 
+		{
+			if (pHoveredTabWnd == pTabWnd)
 			{
 				rectNew.SetRectEmpty ();
 			}
+			else
+			{
+				CPoint pointClient = pointScreen;
+				pHoveredTabWnd->ScreenToClient (&pointClient);
+				if (pHoveredTabWnd->IsPtInTabArea (pointClient))
+				{
+					pHoveredTabWnd->GetWndArea (rectNew);
+					pHoveredTabWnd->ClientToScreen (rectNew);
+				}
+				else
+				{
+					rectNew.SetRectEmpty ();
+				}
+			}
 		}
-	}
-	else if (pHoveredTabWnd == pTabWnd && pTabWnd->GetTabsNum () == 1)
-	{
-		rectNew.SetRectEmpty ();
+		else if (pHoveredTabWnd == pTabWnd && pTabWnd->GetTabsNum () == 1)
+		{
+			rectNew.SetRectEmpty ();
+		}
+
+		DrawNewGroupRect(rectNew);
+		m_rectNewTabGroup = rectNew;
+		m_bNewVericalGroup = bCalcVertRect;
 	}
 
-	DrawNewGroupRect (rectNew, m_rectNewTabGroup);
-	m_rectNewTabGroup = rectNew;
-	m_bNewVericalGroup = bCalcVertRect;
+	if (m_pWndMDIChildDrag->GetSafeHwnd() != NULL)
+	{
+		m_pWndMDIChildDrag->ShowWindow(SW_HIDE);
+	}
 
 	return TRUE;
 }
 //*************************************************************************************
 LRESULT CBCGPMainClientAreaWnd::OnMoveTabComplete(WPARAM wp, LPARAM lp)
 {
-	CBCGPTabWnd* pTabWnd = (CBCGPTabWnd*) wp;
-
 	CRect rectNewTabGroup = m_rectNewTabGroup;
-	DrawNewGroupRect (NULL, m_rectNewTabGroup);
+	DrawNewGroupRect(NULL);
 	m_rectNewTabGroup.SetRectEmpty ();
+	g_hwdTopMDIClientArea = NULL;
+	::SetCursor (AfxGetApp ()->LoadStandardCursor (IDC_ARROW));
 
+	if (m_pWndMDIChildDrag->GetSafeHwnd() != NULL)
+	{
+		BOOL bDetachFrame = FALSE;
+		
+		if (m_pWndMDIChildDrag->IsWindowVisible())
+		{
+			CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, GetParent());
+			ASSERT_VALID(pMDIFrame);
+
+			CBCGPMDIFrameWnd* pDropMDIFrame = NULL;
+			CBCGPMDIFrameWnd* pNewMDIFrame = NULL;
+			
+			if (m_pWndMDIChildDrag->m_hwndDropMDIFrame != NULL && ::IsWindow(m_pWndMDIChildDrag->m_hwndDropMDIFrame))
+			{
+				pDropMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, CWnd::FromHandlePermanent(m_pWndMDIChildDrag->m_hwndDropMDIFrame));
+				if (pDropMDIFrame != NULL)
+				{
+					ASSERT_VALID(pDropMDIFrame);
+					
+					if (pDropMDIFrame->IsRibbonBackstageView())
+					{
+						pDropMDIFrame = NULL;
+					}
+					else
+					{
+						pDropMDIFrame->m_wndClientArea.DrawNewGroupRect(NULL);
+						pDropMDIFrame->LockWindowUpdate();
+					}
+				}
+			}
+
+			for (POSITION pos = m_pWndMDIChildDrag->m_lstMDIChild.GetHeadPosition(); pos != NULL;)
+			{
+				CBCGPMDIChildWnd* pMDIChildFrame = m_pWndMDIChildDrag->m_lstMDIChild.GetNext(pos);
+				if (pMDIChildFrame != NULL)
+				{
+					ASSERT_VALID(pMDIChildFrame);
+
+					if (pDropMDIFrame != NULL)
+					{
+						ASSERT_VALID(pDropMDIFrame);
+						pDropMDIFrame->AttachMDIChild(pMDIChildFrame);
+					}
+					else
+					{
+						if (pNewMDIFrame == NULL)
+						{
+							CRect rectNewFrame;
+							m_pWndMDIChildDrag->GetWindowRect(rectNewFrame);
+
+							rectNewFrame.top -= GetSystemMetrics(SM_CYCAPTION);
+							rectNewFrame.InflateRect(GetSystemMetrics(SM_CXSIZEFRAME), GetSystemMetrics(SM_CYSIZEFRAME));
+						
+							pNewMDIFrame = pMDIFrame->DetachMDIChild(pMDIChildFrame, rectNewFrame);
+							ASSERT_VALID(pNewMDIFrame);
+
+							pNewMDIFrame->LockWindowUpdate();
+						}
+						else
+						{
+							ASSERT_VALID(pNewMDIFrame);
+							pNewMDIFrame->AttachMDIChild(pMDIChildFrame);
+						}
+					}
+					
+					bDetachFrame = TRUE;
+				}
+			}
+
+			if (pDropMDIFrame != NULL)
+			{
+				pDropMDIFrame->UnlockWindowUpdate();
+				pDropMDIFrame->RedrawWindow();
+			}
+			else if (pNewMDIFrame != NULL)
+			{
+				pNewMDIFrame->UnlockWindowUpdate();
+				pNewMDIFrame->RedrawWindow();
+			}
+		}
+		
+		m_pWndMDIChildDrag->DestroyWindow();
+		m_pWndMDIChildDrag = NULL;
+		
+		if (bDetachFrame)
+		{
+			return 0;
+		}
+	}
+
+	if (m_bDetachMDIChildrenOnly)
+	{
+		return 0;
+	}
+
+	CBCGPTabWnd* pTabWnd = (CBCGPTabWnd*)wp;
 	if (pTabWnd == NULL)
 	{
 		return 0;
@@ -1851,7 +2598,6 @@ LRESULT CBCGPMainClientAreaWnd::OnMoveTabComplete(WPARAM wp, LPARAM lp)
 
 	CPoint pointScreen = point;
 	pTabWnd->ClientToScreen (&pointScreen);
-
 
 	CBCGPTabWnd* pHoveredTabWnd = TabWndFromPoint (pointScreen);
 
@@ -1936,6 +2682,48 @@ BOOL CBCGPMainClientAreaWnd::MoveWindowToTabGroup (CBCGPTabWnd* pTabWndFrom, CBC
 	int nIdx = nIdxFrom;
 	if (nIdx == -1)
 	{
+		if (m_mdiTabParams.m_bTabMultipleSelection)
+		{
+			CList<int, int> lstSelectedTabs;
+			if (pTabWndFrom->GetSelectedTabs(lstSelectedTabs) > 0)
+			{
+				CList<HWND, HWND> lstTabWnds;
+				POSITION pos = NULL;
+
+				for (pos = lstSelectedTabs.GetHeadPosition(); pos != NULL;)
+				{
+					int nIndex = lstSelectedTabs.GetNext(pos);
+					HWND hWnd = pTabWndFrom->GetTabWnd(nIndex)->GetSafeHwnd();
+
+					if (hWnd != NULL)
+					{
+						lstTabWnds.AddTail(hWnd);
+					}
+				}
+
+				SetRedraw(FALSE);
+
+				for (pos = lstTabWnds.GetHeadPosition(); pos != NULL;)
+				{
+					HWND hwndTab = lstTabWnds.GetNext(pos);
+					int nIndex = pTabWndFrom->GetTabFromHwnd(hwndTab);
+
+					if (nIndex < 0 || !MoveWindowToTabGroup(pTabWndFrom, pTabWndTo, nIndex))
+					{
+						SetRedraw();
+						UpdateTabs();
+
+						return FALSE;
+					}
+				}
+
+				SetRedraw();
+				UpdateTabs();
+
+				return TRUE;
+			}
+		}
+
 		nIdx = pTabWndFrom->GetActiveTab ();
 	}
 
@@ -1953,8 +2741,9 @@ BOOL CBCGPMainClientAreaWnd::MoveWindowToTabGroup (CBCGPTabWnd* pTabWndFrom, CBC
 
 	ASSERT_VALID (pWnd);
 
-	// Keep Tab Color when moving tab around
+	// Keep Tab Colors when moving tab around
 	COLORREF clrTabBkColor = pTabWndFrom->GetTabBkColor(nIdx);
+	COLORREF clrTabTextColor = pTabWndFrom->GetTabTextColor(nIdx);
 
 	CString strTabLabel = pWnd->GetFrameText ();		
 
@@ -1962,8 +2751,9 @@ BOOL CBCGPMainClientAreaWnd::MoveWindowToTabGroup (CBCGPTabWnd* pTabWndFrom, CBC
 	pWnd->SetRelatedTabGroup (pTabWndTo);
 	pTabWndTo->AddTab (pWnd, strTabLabel);
 	
-	// Restore Tab Color:
+	// Restore Tab Colors:
 	pTabWndTo->SetTabBkColor(pTabWndTo->GetTabsNum() - 1, clrTabBkColor);
+	pTabWndTo->SetTabTextColor(pTabWndTo->GetTabsNum() - 1, clrTabTextColor);
 
 	if (pTabWndFrom->GetTabsNum () == 0)
 	{
@@ -2108,11 +2898,11 @@ void CBCGPMainClientAreaWnd::RemoveTabGroup (CBCGPTabWnd* pTabWnd, BOOL /*bRecal
 	}
 
 	CImageList* pImageList = NULL;
-	if (m_mapTabIcons.Lookup (pTabWnd, pImageList) && 
+	if (m_mapTabIcons.Lookup ((UINT_PTR)pTabWnd->GetSafeHwnd(), pImageList) && 
 		pImageList != NULL)
 	{
 		delete pImageList;
-		m_mapTabIcons.RemoveKey (pTabWnd);
+		m_mapTabIcons.RemoveKey ((UINT_PTR)pTabWnd->GetSafeHwnd());
 	}
 
 	pTabWnd->ResetImageList();
@@ -2125,8 +2915,16 @@ void CBCGPMainClientAreaWnd::RemoveTabGroup (CBCGPTabWnd* pTabWnd, BOOL /*bRecal
 //*************************************************************************************
 LRESULT CBCGPMainClientAreaWnd::OnCancelTabMove (WPARAM, LPARAM)
 {
-	DrawNewGroupRect (NULL, m_rectNewTabGroup);
+	if (m_pWndMDIChildDrag->GetSafeHwnd() != NULL)
+	{
+		m_pWndMDIChildDrag->DestroyWindow();
+		m_pWndMDIChildDrag = NULL;
+	}
+
+	DrawNewGroupRect(NULL);
 	m_rectNewTabGroup.SetRectEmpty ();
+	g_hwdTopMDIClientArea = NULL;
+
 	return 0;
 }
 //*************************************************************************************
@@ -2239,6 +3037,7 @@ CBCGPTabWnd* CBCGPMainClientAreaWnd::GetFirstTabWnd ()
 	{
 		return NULL;
 	}
+
 	return DYNAMIC_DOWNCAST (CBCGPTabWnd, m_lstTabbedGroups.GetHead ());
 }
 //*************************************************************************************
@@ -2308,21 +3107,45 @@ CBCGPTabWnd* CBCGPMainClientAreaWnd::TabWndFromPoint (CPoint ptScreen)
 	return NULL;
 }
 //*************************************************************************************
-void CBCGPMainClientAreaWnd::DrawNewGroupRect (LPCRECT lpRectNew, LPCRECT lpRectOld)
+void CBCGPMainClientAreaWnd::DrawNewGroupRect(LPCRECT lpRectNew)
 {
-	CWindowDC dc (GetDesktopWindow ());
-	CSize size (4, 4);
-	CRect rectNew; rectNew.SetRectEmpty ();
-	CRect rectOld; rectOld.SetRectEmpty ();
 	if (lpRectNew != NULL)
 	{
-		rectNew = lpRectNew;
+		CBCGPMDIFrameWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, GetParent ());
+		ASSERT_VALID(pFrame);
+
+		pFrame->BringWindowToTop();
+
+		if (g_hwdTopMDIClientArea != GetSafeHwnd())
+		{
+			CBCGPMainClientAreaWnd* pOldTopMDIClient = DYNAMIC_DOWNCAST(CBCGPMainClientAreaWnd, CWnd::FromHandlePermanent(g_hwdTopMDIClientArea));
+			if (pOldTopMDIClient != NULL)
+			{
+				ASSERT_VALID(pOldTopMDIClient);
+				pOldTopMDIClient->DrawNewGroupRect(NULL);
+			}
+
+			g_hwdTopMDIClientArea = GetSafeHwnd();
+		}
+
+		CRect rectNew = lpRectNew;
+
+		if (m_pDragRectWnd == NULL)
+		{
+			m_pDragRectWnd = new CBCGPDragRectWnd;
+			m_pDragRectWnd->Create(rectNew, this);
+		}
+		else
+		{
+			m_pDragRectWnd->SetWindowPos(NULL, rectNew.left, rectNew.top, rectNew.Width(), rectNew.Height(),
+				SWP_NOZORDER | SWP_NOACTIVATE);
+		}
 	}
-	if (lpRectOld != NULL)
+	else if (m_pDragRectWnd != NULL)
 	{
-		rectOld = lpRectOld;
+		m_pDragRectWnd->DestroyWindow();
+		m_pDragRectWnd = NULL;
 	}
-	dc.DrawDragRect (rectNew, size, rectOld, size);
 }
 //*************************************************************************************
 void CBCGPMainClientAreaWnd::MDITabMoveToNextGroup (BOOL bNext) 
@@ -2332,6 +3155,7 @@ void CBCGPMainClientAreaWnd::MDITabMoveToNextGroup (BOOL bNext)
 	{
 		return;
 	}
+
 	ASSERT_VALID (pActiveWnd);
 
 	POSITION pos = m_lstTabbedGroups.Find (pActiveWnd);
@@ -2438,8 +3262,6 @@ void CBCGPMainClientAreaWnd::SerializeTabGroup (CArchive& ar, CBCGPTabWnd* pTabW
 
 		int i = 0;
 
-		CObList lstToBeDeleted;
-
 		for (i = 0; i < nTabsNum; i++)
 		{
 			CBCGPMDIChildWnd* pNextWnd = DYNAMIC_DOWNCAST (CBCGPMDIChildWnd, pTabWnd->GetTabWnd (i));
@@ -2454,7 +3276,7 @@ void CBCGPMainClientAreaWnd::SerializeTabGroup (CArchive& ar, CBCGPTabWnd* pTabW
 			if (bObjPresent)
 			{
 				ar << pObject;
-				lstToBeDeleted.AddTail(pObject);
+				m_lstSerializedToBeDeleted.AddTail(pObject);
 			}
 
 			CString strLabel; 
@@ -2495,11 +3317,6 @@ void CBCGPMainClientAreaWnd::SerializeTabGroup (CArchive& ar, CBCGPTabWnd* pTabW
 		CRect rectWindow;
 		pTabWnd->GetWindowRect (rectWindow);
 		ar << rectWindow;
-
-		while (!lstToBeDeleted.IsEmpty())
-		{
-			delete lstToBeDeleted.RemoveHead();
-		}
 	}
 	else
 	{
@@ -2574,7 +3391,6 @@ void CBCGPMainClientAreaWnd::SerializeTabGroup (CArchive& ar, CBCGPTabWnd* pTabW
 			}
 			else if (nBarID != -1)
 			{
-
 				CBCGPDockingControlBar* pBar = DYNAMIC_DOWNCAST (CBCGPDockingControlBar, pFrame->GetControlBar (nBarID));
 				if (pBar != NULL)
 				{
@@ -2699,8 +3515,6 @@ void CBCGPMainClientAreaWnd::SerializeOpenChildren (CArchive& ar)
 
 		ar << (int) lstWindows.GetCount ();
 
-		CObList lstToBeDeleted;
-
 		for (POSITION pos = lstWindows.GetHeadPosition (); pos != NULL;)
 		{
 			CBCGPMDIChildWnd* pMDIChild = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, 
@@ -2717,7 +3531,7 @@ void CBCGPMainClientAreaWnd::SerializeOpenChildren (CArchive& ar)
 			if (bObjPresent)
 			{
 				ar << pObj;
-				lstToBeDeleted.AddTail(pObj);
+				m_lstSerializedToBeDeleted.AddTail(pObj);
 			}
 
 			WINDOWPLACEMENT wp;
@@ -2745,11 +3559,6 @@ void CBCGPMainClientAreaWnd::SerializeOpenChildren (CArchive& ar)
 			}
 
 			ar << nBarID;
-		}
-		
-		while (!lstToBeDeleted.IsEmpty())
-		{
-			delete lstToBeDeleted.RemoveHead();
 		}
 	}
 	else
@@ -2857,13 +3666,13 @@ void CBCGPMainClientAreaWnd::SerializeOpenChildren (CArchive& ar)
 	
 }
 //*************************************************************************************
-BOOL CBCGPMainClientAreaWnd::SaveState (LPCTSTR lpszProfileName, UINT nFrameID)
+BOOL CBCGPMainClientAreaWnd::SaveState (LPCTSTR lpszProfileName, UINT nFrameID, BOOL bSaveFramePosition)
 {
 	BOOL bResult = FALSE;
 	CString strProfileName = ::BCGPGetRegPath (strMDIClientAreaProfile, lpszProfileName);
 
 	CString strSection;
-	strSection.Format (REG_SECTION_FMT, strProfileName, nFrameID);
+	strSection.Format (m_strRegSectionFmt, strProfileName, nFrameID);
 	
 	try
 	{
@@ -2886,6 +3695,32 @@ BOOL CBCGPMainClientAreaWnd::SaveState (LPCTSTR lpszProfileName, UINT nFrameID)
 			if (reg.CreateKey (strSection))
 			{
 				bResult = reg.Write (REG_ENTRY_MDITABS_STATE, lpbData, uiDataSize);
+
+				if (bResult && bSaveFramePosition)
+				{
+					WINDOWPLACEMENT wp;
+					wp.length = sizeof (WINDOWPLACEMENT);
+					
+					if (GetParent()->GetWindowPlacement (&wp))
+					{
+						//---------------------------
+						// Make sure we don't pop up 
+						// minimized the next time
+						//---------------------------
+						if (wp.showCmd != SW_SHOWMAXIMIZED)
+						{
+							wp.showCmd = SW_SHOWNORMAL;
+						}
+						
+						RECT rectDesktop;
+						SystemParametersInfo(SPI_GETWORKAREA,0,(PVOID)&rectDesktop,0);
+						OffsetRect(&wp.rcNormalPosition, rectDesktop.left, rectDesktop.top);
+						
+						reg.Write(REG_ENTRY_MDI_FRAME_RECT, &wp.rcNormalPosition);
+						reg.Write(REG_ENTRY_MDI_FRAME_FLAGS, (int)wp.flags);
+						reg.Write(REG_ENTRY_MDI_FRAME_SHOW_CMD, (int)wp.showCmd);
+					}
+				}
 			}
 
 			free (lpbData);
@@ -2910,14 +3745,14 @@ BOOL CBCGPMainClientAreaWnd::SaveState (LPCTSTR lpszProfileName, UINT nFrameID)
 	return bResult;
 }
 //*************************************************************************************
-BOOL CBCGPMainClientAreaWnd::LoadState (LPCTSTR lpszProfileName, UINT nFrameID)
+BOOL CBCGPMainClientAreaWnd::LoadState (LPCTSTR lpszProfileName, UINT nFrameID, BOOL bRestoreFramePosition)
 {
 	BOOL bResult = FALSE;
 
 	CString strProfileName = ::BCGPGetRegPath (strMDIClientAreaProfile, lpszProfileName);
 
 	CString strSection;
-	strSection.Format (REG_SECTION_FMT, strProfileName, nFrameID);
+	strSection.Format (m_strRegSectionFmt, strProfileName, nFrameID);
 
 	LPBYTE	lpbData = NULL;
 	UINT	uiDataSize;
@@ -2933,6 +3768,35 @@ BOOL CBCGPMainClientAreaWnd::LoadState (LPCTSTR lpszProfileName, UINT nFrameID)
 	if (!reg.Read (REG_ENTRY_MDITABS_STATE, &lpbData, &uiDataSize))
 	{
 		return FALSE;
+	}
+
+	if (bRestoreFramePosition)
+	{
+		CWnd* pFrameWnd = GetParent();
+
+		CRect rectNormal;
+		int nFlags = 0;
+		int nShowCmd = SW_SHOWNORMAL;
+		
+		if (reg.Read (REG_ENTRY_MDI_FRAME_RECT, rectNormal) &&
+			reg.Read (REG_ENTRY_MDI_FRAME_FLAGS, nFlags) &&
+			reg.Read (REG_ENTRY_MDI_FRAME_SHOW_CMD, nShowCmd))
+		{
+			WINDOWPLACEMENT wp;
+			wp.length = sizeof (WINDOWPLACEMENT);
+			
+			if (pFrameWnd->GetWindowPlacement (&wp))
+			{
+				wp.rcNormalPosition = rectNormal;
+				wp.showCmd = nShowCmd;
+				
+				RECT rectDesktop;
+				SystemParametersInfo(SPI_GETWORKAREA,0,(PVOID)&rectDesktop,0);
+				OffsetRect(&wp.rcNormalPosition, -rectDesktop.left, -rectDesktop.top);
+				
+				pFrameWnd->SetWindowPlacement (&wp);
+			}
+		}
 	}
 
 	try
@@ -3007,6 +3871,11 @@ void CBCGPMainClientAreaWnd::Serialize (CArchive& ar)
 		else
 		{
 			SerializeOpenChildren (ar);
+		}
+
+		while (!m_lstSerializedToBeDeleted.IsEmpty())
+		{
+			delete m_lstSerializedToBeDeleted.RemoveHead();
 		}
 	}
 	else if (ar.IsLoading ())
@@ -3098,18 +3967,16 @@ void CBCGPMainClientAreaWnd::Serialize (CArchive& ar)
 	}
 }
 //*************************************************************************************
-LRESULT CBCGPMainClientAreaWnd::OnMDINext(WPARAM wp, LPARAM lp)
+CWnd* CBCGPMainClientAreaWnd::GetNextMDITab(BOOL bPrev)
 {
 	if (!m_bIsMDITabbedGroup && !m_bTabIsEnabled)
 	{
-		return Default ();
+		return NULL;
 	}
-
-	BOOL bNext = (lp == 0);
-
+	
 	CBCGPTabWnd* pActiveTabWnd = NULL;
 	int nActiveTab = -1;
-
+	
 	if (m_bIsMDITabbedGroup)
 	{
 		pActiveTabWnd = FindActiveTabWnd ();
@@ -3118,22 +3985,26 @@ LRESULT CBCGPMainClientAreaWnd::OnMDINext(WPARAM wp, LPARAM lp)
 	{
 		pActiveTabWnd = &m_wndTab;
 	}
-
-
+	
+	if (pActiveTabWnd->GetSafeHwnd() == NULL)
+	{
+		return NULL;
+	}
+	
 	ASSERT_VALID (pActiveTabWnd);
-
+	
 	POSITION posActive = m_bIsMDITabbedGroup ? m_lstTabbedGroups.Find (pActiveTabWnd) : NULL;
 	int nGroupCount = m_bIsMDITabbedGroup ? (int) m_lstTabbedGroups.GetCount () : 0;
-
+	
 	if (m_bIsMDITabbedGroup)
 	{
 		ASSERT (posActive != NULL);
 	}
-
+	
 	nActiveTab = pActiveTabWnd->GetActiveTab ();
-
-	bNext ? nActiveTab++ : nActiveTab--;
-
+	
+	bPrev ? nActiveTab-- : nActiveTab++;
+	
 	if (nActiveTab < 0)
 	{
 		if (nGroupCount > 0)
@@ -3148,12 +4019,12 @@ LRESULT CBCGPMainClientAreaWnd::OnMDINext(WPARAM wp, LPARAM lp)
 				pActiveTabWnd = DYNAMIC_DOWNCAST (CBCGPTabWnd, m_lstTabbedGroups.GetTail ());
 			}
 		}
-
+		
 		ASSERT (pActiveTabWnd != NULL);
-
+		
 		nActiveTab = pActiveTabWnd->GetTabsNum () - 1;
 	}
-
+	
 	if (nActiveTab >= pActiveTabWnd->GetTabsNum ())
 	{
 		if (nGroupCount > 0)
@@ -3168,15 +4039,30 @@ LRESULT CBCGPMainClientAreaWnd::OnMDINext(WPARAM wp, LPARAM lp)
 				pActiveTabWnd = DYNAMIC_DOWNCAST (CBCGPTabWnd, m_lstTabbedGroups.GetHead ());
 			}
 		}
-
+		
 		ASSERT (pActiveTabWnd != NULL);
-
+		
 		nActiveTab = 0;
 	}
 	
+	
+	return pActiveTabWnd->GetTabWnd (nActiveTab);
+}
+//*************************************************************************************
+LRESULT CBCGPMainClientAreaWnd::OnMDINext(WPARAM wp, LPARAM lp)
+{
+	if (!m_bIsMDITabbedGroup && !m_bTabIsEnabled)
+	{
+		return Default ();
+	}
 
-	CWnd* pWnd = pActiveTabWnd->GetTabWnd (nActiveTab);
-	ASSERT_VALID (pWnd);
+	CWnd* pWnd = GetNextMDITab(lp != 0);
+	if (pWnd->GetSafeHwnd() == NULL)
+	{
+		return 0L;
+	}
+
+	ASSERT_VALID(pWnd);
 
 	if (pWnd->GetSafeHwnd () != (HWND) wp)
 	{
@@ -3195,8 +4081,14 @@ LRESULT CBCGPMainClientAreaWnd::OnIdleUpdateCmdUI(WPARAM /*wParam*/, LPARAM /*lP
 	CWnd* pFocus = GetFocus();
 	BOOL bActiveOld = m_bActive;
 
-	m_bActive = (pFocus->GetSafeHwnd () != NULL && 
-		(IsChild (pFocus) || pFocus->GetSafeHwnd () == GetSafeHwnd ()));
+	if (CBCGPMDIFrameWnd::m_hwndLastActiveDetachedMDIFrame != NULL)
+	{
+		m_bActive = (GetParent()->GetSafeHwnd() == CBCGPMDIFrameWnd::m_hwndLastActiveDetachedMDIFrame);
+	}
+	else
+	{
+		m_bActive = (pFocus->GetSafeHwnd () != NULL && (IsChild (pFocus) || pFocus->GetSafeHwnd () == GetSafeHwnd ()));
+	}
 
 	if (m_bActive != bActiveOld)
 	{
@@ -3235,4 +4127,88 @@ void CBCGPMainClientAreaWnd::EnableMDITabsLastActiveActivation(BOOL bLastActiveT
 
 		pNextTabWnd->EnableActivateLastActive(bLastActiveTab);
 	}
+}
+//*************************************************************************************
+void CBCGPMainClientAreaWnd::OnDragForeignMDIChild(CBCGPMDIChildWnd* pMDIChildWnd)
+{
+	CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, GetParentFrame ());
+	if (pMainFrame != NULL && ::IsWindow (pMainFrame->GetSafeHwnd ()) && pMainFrame->IsRibbonBackstageView())
+	{
+		DrawNewGroupRect(NULL);
+		return;
+	}
+
+	if (pMDIChildWnd == NULL)
+	{
+		DrawNewGroupRect(NULL);
+		return;
+	}
+
+	if (globalData.m_hcurMoveTab == NULL)
+	{
+		CBCGPLocalResource locaRes;
+
+		globalData.m_hcurMoveTab = AfxGetApp ()->LoadCursor (IDC_BCGBARRES_MOVE_TAB);
+		globalData.m_hcurNoMoveTab = AfxGetApp ()->LoadCursor (IDC_BCGBARRES_NO_MOVE_TAB);
+	}
+
+	CRect rectScreenHoveredWnd;
+	GetClientRect(rectScreenHoveredWnd);
+	ClientToScreen(&rectScreenHoveredWnd);
+
+	DrawNewGroupRect(rectScreenHoveredWnd);
+	m_rectNewTabGroup = rectScreenHoveredWnd;
+
+	::SetCursor (globalData.m_hcurMoveTab);
+}
+//*************************************************************************************
+BOOL CBCGPMainClientAreaWnd::IsDragMDIChild() const
+{
+	return g_MDIChildDragWnd != NULL;
+}
+//************************************************************************
+BOOL CBCGPMainClientAreaWnd::IsInternalScrollBarThemed() const
+{
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_MDICLIENT) != 0;
+}
+//************************************************************************
+void CBCGPMainClientAreaWnd::OnNcPaint()
+{
+	if ((GetStyle() & WS_BORDER) || (GetExStyle() & WS_EX_CLIENTEDGE))
+	{
+		CWindowDC dc (this);
+
+		CRect rectWindow;
+		GetWindowRect(&rectWindow);
+
+		if (rectWindow.Width() > 0 && rectWindow.Height() > 0)
+		{
+			CPoint ptOffset(-rectWindow.TopLeft());
+
+			CRect rectClient;
+			GetClientRect(&rectClient);
+			ClientToScreen(&rectClient);
+			rectClient.OffsetRect(ptOffset);
+
+			dc.ExcludeClipRect(rectClient);
+
+			rectWindow.OffsetRect(ptOffset);
+
+			CBCGPVisualManager::GetInstance()->OnDrawControlBorder (&dc, rectWindow, this, CBCGPToolBarImages::m_bIsDrawOnGlass);
+
+			dc.SelectClipRgn(NULL);
+		}
+	}
+	else
+	{
+		Default();
+	}
+}
+//*************************************************************************************
+BOOL CBCGPMainClientAreaWnd::OnNcActivate(BOOL /*bActive*/)
+{
+	BOOL bRet = (BOOL)Default();
+	
+	SendMessage(WM_NCPAINT);
+	return bRet;
 }

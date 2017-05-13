@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -16,6 +16,9 @@
 #include "stdafx.h"
 #include "BCGPLineStyleComboBox.h"
 #include "bcgglobals.h"
+#ifndef _BCGSUITE_
+#include "BCGPToolbarComboBoxButton.h"
+#endif
 #include "BCGPLocalResource.h"
 #include "BCGProRes.h"
 
@@ -49,6 +52,7 @@ BEGIN_MESSAGE_MAP(CBCGPLineStyleComboBox, CBCGPComboBox)
 	ON_WM_CREATE()
 	ON_WM_SYSCOLORCHANGE()
 	//}}AFX_MSG_MAP
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -129,8 +133,10 @@ void CBCGPLineStyleComboBox::PrepareImages()
 	m_imageListStyles.CopyTo(m_imageListStylesDisabled);
 
 #ifndef _BCGSUITE_
-	m_imageListStyles.AddaptColors(RGB(0, 0, 0), globalData.clrWindowText);
-	m_imageListStylesSelected.AddaptColors(RGB(0, 0, 0), globalData.clrTextHilite);
+	CBCGPToolbarComboBoxButton dummy;
+
+	m_imageListStyles.AddaptColors(RGB(0, 0, 0), m_bVisualManagerStyle ? CBCGPVisualManager::GetInstance()->GetComboboxTextColor(&dummy, FALSE, FALSE, FALSE) : globalData.clrWindowText);
+	m_imageListStylesSelected.AddaptColors(RGB(0, 0, 0), m_bVisualManagerStyle ? CBCGPVisualManager::GetInstance()->GetComboboxTextColor(&dummy, FALSE, FALSE, TRUE) : globalData.clrTextHilite);
 	m_imageListStylesDisabled.AddaptColors(RGB(0, 0, 0), globalData.clrGrayedText);
 #endif
 }
@@ -147,27 +153,9 @@ void CBCGPLineStyleComboBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 
 	BOOL bIsSelected = (lpDIS->itemState & ODS_SELECTED);
 
-	HBRUSH brBackground;
-
-	if (!IsWindowEnabled())
-	{
-		brBackground = GetSysColorBrush (COLOR_WINDOW); 
-	}
-	else if (bIsSelected)
-	{
-		brBackground = GetSysColorBrush (COLOR_HIGHLIGHT);
-	} 
-	else 
-	{
-		brBackground = GetSysColorBrush (COLOR_WINDOW);
-	} 
+	OnFillLbItem(pDC, (int)lpDIS->itemID, rect, FALSE, (lpDIS->itemState & ODS_SELECTED) == ODS_SELECTED);
 
 	pDC->SetBkMode(TRANSPARENT);
-
-	if (lpDIS->itemAction & (ODA_DRAWENTIRE | ODA_SELECT))
-	{
-		::FillRect(pDC->GetSafeHdc(), &rect, brBackground);
-	}
 
 	if (nItem >= 0)
 	{
@@ -205,4 +193,10 @@ void CBCGPLineStyleComboBox::OnSysColorChange()
 {
 	CBCGPComboBox::OnSysColorChange();
 	PrepareImages();
+}
+//****************************************************************************************
+LRESULT CBCGPLineStyleComboBox::OnChangeVisualManager (WPARAM, LPARAM)
+{
+	PrepareImages();
+	return 0;
 }

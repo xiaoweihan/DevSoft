@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -175,6 +175,25 @@ protected:
 	virtual int FindItemByPrefix(LPCTSTR lpszPrefix, CString& strResult) const;
 	virtual BOOL SetACCData(CWnd* pParent, CBCGPAccessibilityData& data);
 
+	virtual BOOL IsCloseDropDownByTabKey() const
+	{	
+		return !IsPopupDialogEnabled();
+	}
+
+	virtual void OnAfterClosePopupDlg(BOOL bOK)
+	{
+		if (bOK)
+		{
+			OnSelectItem(0);
+		}
+		else
+		{
+			CBCGPRibbonEdit::OnAfterClosePopupDlg(FALSE);
+		}
+	}
+
+	virtual BOOL OnEditChange();
+
 // Attributes:
 protected:
 	CStringList						m_lstItems;
@@ -220,10 +239,7 @@ protected:
 // Operations:
 public:
 	BOOL SetFont (LPCTSTR lpszName, BYTE nCharSet = DEFAULT_CHARSET, BOOL bExact = FALSE);
-	const CBCGPFontDesc* GetFontDesc (int iIndex = -1) const
-	{
-		return (CBCGPFontDesc*) GetItemData (iIndex);
-	}
+	const CBCGPFontDesc* GetFontDesc(int iIndex = -1) const;
 
 	void BuildFonts (
 			int nFontType = DEVICE_FONTTYPE | RASTER_FONTTYPE | TRUETYPE_FONTTYPE,

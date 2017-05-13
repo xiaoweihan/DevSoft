@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -14,6 +14,7 @@
 
 #include "stdafx.h"
 #include "BCGPShellList.h"
+#include "BCGPGlobalUtils.h"
 
 #ifndef BCGP_EXCLUDE_SHELL
 
@@ -36,6 +37,7 @@ IContextMenu2*	CBCGPShellList::m_pContextMenu2 = NULL;
 
 CBCGPShellList::CBCGPShellList()
 {
+	m_bSystemUserInput = FALSE;
 	m_psfCurFolder = NULL;
 	m_pidlCurFQ = NULL;
 	m_bContextMenu = TRUE;
@@ -280,7 +282,7 @@ HRESULT CBCGPShellList::EnumObjects (LPSHELLFOLDER pParentFolder,
 	ASSERT_VALID (g_pShellManager);
 
 	LPENUMIDLIST pEnum;
-	HRESULT hRes = pParentFolder->EnumObjects (NULL, m_nTypes, &pEnum);
+	HRESULT hRes = pParentFolder->EnumObjects (m_bSystemUserInput ? GetSafeHwnd() : NULL, m_nTypes, &pEnum);
 
 	if (SUCCEEDED (hRes))
 	{
@@ -754,7 +756,7 @@ void CBCGPShellList::OnSetColumns ()
 		int nFormat = (iColumn == BCGPShellList_ColumnSize) ?
 			LVCFMT_RIGHT : LVCFMT_LEFT;
 
-		InsertColumn (iColumn, szName [iColumn], nFormat, 100, iColumn);
+		InsertColumn (iColumn, szName [iColumn], nFormat, globalUtils.ScaleByDPI(100), iColumn);
 	}
 }
 //***************************************************************************************
@@ -917,7 +919,7 @@ void CBCGPShellList::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
 	else
 	{
 		//--------------------------
-		// Clicked on specifed item:
+		// Clicked on specified item:
 		//--------------------------
 		LVHITTESTINFO lvhti;
 		lvhti.pt = point;
@@ -930,7 +932,7 @@ void CBCGPShellList::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
 		if ((lvhti.flags & LVHT_ONITEM) == 0)
 		{
 			//-----------------------------------
-			// Click ouside of items, do nothing
+			// Click outside of items, do nothing
 			//-----------------------------------
 			return;
 		}

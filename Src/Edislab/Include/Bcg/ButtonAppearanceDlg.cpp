@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,7 @@
 #include "BCGGlobals.h"
 #include "BCGPToolbarCustomize.h"
 #include "BCGPDrawManager.h"
+#include "BCGPMessageBox.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -41,18 +42,22 @@ extern CBCGPToolbarCustomize* g_pWndCustomize;
 CButtonAppearanceDlg::CButtonAppearanceDlg(
 	CBCGPToolbarButton* pButton,
 	CBCGPToolBarImages* pImages,
+	CBCGPToolBarImages* pImagesScaled,
 	CWnd* pParent,
 	int iStartImage,
 	BOOL bMenuMode)
-		: CDialog(CButtonAppearanceDlg::IDD, pParent),
+		: CBCGPDialog(CButtonAppearanceDlg::IDD, pParent),
 		m_pButton (pButton),
 		m_pImages (pImages),
+		m_pImagesScaled(pImagesScaled),
 		m_iStartImage (iStartImage),
 		m_bMenuMode (bMenuMode),
 		m_pUserTool (NULL)
 {
 	ASSERT_VALID(m_pButton);
 	
+	EnableVisualManagerStyle (globalData.m_bUseVisualManagerInBuiltInDialogs, TRUE);
+
 	if (g_pUserToolsManager != NULL)
 	{
 		m_pUserTool = g_pUserToolsManager->FindTool (m_pButton->m_nID);
@@ -99,7 +104,7 @@ CButtonAppearanceDlg::~CButtonAppearanceDlg ()
 
 void CButtonAppearanceDlg::DoDataExchange(CDataExchange* pDX)
 {
-	CDialog::DoDataExchange(pDX);
+	CBCGPDialog::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CButtonAppearanceDlg)
 	DDX_Control(pDX, IDC_BCGBARRES_DEFAULT_IMAGE, m_wndDefautImageBtn);
 	DDX_Control(pDX, IDC_BCGBARRES_USER_IMAGE, m_wndUserImageBtn);
@@ -114,7 +119,7 @@ void CButtonAppearanceDlg::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CButtonAppearanceDlg, CDialog)
+BEGIN_MESSAGE_MAP(CButtonAppearanceDlg, CBCGPDialog)
 	//{{AFX_MSG_MAP(CButtonAppearanceDlg)
 	ON_BN_CLICKED(IDC_BCGBARRES_ADD_IMAGE, OnAddImage)
 	ON_BN_CLICKED(IDC_BCGBARRES_EDIT_IMAGE, OnEditImage)
@@ -214,6 +219,12 @@ void CButtonAppearanceDlg::OnAddImage()
 			return;
 		}
 
+		if (m_pImagesScaled != NULL && m_pImagesScaled->GetCount() > 0 && globalData.GetRibbonImageScale() != 1.0)
+		{
+			m_pImages->CopyTo(*m_pImagesScaled);
+			m_pImagesScaled->SmoothResize(globalData.GetRibbonImageScale());
+		}
+
 		RebuildImageList ();
 		m_wndButtonList.SelectButton (iImageIndex);
 	}
@@ -310,6 +321,12 @@ void CButtonAppearanceDlg::OnEditImage()
 
 		m_pImages->UpdateImage (m_iSelImage, (HBITMAP) bitmap);
 
+		if (m_pImagesScaled != NULL && m_pImagesScaled->GetCount() > 0 && globalData.GetRibbonImageScale() != 1.0)
+		{
+			m_pImages->CopyTo(*m_pImagesScaled);
+			m_pImagesScaled->SmoothResize(globalData.GetRibbonImageScale());
+		}
+
 		m_wndButtonList.Invalidate ();
 	}
 	catch (...)
@@ -370,7 +387,7 @@ void CButtonAppearanceDlg::OnOK()
 		CString str;
 		str.LoadString (IDP_BCGBARRES_IMAGE_IS_REQUIRED);
 
-		MessageBox (str);
+		BCGPShowMessageBox(IsVisualManagerStyle(), this, str);
 
 		m_wndButtonList.SetFocus ();
 		return;
@@ -381,7 +398,7 @@ void CButtonAppearanceDlg::OnOK()
 		CString str;
 		str.LoadString (IDP_BCGBARRES_TEXT_IS_REQUIRED);
 
-		MessageBox (str);
+		BCGPShowMessageBox(IsVisualManagerStyle(), this, str);
 
 		m_wndButtonText.SetFocus ();
 		return;
@@ -412,12 +429,12 @@ void CButtonAppearanceDlg::OnOK()
 		m_pButton->m_strText += m_strAccel;
 	}
 
-	CDialog::OnOK();
+	CBCGPDialog::OnOK();
 }
 //********************************************************************************
 BOOL CButtonAppearanceDlg::OnInitDialog() 
 {
-	CDialog::OnInitDialog();
+	CBCGPDialog::OnInitDialog();
 	
 	if (AfxGetMainWnd () != NULL && 
 		(AfxGetMainWnd ()->GetExStyle () & WS_EX_LAYOUTRTL))
@@ -427,7 +444,7 @@ BOOL CButtonAppearanceDlg::OnInitDialog()
 
 	if (m_pImages != NULL)
 	{
-		m_wndButtonList.SetImages (m_pImages);
+		m_wndButtonList.SetImages (m_pImagesScaled != NULL && m_pImagesScaled->GetCount() > 0 ? m_pImagesScaled : m_pImages);
 		RebuildImageList ();
 		m_wndButtonList.SelectButton (m_iSelImage);
 	}
@@ -512,12 +529,12 @@ BOOL CButtonAppearanceDlg::OnInitDialog()
 	m_wndDefaultImageArea.GetClientRect (&m_rectDefaultImage);
 	m_wndDefaultImageArea.MapWindowPoints (this, &m_rectDefaultImage);
 
-	CSize sizePreview (16, 16);
+	CSize sizePreview = globalUtils.ScaleByDPI(CSize(16, 16));
 
 	CBCGPToolBarImages* pImages = CBCGPToolBar::GetImages ();
 	if (pImages != NULL)
 	{
-		CSize sizeImage = pImages->GetImageSize ();
+		CSize sizeImage = globalUtils.ScaleByDPI(pImages->GetImageSize ());
 
 		sizePreview.cx = min (sizePreview.cx, sizeImage.cx);
 		sizePreview.cy = min (sizePreview.cy, sizeImage.cy);
@@ -577,6 +594,7 @@ void CButtonAppearanceDlg::EnableControls ()
 		!bLocked);
 
 	InvalidateRect (&m_rectDefaultImage);
+	UpdateWindow();
 }
 //******************************************************************
 void CButtonAppearanceDlg::OnUserImage() 
@@ -630,11 +648,21 @@ void CButtonAppearanceDlg::OnPaint()
 	}
 
 	CBCGPToolBarImages* pImages = CBCGPToolBar::GetImages ();
-	ASSERT (pImages != NULL);
+	if (pImages != NULL)
+	{
+		ASSERT_VALID(pImages);
 
-	CBCGPDrawState ds(CBCGPVisualManager::GetInstance()->IsAutoGrayscaleImages());
-	pImages->PrepareDrawImage (ds, m_rectDefaultImage.Size ());
-	
-	pImages->Draw (&dc, m_rectDefaultImage.left, m_rectDefaultImage.top, iImage);
-	pImages->EndDrawImage (ds);
+		CSize sizeDest(0, 0);
+
+		if (pImages->GetImageSize().cy > globalUtils.ScaleByDPI(16))
+		{
+			sizeDest = m_rectDefaultImage.Size ();
+		}
+
+		CBCGPDrawState ds(CBCGPVisualManager::GetInstance()->IsAutoGrayscaleImages());
+		pImages->PrepareDrawImage (ds, sizeDest);
+		
+		pImages->Draw (&dc, m_rectDefaultImage.left, m_rectDefaultImage.top, iImage);
+		pImages->EndDrawImage (ds);
+	}
 }

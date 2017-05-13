@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -52,6 +52,8 @@ public:
 	BOOL RemoveView (int iTabNum);
 	BOOL SetActiveView (int iTabNum);
 	CView* GetActiveView () const;           // active view or NULL
+
+	CView* GetView(int iTabNum) const;
 
 // Overrides
 	// ClassWizard generated virtual function overrides

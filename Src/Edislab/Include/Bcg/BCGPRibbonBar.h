@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -43,6 +43,7 @@ class CBCGPRibbonKeyTip;
 class CBCGPRibbonPanel;
 class CBCGPRibbonStatusBar;
 class CBCGPRibbonDefaultPanelButton;
+class CBCGPRibbonCommandsComboBox;
 
 /////////////////////////////////////////////////////////////////////////////
 // BCGPRibbonCategoryColor
@@ -60,6 +61,16 @@ enum BCGPRibbonCategoryColor
 };
 
 /////////////////////////////////////////////////////////////////////////////
+// BCGPRibbonIconStyle
+
+enum BCGPRibbonIconStyle
+{
+	BCGPRibbonIconStyle_Default,	// Specified by Visual Manager
+	BCGPRibbonIconStyle_Original,	// Original (unchanged) icon
+	BCGPRibbonIconStyle_Simplified,	// Simplified (white) icon
+};
+
+/////////////////////////////////////////////////////////////////////////////
 // CBCGPRibbonCaptionButton
 
 class BCGCBPRODLLEXPORT CBCGPRibbonCaptionButton : public CBCGPRibbonButton
@@ -72,6 +83,16 @@ public:
 	BOOL IsMDIChildButton () const
 	{
 		return m_hwndMDIChild != NULL;
+	}
+
+	BOOL IsOnBackStageTopMenu() const
+	{
+		return m_bIsOnBackStageTopMenu;
+	}
+
+	BOOL IsActive() const
+	{
+		return m_bIsActive;
 	}
 
 protected:
@@ -107,6 +128,8 @@ protected:
 	virtual BOOL IsCaptionButton () const { return TRUE; }
 
 	HWND	m_hwndMDIChild;
+	BOOL	m_bIsOnBackStageTopMenu;
+	BOOL	m_bIsActive;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -135,6 +158,8 @@ protected:
 	
 	virtual void OnDraw (CDC* pDC);
 	virtual void OnLButtonUp (CPoint point);
+
+	virtual void OnAdjustWidth(CDC* /*pDC*/, int& /*nWidth*/) {}
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -256,6 +281,8 @@ struct BCGCBPRODLLEXPORT CBCGPRibbonCustomizationOptions
 
 		m_strNewCategoryKeyTipPrefix = _T("Y");
 		m_strNewPanelKeyTipPrefix = _T("Z");
+
+		m_bAlwaysShowSmallIcons = FALSE;
 	}
 
 	CString	m_strNewCategoryLabel;
@@ -266,7 +293,26 @@ struct BCGCBPRODLLEXPORT CBCGPRibbonCustomizationOptions
 	CString	m_strNewPanelKeyTipPrefix;
 
 	CString	m_strCustomImagesPath;
+	CString	m_strCustomLargeImagesPath;
+	BOOL	m_bAlwaysShowSmallIcons;		// If large icons path is not specified, all ribbon controls will be displayed with small icons
 	CString	m_strCustomizationFilePath;		// If empty - save customization data in registry
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPRibbonCommandSearchOptions
+
+struct BCGCBPRODLLEXPORT CBCGPRibbonCommandSearchOptions
+{
+	CBCGPRibbonCommandSearchOptions()
+	{
+		m_bSuppressDisabledCommands = FALSE;
+		m_nMaxResults = 5;
+		m_bSearchInHiddenCategories = TRUE;
+	}
+
+	BOOL	m_bSuppressDisabledCommands;
+	int		m_nMaxResults;
+	BOOL	m_bSearchInHiddenCategories;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -355,6 +401,8 @@ class BCGCBPRODLLEXPORT CBCGPRibbonBar : public CBCGPControlBar
 	friend class CBCGPRibbonCustomPanel;
 	friend class CBCGPRibbonTabsGroup;
 	friend class CBCGPRibbonTab;
+	friend class CBCGPMDIFrameWnd;
+	friend class CBCGPRibbonBackstageViewPanel;
 
 	DECLARE_DYNAMIC(CBCGPRibbonBar)
 
@@ -443,10 +491,13 @@ public:
 	/// <summary>
 	/// This function is called to turn backstage mode on or off./// </summary>
 	/// <param name="bSet">TRUE - turn backstage mode on; FALSE - turn backstage mode off.</param>
-	void SetBackstageMode(BOOL bSet = TRUE)
+	/// <param name="bDisplayCommandIcons">TRUE - display icons near command entries; FALSE - otherwise.</param>
+	void SetBackstageMode(BOOL bSet = TRUE, BOOL bDisplayCommandIcons = TRUE);
+
+	void SetBackstageViewIconsStyle(BCGPRibbonIconStyle style);
+	BCGPRibbonIconStyle GetBackstageViewIconsStyle() const
 	{
-		ASSERT_VALID(this);
-		m_bBackstageMode = bSet;
+		return m_BackstageViewIconStyle;
 	}
 
 	/// <summary>
@@ -456,6 +507,15 @@ public:
 	BOOL IsBackstageMode() const
 	{
 		return m_bBackstageMode;
+	}
+
+	/// <summary>
+	/// Backstage view command icons.</summary>
+	/// <returns> 
+	/// TRUE - display icons near command entries; otherwise FALSE.</returns>
+	BOOL IsDisplayBackstageCommandIcons() const
+	{
+		return m_bDisplayBackstageCommandIcons;
 	}
 
 	/// <summary>
@@ -477,6 +537,10 @@ public:
 	BOOL ShowBackstageRecentView();
 
 	/// <summary>
+	/// Call this method to activate a start page page.</summary>
+	BOOL ShowStartPage();
+
+	/// <summary>
 	/// Call this method to specify backstage view pages transition effect.</summary>
 	void SetBackstagePageTransitionEffect(CBCGPPageTransitionManager::BCGPPageTransitionEffect effect, int nAnimationTime = 300 /* ms */);
 
@@ -488,6 +552,12 @@ public:
 	int	GetBackstagePageTransitionTime() const
 	{
 		return m_BackStagePageTransitionTime;
+	}
+
+	void EnableBackstagePageCaptions(BOOL bEnable = TRUE);
+	BOOL HasBackstagePageCaptions() const
+	{
+		return m_bBackstagePageCaptions;
 	}
 
 	/// <summary>Enable/disable the Ribbon customization</summary>
@@ -523,6 +593,23 @@ public:
 	/// <param name="pButton">A pointer to main ribbon button.</param>
 	/// <param name="sizeButton">Specifies the size of main ribbon button.</param>
 	void SetMainButton (CBCGPRibbonMainButton* pButton, CSize sizeButton);
+
+	/// <summary>
+	/// Use this function to specify the application start page.</summary>
+	/// <param name="nDlgTemplateID">Start page dialog resource ID.</param>
+	/// <param name="pDlgClass">Start page dialog class (should be derived from CBCGPDialog).</param>
+	/// <param name="bShowOnStartup">TRUE: automatically show start page on application startup; FALSE - otherewise.</param>
+	BOOL EnableStartPage(UINT nDlgTemplateID, CRuntimeClass* pDlgClass, BOOL bShowOnStartup = TRUE);
+
+	BOOL IsStartPageEnabled() const
+	{
+		return m_pStartCategory != NULL;
+	}
+
+	BOOL IsAutoStartPage() const
+	{
+		return m_bShowStartPageOnStartup;
+	}
 
 	//--------------------------
 	// Ribbon categories (tabs):
@@ -624,7 +711,7 @@ public:
 	/// <summary>
 	/// Use this function to enable the "Print Preview" tab. If print preview is enabled, the library automatically displays the "Print Preview" tab for print preview view.
 	/// By the default "Print Preview" tab is enabled.</summary>
-	/// <param name="bEnable">If TRUE, "Print Preview" tab will be displayed; if FALSE, "Print Preview" tab won't be diplayed automatically.</param>
+	/// <param name="bEnable">If TRUE, "Print Preview" tab will be displayed; if FALSE, "Print Preview" tab won't be displayed automatically.</param>
 	void EnablePrintPreview (BOOL bEnable = TRUE);
 
 	BOOL IsPrintPreviewEnabled () const
@@ -632,10 +719,38 @@ public:
 		return m_bIsPrintPreview;
 	}
 
-	void EnableMinimizeButton(BOOL bEnable = TRUE, BOOL bRecalc = TRUE);
+	virtual void EnableMinimizeButton(BOOL bEnable = TRUE, BOOL bRecalc = TRUE);
 	BOOL HasMinimizeButton() const
 	{
-		return m_bHasMinimizeButton;
+		return m_bHasMinimizeButton && IsChangingMinimizeStateAllowed();
+	}
+
+	BOOL IsMinimized() const
+	{
+		return (m_dwHideFlags & BCGPRIBBONBAR_HIDE_ELEMENTS);
+	}
+
+	virtual void EnableCommandSearch(BOOL bEnable = TRUE, LPCTSTR lpszPrompt = _T("Tell me what you want to do..."), int nWidth = -1, 
+		LPCTSTR lpszKeys = NULL, LPCTSTR lpszToolTip = NULL, LPCTSTR lpszDescription = NULL, BOOL bRecalc = TRUE);
+
+	BOOL IsCommandSearchEnabled() const
+	{
+		return m_pCommandsCombo != NULL;
+	}
+
+	void SetCommandSearchOptions(const CBCGPRibbonCommandSearchOptions& options)
+	{
+		m_CommandSearchOptions = options;
+	}
+
+	const CBCGPRibbonCommandSearchOptions& GetCommandSearchOptions() const
+	{
+		return m_CommandSearchOptions;
+	}
+
+	virtual BOOL IsChangingMinimizeStateAllowed() const
+	{
+		return TRUE;
 	}
 
 	int GetCategoryCount () const;
@@ -646,7 +761,7 @@ public:
 	void ShowCategory (int nIndex, BOOL bShow = TRUE);
 	void ShowContextCategories (UINT uiContextID, BOOL bShow = TRUE);
 	BOOL HideAllContextCategories ();
-	BOOL ActivateContextCategory (UINT uiContextID);
+	BOOL ActivateContextCategory (UINT uiContextID, int nActiveTabIndex = 0);
 
 	BCGPRibbonCategoryColor GetContextColor(UINT nContextID) const;
 	int GetContextCategoriesCount() const;
@@ -660,12 +775,34 @@ public:
 		return m_pActiveCategory;
 	}
 
-	int FindCategoryIndexByData (DWORD dwData) const;
+	int FindCategoryIndexByData (DWORD_PTR dwData) const;
 
 	BOOL GetContextName (UINT uiContextID, CString& strName) const;
 
 	void SetBackgroundImage(UINT nResID);	// 0 - No image
 	void SetBackgroundImage(CBCGPToolBarImages& image);
+
+	const CBCGPToolBarImages& GetBackgroundImage() const
+	{
+		return m_imageBackground;
+	}
+
+	void SetGrayDisabledImages(BOOL bSet = TRUE)
+	{
+		m_bGrayDisabledImages = bSet;
+	}
+
+	BOOL IsGrayDisabledImages() const
+	{
+		return m_bGrayDisabledImages;
+	}
+
+	void SetImagesLuminosity(double dblRatio);
+
+	double GetImagesLuminosity() const
+	{
+		return m_dblImagesLuminosity;
+	}
 
 	//-------------------------------
 	// Ribbon elements direct access:
@@ -682,11 +819,15 @@ public:
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons);
 
 	void SetQuickAccessDefaultState (const CBCGPRibbonQATDefaultState& state);
+	void GetQuickAccessDefaultState(CBCGPRibbonQATDefaultState& state);
+
 	void SetQuickAccessCommands (const CList<UINT,UINT>& lstCommands, BOOL bRecalcLayout = TRUE);
 	void GetQuickAccessCommands (CList<UINT,UINT>& lstCommands);
 
 	void GetElementsByName (LPCTSTR lpszName, 
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, DWORD dwFlags = 0);
+
+	virtual BOOL QueryElements(const CStringArray& arWords, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, int nMaxResults, BOOL bDescription, BOOL bAll);
 
 	BOOL ReplaceRibbonElementByID(UINT uiCmdID, CBCGPBaseRibbonElement& newElement, BOOL bCopyContent = TRUE) const;
 
@@ -703,6 +844,12 @@ public:
 	//--------------------------------------------------
 	void AddToTabs (CBCGPBaseRibbonElement* pElement);
 	void RemoveAllFromTabs ();
+
+	void SetTabIconsStyle(BCGPRibbonIconStyle style);
+	BCGPRibbonIconStyle GetTabIconsStyle() const
+	{
+		return m_TabIconStyle;
+	}
 
 	//------------------
 	// Tooltips support:
@@ -731,10 +878,17 @@ public:
 
 	void SetTooltipFixedWidth (int nWidthRegular, int nWidthLargeImage);	// 0 - set variable size
 
+	virtual BOOL OnGetCustomToolTip(const CBCGPBaseRibbonElement* /*pElement*/, CString& /*strToolTip*/) { return FALSE; }
+
 	//-----------------
 	// Key tip support:
 	//-----------------
-	void EnableKeyTips (BOOL bEnable = TRUE);
+	void EnableKeyTips (BOOL bEnable = TRUE, UINT nDelay = 200 /* ms */);
+
+	UINT GetKeyTipsDelay() const
+	{
+		return m_nKeyTipsDelay;
+	}
 
 	BOOL IsKeyTipEnabled () const
 	{
@@ -754,6 +908,8 @@ public:
 	}
 
 	BOOL IsSingleLevelAccessibilityMode() const;
+
+	virtual BOOL IsTabStop() const { return (m_dwHideFlags & BCGPRIBBONBAR_HIDE_ALL) == 0; }
 
 	//------------
 	// Input mode:
@@ -778,6 +934,50 @@ public:
 	{
 		return m_bAppFrameIsActive;
 	}
+
+	//-----------------------
+	// Context help support:
+	//-----------------------
+	void EnableContextHelp(BOOL bEnable = TRUE, 
+		const CString& strTooltipPrompt = _T("Press F1 for help."), 
+		const CList<UINT,UINT>* plstElementsWithContextHelp = NULL /* NULL - all ribbon elements */);
+
+	BOOL IsContextHelpEnabled() const
+	{
+		return m_bContextHelp;
+	}
+	const CString& GetContextHelpTooltipPrompt() const
+	{
+		return m_strContextHelpTooltipPrompt;
+	}
+
+
+	void SetContextHelpActiveID(CBCGPBaseRibbonElement* pElement);
+
+	UINT GetContextHelpActiveID() const
+	{
+		return m_nContextHelpActiveID;
+	}
+
+	//-----------------------------
+	// Application mode(s) support:
+	//-----------------------------
+	void SetApplicationModes(UINT nModes, // (UINT)-1: all modes
+		BOOL bResetKeyboardAccelerators = TRUE, 
+		BOOL bRecalc = TRUE);
+
+	UINT GetApplicationModes() const
+	{
+		return m_nApplicationModes;
+	}
+
+	BOOL IsElementInApplicationMode(UINT nAppModes) const
+	{
+		ASSERT_VALID(this);
+		return (nAppModes & m_nApplicationModes) != 0;
+	}
+
+	BOOL IsDrawSystemIcon() const;
 
 // Attributes
 public:
@@ -834,6 +1034,12 @@ public:
 		return m_QAToolbar.GetRect ();
 	}
 
+	void SetQuickAccessIconsStyle(BCGPRibbonIconStyle style);
+	BCGPRibbonIconStyle GetQuickAccessIconsStyle() const
+	{
+		return m_QATIconStyle;
+	}
+
 	CRect GetQATCommandsLocation () const
 	{
 		return m_QAToolbar.GetCommandsRect ();
@@ -859,7 +1065,7 @@ public:
 		return m_nTabTrancateRatio;
 	}
 
-	void SetMaximizeMode (BOOL bMax, CWnd* pWnd = NULL);
+	virtual void SetMaximizeMode (BOOL bMax, CWnd* pWnd = NULL);
 	void SetActiveMDIChild (CWnd* pWnd);
 
 	virtual CBCGPBaseRibbonElement* GetDroppedDown ();
@@ -939,14 +1145,44 @@ public:
 
 	virtual BOOL GetSeparatorCustomLabel(CString& /*strSeparatorLabel*/) const { return FALSE; }
 
+	int GetAutoRepeatCmdDelay() const // ms
+	{ 
+		return m_nAutoRepeatCmdDelay; 
+	}
+	
+	void SetAutoRepeatCmdDelay(int nAutoRepeatCmdDelay) // in ms, 100 - default
+	{ 
+		m_nAutoRepeatCmdDelay = nAutoRepeatCmdDelay;
+	}
+
+	BOOL IsInKeyboardNavigation() const { return m_bInKeyboardNavigation; }
+
+	CFont* GetBoldFont()
+	{
+		return m_fontBold.GetSafeHandle() == NULL ? &globalData.fontBold : &m_fontBold;
+	}
+
+	CFont* GetUnderlineFont()
+	{
+		return m_fontUnderline.GetSafeHandle() == NULL ? &globalData.fontUnderline : &m_fontUnderline;
+	}
+
+	int GetTextHeight() const
+	{
+		return m_nTextHeight;
+	}
+
 protected:
 	BOOL					m_bDlgBarMode;
 	int						m_nTabsHeight;
 	int						m_nCategoryHeight;
 	int						m_nCategoryMinWidth;
+	int						m_nTextHeight;
 	BOOL					m_bRecalcCategoryHeight;
 	BOOL					m_bRecalcCategoryWidth;
 	HFONT					m_hFont;
+	CFont					m_fontBold;
+	CFont					m_fontUnderline;
 	CBCGPRibbonCategory*	m_pActiveCategory;
 	CBCGPRibbonCategory*	m_pActiveCategorySaved;
 	int						m_nHighlightedTab;
@@ -963,6 +1199,8 @@ protected:
 	BOOL					m_bAutoDestroyMainButton;
 	CBCGPRibbonCategory*	m_pMainCategory;
 	CBCGPRibbonCategory*	m_pBackstageCategory;
+	CBCGPRibbonCategory*	m_pStartCategory;
+	BOOL					m_bShowStartPageOnStartup;
 	CBCGPRibbonCategory*	m_pPrintPreviewCategory;
 	int						m_nInitialBackstagePage;
 	int						m_nDefaultBackstagePage;
@@ -975,15 +1213,21 @@ protected:
 	BOOL					m_bQuickAccessToolbarOnTop;
 	DWORD					m_dwHideFlags;
 	int						m_nTabTrancateRatio;
+	CBCGPRibbonCommandsComboBox*	m_pCommandsCombo;
 	CBCGPRibbonButtonsGroup	m_TabElements;
+	BCGPRibbonIconStyle		m_TabIconStyle;
 	int						m_nBackstageViewTop;
+	BCGPRibbonIconStyle		m_BackstageViewIconStyle;
 	CToolTipCtrl*			m_pToolTip;
 	BOOL					m_bForceRedraw;
 	int						m_nSystemButtonsNum;
 	BOOL					m_bMaximizeMode;
 	BOOL					m_bAutoCommandTimer;
+	int						m_nAutoRepeatCmdDelay;
 	BOOL					m_bPrintPreviewMode;
 	BOOL					m_bBackstageViewActive;
+	BOOL					m_bIsStartPageMode;
+	int						m_nStartPageLeftPaneWidth;
 	BOOL					m_bIsTransparentCaption;
 	BOOL					m_bTransparentTabs;
 	CRect					m_rectSysButtons;
@@ -993,6 +1237,9 @@ protected:
 	int						m_nTooltipWidthRegular;
 	int						m_nTooltipWidthLargeImage;
 	BOOL					m_bKeyTips;
+	UINT					m_nKeyTipsDelay;
+	BOOL					m_bShowKeyTipsTimer;
+	BOOL					m_bIsEditContextMenu;
 	BOOL					m_bIsCustomizeMenu;
 	int						m_nKeyboardNavLevel;
 	CObject*				m_pKeyboardNavLevelParent;
@@ -1006,6 +1253,9 @@ protected:
 	CBCGPRibbonBackstageCloseButton	m_BackStageCloseBtn;
 	CBCGPToolBarImages		m_imageBackstageClose;
 	CBCGPToolBarImages		m_imageBackground;
+	CBCGPToolBarImages		m_imageBackgroundDark;
+	BOOL					m_bGrayDisabledImages;
+	double					m_dblImagesLuminosity;
 	
 	CBCGPRibbonCaptionButton m_CaptionButtons [RIBBON_CAPTION_BUTTONS];
 	CArray<CBCGPRibbonCaptionCustomButton*, CBCGPRibbonCaptionCustomButton*> m_arCaptionCustomButtons;
@@ -1014,13 +1264,17 @@ protected:
 							m_arContextCaptions;
 
 	CBCGPRibbonQuickAccessToolbar	m_QAToolbar;
+	BCGPRibbonIconStyle				m_QATIconStyle;
 
 	CArray<CBCGPRibbonKeyTip*,CBCGPRibbonKeyTip*>
 							m_arKeyElements;
 	BOOL					m_bScenicLook;
 	BOOL					m_bIsScenicSet;
 	BOOL					m_bBackstageMode;
+	BOOL					m_bDisplayBackstageCommandIcons;
+	BOOL					m_bBackstagePageCaptions;
 	int						m_nBackstageHorzOffset;
+	BOOL					m_bBackstageHorzScrollBar;
 
 	CBCGPPageTransitionManager::BCGPPageTransitionEffect	m_BackStagePageTransitionEffect;
 	int														m_BackStagePageTransitionTime;
@@ -1028,8 +1282,11 @@ protected:
 	BOOL							m_bCustomizationEnabled;
 	CBCGPRibbonCustomizationData	m_CustomizationData;
 	CBCGPRibbonCustomizationOptions	m_CustomizationOptions;
-	CBCGPToolBarImages				m_CustomImages;
+	CBCGPToolBarImages				m_CustomImages;			// 16x16 each icon
+	CBCGPToolBarImages				m_CustomLargeImages;	// 32x32 each icon
 	DWORD							m_VersionStamp;
+
+	CBCGPRibbonCommandSearchOptions	m_CommandSearchOptions;
 
 	CBCGPToolBarImages				m_PanelIcons;
 
@@ -1038,6 +1295,13 @@ protected:
 	LONG							m_nAccLastIndex;
 	CSize							m_sizePadding;
 	BOOL							m_bAppFrameIsActive;
+	BOOL							m_bContextHelp;
+	UINT							m_nContextHelpActiveID;
+	CString							m_strContextHelpTooltipPrompt;
+	CList<UINT,UINT>				m_lstElementsWithContextHelp;
+	UINT							m_nApplicationModes;
+	BOOL							m_bInKeyboardNavigation;
+	CString							m_strPinnedFilePath;
 
 // Overrides
 public:
@@ -1055,11 +1319,13 @@ public:
 	virtual void OnRTLChanged (BOOL bIsRTL);
 
 	virtual BOOL OnFilterSearchResult(const CBCGPBaseRibbonElement* /*pHit*/) { return TRUE; }
+	virtual void DoOpenPinnedFile(const CString& strFilePath);
 
 	virtual void DrawCustomElementImage(CDC* pDC, const CBCGPBaseRibbonElement* pElem, CBCGPBaseRibbonElement::RibbonImageType type, CRect& rectImage);
 	virtual CSize GetCustomElementImageSize(const CBCGPBaseRibbonElement* pElem, CBCGPBaseRibbonElement::RibbonImageType type) const;
 
 	virtual CWnd* GetTopLevelOwner() const { return CWnd::GetSafeOwner(); } 
+	virtual CFont* GetBackstageViewItemFont();
 
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPRibbonBar)
@@ -1077,6 +1343,7 @@ public:
 	virtual BOOL OnBeforeShowPaletteContextMenu (const CBCGPBaseRibbonElement* pHit, CMenu& menu);
 	virtual void OnBeforeShowContextMenu(CMenu& /*menu*/) {}
 	virtual BOOL OnBeforeShowBackstageView();
+	virtual BOOL OnBeforeShowMainPanel();
 
 	// Accessibility:
 	virtual BOOL OnSetAccData(long lVal);
@@ -1120,8 +1387,7 @@ public:
 	virtual ~CBCGPRibbonBar();
 
 	void PopTooltip ();
-	BOOL DrawMenuImage (CDC* pDC, const CBCGPToolbarMenuButton* pMenuItem, 
-						const CRect& rectImage);
+	BOOL DrawMenuImage (CDC* pDC, const CBCGPToolbarMenuButton* pMenuItem, const CRect& rectImage);
 	HICON ExportImageToIcon(UINT uiCmdID, BOOL bIsLargeIcon);
 
 	virtual BOOL OnShowRibbonContextMenu (CWnd* pWnd, int x, int y, CBCGPBaseRibbonElement* pHit);
@@ -1136,18 +1402,34 @@ public:
 	void GetVisibleContextCaptions(CArray<int, int>* arCaptions);
 	void GetVisibleContextCaptions(CArray<CBCGPRibbonContextCaption*, CBCGPRibbonContextCaption*>& arCaptions);
 
+	CBCGPRibbonContextCaption* FindContextCaption (UINT uiID) const;
+
+	int GetBackstageHorzOffset() const
+	{
+		return m_nBackstageHorzOffset;
+	}
+
 	void SetBackstageHorzOffset(int nScrollOffsetHorz);
+
+
+	BOOL IsBackstageHorzScroll() const
+	{
+		return m_bBackstageHorzScrollBar;
+	}
+
+	void SetBackstageHorzScroll(BOOL bHasHorzScrollBar);
+
+	int GetBackstageCommandsAreaWidth() const;
 
 protected:
 	virtual void OnDraw(CDC* pDC);
 	void ShowSysMenu (const CPoint& point);
 
 	void SetPrintPreviewMode (BOOL bSet = TRUE);
-	void SetVisibilityInFrame (int cxFrame, int cyFrame);
-
-	CBCGPRibbonContextCaption* FindContextCaption (UINT uiID) const;
+	virtual void SetVisibilityInFrame (int cxFrame, int cyFrame);
 
 	void UpdateToolTipsRect ();
+	void SetupButtonToolTip(CToolTipCtrl* pTT, CBCGPBaseRibbonElement* pElement, const CPoint& ptToolTipLocation = CPoint(-1, -1));
 	BOOL ProcessKey (int nChar);
 	BOOL NavigateRibbon (int nChar);
 
@@ -1160,10 +1442,10 @@ protected:
 
 	void RemoveAllKeys ();
 
-	void AddCustomCategory(CBCGPRibbonCategory* pCategory, BOOL bIsNew);
+	virtual void AddCustomCategory(CBCGPRibbonCategory* pCategory, BOOL bIsNew);
 	void OnCloseCustomizePage(BOOL bIsOK);
 
-	void ApplyCustomizationData(const CBCGPRibbonCustomizationData& data);
+	virtual void ApplyCustomizationData(const CBCGPRibbonCustomizationData& data);
 
 	BOOL IsPanelValid(CBCGPRibbonDefaultPanelButton* pDefaultButton);
 
@@ -1198,6 +1480,7 @@ protected:
 	afx_msg LRESULT OnBCGUpdateToolTips (WPARAM, LPARAM);
 	afx_msg BOOL OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult);
 	afx_msg LRESULT OnPostRecalcLayout (WPARAM,LPARAM);
+	afx_msg LRESULT OnOpenPinnedFile(WPARAM,LPARAM);
 	DECLARE_MESSAGE_MAP()
 };
 
@@ -1278,8 +1561,9 @@ protected:
 	}
 
 	virtual void OnCalcTextSize (CDC* pDC);
-	virtual CSize GetImageSize (RibbonImageType /*type*/) const
+	virtual CSize GetImageSize (RibbonImageType type) const
 	{
+		UNREFERENCED_PARAMETER(type);
 		ASSERT_VALID (this);
 
 		if (m_sizeTextRight.cx > 0)
@@ -1356,6 +1640,9 @@ extern BCGCBPRODLLEXPORT UINT BCGM_ON_HIGHLIGHT_RIBBON_LIST_ITEM;
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_BEFORE_SHOW_RIBBON_ITEM_MENU;
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_BEFORE_SHOW_PALETTE_CONTEXTMENU;
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_BEFORE_RIBBON_BACKSTAGE_VIEW;
+extern BCGCBPRODLLEXPORT UINT BCGM_ON_BEFORE_RIBBON_MAIN_PANEL;
+extern BCGCBPRODLLEXPORT UINT BCGM_ON_TOGGLE_RIBBON_MINIMIZE_STATE;
+extern BCGCBPRODLLEXPORT UINT BCGM_ON_GET_RIBBON_COMMANDS_MENU_CUSTOM_ITEMS;
 
 #define ForceRelalcLayout	ForceRecalcLayout
 

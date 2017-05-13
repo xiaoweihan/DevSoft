@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -278,7 +278,7 @@ void CBCGPPlannerPrint::PreparePrinting (CDC* pDC, CPrintInfo* pInfo,
 		return;
 	}
 
-	m_dwDrawFlags = pPlanner->GetDrawFlags ();
+	m_dwDrawFlags = GetDrawFlags ();
 
 	m_bFirstDraw = TRUE;
 

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -62,6 +62,7 @@ CBCGPGraphicsManager::CBCGPGraphicsManager()
 	m_bIsDrawShadowMode = FALSE;
 	m_ptShadowOffset = CBCGPPoint(2.0, 2.0);
 	m_dblScale = 0.0;
+	m_dblCurrentOpacity = -1.0;
 }
 
 CBCGPGraphicsManager::~CBCGPGraphicsManager()
@@ -80,6 +81,7 @@ CBCGPGraphicsManager::CBCGPGraphicsManager(const CBCGPRect& rectDest, CBCGPImage
 	m_ptShadowOffset = CBCGPPoint(2.0, 2.0);
 	m_nSupportedFeatures = 0;
 	m_dblScale = 0.0;
+	m_dblCurrentOpacity = -1.0;
 }
 
 CBCGPGraphicsManager* CBCGPGraphicsManager::CreateInstance(BCGP_GRAPHICS_MANAGER manager, BOOL bFallback, CBCGPGraphicsManagerParams* pParams)
@@ -269,7 +271,7 @@ void CBCGPGraphicsManager::DrawDoughnut(
 
 			if (brFill.GetGradientType() == CBCGPBrush::BCGP_GRADIENT_BEVEL)
 			{
-				const double dblBevelRatio = .95;
+				const double dblBevelRatio = .96;
 
 				CBCGPEllipse ellipseBevel = ellipseSrc;
 				ellipseBevel.radiusX *= dblBevelRatio;
@@ -354,7 +356,7 @@ void CBCGPGraphicsManager::DrawDoughnut(
 	if (brFill.GetGradientType() == CBCGPBrush::BCGP_GRADIENT_BEVEL)
 	{
 		CBCGPComplexGeometry shapeInternal;
-		double nDepth = min(ellipse.radiusX, ellipse.radiusY) * .07;
+		double nDepth = min(ellipse.radiusX, ellipse.radiusY) * .04;
 
 		ptStart = CBCGPPoint(
 			ellipse.point.x + angleCos1 * sizeHole.cx, 
@@ -486,6 +488,16 @@ void CBCGPGraphicsManager::DrawBeveledRectangle(const CBCGPRect& rect, const CBC
 
 	CBCGPRect rectShape((CRect)rect);
 	int bevel = bevel_size;
+	double sizeRect = min(rect.Width(), rect.Height());
+
+	if (bevel < 0)
+	{
+		bevel = bcg_clamp((int)(sizeRect / 15), 3, 10);
+	}
+	else
+	{
+		bevel = min(bevel, (int)(sizeRect / 2));
+	}
 	
 	if (bDrawBorder)
 	{
@@ -496,13 +508,14 @@ void CBCGPGraphicsManager::DrawBeveledRectangle(const CBCGPRect& rect, const CBC
 	COLORREF color = brush.GetColor();
 	double opacity = brush.GetOpacity();
 	
-	double percent = 0.23;
+	double percentLight = 0.23;
+	double percentDark = 0.2;
 
 	CBCGPColor colorLight(color);
-	colorLight.MakeLighter (percent);
+	colorLight.MakeLighter(percentLight);
 
 	CBCGPColor colorDark(color);
-	colorDark.MakeDarker (percent);
+	colorDark.MakeDarker(percentDark);
 	
 	// draw internal part
 	{
@@ -535,14 +548,14 @@ void CBCGPGraphicsManager::DrawBeveledRectangle(const CBCGPRect& rect, const CBC
 		rectBevelVR.left = rectBevelVR.right - 1.0;
 		
 		CBCGPColor color1(colorLight);
-		color1.MakeLighter (percent);
+		color1.MakeLighter (percentLight);
 		CBCGPBrush br1(color1, opacity);
 
 		CBCGPColor color2(colorDark);
-		color2.MakeDarker (percent);
+		color2.MakeDarker (percentDark / 2.0);
 		CBCGPBrush br2(color2, opacity);
 
-		double percent2 = percent / 3.0;
+		double percent2 = percentDark / 3.0;
 
 		color1 = colorLight;
 		color1.MakeDarker (percent2);
@@ -552,9 +565,9 @@ void CBCGPGraphicsManager::DrawBeveledRectangle(const CBCGPRect& rect, const CBC
 		CBCGPBrush br3(color2, color1, CBCGPBrush::BCGP_GRADIENT_HORIZONTAL, opacity);
 
 		color1 = colorLight;
-		color1.MakeDarker (percent);
+		color1.MakeDarker(percent2);
 		color2 = colorDark;
-		color2.MakeDarker (percent);
+		color2.MakeDarker(percent2);
 
 		CBCGPBrush br4(color2, color1, CBCGPBrush::BCGP_GRADIENT_HORIZONTAL, opacity);
 
@@ -590,7 +603,7 @@ void CBCGPGraphicsManager::DrawBeveledRectangle(const CBCGPRect& rect, const CBC
 			rectShape.bottom--;
 		}
 		
-		colorDark.MakeDarker (0.23);
+		colorDark.MakeDarker(percentDark);
 		DrawRectangle (rectShape, CBCGPBrush(colorDark, opacity));
 	}
 }
@@ -619,7 +632,7 @@ void CBCGPGraphicsManager::Draw3DDoughnut(
 	CBCGPBrush brBevel2;
 	CBCGPBrush brSideFillBevel;
 
-	const double dblBevelRatio = .95;
+	const double dblBevelRatio = .96;
 
 	const BOOL bIsBevel = (brFill.GetGradientType() == CBCGPBrush::BCGP_GRADIENT_BEVEL);
 
@@ -1001,6 +1014,7 @@ static void PrepareTorusShapes(const CBCGPEllipse& ellipseExternal,
 {
 	CBCGPPoint ptCenter = ellipseExternal.point;
 
+	const double dblHeightPerspective = 6.0;
 
 	double angleCos1 = cos(bcg_deg2rad(dblStartAngle));
 	double angleSin1 = sin(bcg_deg2rad(dblStartAngle));
@@ -1008,17 +1022,20 @@ static void PrepareTorusShapes(const CBCGPEllipse& ellipseExternal,
 	double angleCos2 = cos(bcg_deg2rad(dblFinishAngle));
 	double angleSin2 = sin(bcg_deg2rad(dblFinishAngle));
 
+	double dblHeight1 = dblHeight - angleSin1 * dblHeight / dblHeightPerspective;
+	double dblHeight2 = dblHeight - angleSin2 * dblHeight / dblHeightPerspective;
+
 	CBCGPPoint pt1External(ellipseExternal.point.x + angleCos1 * ellipseExternal.radiusX, ellipseExternal.point.y - angleSin1 * ellipseExternal.radiusY);
 	CBCGPPoint pt2External(ellipseExternal.point.x + angleCos2 * ellipseExternal.radiusX, ellipseExternal.point.y - angleSin2 * ellipseExternal.radiusY);
 
 	CBCGPPoint pt1Internal(ellipseInternal.point.x + angleCos1 * ellipseInternal.radiusX, ellipseInternal.point.y - angleSin1 * ellipseInternal.radiusY);
 	CBCGPPoint pt2Internal(ellipseInternal.point.x + angleCos2 * ellipseInternal.radiusX, ellipseInternal.point.y - angleSin2 * ellipseInternal.radiusY);
 
-	CBCGPPoint ptCenter1(pt1Internal.x + dblHeight * angleCos1 / 2, (pt1Internal.y + pt1External.y) / 2);
-	CBCGPPoint ptCenter2(pt2Internal.x + dblHeight * angleCos2 / 2, (pt2Internal.y + pt2External.y) / 2);
+	CBCGPPoint ptCenter1(pt1Internal.x + dblHeight1 * angleCos1 / 2, (pt1Internal.y + pt1External.y) / 2);
+	CBCGPPoint ptCenter2(pt2Internal.x + dblHeight2 * angleCos2 / 2, (pt2Internal.y + pt2External.y) / 2);
 
-	CBCGPSize szRadiusSide1(dblHeight * fabs(angleCos1), dblHeight - dblHeight * fabs(angleSin1) / 4);
-	CBCGPSize szRadiusSide2(dblHeight * fabs(angleCos2), dblHeight - dblHeight * fabs(angleSin2) / 4);
+	CBCGPSize szRadiusSide1(dblHeight1 * fabs(angleCos1), dblHeight1 - dblHeight1 * fabs(angleSin1) / 4);
+	CBCGPSize szRadiusSide2(dblHeight2 * fabs(angleCos2), dblHeight2 - dblHeight2 * fabs(angleSin2) / 4);
 
 	CBCGPPoint pt1Ext(
 		ptCenter1.x + angleCos1 * (szRadiusSide1.cx / 2 + 1),
@@ -1063,11 +1080,13 @@ static void PrepareTorusShapes(const CBCGPEllipse& ellipseExternal,
 			double angleCos = cos(angle);
 			double angleSin = sin(angle);
 
+			double dblHeightCurr = dblHeight - angleSin * dblHeight / dblHeightPerspective;
+
 			CBCGPPoint ptExternal(ellipseExternal.point.x + angleCos * ellipseExternal.radiusX, ellipseExternal.point.y - angleSin * ellipseExternal.radiusY);
 			CBCGPPoint ptInternal(ellipseInternal.point.x + angleCos * ellipseInternal.radiusX, ellipseInternal.point.y - angleSin * ellipseInternal.radiusY);
 
-			CBCGPPoint ptCenterCurr(ptInternal.x + dblHeight * angleCos / 2, (ptInternal.y + ptExternal.y) / 2);
-			CBCGPSize szRadiusSide(dblHeight * fabs(angleCos), dblHeight - dblHeight * fabs(angleSin) / 4);
+			CBCGPPoint ptCenterCurr(ptInternal.x + dblHeightCurr * angleCos / 2, (ptInternal.y + ptExternal.y) / 2);
+			CBCGPSize szRadiusSide(dblHeightCurr * fabs(angleCos), dblHeightCurr - dblHeightCurr * fabs(angleSin) / 4);
 
 			CBCGPPoint pt(
 				ptCenterCurr.x + angleCos * (szRadiusSide.cx / 2 + 1),
@@ -1094,11 +1113,13 @@ static void PrepareTorusShapes(const CBCGPEllipse& ellipseExternal,
 			double angleCos = cos(angle);
 			double angleSin = sin(angle);
 
+			double dblHeightCurr = dblHeight - angleSin * dblHeight / dblHeightPerspective;
+
 			CBCGPPoint ptExternal(ellipseExternal.point.x + angleCos * ellipseExternal.radiusX, ellipseExternal.point.y - angleSin * ellipseExternal.radiusY);
 			CBCGPPoint ptInternal(ellipseInternal.point.x + angleCos * ellipseInternal.radiusX, ellipseInternal.point.y - angleSin * ellipseInternal.radiusY);
 
-			CBCGPPoint ptCenterCurr(ptInternal.x + dblHeight * angleCos / 2, (ptInternal.y + ptExternal.y) / 2);
-			CBCGPSize szRadiusSide(dblHeight * fabs(angleCos), dblHeight - dblHeight * fabs(angleSin) / 4);
+			CBCGPPoint ptCenterCurr(ptInternal.x + dblHeightCurr * angleCos / 2, (ptInternal.y + ptExternal.y) / 2);
+			CBCGPSize szRadiusSide(dblHeightCurr * fabs(angleCos), dblHeightCurr - dblHeightCurr * fabs(angleSin) / 4);
 
 			CBCGPPoint pt(
 				ptCenterCurr.x - angleCos * (szRadiusSide.cx / 2 + 1),
@@ -2172,7 +2193,7 @@ void CBCGPColor::MakeLighter(double dblRatio)
 	}
 
 	COLORREF clr = CBCGPDrawManager::ColorMakeLighter((COLORREF)*this, dblRatio);
-	*this = CBCGPColor(clr);
+	*this = CBCGPColor(clr, a);
 }
 
 void CBCGPColor::MakeDarker(double dblRatio)
@@ -2189,7 +2210,7 @@ void CBCGPColor::MakeDarker(double dblRatio)
 	}
 
 	COLORREF clr = CBCGPDrawManager::ColorMakeDarker((COLORREF)*this, dblRatio);
-	*this = CBCGPColor(clr);
+	*this = CBCGPColor(clr, a);
 }
 
 void CBCGPColor::MakePale(double dblLum)
@@ -2200,7 +2221,7 @@ void CBCGPColor::MakePale(double dblLum)
 	}
 
 	COLORREF clr = CBCGPDrawManager::ColorMakePale((COLORREF)*this, dblLum);
-	*this = CBCGPColor(clr);
+	*this = CBCGPColor(clr, a);
 }
 
 #ifndef _BCGPCHART_STANDALONE
@@ -2492,6 +2513,7 @@ CBCGPBrush::CBCGPBrush(const CBCGPBrush& brush)
 	m_gradientType		= brush.m_gradientType;
 	m_nPenWidth			= brush.m_nPenWidth;
 	m_nPenStyle			= brush.m_nPenStyle;
+	m_nBevelSize		= brush.m_nBevelSize;
 	m_TextureImage		= brush.m_TextureImage;
 	m_bIsWaterMarkImage = brush.m_bIsWaterMarkImage;
 
@@ -2504,6 +2526,7 @@ void CBCGPBrush::CommonInit()
 	m_opacity = 1.;
 	m_nPenWidth = 0;
 	m_nPenStyle = PS_SOLID;
+	m_nBevelSize = -1;
 	m_bIsWaterMarkImage = FALSE;
 }
 
@@ -2651,6 +2674,7 @@ void CBCGPBrush::CopyFrom(const CBCGPBrush& src)
 	m_colorGradient = src.m_colorGradient;
 	m_nPenWidth = src.m_nPenWidth;
 	m_nPenStyle = src.m_nPenStyle;
+	m_nBevelSize = src.m_nBevelSize;
 	m_TextureImage = src.m_TextureImage;
 	m_bIsWaterMarkImage = src.m_bIsWaterMarkImage;
 	m_TextureImage.Destroy();
@@ -2664,6 +2688,7 @@ BOOL CBCGPBrush::CompareWith(const CBCGPBrush& src) const
 		m_colorGradient == src.m_colorGradient &&
 		m_nPenWidth == src.m_nPenWidth &&
 		m_nPenStyle == src.m_nPenStyle &&
+		m_nBevelSize == src.m_nBevelSize &&
 		m_TextureImage == src.m_TextureImage &&
 		m_bIsWaterMarkImage == src.m_bIsWaterMarkImage);
 }
@@ -2891,6 +2916,11 @@ void CBCGPStrokeStyle::SetDashStyle(BCGP_DASH_STYLE dashStyle, FLOAT dashOffset)
 
 	m_dashStyle = dashStyle;
 	m_dashOffset = dashOffset;
+
+	if (m_dashStyle == BCGP_DASH_STYLE_DOT && m_dashCap == BCGP_CAP_STYLE_FLAT)
+	{
+		m_dashCap = BCGP_CAP_STYLE_SQUARE;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -2906,12 +2936,11 @@ CBCGPTextFormat::CBCGPTextFormat(
 		float fFontSize,
 		long lFontWeight,
 		BCGP_FONT_STYLE fontStyle,
-		LPCTSTR lpszFontLocale)
+		LPCTSTR lpszFontLocale,
+		double dblScaleRatio)
 {
 	CommonInit();
-	Create(strFontFamily, fFontSize, lFontWeight, fontStyle, lpszFontLocale);
-
-	m_fFontSizeOriginal = fFontSize;
+	Create(strFontFamily, fFontSize, lFontWeight, fontStyle, lpszFontLocale, dblScaleRatio);
 }
 
 CBCGPTextFormat::CBCGPTextFormat(
@@ -2919,12 +2948,11 @@ CBCGPTextFormat::CBCGPTextFormat(
 		const CString& strFontFamily,
 		float fFontSize,
 		long lFontWeight,
-		BCGP_FONT_STYLE fontStyle)
+		BCGP_FONT_STYLE fontStyle,
+		double dblScaleRatio)
 {
 	CommonInit();
-	Create(strFontFamily, fFontSize, lFontWeight, fontStyle, CharSetToLocale(bCharSet));
-
-	m_fFontSizeOriginal = fFontSize;
+	Create(strFontFamily, fFontSize, lFontWeight, fontStyle, CharSetToLocale(bCharSet), dblScaleRatio);
 }
 
 CBCGPTextFormat::CBCGPTextFormat(
@@ -2939,6 +2967,8 @@ CBCGPTextFormat::CBCGPTextFormat(
 {
 	CopyFrom(tf);
 	Create(m_strFontFamily, m_fFontSize, m_lFontWeight, m_fontStyle, m_strFontLocale);
+
+	m_fFontSizeOriginal = tf.m_fFontSizeOriginal;
 }
 
 BOOL CBCGPTextFormat::Create(
@@ -2946,7 +2976,8 @@ BOOL CBCGPTextFormat::Create(
 	float fFontSize,
 	long lFontWeight,
 	BCGP_FONT_STYLE fontStyle,
-	LPCTSTR lpszFontLocale)
+	LPCTSTR lpszFontLocale,
+	double dblScaleRatio)
 {
 	if (m_pGM != NULL && GetHandle() != NULL)
 	{
@@ -2959,10 +2990,19 @@ BOOL CBCGPTextFormat::Create(
 	}
 
 	m_strFontFamily = strFontFamily;
-	m_fFontSizeOriginal = m_fFontSize = fFontSize;
+	m_fFontSize = fFontSize;
 	m_lFontWeight = lFontWeight;
 	m_fontStyle = fontStyle;
 	m_strFontLocale = lpszFontLocale == NULL ? _T("") : lpszFontLocale;
+
+	if (dblScaleRatio == 1.0 && dblScaleRatio != 0.0)
+	{
+		m_fFontSizeOriginal = m_fFontSize;
+	}
+	else
+	{
+		m_fFontSizeOriginal = (float)(m_fFontSize / dblScaleRatio);
+	}
 
 	return TRUE;
 }
@@ -2986,6 +3026,7 @@ void CBCGPTextFormat::ExportToLogFont(LOGFONT& lf) const
 	lstrcpyn (lf.lfFaceName, m_strFontFamily, LF_FACESIZE);
 	lf.lfWeight = m_lFontWeight;
 	lf.lfHeight = (long)m_fFontSize;
+	lf.lfItalic = m_fontStyle == BCGP_FONT_STYLE_ITALIC;
 	lf.lfEscapement = lf.lfOrientation = (int)(m_dblDrawingAngle * 10.);
 	lf.lfUnderline = (BYTE)m_bIsUnderline;
 	lf.lfStrikeOut = (BYTE)m_bIsStrikethrough;
@@ -3022,6 +3063,7 @@ void CBCGPTextFormat::CopyFrom(const CBCGPTextFormat& from)
 	m_bDrawingAngleWasChanged = from.m_bDrawingAngleWasChanged; 
 	m_bIsUnderline = 			from.m_bIsUnderline;
 	m_bIsStrikethrough =		from.m_bIsStrikethrough;
+	m_bIsEndEllipsis =			from.m_bIsEndEllipsis;
 }
 
 BOOL CBCGPTextFormat::CompareWith(const CBCGPTextFormat& src) const
@@ -3039,7 +3081,8 @@ BOOL CBCGPTextFormat::CompareWith(const CBCGPTextFormat& src) const
 		m_bClipText	==				src.m_bClipText &&
 		m_dblDrawingAngle ==		src.m_dblDrawingAngle &&
 		m_bIsUnderline ==			src.m_bIsUnderline &&
-		m_bIsStrikethrough ==		src.m_bIsStrikethrough;
+		m_bIsStrikethrough ==		src.m_bIsStrikethrough &&
+		m_bIsEndEllipsis ==			src.m_bIsEndEllipsis;
 }
 
 void CBCGPTextFormat::Destroy(BOOL bDetachFromGM)
@@ -3070,6 +3113,7 @@ void CBCGPTextFormat::CommonInit()
 	m_bDrawingAngleWasChanged = FALSE;
 	m_bIsUnderline = FALSE;
 	m_bIsStrikethrough = FALSE;
+	m_bIsEndEllipsis = FALSE;
 }
 
 void CBCGPTextFormat::SetFontSize(float fFontSize)
@@ -3078,6 +3122,16 @@ void CBCGPTextFormat::SetFontSize(float fFontSize)
 	{
 		Destroy();
 		m_fFontSizeOriginal = m_fFontSize = fFontSize;
+		Create(m_strFontFamily, m_fFontSize, m_lFontWeight, m_fontStyle, m_strFontLocale);
+	}
+}
+
+void CBCGPTextFormat::SetFontWeight(long lFontWeight)
+{
+	if (m_lFontWeight != lFontWeight)
+	{
+		Destroy();
+		m_lFontWeight = lFontWeight;
 		Create(m_strFontFamily, m_fFontSize, m_lFontWeight, m_fontStyle, m_strFontLocale);
 	}
 }
@@ -3117,6 +3171,15 @@ void CBCGPTextFormat::SetStrikethrough(BOOL bSet)
 	{
 		Destroy();
 		m_bIsStrikethrough = bSet;
+	}
+}
+
+void CBCGPTextFormat::SetEndEllipsis(BOOL bSet)
+{
+	if (m_bIsEndEllipsis != bSet)
+	{
+		Destroy();
+		m_bIsEndEllipsis = bSet;
 	}
 }
 

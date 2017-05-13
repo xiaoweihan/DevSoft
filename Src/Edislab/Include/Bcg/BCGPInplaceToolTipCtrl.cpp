@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -38,8 +38,6 @@ static char THIS_FILE[] = __FILE__;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPInplaceToolTipCtrl
 
-CString CBCGPInplaceToolTipCtrl::m_strClassName;
-
 IMPLEMENT_DYNAMIC(CBCGPInplaceToolTipCtrl, CWnd)
 
 CBCGPInplaceToolTipCtrl::CBCGPInplaceToolTipCtrl()
@@ -73,16 +71,13 @@ BOOL CBCGPInplaceToolTipCtrl::Create (CWnd* pWndParent)
 	ASSERT_VALID (pWndParent);
 	m_pWndParent = pWndParent;
 
-	if (m_strClassName.IsEmpty ())
-	{
-		m_strClassName = ::AfxRegisterWndClass (
-			CS_SAVEBITS,
-			::LoadCursor(NULL, IDC_ARROW),
-			(HBRUSH)(COLOR_BTNFACE + 1));
-	}  
+	CString strClassName = ::AfxRegisterWndClass (
+		CS_SAVEBITS,
+		::LoadCursor(NULL, IDC_ARROW),
+		(HBRUSH)(COLOR_BTNFACE + 1));
 
 	return CreateEx (0,
-					m_strClassName, _T (""), WS_POPUP,
+					strClassName, _T (""), WS_POPUP,
 					0, 0, 0, 0,
 					pWndParent->GetSafeHwnd (), (HMENU) NULL);
 }
@@ -155,7 +150,7 @@ void CBCGPInplaceToolTipCtrl::OnPaint()
 			rect.top += (m_rectLast.Height () - rect.Height ()) / 2;
 		}
 
-		dc.DrawText (m_strText, rect, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
+		dc.DrawText (m_strText, rect, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL | DT_END_ELLIPSIS);
 	}
 	else // single line tooltip
 	{
@@ -196,37 +191,43 @@ void CBCGPInplaceToolTipCtrl::Track (CRect rect, const CString& strText)
 
 	int nTextHeight = rect.Height ();
 	int nTextWidth = rect.Width ();
+
 	if (m_strText.FindOneOf (_T("\n")) != -1 || m_bMultiline)	// multi-line tooltip
 	{
-		const int nDefaultHeight = globalData.GetTextHeight ();
-		const int nDefaultWidth = 200;
-		CRect rectText (0, 0, nDefaultWidth, nDefaultHeight);
- 
-		nTextHeight = dc.DrawText (m_strText, rectText, DT_LEFT | DT_WORDBREAK | DT_CALCRECT);
-		nTextWidth = rectText.Width ();
+		BOOL bIsReady = FALSE;
+		int nMaxWidth = 3 * rect.Width();
+
+		for (int dx = 0; dx < nMaxWidth; dx += 10)
+		{
+			CRect rectText = rect;
+			rectText.right += dx;
+
+			nTextHeight = dc.DrawText (m_strText, rectText, DT_LEFT | DT_WORDBREAK | DT_CALCRECT | DT_END_ELLIPSIS);
+			
+			if (nTextHeight <= rect.Height())
+			{
+				nTextWidth = rectText.Width();
+				bIsReady = TRUE;
+				break;
+			}
+		}
+
+		if (!bIsReady)
+		{
+			nTextWidth = nMaxWidth;
+			nTextHeight = rect.Height();
+		}
+
 		nTextHeight += 2 * m_nTextMargin;
-		nTextWidth += 2 * m_nTextMargin;
 	}
 	else
 	{
-		nTextWidth = dc.GetTextExtent (m_strText).cx + 2 * m_nTextMargin;
+		nTextWidth = dc.GetTextExtent (m_strText).cx;
 	}
+
+	nTextWidth += 2 * m_nTextMargin;
 
 	dc.SelectObject (pPrevFont);
-
-	if (m_bMultiline)
-	{
-		TEXTMETRIC tm;
-		dc.GetTextMetrics (&tm);
-		int nLines = max (1, m_rectLast.Height () / (int)tm.tmHeight);
-
-		nTextWidth = nTextWidth / nLines * 3 / 2;
-
-		if (nTextHeight > m_rectLast.Height ())
-		{
-			nTextWidth = max (m_rectLast.Width (), nTextWidth);
-		}
-	}
 
 	if (m_pWndParent->GetExStyle () & WS_EX_LAYOUTRTL)
 	{
@@ -236,7 +237,9 @@ void CBCGPInplaceToolTipCtrl::Track (CRect rect, const CString& strText)
 	{
 		rect.right = rect.left + nTextWidth;
 	}
+
 	rect.bottom = rect.top + nTextHeight;
+
 	if (rect.Height () < m_rectLast.Height ())
 	{
 		rect.top = m_rectLast.top;

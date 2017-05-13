@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -10,7 +10,7 @@
 // of the accompanying license agreement.
 
 //*******************************************************************************
-// BCGToolbarFontCombo.cpp: implementation of the CBCGPToolbarFontCombo class.
+// BCGPToolbarFontCombo.cpp: implementation of the CBCGPToolbarFontCombo class.
 //
 //////////////////////////////////////////////////////////////////////
 
@@ -325,6 +325,11 @@ int CBCGPToolbarFontCombo::GetFontsCount (LPCTSTR lpszName)
 CComboBox* CBCGPToolbarFontCombo::CreateCombo (CWnd* pWndParent, const CRect& rect)
 {
 	CBCGPFontComboBox* pWndCombo = new CBCGPFontComboBox;
+	if (m_bIsDropListVisualManagerTheme)
+	{
+		pWndCombo->m_bVisualManagerStyle = TRUE;
+	}
+
 	if (!pWndCombo->Create (m_dwStyle | CBS_HASSTRINGS | CBS_OWNERDRAWFIXED, rect, pWndParent, m_nID))
 	{
 		delete pWndCombo;
@@ -575,8 +580,17 @@ void CBCGPToolbarFontSizeCombo::InsertSize (int nSize)
 //********************************************************************************************
 CComboBox* CBCGPToolbarFontSizeCombo::CreateCombo (CWnd* pWndParent, const CRect& rect)
 {
-	CBCGPFontComboBox* pWndCombo = new CBCGPFontComboBox;
-	if (!pWndCombo->Create (m_dwStyle, rect, pWndParent, m_nID))
+	CBCGPComboBox* pWndCombo = new CBCGPComboBox;
+
+	DWORD dwStyle = m_dwStyle;
+
+	if (m_bIsDropListVisualManagerTheme)
+	{
+		pWndCombo->m_bVisualManagerStyle = TRUE;
+		dwStyle |= CBS_OWNERDRAWFIXED | CBS_HASSTRINGS;
+	}
+
+	if (!pWndCombo->Create (dwStyle, rect, pWndParent, m_nID))
 	{
 		delete pWndCombo;
 		return NULL;

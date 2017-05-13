@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -73,6 +73,8 @@ protected:
 		return hr;
 	}
 
+	virtual CBCGPSize GetContentTotalSize(CBCGPGraphicsManager* pGM);
+
 // Attributes:
 public:
 	void SetText(const CString& str, const CBCGPColor& clrText = CBCGPColor(), BOOL bRedraw = FALSE);
@@ -103,6 +105,8 @@ public:
 	}
 
 	void SetTextFormat(const CBCGPTextFormat& textFormat);
+
+	void ResumeScrolling(const CString& strAddedText, BOOL bCleanOldInvisible = TRUE);
 
 protected:
 	void CreateResources(const CBCGPBrush& brText, BOOL bAllowEmptyBrush);

@@ -2,7 +2,7 @@
 #define __BCGCBPRO_H
 
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -11,6 +11,10 @@
 
 #ifndef __AFXCMN_H__
 	#include <afxcmn.h>			// MFC support for Windows Common Controls
+#endif
+
+#ifndef __AFXTEMPL_H__
+	#include <afxtempl.h>
 #endif
 
 #if defined _AFXDLL && !defined _BCGCBPRO_STATIC_
@@ -216,12 +220,12 @@ protected:
 #define WM_DWMSENDICONICLIVEPREVIEWBITMAP   0x0326
 #endif
 
-#ifndef LOCALE_NAME_MAX_LENGTH
-#define LOCALE_NAME_MAX_LENGTH   85
-#endif
-
 #ifndef WM_GESTURE
 #define WM_GESTURE                      0x0119
+#endif
+
+#ifndef WM_THEMECHANGED
+#define WM_THEMECHANGED                 0x031A
 #endif
 
 #ifndef WM_TABLET_QUERYSYSTEMGESTURESTATUS
@@ -230,6 +234,15 @@ protected:
 
 #ifndef TABLET_DISABLE_PRESSANDHOLD
 #define TABLET_DISABLE_PRESSANDHOLD        0x00000001
+#endif
+
+// Windows 8.1:
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED       0x02E0
+#endif
+
+#ifndef LOCALE_NAME_MAX_LENGTH
+#define LOCALE_NAME_MAX_LENGTH   85
 #endif
 
 // Progress bar:
@@ -254,13 +267,15 @@ typedef enum BCGP_SMARTDOCK_THEME
 	BCGP_SDT_VS2008 = 2,		// VS 2008-style
 	BCGP_SDT_VS2010 = 3,		// VS 2010-style
 	BCGP_SDT_VS2012 = 4,		// VS 2012-style
-};
+} 
+BCGP_SMARTDOCK_THEME;
 
 typedef enum BCGP_INPUT_MODE
 {
 	BCGP_MOUSE_INPUT = 0,
 	BCGP_TOUCH_INPUT,
-};
+} 
+BCGP_INPUT_MODE;
 
 typedef CArray<double, double> CBCGPDoubleArray;
 

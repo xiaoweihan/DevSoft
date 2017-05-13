@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -72,6 +72,7 @@ public:
 
 	BOOL Show (int x, int y);
 	BOOL ShowWithContextMenu (int x, int y, UINT uiMenuResID, CWnd* pWndOwner);
+	BOOL ShowWithContextMenu (int x, int y, HMENU hMenu, CWnd* pWndOwner, BOOL bAutoDestroyMenu = TRUE);
 
 // Overrides
 	// ClassWizard generated virtual function overrides
@@ -99,6 +100,8 @@ protected:
 
 	BOOL UpdateTransparency ();
 	void CancelContextMenuMode ();
+
+	BOOL ShowWithContextMenu (int x, int y, UINT uiMenuResID, HMENU hMenu, CWnd* pWndOwner, BOOL bAutoDestroyMenu);
 };
 
 #endif // BCGP_EXCLUDE_RIBBON

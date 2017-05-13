@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -37,6 +37,7 @@
 #include "BCGPTagManager.h"
 #include "BCGPLineStyleComboBox.h"
 #include "BCGPToolbarEditBoxButton.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -49,13 +50,15 @@ static char THIS_FILE[] = __FILE__;
 #define STRETCH_DELTA	2
 #define ID_FILTER		4
 
-#define TEXT_MARGIN		4
+#define TEXT_MARGIN		globalUtils.ScaleByDPI(4)
+#define MENU_ICON_SIZE	11
 
 #define UM_UPDATESPIN	(WM_USER + 101)
 
 extern CBCGPWorkspace* g_pWorkspace;
 #define visualManager	CBCGPVisualManager::GetInstance ()
 
+const int nToolbarAccIndex = 1;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPProp
 
@@ -177,6 +180,7 @@ void CBCGPProp::Init ()
 	m_bExpanded = !m_bIsValueList;
 	m_bEnabled = TRUE;
 	m_pParent = NULL;
+	m_bChildNotify = FALSE;
 	m_pWndInPlace = NULL;
 	m_pWndCombo = NULL;
 	m_pWndSpin = NULL;
@@ -186,8 +190,11 @@ void CBCGPProp::Init ()
 	m_bMenuButtonIsHighlighted = FALSE;
 	m_bButtonIsDown = FALSE;
 	m_bAllowEdit = TRUE;
+	m_bAllowCopy = TRUE;
 	m_bNameIsTrancated = FALSE;
 	m_bValueIsTrancated = FALSE;
+	m_bDescriptionTruncated = FALSE;
+	m_bGroupHasValue = FALSE;
 
 	m_Rect.SetRectEmpty ();
 	m_rectButton.SetRectEmpty ();
@@ -209,8 +216,11 @@ void CBCGPProp::Init ()
 
 	m_nDropDownWidth = -1;
 	m_bDrawMenuButton = FALSE;
+	m_bIsMenuButtonVisible = TRUE;
 
 	m_strButtonText = _T("...");
+
+	m_clrTextValue = (COLORREF)-1;
 }
 //*******************************************************************************************
 CBCGPProp::~CBCGPProp()
@@ -249,6 +259,7 @@ void CBCGPProp::OnDestroyWindow ()
 	if (m_varValue.vt == VT_BOOL)
 	{
 		m_lstOptions.RemoveAll ();
+		m_lstOptionsData.RemoveAll ();
 	}
 }
 //****************************************************************************************
@@ -256,6 +267,16 @@ BOOL CBCGPProp::HasButton () const
 {
 	return	(m_dwFlags & PROP_HAS_LIST) ||
 			(m_dwFlags & PROP_HAS_BUTTON);
+}
+//****************************************************************************************
+BOOL CBCGPProp::HasList () const
+{
+	return (m_dwFlags & PROP_HAS_LIST);
+}
+//****************************************************************************************
+BOOL CBCGPProp::HasSpin () const
+{
+	return (m_dwFlags & PROP_HAS_SPIN);
 }
 //****************************************************************************************
 BOOL CBCGPProp::AddSubItem (CBCGPProp* pProp)
@@ -341,13 +362,27 @@ void CBCGPProp::RemoveAllSubItems()
 {
 	ASSERT_VALID (this);
 	
-	while (!m_lstSubItems.IsEmpty ())
+	while (!m_lstSubItems.IsEmpty())
 	{
-		delete m_lstSubItems.RemoveHead ();
+		CBCGPProp* pSubItem = m_lstSubItems.RemoveHead();
+		ASSERT_VALID(pSubItem);
+
+		if (m_pWndList != NULL && m_pWndList->m_pSel == pSubItem)
+		{
+			m_pWndList->m_pSel = NULL;
+		}
+		
+		if (m_pWndList != NULL && m_pWndList->m_pTracked == pSubItem)
+		{
+			m_pWndList->m_pTracked = NULL;
+		}
+
+		pSubItem->RemoveAllSubItems();
+		delete pSubItem;
 	}
 }
 //*******************************************************************************************
-BOOL CBCGPProp::AddOption (LPCTSTR lpszOption, BOOL bInsertUnique/* = TRUE*/)
+BOOL CBCGPProp::AddOption (LPCTSTR lpszOption, BOOL bInsertUnique/* = TRUE*/, DWORD_PTR dwData/* = 0*/)
 {
 	ASSERT_VALID (this);
 	ASSERT (lpszOption != NULL);
@@ -361,6 +396,8 @@ BOOL CBCGPProp::AddOption (LPCTSTR lpszOption, BOOL bInsertUnique/* = TRUE*/)
 	}
 
 	m_lstOptions.AddTail (lpszOption);
+	m_lstOptionsData.AddTail(dwData);
+
 	m_dwFlags = PROP_HAS_LIST;
 
 	return TRUE;
@@ -455,6 +492,7 @@ void CBCGPProp::RemoveAllOptions ()
 	ASSERT_VALID (this);
 
 	m_lstOptions.RemoveAll ();
+	m_lstOptionsData.RemoveAll();
 	m_dwFlags = 0;
 }
 //****************************************************************************************
@@ -482,6 +520,26 @@ LPCTSTR CBCGPProp::GetOption (int nIndex) const
 	}
 
 	return m_lstOptions.GetAt (pos);
+}
+//****************************************************************************************
+DWORD_PTR CBCGPProp::GetOptionData(int nIndex) const
+{
+	ASSERT_VALID (this);
+
+	if (nIndex < 0 || nIndex >= m_lstOptions.GetCount ())
+	{
+		ASSERT (FALSE);
+		return 0;
+	}
+
+	POSITION pos = m_lstOptionsData.FindIndex (nIndex);
+	if (pos == NULL)
+	{
+		ASSERT (FALSE);
+		return 0;
+	}
+
+	return m_lstOptionsData.GetAt(pos);
 }
 //*****************************************************************************************
 BOOL CBCGPProp::SelectOption(int nIndex)
@@ -531,7 +589,7 @@ int CBCGPProp::GetSelectedOption() const
 	return -1;
 }
 //*****************************************************************************************
-int CBCGPProp::GetExpandedSubItems (BOOL bIncludeHidden) const
+int CBCGPProp::GetExpandedSubItems (BOOL bIncludeHidden, BOOL bCalcRows) const
 {
 	ASSERT_VALID (this);
 
@@ -549,7 +607,8 @@ int CBCGPProp::GetExpandedSubItems (BOOL bIncludeHidden) const
 
 		if (bIncludeHidden || pProp->IsVisibleInFilter())
 		{
-			nCount += pProp->GetExpandedSubItems (bIncludeHidden) + 1;
+			const int nInc = bCalcRows ? pProp->GetRowsNumber() : 1;
+			nCount += pProp->GetExpandedSubItems (bIncludeHidden, bCalcRows) + nInc;
 		}
 	}
 
@@ -581,7 +640,7 @@ CBCGPProp* CBCGPProp::HitTest (CPoint point, ClickArea* pnArea)
 			}
 			else
 			{
-				if (m_bDrawMenuButton && point.x > xCenter - m_Rect.Height())
+				if (m_bDrawMenuButton && m_rectMenuButton.PtInRect(point))
 				{
 					*pnArea = ClickMenuButton;
 				}
@@ -741,7 +800,7 @@ void CBCGPProp::CommitModifiedValue ()
 	}
 }
 //*******************************************************************************************
-void CBCGPProp::Redraw ()
+void CBCGPProp::Redraw(BOOL bWithSubItems)
 {
 	ASSERT_VALID (this);
 
@@ -755,14 +814,21 @@ void CBCGPProp::Redraw ()
 			m_pWndList->InvalidateRect (m_pParent->m_Rect);
 		}
 
-		if (m_bIsValueList)
+		if (m_bIsValueList || bWithSubItems)
 		{
 			for (POSITION pos = m_lstSubItems.GetHeadPosition (); pos != NULL;)
 			{
 				CBCGPProp* pProp = m_lstSubItems.GetNext (pos);
 				ASSERT_VALID (pProp);
 
-				m_pWndList->InvalidateRect (pProp->m_Rect);
+				if (bWithSubItems)
+				{
+					pProp->Redraw(TRUE);
+				}
+				else
+				{
+					m_pWndList->InvalidateRect (pProp->m_Rect);
+				}
 			}
 		}
 
@@ -946,13 +1012,24 @@ CBCGPProp* CBCGPProp::GetSubItem (int nIndex) const
 	return m_lstSubItems.GetAt (m_lstSubItems.FindIndex (nIndex));
 }
 //*******************************************************************************************
-void CBCGPProp::Enable (BOOL bEnable/* = TRUE*/)
+void CBCGPProp::Enable (BOOL bEnable/* = TRUE*/, BOOL bIncludeSubItems/* = FALSE*/)
 {
 	ASSERT_VALID (this);
 
 	if (m_bEnabled != bEnable)
 	{
 		m_bEnabled = bEnable;
+
+		if (bIncludeSubItems)
+		{
+			for (POSITION pos = m_lstSubItems.GetHeadPosition (); pos != NULL;)
+			{
+				CBCGPProp* pProp = m_lstSubItems.GetNext (pos);
+				ASSERT_VALID (pProp);
+				
+				pProp->Enable(bEnable, TRUE);
+			}
+		}
 
 		if (m_pWndList->GetSafeHwnd () != NULL)
 		{
@@ -1009,7 +1086,7 @@ void CBCGPProp::Repos (int& y)
 			m_pWndList->m_rectList.left + dx,
 			y, 
 			m_pWndList->m_rectList.right, 
-			y + m_pWndList->m_nRowHeight);
+			y + GetHeight());
 
 		if (IsButtonVisible())
 		{
@@ -1019,15 +1096,23 @@ void CBCGPProp::Repos (int& y)
 		if (!m_rectButton.IsRectEmpty ())
 		{
 			m_rectButton.top = m_Rect.top + 1;
-			m_rectButton.bottom = m_Rect.bottom;
+
+			if (GetRowsNumber() == 1)
+			{
+				m_rectButton.bottom = m_Rect.bottom;
+			}
+			else
+			{
+				m_rectButton.bottom = m_Rect.top + m_pWndList->GetRowHeight();
+			}
 		}
 
-		y += m_pWndList->m_nRowHeight;
+		y += GetHeight();
 
 		CRect rectName = m_Rect;
 		rectName.right = m_pWndList->m_rectList.left + m_pWndList->m_nLeftColumnWidth;
 
-		if (IsWindow (m_pWndList->m_ToolTip.GetSafeHwnd ()))
+		if (IsWindow (m_pWndList->m_ToolTip.GetSafeHwnd ()) && m_Rect.top < m_pWndList->m_rectList.bottom)
 		{
 			m_pWndList->m_ToolTip.AddTool (m_pWndList, LPSTR_TEXTCALLBACK, rectName, m_pWndList->m_nTooltipsCount + 1);
 			m_pWndList->m_nTooltipsCount ++;
@@ -1287,7 +1372,7 @@ void CBCGPProp::OnDrawName (CDC* pDC, CRect rect)
 
 		if (m_bDrawMenuButton)
 		{
-			rectFill.right += rectFill.Height();
+			rectFill.right += m_rectMenuButton.Width();
 		}
 
 		if (m_bHasState)
@@ -1320,10 +1405,21 @@ void CBCGPProp::OnDrawName (CDC* pDC, CRect rect)
 
 	int nNameAlign = IsGroup() ? DT_LEFT : m_pWndList->m_nNameAlign;
 
-	int nTextHeight = pDC->DrawText (m_strName, rect, 
-		nNameAlign | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+	UINT uiDTFlags = nNameAlign | DT_NOPREFIX | DT_END_ELLIPSIS;
+	if (GetRowsNumber() == 1)
+	{
+		uiDTFlags |= (DT_SINGLELINE | DT_VCENTER);
+	}
+	else
+	{
+		uiDTFlags |= DT_WORDBREAK;
+		rect.DeflateRect(0, TEXT_MARGIN / 2);
+	}
 
-	m_bNameIsTrancated = pDC->GetTextExtent (m_strName).cx > rect.Width ();
+	int nRectHeight = rect.Height();
+	int nTextHeight = pDC->DrawText (m_strName, rect, uiDTFlags);
+
+	m_bNameIsTrancated = GetRowsNumber() > 1 ? (nTextHeight > nRectHeight) : pDC->GetTextExtent (m_strName).cx > rect.Width ();
 
 	if (IsSelected () && m_pWndList->m_bVSDotNetLook && IsGroup () && !m_bIsValueList)
 	{
@@ -1385,10 +1481,32 @@ void CBCGPProp::OnDrawValue (CDC* pDC, CRect rect)
 
 	rect.DeflateRect (TEXT_MARGIN, 0);
 
-	pDC->DrawText (strVal, rect, 
-		DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+	COLORREF clrOldText = (COLORREF)-1;
+	if (m_clrTextValue != (COLORREF)-1)
+	{
+		clrOldText = pDC->SetTextColor(m_clrTextValue);
+	}
 
-	m_bValueIsTrancated = pDC->GetTextExtent (strVal).cx > rect.Width ();
+	UINT uiDTFlags = DT_LEFT | DT_NOPREFIX | DT_END_ELLIPSIS;
+	if (GetRowsNumber() == 1)
+	{
+		uiDTFlags |= (DT_SINGLELINE | DT_VCENTER);
+	}
+	else
+	{
+		uiDTFlags |= DT_WORDBREAK;
+		rect.DeflateRect(0, TEXT_MARGIN / 2);
+	}
+
+	int nRectHeight = rect.Height();
+	int nTextHeight = pDC->DrawText(strVal, rect, uiDTFlags);
+	
+	if (clrOldText != (COLORREF)-1)
+	{
+		pDC->SetTextColor(clrOldText);
+	}
+
+	m_bValueIsTrancated = GetRowsNumber() > 1 ? nTextHeight > nRectHeight : pDC->GetTextExtent (strVal).cx > rect.Width ();
 
 	if (pOldFont != NULL)
 	{
@@ -1439,12 +1557,7 @@ void CBCGPProp::OnDrawExpandBox (CDC* pDC, CRect rect)
 
 	CPoint ptCenter = rect.CenterPoint ();
 
-	int nMaxBoxSize = 9;
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		nMaxBoxSize = (int)(.5 + nMaxBoxSize * globalData.GetRibbonImageScale ());
-	}
-
+	int nMaxBoxSize = globalUtils.ScaleByDPI(9);
 	int nBoxSize = min (nMaxBoxSize, rect.Width ());
 
 	rect = CRect (ptCenter, CSize (1, 1));
@@ -1481,6 +1594,8 @@ void CBCGPProp::OnDrawDescription (CDC* pDC, CRect rect)
 	ASSERT_VALID (pDC);
 	ASSERT_VALID (m_pWndList);
 
+	m_bDescriptionTruncated = FALSE;
+
 	HFONT hOldFont = (HFONT) ::SelectObject (pDC->GetSafeHdc (), m_pWndList->m_fontBold.GetSafeHandle ());
 	int nHeight = pDC->DrawText (m_strName, rect, DT_SINGLELINE | DT_NOPREFIX);
 
@@ -1488,7 +1603,17 @@ void CBCGPProp::OnDrawDescription (CDC* pDC, CRect rect)
 
 	rect.top += nHeight + 2;
 
-	pDC->DrawText (m_strDescr, rect, DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS);
+	if (rect.top >= rect.bottom)
+	{
+		m_bDescriptionTruncated = TRUE;
+		return;
+	}
+
+	int nDrawHeight = rect.Height();
+
+	nHeight = pDC->DrawText (m_strDescr, rect, DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS);
+
+	m_bDescriptionTruncated = nHeight > nDrawHeight;
 }
 //******************************************************************************************
 BOOL CBCGPProp::OnUpdateValue ()
@@ -1577,7 +1702,11 @@ BOOL CBCGPProp::TextToVar (const CString& strText)
 
 	case VT_UINT:
 	case VT_UI4:
-		m_varValue.ulVal = unsigned long (_ttol (strVal));
+#ifdef _UNICODE
+		m_varValue.ulVal = wcstoul(strText, NULL, 10);
+#else
+		m_varValue.ulVal = strtoul(strText, NULL, 10);
+#endif // _UNICODE
 		return TRUE;
 
 #if _MSC_VER >= 1500
@@ -1760,11 +1889,19 @@ BOOL CBCGPProp::OnEdit (LPPOINT /*lptClick*/)
 			{
 				m_lstOptions.AddTail (m_pWndList->m_strTrue);
 				m_lstOptions.AddTail (m_pWndList->m_strFalse);
+
+				m_lstOptionsData.AddTail((DWORD_PTR)0);
+				m_lstOptionsData.AddTail((DWORD_PTR)0);
 			}
 
-			for (POSITION pos = m_lstOptions.GetHeadPosition (); pos != NULL;)
+			int nIndex = 0;
+			for (POSITION pos = m_lstOptions.GetHeadPosition (); pos != NULL; nIndex++)
 			{
-				m_pWndCombo->AddString (m_lstOptions.GetNext (pos));
+				int nComboIndex = m_pWndCombo->AddString (m_lstOptions.GetNext (pos));
+				if (nComboIndex >= 0)
+				{
+					m_pWndCombo->SetItemData(nComboIndex, GetOptionData(nIndex));
+				}
 			}
 		}
 
@@ -1800,7 +1937,19 @@ void CBCGPProp::AdjustButtonRect ()
 
 	m_rectButton = m_Rect;
 	m_rectButton.right--;
-	m_rectButton.left = m_rectButton.right - m_rectButton.Height();
+
+	if (GetRowsNumber() == 1)
+	{
+		m_rectButton.left = m_rectButton.right - m_rectButton.Height();
+	}
+	else
+	{
+		ASSERT_VALID (m_pWndList);
+
+		m_rectButton.left = m_rectButton.right - m_pWndList->GetRowHeight();
+		m_rectButton.bottom = m_rectButton.top + m_pWndList->GetRowHeight();
+	}
+
 	m_rectButton.top++;
 }
 //******************************************************************************************
@@ -1809,14 +1958,20 @@ void CBCGPProp::AdjustInPlaceEditRect (CRect& rectEdit, CRect& rectSpin)
 	ASSERT_VALID (this);
 	ASSERT_VALID (m_pWndList);
 
+	int nPaddingY = max(0, 3 - globalUtils.ScaleByDPI(2));
+
 	rectEdit = m_Rect;
-	rectEdit.DeflateRect (0, 2);
+	rectEdit.DeflateRect(0, nPaddingY);
+	rectEdit.bottom--;
 
 	int nMargin = m_pWndList->m_bMarkModifiedProperties && m_bIsModified ?
 		m_pWndList->m_nBoldEditLeftMargin : m_pWndList->m_nEditLeftMargin;
 
-	rectEdit.left = m_pWndList->m_rectList.left + m_pWndList->m_nLeftColumnWidth 
-		+ TEXT_MARGIN - nMargin + 1;
+	int nVertMargin = m_pWndList->m_bMarkModifiedProperties && m_bIsModified ?
+		m_pWndList->m_nBoldEditTopMargin : m_pWndList->m_nEditTopMargin;
+
+	rectEdit.left = m_pWndList->m_rectList.left + m_pWndList->m_nLeftColumnWidth + TEXT_MARGIN - nMargin + 1;
+	rectEdit.top += nVertMargin;
 
 	if (HasButton ())
 	{
@@ -1825,7 +1980,7 @@ void CBCGPProp::AdjustInPlaceEditRect (CRect& rectEdit, CRect& rectSpin)
 	}
 	else
 	{
-		rectEdit.right -= 2;
+		rectEdit.right -= globalUtils.ScaleByDPI(2);
 	}
 
 	if (m_dwFlags & PROP_HAS_SPIN)
@@ -1899,7 +2054,16 @@ CWnd* CBCGPProp::CreateInPlaceEdit (CRect rectEdit, BOOL& bDefaultFormat)
 		pWndEdit = new CEdit;
 	}
 
-	DWORD dwStyle = WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL;
+	DWORD dwStyle = WS_VISIBLE | WS_CHILD;
+
+	if (GetRowsNumber() == 1)
+	{
+		dwStyle |= ES_AUTOHSCROLL;
+	}
+	else
+	{
+		dwStyle |= ES_MULTILINE | ES_AUTOVSCROLL;
+	}
 
 	if (!m_bEnabled || !m_bAllowEdit)
 	{
@@ -1958,9 +2122,16 @@ CComboBox* CBCGPProp::CreateCombo (CWnd* pWndParent, CRect rect)
 
 	rect.bottom = rect.top + 400;
 
-	CComboBox* pWndCombo = new CComboBox;
-	if (!pWndCombo->Create (WS_CHILD | CBS_NOINTEGRALHEIGHT | CBS_DROPDOWNLIST | WS_VSCROLL, 
-		rect, pWndParent, BCGPROPLIST_ID_INPLACE))
+	CBCGPComboBox* pWndCombo = new CBCGPComboBox;
+	pWndCombo->m_bVisualManagerStyle = m_pWndList != NULL && m_pWndList->DrawControlBarColors();
+
+	DWORD dwStyle = WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL;
+	if (pWndCombo->m_bVisualManagerStyle)
+	{
+		dwStyle |= CBS_OWNERDRAWFIXED | CBS_HASSTRINGS;
+	}
+
+	if (!pWndCombo->Create(dwStyle, rect, pWndParent, BCGPROPLIST_ID_INPLACE_COMBO))
 	{
 		delete pWndCombo;
 		return NULL;
@@ -2096,9 +2267,12 @@ BOOL CBCGPProp::OnDblClick (CPoint /*point*/)
 			strText = m_lstOptions.GetAt (pos);
 
 			m_pWndInPlace->SetWindowText (strText);
+
+			HWND hwndInplace = m_pWndInPlace->GetSafeHwnd();
+
 			OnUpdateValue ();
 
-			if (m_pWndInPlace->GetSafeHwnd() != NULL && !m_pWndInPlace->IsWindowVisible())
+			if (::IsWindow(hwndInplace) && m_pWndInPlace->GetSafeHwnd() != NULL && !m_pWndInPlace->IsWindowVisible())
 			{
 				Redraw();
 			}
@@ -2130,6 +2304,11 @@ void CBCGPProp::OnClickMenuButton (CPoint point)
 {
 	ASSERT_VALID (this);
 	ASSERT_VALID (m_pWndList);
+
+	if (g_pContextMenuManager != NULL && g_pContextMenuManager->IsTracking())
+	{
+		return;
+	}
 
 	if (m_pWndList->m_bTracking || m_pWndList->m_bTrackingDescr || m_pWndList->m_bTrackingCommands)
 	{
@@ -2200,21 +2379,22 @@ void CBCGPProp::OnClickMenuButton (CPoint point)
 			strItem.LoadString(IDS_BCGBARRES_PROPLIST_MENU_EDIT);
 
 			menu.AppendMenu (MF_STRING, idEdit, strItem);
-			if (!IsEditAvailable() || !IsEnabled())
+			if (!IsEditAvailable() || !IsEnabled() || (IsGroup() && !m_bIsValueList))
 			{
 				menu.EnableMenuItem (idEdit, MF_GRAYED);
 			}
 		}
 
-		if (menu.GetMenuItemCount() > 0)
-		{
-			menu.AppendMenu (MF_SEPARATOR);
-		}
-
-		BOOL bAddSeparator = FALSE;
+		BOOL bAddSeparator = menu.GetMenuItemCount() > 0;
 
 		if (!m_pWndList->m_lstCustomMenuItems.IsEmpty())
 		{
+			if (bAddSeparator)
+			{
+				menu.AppendMenu (MF_SEPARATOR);
+				bAddSeparator = FALSE;
+			}
+
 			UINT nID = idCustomFirst;
 			int nCustomMenuIndex = 0;
 
@@ -2240,7 +2420,6 @@ void CBCGPProp::OnClickMenuButton (CPoint point)
 			}
 
 			bAddSeparator = TRUE;
-			menu.AppendMenu (MF_SEPARATOR);
 		}
 
 		if (m_pWndList->HasCommands() && (nFlags & BCGP_PROPLIST_MENU_COMMANDS))
@@ -2283,9 +2462,7 @@ void CBCGPProp::OnClickMenuButton (CPoint point)
 	CPoint pt = point;
 	if (pt == CPoint(-1, -1))
 	{
-		pt  = CPoint(
-			m_pWndList->m_rectList.left + m_pWndList->m_nLeftColumnWidth - m_Rect.Height(), 
-			m_Rect.bottom + 1);
+		pt  = CPoint(m_rectMenuButton.left, m_rectMenuButton.bottom + 1);
 	}
 
 	m_pWndList->ClientToScreen(&pt);
@@ -2314,11 +2491,18 @@ void CBCGPProp::OnClickMenuButton (CPoint point)
 		return;
 
 	case idReset:
-		ResetOriginalValue();
-		Redraw();
+		{
+			ResetOriginalValue();
+			Redraw();
 
-		m_pWndList->GetOwner ()->SendMessage (BCGM_PROPERTY_CHANGED, m_pWndList->GetDlgCtrlID (),
-			LPARAM (this));
+			CBCGPProp* pPropNotify = this;
+			if (m_pParent != NULL && m_pParent->m_bChildNotify)
+			{
+				pPropNotify = m_pParent;
+			}
+			
+			m_pWndList->GetOwner ()->SendMessage(BCGM_PROPERTY_CHANGED, m_pWndList->GetDlgCtrlID(), LPARAM(pPropNotify));
+		}
 		break;
 
 	case idCopy:
@@ -2598,15 +2782,16 @@ HBRUSH CBCGPProp::OnCtlColor(CDC* pDC, UINT /*nCtlColor*/)
 void CBCGPProp::SetModifiedFlag ()
 {
 	BOOL bIsModified = IsValueChanged ();
+	BOOL bParentIsValueList = (m_pParent != NULL && m_pParent->m_bIsValueList);
 
-	if (m_bIsModified == bIsModified && !m_bIsValueList)
+	if (m_bIsModified == bIsModified && !m_bIsValueList && !bParentIsValueList)
 	{
 		return;
 	}
 
 	m_bIsModified = bIsModified;
 
-	if (m_pParent != NULL && m_pParent->m_bIsValueList)
+	if (bParentIsValueList)
 	{
 		if (bIsModified)
 		{
@@ -2702,6 +2887,26 @@ void CBCGPProp::CleanState()
 	m_strStateToolTip.Empty();
 
 	Redraw();
+}
+//*******************************************************************************************
+void CBCGPProp::SetValueTextColor(COLORREF clrValue, BOOL bRedraw/* =  TRUE*/)
+{
+	m_clrTextValue = clrValue;
+
+	if (bRedraw)
+	{
+		Redraw();
+	}
+}
+//*******************************************************************************************
+void CBCGPProp::ShowMenuButton(BOOL bShow, BOOL bRedraw)
+{
+	m_bIsMenuButtonVisible = bShow;
+
+	if (bRedraw)
+	{
+		Redraw();
+	}
 }
 //*******************************************************************************************
 void CBCGPProp::Show (BOOL bShow/* = TRUE*/, BOOL bAdjustLayout/* = TRUE*/)
@@ -2806,6 +3011,64 @@ BOOL CBCGPProp::OnRotateListValue (BOOL bForward)
 	}
 	return TRUE;
 }
+//**************************************************************************************
+int CBCGPProp::GetHeight() const
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(m_pWndList);
+
+	return m_pWndList->GetRowHeight() * GetRowsNumber();
+}
+//**************************************************************************************
+HRESULT CBCGPProp::get_accParent(IDispatch **ppdispParent)
+{
+	if (!ppdispParent)
+	{
+		return E_INVALIDARG;
+	}
+
+	*ppdispParent = NULL;
+
+	if (m_pWndList == NULL || m_pWndList->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+
+	LPDISPATCH lpDispatch = m_pWndList->GetAccessibleDispatch();
+	if (lpDispatch != NULL)
+	{
+		*ppdispParent = lpDispatch;
+		return S_OK;
+	}
+	return S_FALSE;	
+}
+
+//*******************************************************************************
+HRESULT CBCGPProp::get_accChildCount(long *pcountChildren)
+{
+	if( !pcountChildren )
+	{
+		return E_INVALIDARG;
+	}
+
+	*pcountChildren = 0;
+	return S_FALSE;
+}
+//*******************************************************************************
+BOOL  CBCGPProp::OnAccDefaultAction()
+{
+	if (m_pWndList != NULL)
+	{
+		m_pWndList->SetCurSel(this);
+		if (IsGroup())
+		{
+			Expand(!IsExpanded());
+		}
+		return TRUE;
+	}
+	return FALSE;
+}
+
 //**********************************************************************************
 BOOL CBCGPProp::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 {
@@ -2827,8 +3090,6 @@ BOOL CBCGPProp::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 	data.m_nAccHit = 1;
 	data.m_nAccRole = ROLE_SYSTEM_ROW;
 
-	data.m_bAccState = STATE_SYSTEM_FOCUSABLE|STATE_SYSTEM_SELECTABLE;
-
 	if (IsSelected ())
 	{
 		data.m_bAccState |= STATE_SYSTEM_FOCUSED;
@@ -2839,11 +3100,35 @@ BOOL CBCGPProp::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 	{
 		data.m_bAccState |= STATE_SYSTEM_READONLY;
 	}
-	
+	bool bIsHidden = !IsParentExpanded() ||	(IsGroup() && !m_bIsValueList && (m_pWndList != NULL && m_pWndList->IsAlphabeticMode ())) || !IsVisibleInFilter();
+
+	if (bIsHidden)
+	{
+		data.m_bAccState |= STATE_SYSTEM_INVISIBLE;
+	}
+	else
+	{
+		data.m_bAccState  |= STATE_SYSTEM_FOCUSABLE|STATE_SYSTEM_SELECTABLE;
+	}
+
+	if (IsGroup())
+	{
+		data.m_bAccState |= (IsExpanded() ? STATE_SYSTEM_EXPANDED : STATE_SYSTEM_COLLAPSED);
+	}
+
 	data.m_rectAccLocation = m_Rect;
 	pParent->ClientToScreen (&data.m_rectAccLocation);
 
 	return TRUE;
+}
+//**********************************************************************************
+LPCTSTR CBCGPProp::GetAccDefaultAction()
+{
+	if (IsGroup ())
+	{
+		return IsExpanded () ? _T("Collapse") : _T("Expand");
+	}
+	return _T("Select");
 }
 //**********************************************************************************
 BOOL CBCGPProp::SerializeValue(CString& str)
@@ -2860,6 +3145,39 @@ BOOL CBCGPProp::ParseValue(const CString& str)
 BOOL CBCGPProp::SerializeToBuffer(CString& str)
 {
 	CBCGPTagManager tm;
+
+	if (IsGroup() && !m_bGroupHasValue && m_pWndList->m_bAllowCopyPasteGroups)
+	{
+		CString strName = GetName();
+
+		for (CBCGPProp* pParentProp = GetParent(); pParentProp != NULL; pParentProp = pParentProp->GetParent())
+		{
+			if (pParentProp == NULL)
+			{
+				break;
+			}
+
+			strName = pParentProp->GetName() + strName;
+		}
+
+		for (POSITION pos = m_lstSubItems.GetHeadPosition (); pos != NULL;)
+		{
+			CBCGPProp* pListProp = m_lstSubItems.GetNext (pos);
+			ASSERT_VALID (pListProp);
+
+			CString strItem;
+			if (!pListProp->SerializeToBuffer(strItem))
+			{
+				return FALSE;
+			}
+
+			CString strSubItemTagName = _T("SubItem") + strName + GetName();
+			tm.WriteStringTag(strSubItemTagName, strItem);
+		}
+
+		str = tm.GetBuffer();
+		return TRUE;
+	}
 
 	CRuntimeClass* pRTI = GetRuntimeClass();
 	if (pRTI == NULL || pRTI->m_lpszClassName == NULL)
@@ -2901,6 +3219,44 @@ BOOL CBCGPProp::SerializeToBuffer(CString& str)
 //**********************************************************************************
 BOOL CBCGPProp::SerializeFromBuffer(const CString& str, BOOL bCheckOnly)
 {
+	CBCGPTagManager tm(str);
+
+	if (IsGroup() && !m_bGroupHasValue && m_pWndList->m_bAllowCopyPasteGroups)
+	{
+		CString strName = GetName();
+		
+		for (CBCGPProp* pParentProp = GetParent(); pParentProp != NULL; pParentProp = pParentProp->GetParent())
+		{
+			if (pParentProp == NULL)
+			{
+				break;
+			}
+			
+			strName = pParentProp->GetName() + strName;
+		}
+		
+		for (POSITION pos = m_lstSubItems.GetHeadPosition (); pos != NULL;)
+		{
+			CBCGPProp* pListProp = m_lstSubItems.GetNext (pos);
+			ASSERT_VALID (pListProp);
+			
+			CString strSubItemTagName = _T("SubItem") + strName + GetName();
+			
+			CString strItem;
+			if (!tm.ReadEntityString(strSubItemTagName, strItem))
+			{
+				return FALSE;
+			}
+
+			if (!pListProp->SerializeFromBuffer(strItem, bCheckOnly))
+			{
+				return FALSE;
+			}
+		}
+		
+		return TRUE;
+	}
+
 	CRuntimeClass* pRTI = GetRuntimeClass();
 	if (pRTI == NULL || pRTI->m_lpszClassName == NULL)
 	{
@@ -2916,8 +3272,6 @@ BOOL CBCGPProp::SerializeFromBuffer(const CString& str, BOOL bCheckOnly)
 	LPWSTR lpChars = (LPWSTR) new WCHAR[nChars];
 	lpszClassName = (void*)AfxA2WHelper (lpChars, pRTI->m_lpszClassName, (int)nChars);
 #endif
-
-	CBCGPTagManager tm(str);
 
 	CString strClass;
 	tm.ReadString(_T("Class"), strClass);
@@ -2967,6 +3321,18 @@ CLIPFORMAT CBCGPProp::GetClipboardFormat()
 //**********************************************************************************
 BOOL CBCGPProp::IsCopyAvailable() const
 {
+	ASSERT_VALID(m_pWndList);
+
+	if (!IsAllowCopy())
+	{
+		return FALSE;
+	}
+
+	if (IsGroup() && !m_bGroupHasValue && m_pWndList->m_bAllowCopyPasteGroups)
+	{
+		return TRUE;
+	}
+
 	if (!m_lstOptions.IsEmpty())
 	{
 		return FALSE;
@@ -3079,8 +3445,16 @@ BOOL CBCGPProp::PasteInternal(BOOL bCheckOnly)
 
 				if (bRes && !bCheckOnly)
 				{
-					m_pWndList->OnPropertyChanged(this);
-					Redraw();
+					if (IsGroup() && !m_bIsValueList)
+					{
+						m_pWndList->OnPropertyGroupChanged(this, TRUE);
+					}
+					else
+					{
+						m_pWndList->OnPropertyChanged(this);
+					}
+
+					Redraw(IsGroup());
 				}
 
 				::GlobalUnlock(hClipbuffer);
@@ -3269,10 +3643,6 @@ void CBCGPColorProp::OnClickButton (CPoint /*point*/)
 		ASSERT (FALSE);
 		m_pPopup = NULL;
 	}
-	else
-	{
-		m_pPopup->GetMenuBar()->SetFocus ();
-	}
 }
 //******************************************************************************************
 BOOL CBCGPColorProp::OnEdit (LPPOINT /*lptClick*/)
@@ -3361,11 +3731,28 @@ CString CBCGPColorProp::FormatProperty ()
 	return str;
 }
 //******************************************************************************************
+BOOL CBCGPColorProp::SerializeValue(CString& str)
+{
+	if (m_Color == (COLORREF)-1)
+	{
+		str.Empty();
+		return TRUE;
+	}
+
+	return CBCGPProp::SerializeValue(str);
+}
+//******************************************************************************************
 BOOL CBCGPColorProp::ParseValue(const CString& str)
 {
 	if (str.IsEmpty())
 	{
-		return FALSE;
+		if (m_strAutoColor.IsEmpty())
+		{
+			return FALSE;
+		}
+
+		SetColor((COLORREF)-1);
+		return TRUE;
 	}
 
 	int nR = 0, nG = 0, nB = 0;
@@ -3374,7 +3761,8 @@ BOOL CBCGPColorProp::ParseValue(const CString& str)
 #else
 	_stscanf_s (str, _T("%2x%2x%2x"), &nR, &nG, &nB);
 #endif
-	m_Color = RGB (nR, nG, nB);
+
+	SetColor(RGB (nR, nG, nB));
 	return TRUE;
 }
 //******************************************************************************************
@@ -3595,7 +3983,12 @@ void CBCGPBrushProp::OnClickButton (CPoint /*point*/)
 	CBCGPBrush brSaved = m_Brush;
 
 	CBCGPEditBrushDlg dlg(m_Brush, m_pWndList, &m_Options);
+
+	m_pWndList->SetInternalDlgModal(TRUE);
+
 	BOOL bRes = (dlg.DoModal() == IDOK);
+
+	m_pWndList->SetInternalDlgModal(FALSE);
 
 	if (bRes && m_hbmp != NULL)
 	{
@@ -3732,6 +4125,8 @@ void CBCGPTextFormatProp::OnClickButton (CPoint /*point*/)
 	CWaitCursor wait;
 
 	CBCGPTextFormatDlg dlg(m_TextFormat, &m_Options, m_pWndList);
+
+	m_pWndList->SetInternalDlgModal(TRUE);
 	if (dlg.DoModal () == IDOK)
 	{
 		if (m_pWndInPlace->GetSafeHwnd() != NULL)
@@ -3745,6 +4140,8 @@ void CBCGPTextFormatProp::OnClickButton (CPoint /*point*/)
 
 		m_pWndList->OnPropertyChanged (this);
 	}
+
+	m_pWndList->SetInternalDlgModal(FALSE);
 
 	if (m_pWndInPlace->GetSafeHwnd() != NULL)
 	{
@@ -3763,7 +4160,14 @@ void CBCGPTextFormatProp::ResetOriginalValue ()
 {
 	CBCGPProp::ResetOriginalValue ();
 	
+	double dblScale = m_TextFormat.GetOriginalFontSize() == 0.0 ? 1.0 : (m_TextFormat.GetFontSize() / m_TextFormat.GetOriginalFontSize());
 	m_TextFormat = m_TextFormatOrig;
+
+	if (dblScale != 1.0)
+	{
+		m_TextFormat.Scale(dblScale);
+	}
+
 	Redraw();
 }
 //****************************************************************************************
@@ -3778,7 +4182,7 @@ CString CBCGPTextFormatProp::FormatProperty ()
 	ASSERT_VALID (this);
 
 	CString str;
-	double dblSize = m_TextFormat.GetFontSize();
+	double dblSize = m_TextFormat.GetOriginalFontSize();
 
 	if (dblSize < 0.0)
 	{
@@ -3899,10 +4303,12 @@ CComboBox* CBCGPLineStyleProp::CreateCombo (CWnd* pWndParent, CRect rect)
 	rect.bottom = rect.top + 400;
 
 	CBCGPLineStyleComboBox* pWndCombo = new CBCGPLineStyleComboBox();
+
+	pWndCombo->m_bVisualManagerStyle = m_pWndList != NULL && m_pWndList->DrawControlBarColors();
 	pWndCombo->m_bAutoFillItems = FALSE;
 
 	if (!pWndCombo->Create (WS_CHILD | CBS_NOINTEGRALHEIGHT | CBS_DROPDOWNLIST | WS_VSCROLL | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS,
-		rect, pWndParent, BCGPROPLIST_ID_INPLACE))
+		rect, pWndParent, BCGPROPLIST_ID_INPLACE_COMBO))
 	{
 		delete pWndCombo;
 		return NULL;
@@ -3945,18 +4351,20 @@ CString CBCGPLineStyleProp::FormatProperty()
 
 IMPLEMENT_DYNAMIC(CBCGPFileProp, CBCGPProp)
 
-CBCGPFileProp::CBCGPFileProp(const CString& strName, const CString& strFolderName, DWORD_PTR dwData, LPCTSTR lpszDescr) :
+CBCGPFileProp::CBCGPFileProp(const CString& strName, const CString& strFolderName, DWORD_PTR dwData, LPCTSTR lpszDescr, UINT ulFlags) :
 	CBCGPProp (strName, _variant_t((LPCTSTR)strFolderName), lpszDescr, dwData),
 	m_bIsFolder (TRUE)
 {
 	m_dwFlags = PROP_HAS_BUTTON;
+	m_nFolderBrowseFlags = ulFlags;
 }
 //**********************************************************************************
-CBCGPFileProp::CBCGPFileProp(const CString& strName, UINT nID, const CString& strFolderName, DWORD_PTR dwData, LPCTSTR lpszDescr) :
+CBCGPFileProp::CBCGPFileProp(const CString& strName, UINT nID, const CString& strFolderName, DWORD_PTR dwData, LPCTSTR lpszDescr, UINT ulFlags) :
 	CBCGPProp (strName, nID, _variant_t((LPCTSTR)strFolderName), lpszDescr, dwData),
 	m_bIsFolder (TRUE)
 {
 	m_dwFlags = PROP_HAS_BUTTON;
+	m_nFolderBrowseFlags = ulFlags;
 }
 //**********************************************************************************
 CBCGPFileProp::CBCGPFileProp (	const CString& strName, 
@@ -3976,6 +4384,7 @@ CBCGPFileProp::CBCGPFileProp (	const CString& strName,
 	m_strFilter = lpszFilter == NULL ? _T("") : lpszFilter;
 
 	m_bIsFolder  = FALSE;
+	m_nFolderBrowseFlags = BIF_RETURNONLYFSDIRS;
 }
 //**********************************************************************************
 CBCGPFileProp::CBCGPFileProp (	const CString& strName, 
@@ -3996,6 +4405,7 @@ CBCGPFileProp::CBCGPFileProp (	const CString& strName,
 	m_strFilter = lpszFilter == NULL ? _T("") : lpszFilter;
 
 	m_bIsFolder  = FALSE;
+	m_nFolderBrowseFlags = BIF_RETURNONLYFSDIRS;
 }
 //*****************************************************************************************
 CBCGPFileProp::~CBCGPFileProp()
@@ -4018,6 +4428,7 @@ void CBCGPFileProp::OnClickButton (CPoint /*point*/)
 
 	if (m_bIsFolder)
 	{
+#ifndef BCGP_EXCLUDE_SHELL
 		if (g_pShellManager == NULL)
 		{
 			if (g_pWorkspace != NULL)
@@ -4032,18 +4443,26 @@ void CBCGPFileProp::OnClickButton (CPoint /*point*/)
 		}
 		else
 		{
-			bUpdate = g_pShellManager->BrowseForFolder (strPath, m_pWndList, strPath);
+			m_pWndList->SetInternalDlgModal(TRUE);
+
+			bUpdate = g_pShellManager->BrowseForFolder (strPath, m_pWndList, strPath, NULL, m_nFolderBrowseFlags);
+
+			m_pWndList->SetInternalDlgModal(FALSE);
 		}
+#endif
 	}
 	else
 	{
 		CFileDialog dlg (m_bOpenFileDialog, m_strDefExt, strPath, m_dwFileOpenFlags, m_strFilter,
 			m_pWndList);
+
+		m_pWndList->SetInternalDlgModal(TRUE);
 		if (dlg.DoModal () == IDOK)
 		{
 			bUpdate = TRUE;
 			strPath = dlg.GetPathName ();
 		}
+		m_pWndList->SetInternalDlgModal(FALSE);
 	}
 
 	if (bUpdate)
@@ -4070,24 +4489,54 @@ void CBCGPFileProp::OnClickButton (CPoint /*point*/)
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// CBCGPDateTimePropAttributes data structure
+
+CBCGPDateTimePropAttributes::CBCGPDateTimePropAttributes()
+{
+	// Set default values from CBCGPDateTimeCtrl:
+	CBCGPDateTimeCtrl dateTime;
+
+	m_monthFormat = dateTime.m_monthFormat;
+	m_dateFormat = dateTime.m_dateFormat;
+	m_MinDate = dateTime.GetMinDate();
+	m_MaxDate = dateTime.GetMaxDate();
+	m_type2DigitsInYear = dateTime.m_type2DigitsInYear;
+	m_maxYear2Digits = dateTime.m_maxYear2Digits;
+	m_nFirstDayOfWeek = dateTime.GetFirstDayOfWeek();
+	m_nMaxWeekDayCharacters = dateTime.GetMaxWeekDayCharacters();
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // CBCGPDateTimeProp object
 
 IMPLEMENT_DYNAMIC(CBCGPDateTimeProp, CBCGPProp)
 
 CBCGPDateTimeProp::CBCGPDateTimeProp(const CString& strName, const COleDateTime& date, 
 		LPCTSTR lpszDescr/* = NULL*/, DWORD_PTR dwData/* = 0*/,
-		UINT nFlags/* = CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME | CBCGPDateTimeCtrl::DTM_DROPCALENDAR*/) :
+		UINT nFlags/* = CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME | CBCGPDateTimeCtrl::DTM_DROPCALENDAR*/,
+		const CBCGPDateTimePropAttributes* pAttributes/* = NULL */) :
 	CBCGPProp (strName, _variant_t(date, VT_DATE), lpszDescr, dwData)
 {
 	m_nFlags = nFlags;
+
+	if (pAttributes != NULL)
+	{
+		m_Attributes = *pAttributes;
+	}
 }
 //*****************************************************************************************
 CBCGPDateTimeProp::CBCGPDateTimeProp(const CString& strName, UINT nID, const COleDateTime& date, 
 		LPCTSTR lpszDescr/* = NULL*/, DWORD_PTR dwData/* = 0*/,
-		UINT nFlags/* = CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME | CBCGPDateTimeCtrl::DTM_DROPCALENDAR*/) :
+		UINT nFlags/* = CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME | CBCGPDateTimeCtrl::DTM_DROPCALENDAR*/,
+		const CBCGPDateTimePropAttributes* pAttributes/* = NULL */) :
 	CBCGPProp (strName, nID, _variant_t(date, VT_DATE), lpszDescr, dwData)
 {
 	m_nFlags = nFlags;
+	
+	if (pAttributes != NULL)
+	{
+		m_Attributes = *pAttributes;
+	}
 }
 //*****************************************************************************************
 CBCGPDateTimeProp::~CBCGPDateTimeProp()
@@ -4142,7 +4591,7 @@ CWnd* CBCGPDateTimeProp::CreateInPlaceEdit (CRect rectEdit, BOOL& bDefaultFormat
 	CRect rectSpin;
 	AdjustInPlaceEditRect (rectEdit, rectSpin);
 
-	pDateTime->Create (_T(""), WS_CHILD | WS_VISIBLE, rectEdit, 
+	pDateTime->Create (_T(""), WS_CHILD | WS_VISIBLE | BS_NOTIFY, rectEdit, 
 		m_pWndList, BCGPROPLIST_ID_INPLACE);
 	pDateTime->SetFont (
 		IsModified () && m_pWndList->m_bMarkModifiedProperties ? 
@@ -4226,6 +4675,7 @@ BOOL CBCGPDateTimeProp::OnUpdateValue ()
 void CBCGPDateTimeProp::SetDate (COleDateTime date)
 {
 	ASSERT_VALID (this);
+
 	SetValue (_variant_t (date, VT_DATE));
 
 	if (m_wndDateTime.GetSafeHwnd () != NULL)
@@ -4237,6 +4687,18 @@ void CBCGPDateTimeProp::SetDate (COleDateTime date)
 void CBCGPDateTimeProp::SetCtrlState(CBCGPDateTimeCtrl& wnd)
 {
 	ASSERT (wnd.GetSafeHwnd () != NULL);
+
+	wnd.m_monthFormat = m_Attributes.m_monthFormat;
+	wnd.m_dateFormat = m_Attributes.m_dateFormat;
+	
+	wnd.SetMinDate(m_Attributes.m_MinDate);
+	wnd.SetMaxDate(m_Attributes.m_MaxDate);
+	
+	wnd.m_type2DigitsInYear = m_Attributes.m_type2DigitsInYear;
+	wnd.m_maxYear2Digits = m_Attributes.m_maxYear2Digits;
+	
+	wnd.SetFirstDayOfWeek(m_Attributes.m_nFirstDayOfWeek);
+	wnd.SetMaxWeekDayCharacters(m_Attributes.m_nMaxWeekDayCharacters);
 
 	UINT stateFlags = 0;
 
@@ -4465,7 +4927,7 @@ BOOL CBCGPFontProp::CompareLFandColor(const LOGFONT& lf1, const LOGFONT& lf2, CO
 			lf1.lfUnderline != lf2.lfUnderline ||
 			lf1.lfCharSet != lf2.lfCharSet ||
 			_tcscmp(lf1.lfFaceName, lf2.lfFaceName) ||
-			(c1 != c2 && c2 != 0));
+			(c1 != c2));
 }
 //****************************************************************************************
 void CBCGPFontProp::OnClickButton (CPoint /*point*/)
@@ -4493,10 +4955,16 @@ void CBCGPFontProp::OnClickButton (CPoint /*point*/)
 		dlg.m_cf.rgbColors = m_Color;
 	}
 
+	m_pWndList->SetInternalDlgModal(TRUE);
 	if (dlg.DoModal () == IDOK)
 	{
 		dlg.GetCurrentFont (&m_lf);
 		m_Color = dlg.GetColor ();
+
+		if (m_Color == 0 && nColorPrev == (COLORREF)-1)
+		{
+			m_Color = nColorPrev;
+		}
 
 		if (CompareLFandColor(lfPrev, m_lf, nColorPrev, m_Color))
 		{
@@ -4517,6 +4985,8 @@ void CBCGPFontProp::OnClickButton (CPoint /*point*/)
 		m_lf = lfPrev;
 		m_Color = nColorPrev;
 	}
+
+	m_pWndList->SetInternalDlgModal(FALSE);
 
 	if (m_pWndInPlace != NULL)
 	{
@@ -4590,6 +5060,182 @@ BOOL CBCGPFontProp::ParseValue(const CString& str)
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// CBCGPBitwiseProp object
+
+IMPLEMENT_DYNAMIC(CBCGPBitwiseProp, CBCGPProp)
+
+CBCGPBitwiseProp::CBCGPBitwiseProp(const CString& strName, const CStringArray& arFlagNames, ULONG ulFlags, DWORD_PTR dwData, LPCTSTR lpszDescr, const CStringArray* parFlagDescriptions) :
+	CBCGPProp (strName, _variant_t(0L), lpszDescr, dwData)
+{
+	Rebuild(arFlagNames, ulFlags, parFlagDescriptions);
+}
+//**********************************************************************************
+CBCGPBitwiseProp::CBCGPBitwiseProp(const CString& strName, UINT nID, const CStringArray& arFlagNames, ULONG ulFlags, DWORD_PTR dwData, LPCTSTR lpszDescr, const CStringArray* parFlagDescriptions) :
+	CBCGPProp (strName, nID, _variant_t(0L), lpszDescr, dwData)
+{
+	Rebuild(arFlagNames, ulFlags, parFlagDescriptions);
+}
+//**********************************************************************************	
+CBCGPBitwiseProp::~CBCGPBitwiseProp()
+{
+}
+//**********************************************************************************	
+void CBCGPBitwiseProp::Rebuild(const CStringArray& arFlagNames, ULONG ulFlags, const CStringArray* parFlagDescriptions)
+{
+	m_bGroup = TRUE;
+	m_bGroupHasValue = TRUE;
+	m_bIsValueList = TRUE;
+	m_bAllowEdit = FALSE;
+	m_bChildNotify = TRUE;
+
+	m_varValue = (long)ulFlags;
+
+	RemoveAllSubItems();
+
+	int nSize = (int)(int)arFlagNames.GetSize();
+	if (nSize > 31)
+	{
+		TRACE0("CBCGPBitwiseProp: the max. number of flags is 31\n");
+		ASSERT(FALSE);
+		nSize = 31;
+	}
+
+	UINT nShift = 1;
+
+	for (int i = 0; i < nSize; i++)
+	{
+		bool bValue = (nShift & ulFlags) != 0;
+		
+		CString strDescr;
+		if (parFlagDescriptions != NULL && i < parFlagDescriptions->GetSize())
+		{
+			strDescr = (*parFlagDescriptions)[i];
+		}
+
+		AddSubItem(new CBCGPProp(arFlagNames[i], _variant_t(bValue),  strDescr));
+
+		nShift <<= 1;
+	}
+
+	Expand(FALSE);
+}
+//**********************************************************************************
+CString CBCGPBitwiseProp::FormatProperty()
+{
+	CString strVal;
+	
+	UINT nShift = 1;
+	ULONG ulFlags = 0;
+
+	BOOL bIsFirst = TRUE;
+
+	for (POSITION pos = m_lstSubItems.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPProp* pProp = m_lstSubItems.GetNext (pos);
+		ASSERT_VALID (pProp);
+
+		if ((bool)pProp->GetValue())
+		{
+			ulFlags |= nShift;
+
+			if (bIsFirst)
+			{
+				strVal = _T("(");
+			}
+			else
+			{
+				strVal += m_pWndList->GetListDelimiter();
+				strVal += _T(' ');
+			}
+
+			strVal += pProp->GetName();
+			bIsFirst = FALSE;
+		}
+
+		nShift <<= 1;
+	}
+		
+	if (!bIsFirst)
+	{
+		strVal += _T(")");
+	}
+	
+	m_varValue = (long)ulFlags;
+	return strVal;
+}
+//**********************************************************************************
+void CBCGPBitwiseProp::SetValue (const _variant_t& varValue)
+{
+	UINT nShift = 1;
+	ULONG ulFlags = (ULONG)(long)varValue;
+	
+	for (POSITION pos = m_lstSubItems.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPProp* pProp = m_lstSubItems.GetNext (pos);
+		ASSERT_VALID (pProp);
+		
+		bool bValue = (nShift & ulFlags) != 0;
+		pProp->SetValue(bValue);
+		
+		nShift <<= 1;
+	}
+
+	CBCGPProp::SetValue(varValue);
+}
+//**********************************************************************************
+BOOL CBCGPBitwiseProp::SerializeValue(CString& strVal)
+{
+	strVal.Format (m_strFormatULong, m_varValue.ulVal);
+	return TRUE;
+}
+//**********************************************************************************
+BOOL CBCGPBitwiseProp::ParseValue(const CString& str)
+{
+	if (!CBCGPProp::ParseValue(str))
+	{
+		return FALSE;
+	}
+
+	SetValue(m_varValue);
+	Redraw();
+
+	return TRUE;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPMultilineEditProp object
+
+IMPLEMENT_DYNAMIC(CBCGPMultilineEditProp, CBCGPProp)
+
+CBCGPMultilineEditProp::CBCGPMultilineEditProp(const CString& strName, const CString& strValue, int nRows, LPCTSTR lpszDescr, DWORD_PTR dwData) :
+	CBCGPProp (strName, _variant_t((LPCTSTR)strValue), lpszDescr, dwData)
+{
+	if (nRows <= 0)
+	{
+		ASSERT(FALSE);
+		nRows = 1;
+	}
+
+	m_nRows = nRows;
+}
+//**********************************************************************************
+CBCGPMultilineEditProp::CBCGPMultilineEditProp(const CString& strName, UINT nID, const CString& strValue, int nRows, LPCTSTR lpszDescr, DWORD_PTR dwData) :
+	CBCGPProp (strName, nID, _variant_t((LPCTSTR)strValue), lpszDescr, dwData)
+{
+	if (nRows <= 0)
+	{
+		ASSERT(FALSE);
+		nRows = 1;
+	}
+
+	m_nRows = nRows;
+}
+//**********************************************************************************	
+CBCGPMultilineEditProp::~CBCGPMultilineEditProp()
+{
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // CBCGPPropertiesToolBar
 
 void CBCGPPropertiesToolBar::CheckForButtonImages(CBCGPToolbarButton* pButton, CBCGPToolBarImages** pNewImages)
@@ -4624,7 +5270,7 @@ BOOL CBCGPPropertiesToolBar::PreTranslateMessage(MSG* pMsg)
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPPropList
 
-IMPLEMENT_DYNAMIC(CBCGPPropList, CWnd)
+IMPLEMENT_DYNAMIC(CBCGPPropList, CBCGPWnd)
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPPropList notification messages:
@@ -4635,10 +5281,13 @@ UINT BCGM_PROPERTY_MENU_ITEM_SELECTED = ::RegisterWindowMessage (_T("BCGM_PROPER
 UINT BCGM_PROPERTY_GET_MENU_ITEM_STATE = ::RegisterWindowMessage (_T("BCGM_PROPERTY_GET_MENU_ITEM_STATE"));
 UINT BCGM_PROPERTYLIST_SORTING_MODE_CHANGED = ::RegisterWindowMessage (_T("BCGM_PROPERTYLIST_SORTING_MODE_CHANGED"));
 UINT BCGM_PROPERTYLIST_LAYOUT_CHANGED = ::RegisterWindowMessage(_T("BCGM_PROPERTYLIST_LAYOUT_CHANGED"));
+UINT BCGM_PROPERTY_GROUP_CHANGING = ::RegisterWindowMessage (_T("BCGM_PROPERTY_GROUP_CHANGING"));
+UINT BCGM_PROPERTY_GROUP_CHANGED = ::RegisterWindowMessage (_T("BCGM_PROPERTY_GROUP_CHANGED"));
 
 CBCGPPropList::CBCGPPropList() :
 	m_wndToolBar(m_ToolBarCustomImages)
 {
+	m_nAccFirstPropertyOffset = 0;
 	m_bToolBar = FALSE;
 	m_nToolbarDefaultButtons = 0;
 	m_bToolbarStandardButtons = FALSE;
@@ -4650,14 +5299,18 @@ CBCGPPropList::CBCGPPropList() :
 	m_hFont = NULL;
 	m_nEditLeftMargin = 0;
 	m_nBoldEditLeftMargin = 0;
+	m_nEditTopMargin = 0;
+	m_nBoldEditTopMargin = 0;
 	m_bHeaderCtrl = TRUE;
 	m_bDescriptionArea = FALSE;
+	m_bDescriptionShowMoreIndicator = FALSE;
 	m_bContextMenu = FALSE;
 	m_nDescrHeight = -1;
 	m_nCommandsHeight = -1;
 	m_nCommandRows = 1;
 	m_bAreCommandsVisible = TRUE;
 	m_nDescrRows = 3;
+	m_rectDescr.SetRectEmpty();
 	m_bAlphabeticMode = FALSE;
 	m_bVSDotNetLook = FALSE;
 	m_rectList.SetRectEmpty ();
@@ -4671,9 +5324,11 @@ CBCGPPropList::CBCGPPropList() :
 	m_nVertScrollOffset = 0;
 	m_nVertScrollTotal = 0;
 	m_nVertScrollPage = 0;
+	m_bVerticalScrollBarEnabled = TRUE;
 	m_pSel = NULL;
 	m_pTracked = NULL;
 	m_bFocused = FALSE;
+	m_bIsInternalDlgModal = FALSE;
 	m_bOutOfFilter = FALSE;
 	m_nTooltipsCount = 0;
 	m_bAlwaysShowUserTT = TRUE;
@@ -4709,6 +5364,7 @@ CBCGPPropList::CBCGPPropList() :
 
 	m_pGM = NULL;
 	m_nItemMenuFlags = 0;
+	m_bAllowCopyPasteGroups = FALSE;
 
 	m_pAccProp = NULL;
 
@@ -4726,7 +5382,7 @@ CBCGPPropList::~CBCGPPropList()
 	}
 }
 
-BEGIN_MESSAGE_MAP(CBCGPPropList, CWnd)
+BEGIN_MESSAGE_MAP(CBCGPPropList, CBCGPWnd)
 	//{{AFX_MSG_MAP(CBCGPPropList)
 	ON_WM_CREATE()
 	ON_WM_SIZE()
@@ -4761,11 +5417,12 @@ BEGIN_MESSAGE_MAP(CBCGPPropList, CWnd)
 	ON_NOTIFY(UDN_DELTAPOS, BCGPROPLIST_ID_INPLACE, OnSpinDeltaPos)
 	ON_MESSAGE(UM_UPDATESPIN, OnUpdateSpin)
 	ON_WM_STYLECHANGED()
-	ON_CBN_SELENDOK(BCGPROPLIST_ID_INPLACE, OnSelectCombo)
-	ON_CBN_CLOSEUP(BCGPROPLIST_ID_INPLACE, OnCloseCombo)
+	ON_CBN_SELENDOK(BCGPROPLIST_ID_INPLACE_COMBO, OnSelectCombo)
+	ON_CBN_CLOSEUP(BCGPROPLIST_ID_INPLACE_COMBO, OnCloseCombo)
 	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnNeedTipText)
 	ON_EN_KILLFOCUS(BCGPROPLIST_ID_INPLACE, OnEditKillFocus)
-	ON_CBN_KILLFOCUS(BCGPROPLIST_ID_INPLACE, OnComboKillFocus)
+	ON_CBN_KILLFOCUS(BCGPROPLIST_ID_INPLACE_COMBO, OnComboKillFocus)
+	ON_BN_KILLFOCUS(BCGPROPLIST_ID_INPLACE, OnButtonKillFocus)
 	ON_MESSAGE (WM_GETOBJECT, OnGetObject)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
 	ON_MESSAGE(WM_PRINT, OnPrint)
@@ -4775,6 +5432,7 @@ BEGIN_MESSAGE_MAP(CBCGPPropList, CWnd)
 	ON_COMMAND(ID_BCGBARRES_PROPLIST_ALPHABETICAL, OnToolbarAlphabetical)
 	ON_UPDATE_COMMAND_UI(ID_BCGBARRES_PROPLIST_ALPHABETICAL, OnUpdateToolbarAlphabetical)
 	ON_EN_CHANGE(ID_FILTER, OnFilter)
+	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -4782,7 +5440,7 @@ END_MESSAGE_MAP()
 
 void CBCGPPropList::PreSubclassWindow() 
 {
-	CWnd::PreSubclassWindow();
+	CBCGPWnd::PreSubclassWindow();
 
 	_AFX_THREAD_STATE* pThreadState = AfxGetThreadState ();
 	if (pThreadState->m_pWndInit == NULL)
@@ -4793,7 +5451,7 @@ void CBCGPPropList::PreSubclassWindow()
 //******************************************************************************************
 int CBCGPPropList::OnCreate(LPCREATESTRUCT lpCreateStruct) 
 {
-	if (CWnd::OnCreate(lpCreateStruct) == -1)
+	if (CBCGPWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
 
 	Init ();
@@ -4858,26 +5516,52 @@ void CBCGPPropList::Init ()
 	ModifyStyle(0, WS_CLIPCHILDREN);
 
 	SetControlVisualMode (pWndParent);
+	OnChangeVisualMode();
+}
+//******************************************************************************************
+void CBCGPPropList::OnChangeVisualMode()
+{
 	m_wndScrollVert.SetVisualStyle(DrawControlBarColors () ? CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER : CBCGPScrollBar::BCGP_SBSTYLE_DEFAULT);
-
+	
 	m_wndHeader.m_bVisualManagerStyle = DrawControlBarColors ();
-
+	
 	m_wndToolBar.m_bIsDlgControl = !DrawControlBarColors ();
 	m_wndToolBar.m_bVisualManagerStyle = DrawControlBarColors ();
-
+	
 	m_wndFilter.m_bVisualManagerStyle = DrawControlBarColors ();
+}
+//******************************************************************************************
+UINT CBCGPPropList::GetToolBarResourceID(BOOL bHot)
+{
+	if (bHot)
+	{
+		return globalData.Is32BitIcons() ? IDR_BCGBARRES_PROPLIST32 : 0;
+	}
+
+	return IDR_BCGBARRES_PROPLIST;
 }
 //******************************************************************************************
 void CBCGPPropList::InitToolBar()
 {
 	m_wndToolBar.Create(this);
 	m_wndToolBar.SetControlVisualMode (this);
-
-	const UINT uiToolbarHotID = globalData.Is32BitIcons () ? IDR_BCGBARRES_PROPLIST32 : 0;
+	m_wndToolBar.SetWindowText(_T("PropertyListToolbar"));
 
 	{
-		CBCGPLocalResource locaRes;
-		m_wndToolBar.LoadToolBar (IDR_BCGBARRES_PROPLIST, 0, 0, TRUE /* Locked bar */, 0, 0, uiToolbarHotID);
+		CBCGPLocalResource* pLocaRes = NULL;
+
+		UINT nResID = GetToolBarResourceID(FALSE);
+		if (nResID == IDR_BCGBARRES_PROPLIST)
+		{
+			pLocaRes = new CBCGPLocalResource ();
+		}
+
+		m_wndToolBar.LoadToolBar(nResID, 0, 0, TRUE /* Locked bar */, 0, 0, GetToolBarResourceID(TRUE));
+
+		if (pLocaRes != NULL)
+		{
+			delete pLocaRes;
+		}
 	}
 
 	m_wndToolBar.m_nDefaultButtons = m_wndToolBar.GetCount();
@@ -4957,8 +5641,8 @@ void CBCGPPropList::AdjustLayout ()
 	HFONT hfontOld = SetCurrFont (&dc);
 
 	TEXTMETRIC tm;
-	dc.GetTextMetrics (&tm);
-	m_nRowHeight = tm.tmHeight + 4;
+	dc.GetTextMetrics(&tm);
+	m_nRowHeight = tm.tmHeight + TEXT_MARGIN;
 
 	CRect rectClient;
 	GetClientRect (rectClient);
@@ -4967,14 +5651,8 @@ void CBCGPPropList::AdjustLayout ()
 
 	if (m_bToolBar || m_bFilterBox)
 	{
-		int nMarginX = 4;
-		int nMarginY = 2;
-
-		if (globalData.GetRibbonImageScale () != 1.)
-		{
-			nMarginX = (int) (globalData.GetRibbonImageScale () * nMarginX);
-			nMarginY = (int) (globalData.GetRibbonImageScale () * nMarginY);
-		}
+		int nMarginX = TEXT_MARGIN;
+		int nMarginY = TEXT_MARGIN / 2;
 
 		int nToolbarWidth = m_bToolBar ? (m_bFilterBox ? m_wndToolBar.CalcSize(FALSE).cx + 2 * nMarginX : rectClient.Width()) : 0;
 
@@ -4994,21 +5672,38 @@ void CBCGPPropList::AdjustLayout ()
 		{
 			m_wndFilter.SendMessage (WM_SETFONT, (WPARAM) (m_hFont != NULL ? m_hFont : ::GetStockObject (DEFAULT_GUI_FONT)));
 
+			if (GetExStyle() & WS_EX_LAYOUTRTL)
+			{
+				m_wndFilter.ModifyStyle(0, WS_EX_LAYOUTRTL);
+			}
+			else
+			{
+				m_wndFilter.ModifyStyle(WS_EX_LAYOUTRTL, 0);
+			}
+
 			if (m_nToolbarHeight == 0)
 			{
 				m_nToolbarHeight = 3 * globalData.GetTextHeight() / 2 + 2 * nMarginY;
 			}
 
-			int nFilterBoxHeight = m_nToolbarHeight - 2 * nMarginY;
-			if (CBCGPToolBar::IsLargeIcons())
-			{
-				nFilterBoxHeight = 3 * globalData.GetTextHeight() / 2;
-			}
+			CEdit editDummy;
+			editDummy.Create(WS_CHILD, CRect (0, 0, 100, 20), this, (UINT)-1);
+			
+			editDummy.SetFont(m_wndFilter.GetFont());
+			
+			CRect rectEdit;
+			editDummy.GetWindowRect(rectEdit);
 
-			m_wndFilter.SetWindowPos (NULL, rectClient.left + nToolbarWidth + nMarginX, rectClient.top + nMarginY + 1, 
+			int nExtraHeight = (int)globalUtils.ScaleByDPI(1.5);
+
+			int nFilterBoxHeight = max(m_nToolbarHeight - globalUtils.ScaleByDPI(2), rectEdit.Height() + nExtraHeight);
+			int nYOffset = max(0, (nMarginY + m_nToolbarHeight - nFilterBoxHeight) / 2);
+
+			m_wndFilter.SetWindowPos (NULL, rectClient.left + nToolbarWidth + nMarginX, rectClient.top + nYOffset, 
 				rectClient.Width() - nToolbarWidth - 2 * nMarginX, nFilterBoxHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 
 			m_wndFilter.ShowWindow (SW_SHOWNOACTIVATE);
+			editDummy.DestroyWindow ();
 		}
 		else
 		{
@@ -5064,11 +5759,16 @@ void CBCGPPropList::AdjustLayout ()
 		m_rectList.bottom -= m_nCommandsHeight;
 	}
 
+	m_rectDescr.SetRectEmpty();
+
 	if (m_bDescriptionArea && m_nDescrHeight != -1 && rectClient.Height() > 0)
 	{
 		m_nDescrHeight = max (m_nDescrHeight, m_nRowHeight);
 		m_nDescrHeight = min (m_nDescrHeight, rectClient.Height () - m_nRowHeight);
 		m_rectList.bottom -= m_nDescrHeight;
+
+		m_rectDescr = rectClient;
+		m_rectDescr.top = m_rectDescr.bottom - m_nDescrHeight;
 	}
 
 	if (HasCommands () && m_bAreCommandsVisible && m_nCommandsHeight != -1 && rectClient.Height() > 0)
@@ -5129,6 +5829,7 @@ void CBCGPPropList::AdjustLayout ()
 	}
 	else
 	{
+		m_nVertScrollOffset = 0;
 		m_wndScrollVert.SetWindowPos (NULL, 0, 0,
 			0, 0, SWP_NOZORDER | SWP_NOACTIVATE);
 	}
@@ -5189,38 +5890,44 @@ void CBCGPPropList::ReposProperties ()
 				m_bOutOfFilter = FALSE;
 			}
 		}
-
-		return;
 	}
-
-	POSITION pos = NULL;
-
-	// Get sorted list of terminal properties:
-	for (pos = m_lstProps.GetHeadPosition (); pos != NULL;)
+	else
 	{
-		CBCGPProp* pProp = m_lstProps.GetNext (pos);
-		ASSERT_VALID (pProp);
+		POSITION pos = NULL;
 
-		pProp->AddTerminalProp (m_lstTerminalProps);
-	}
-
-	for (pos = m_lstTerminalProps.GetHeadPosition (); pos != NULL;)
-	{
-		CBCGPProp* pProp = m_lstTerminalProps.GetNext (pos);
-		ASSERT_VALID (pProp);
-
-		pProp->Repos (y);
-
-		if (m_bOutOfFilter && !pProp->GetRect().IsRectEmpty())
+		// Get sorted list of terminal properties:
+		for (pos = m_lstProps.GetHeadPosition (); pos != NULL;)
 		{
-			m_bOutOfFilter = FALSE;
+			CBCGPProp* pProp = m_lstProps.GetNext (pos);
+			ASSERT_VALID (pProp);
+
+			pProp->AddTerminalProp (m_lstTerminalProps);
 		}
+
+		for (pos = m_lstTerminalProps.GetHeadPosition (); pos != NULL;)
+		{
+			CBCGPProp* pProp = m_lstTerminalProps.GetNext (pos);
+			ASSERT_VALID (pProp);
+
+			pProp->Repos (y);
+
+			if (m_bOutOfFilter && !pProp->GetRect().IsRectEmpty())
+			{
+				m_bOutOfFilter = FALSE;
+			}
+		}
+	}
+
+	if (m_bDescriptionArea && !m_rectDescr.IsRectEmpty() && m_ToolTip.GetSafeHwnd() != NULL)
+	{
+		m_ToolTip.AddTool(this, LPSTR_TEXTCALLBACK, m_rectDescr, m_nTooltipsCount + 1);
+		m_nTooltipsCount++;
 	}
 }
 //******************************************************************************************
 void CBCGPPropList::OnSize(UINT nType, int cx, int cy) 
 {
-	CWnd::OnSize(nType, cx, cy);
+	CBCGPWnd::OnSize(nType, cx, cy);
 
 	EndEditItem ();
 
@@ -5265,14 +5972,22 @@ void CBCGPPropList::CreateBoldFont ()
 //******************************************************************************************
 void CBCGPPropList::CalcEditMargin ()
 {
+	CRect rectEdit(0, 0, 0, 0);
+
 	CEdit editDummy;
 	editDummy.Create (WS_CHILD, CRect (0, 0, 100, 20), this, (UINT)-1);
 
 	editDummy.SetFont (GetFont ());
 	m_nEditLeftMargin = LOWORD (editDummy.GetMargins ());
 
+	editDummy.GetClientRect(rectEdit);
+	m_nEditTopMargin = max(0, (int)(.5 + 0.5 * (m_nRowHeight - rectEdit.Height() + 2)));
+
 	editDummy.SetFont (&m_fontBold);
 	m_nBoldEditLeftMargin = LOWORD (editDummy.GetMargins ());
+
+	editDummy.GetClientRect(rectEdit);
+	m_nBoldEditTopMargin = max(0, (int)(.5 + 0.5 * (m_nRowHeight - rectEdit.Height() + 2)));
 
 	editDummy.DestroyWindow ();
 }
@@ -5478,6 +6193,20 @@ void CBCGPPropList::OnDrawDescription (CDC* pDC, CRect rect)
 
 	m_pSel->OnDrawDescription (pDC, rect);
 
+	if (m_pSel->m_bDescriptionTruncated && m_bDescriptionShowMoreIndicator)
+	{
+		CRect rectMore = m_rectDescr;
+		rectMore.DeflateRect(2, 2);
+
+		rectMore.left = rectMore.right - m_nRowHeight;
+		rectMore.top = rectMore.bottom - m_nRowHeight;
+
+		if (rectMore.top > rect.top - TEXT_MARGIN)
+		{
+			visualManager->OnDrawPropListMoreDescriptionIndicator(pDC, this, rectMore);
+		}
+	}
+
 	if (clrTextOld == (COLORREF)-1)
 	{
 		pDC->SetTextColor (clrTextOld);
@@ -5595,11 +6324,19 @@ BOOL CBCGPPropList::OnDrawProperty (CDC* pDC, CBCGPProp* pProp) const
 			{
 				rectName.right = nXCenter;
 
-				if (m_bContextMenu && rectName.right - m_rectList.left >= 2 * rectName.Height())
+				if (m_bContextMenu && pProp->IsMenuButtonVisible() && rectName.right - m_rectList.left >= 2 * GetRowHeight())
 				{
 					pProp->m_rectMenuButton = rectName;
-					rectName.right -= rectName.Height();
+					rectName.right -= GetRowHeight();
 					pProp->m_rectMenuButton.left = rectName.right;
+
+					if (pProp->GetRowsNumber() > 1)
+					{
+						const int nMenuSize = globalUtils.ScaleByDPI(MENU_ICON_SIZE);
+						
+						pProp->m_rectMenuButton.top += max(0, (GetRowHeight() - nMenuSize) / 2);
+						pProp->m_rectMenuButton.bottom = pProp->m_rectMenuButton.top + nMenuSize;
+					}
 	
 					pProp->m_bDrawMenuButton = TRUE;
 				}
@@ -5670,7 +6407,7 @@ BOOL CBCGPPropList::OnDrawProperty (CDC* pDC, CBCGPProp* pProp) const
 				CRect rectNameClip = rectName;
 				rectNameClip.bottom = min (rectNameClip.bottom, m_rectList.bottom);
 
-				if (!pProp->IsGroup())
+				if (!pProp->IsGroup() || pProp->m_bIsValueList)
 				{
 					rectNameClip.right = nXCenter;
 				}
@@ -5730,6 +6467,11 @@ BOOL CBCGPPropList::OnDrawProperty (CDC* pDC, CBCGPProp* pProp) const
 			rgnClipVal.CreateRectRgnIndirect (&rectValClip);
 			pDC->SelectClipRgn (&rgnClipVal);
 
+			if (!pProp->m_rectButton.IsRectEmpty ())
+			{
+				rectValue.right = pProp->m_rectButton.left;
+			}
+
 			pProp->OnDrawValue (pDC, rectValue);
 
 			if (!pProp->m_rectButton.IsRectEmpty ())
@@ -5744,8 +6486,7 @@ BOOL CBCGPPropList::OnDrawProperty (CDC* pDC, CBCGPProp* pProp) const
 
 			if (pProp->m_bHasState && pProp->m_bDrawStateBorder)
 			{
-				CRect rectBorder = rectValue;
-				pDC->Draw3dRect(rectBorder, pProp->m_clrState, pProp->m_clrState);
+				pDC->Draw3dRect(rectValue, pProp->m_clrState, pProp->m_clrState);
 			}
 			
 			if (clrTextOld != (COLORREF)-1)
@@ -5776,8 +6517,39 @@ void CBCGPPropList::OnPropertyChanged (CBCGPProp* pProp) const
 
 	pProp->SetModifiedFlag ();
 
-	GetOwner ()->SendMessage (BCGM_PROPERTY_CHANGED, GetDlgCtrlID (),
-		LPARAM (pProp));
+	CBCGPProp* pPropNotify = pProp;
+	if (pProp->m_pParent != NULL && pProp->m_pParent->m_bChildNotify)
+	{
+		pPropNotify = pProp->m_pParent;
+	}
+
+	GetOwner ()->SendMessage (BCGM_PROPERTY_CHANGED, GetDlgCtrlID(), LPARAM (pPropNotify));
+}
+//****************************************************************************************
+void CBCGPPropList::OnPropertyGroupChanged(CBCGPProp* pProp, BOOL bNotify) const
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (pProp);
+
+	if (bNotify)
+	{
+		GetOwner ()->SendMessage(BCGM_PROPERTY_GROUP_CHANGING, GetDlgCtrlID(), LPARAM(pProp));
+	}
+
+	if (!pProp->IsGroup() || pProp->m_bIsValueList)
+	{
+		pProp->SetModifiedFlag();
+	}
+
+	for (POSITION pos = pProp->m_lstSubItems.GetHeadPosition (); pos != NULL;)
+	{
+		OnPropertyGroupChanged(pProp->m_lstSubItems.GetNext(pos), FALSE);
+	}
+
+	if (bNotify)
+	{
+		GetOwner ()->SendMessage(BCGM_PROPERTY_GROUP_CHANGED, GetDlgCtrlID(), LPARAM(pProp));
+	}
 }
 //*******************************************************************************************
 BOOL CBCGPPropList::OnEraseBkgnd(CDC* /*pDC*/) 
@@ -5827,7 +6599,7 @@ void CBCGPPropList::EnableToolBar(BOOL bShowStandardButtons, UINT nCustomToolbar
 
 	m_bToolBar = m_bToolbarStandardButtons || m_nCustomToolbarID != 0;
 	m_bToolbarCustomButtons = FALSE;
-
+	m_nAccFirstPropertyOffset = (m_bToolBar) ? 1: 0;
 	if (m_wndToolBar.GetSafeHwnd() != NULL)
 	{
 		// Remove custom buttons:
@@ -5914,11 +6686,12 @@ void CBCGPPropList::EnableHeaderCtrl (BOOL bEnable, LPCTSTR lpszLeftColumn,
 	AdjustLayout ();
 }
 //******************************************************************************************
-void CBCGPPropList::EnableDescriptionArea (BOOL bEnable)
+void CBCGPPropList::EnableDescriptionArea (BOOL bEnable, BOOL bShowMoreIndicator)
 {
 	ASSERT_VALID (this);
 
 	m_bDescriptionArea = bEnable;
+	m_bDescriptionShowMoreIndicator = bShowMoreIndicator;
 
 	AdjustLayout ();
 
@@ -5928,14 +6701,16 @@ void CBCGPPropList::EnableDescriptionArea (BOOL bEnable)
 	}
 }
 //******************************************************************************************
-void CBCGPPropList::EnableContextMenu(BOOL bEnable, UINT nMenuFlags)
+void CBCGPPropList::EnableContextMenu(BOOL bEnable, UINT nMenuFlags, BOOL bAllowCopyPasteGroups)
 {
 	ASSERT_VALID (this);
 
 	m_bContextMenu = bEnable;
+
 	if (bEnable)
 	{
 		m_nItemMenuFlags = nMenuFlags;
+		m_bAllowCopyPasteGroups = bAllowCopyPasteGroups;
 	}
 
 	AdjustLayout ();
@@ -6238,6 +7013,7 @@ void CBCGPPropList::TrackToolTip (CPoint point)
 		}
 		
 		m_IPToolTip.SetTextMargin (TEXT_MARGIN);
+		m_IPToolTip.SetMultiline(pProp->GetRowsNumber() > 1);
 		
 		m_IPToolTip.SetFont (
 			bIsValueTT && pProp->IsModified () && m_bMarkModifiedProperties ? 
@@ -6297,10 +7073,17 @@ void CBCGPPropList::RemoveAll ()
 		delete m_lstProps.RemoveHead ();
 	}
 
-	while (m_nTooltipsCount > 0)
+	if (m_ToolTip.GetSafeHwnd() != NULL)
 	{
-		m_ToolTip.DelTool (this, m_nTooltipsCount);
-		m_nTooltipsCount--;
+		while (m_nTooltipsCount > 0)
+		{
+			m_ToolTip.DelTool (this, m_nTooltipsCount);
+			m_nTooltipsCount--;
+		}
+	}
+	else
+	{
+		m_nTooltipsCount = 0;
 	}
 
 	m_lstTerminalProps.RemoveAll ();
@@ -6608,7 +7391,7 @@ const LOGFONT* CBCGPPropList::GetFontPropertyValue(UINT nID) const
 	return pProp->GetLogFont();
 }
 //*******************************************************************************************
-BOOL CBCGPPropList::EnableProperty(UINT nID, BOOL bEnable)
+BOOL CBCGPPropList::EnableProperty(UINT nID, BOOL bEnable, BOOL bIncludeSubItems)
 {
 	ASSERT_VALID (this);
 
@@ -6619,7 +7402,7 @@ BOOL CBCGPPropList::EnableProperty(UINT nID, BOOL bEnable)
 		return FALSE;
 	}
 
-	pProp->Enable(bEnable);
+	pProp->Enable(bEnable, bIncludeSubItems);
 	return TRUE;
 }
 //*******************************************************************************************
@@ -6746,7 +7529,7 @@ void CBCGPPropList::SetCurSel (CBCGPProp* pProp, BOOL bRedraw)
 //******************************************************************************************
 void CBCGPPropList::OnLButtonDown(UINT nFlags, CPoint point) 
 {
-	CWnd::OnLButtonDown(nFlags, point);
+	CBCGPWnd::OnLButtonDown(nFlags, point);
 
 	SetFocus ();
 
@@ -6864,7 +7647,7 @@ void CBCGPPropList::OnLButtonDown(UINT nFlags, CPoint point)
 //************************************************************************************
 void CBCGPPropList::OnRButtonDown(UINT nFlags, CPoint point) 
 {
-	CWnd::OnRButtonDown(nFlags, point);
+	CBCGPWnd::OnRButtonDown(nFlags, point);
 
 	if (m_bTracking || m_bTrackingCommands || m_bTrackingDescr)
 	{
@@ -6958,10 +7741,17 @@ void CBCGPPropList::OnRButtonUp(UINT nFlags, CPoint point)
 	CBCGPProp::ClickArea clickArea;
 	CBCGPProp* pHit = HitTest (point, &clickArea);
 
-	if (pHit != NULL && m_bContextMenu)
+	if (pHit != NULL && m_bContextMenu && pHit->IsMenuButtonVisible())
 	{
 		switch (clickArea)
 		{
+		case CBCGPProp::ClickGroupArea:
+			if (m_bAllowCopyPasteGroups)
+			{
+				pHit->OnClickMenuButton(point);
+				return;
+			}
+
 		case CBCGPProp::ClickName:
 		case CBCGPProp::ClickMenuButton:
 			if (!pHit->IsGroup () || pHit->m_bIsValueList)
@@ -6973,12 +7763,12 @@ void CBCGPPropList::OnRButtonUp(UINT nFlags, CPoint point)
 		return;
 	}
 
-	CWnd::OnRButtonUp(nFlags, point);
+	CBCGPWnd::OnRButtonUp(nFlags, point);
 }
 //******************************************************************************************
 BOOL CBCGPPropList::Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID)
 {
-	return CWnd::Create (globalData.RegisterWindowClass (_T("BCGPPropList")),
+	return CBCGPWnd::Create (globalData.RegisterWindowClass (_T("BCGPPropList")),
 			_T(""), dwStyle, rect, pParentWnd, nID, NULL);
 }
 //******************************************************************************************
@@ -7081,7 +7871,7 @@ BOOL CBCGPPropList::PreTranslateMessage(MSG* pMsg)
 {
 	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
 	{
-		return CWnd::PreTranslateMessage(pMsg);
+		return CBCGPWnd::PreTranslateMessage(pMsg);
 	}
 
    	switch (pMsg->message)
@@ -7119,7 +7909,7 @@ BOOL CBCGPPropList::PreTranslateMessage(MSG* pMsg)
 	}
 
 	if (pMsg->message == WM_KEYDOWN &&
-		pMsg->wParam == VK_TAB &&
+		pMsg->wParam == VK_TAB && (::GetAsyncKeyState (VK_CONTROL) & 0x8000) == 0 &&
 		(GetStyle() & WS_TABSTOP) == 0 &&
 		m_pSel != NULL && 
 		m_pSel->OnActivateByTab ())
@@ -7130,7 +7920,7 @@ BOOL CBCGPPropList::PreTranslateMessage(MSG* pMsg)
 	if (pMsg->message == WM_SYSKEYDOWN && 
 		(pMsg->wParam == VK_DOWN || pMsg->wParam == VK_RIGHT) && 
 		m_pSel != NULL && m_pSel->m_bEnabled && 
-		((m_pSel->m_dwFlags) & PROP_HAS_BUTTON) &&
+		m_pSel->HasButton() &&
 		EditItem (m_pSel))
 	{
 		CString strPrevVal = m_pSel->FormatProperty ();
@@ -7154,7 +7944,7 @@ BOOL CBCGPPropList::PreTranslateMessage(MSG* pMsg)
 			return TRUE;
 		}
 
-		return CWnd::PreTranslateMessage(pMsg);
+		return CBCGPWnd::PreTranslateMessage(pMsg);
 	}
 
 	if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN &&
@@ -7239,14 +8029,14 @@ BOOL CBCGPPropList::PreTranslateMessage(MSG* pMsg)
 			default:
 				if (m_pSel->m_bEnabled)
 				{
-					if (!m_pSel->m_bAllowEdit)
+					if (ProcessClipboardAccelerators ((UINT) pMsg->wParam))
 					{
-						m_pSel->PushChar ((UINT) pMsg->wParam);
 						return TRUE;
 					}
 
-					if (ProcessClipboardAccelerators ((UINT) pMsg->wParam))
+					if (!m_pSel->m_bAllowEdit)
 					{
+						m_pSel->PushChar ((UINT) pMsg->wParam);
 						return TRUE;
 					}
 				}
@@ -7306,7 +8096,7 @@ BOOL CBCGPPropList::PreTranslateMessage(MSG* pMsg)
 				pMsg->message == WM_RBUTTONDOWN &&
 				!m_pSel->m_bAllowEdit)
 			{
-				return TRUE;
+				return CBCGPWnd::PreTranslateMessage(pMsg);
 			}
 
 			if (!rectEdit.PtInRect (ptCursor) &&
@@ -7355,7 +8145,7 @@ BOOL CBCGPPropList::PreTranslateMessage(MSG* pMsg)
 		}
 	}
 	
-	return CWnd::PreTranslateMessage(pMsg);
+	return CBCGPWnd::PreTranslateMessage(pMsg);
 }
 //*******************************************************************************************
 void CBCGPPropList::OnCancelMode() 
@@ -7404,19 +8194,19 @@ void CBCGPPropList::OnCancelMode()
 	m_IPToolTip.Deactivate ();
 	
 	EndEditItem ();
-
+	
 	if (m_pTracked != NULL)
 	{
 		m_pTracked->OnLeaveMouse();
 		m_pTracked = NULL;
 	}
 
-	CWnd::OnCancelMode();
+	CBCGPWnd::OnCancelMode();
 }
 //******************************************************************************************
 void CBCGPPropList::OnSetFocus(CWnd* pOldWnd) 
 {
-	CWnd::OnSetFocus(pOldWnd);
+	CBCGPWnd::OnSetFocus(pOldWnd);
 	
 	m_bFocused = TRUE;
 	
@@ -7442,12 +8232,12 @@ void CBCGPPropList::OnKillFocus(CWnd* pNewWnd)
 		}
 	}
 
-	CWnd::OnKillFocus(pNewWnd);
+	CBCGPWnd::OnKillFocus(pNewWnd);
 }
 //******************************************************************************************
 void CBCGPPropList::OnStyleChanged (int nStyleType, LPSTYLESTRUCT lpStyleStruct)
 {
-	CWnd::OnStyleChanged (nStyleType, lpStyleStruct);
+	CBCGPWnd::OnStyleChanged (nStyleType, lpStyleStruct);
 	AdjustLayout ();
 }
 //******************************************************************************************
@@ -7465,7 +8255,7 @@ void CBCGPPropList::SetScrollSizes ()
 		return;
 	}
 
-	if (m_nRowHeight == 0)
+	if (m_nRowHeight == 0 || !m_bVerticalScrollBarEnabled)
 	{
 		m_nVertScrollPage = 0;
 		m_nVertScrollTotal = 0;
@@ -7474,7 +8264,7 @@ void CBCGPPropList::SetScrollSizes ()
 	else
 	{
 		m_nVertScrollPage = m_rectList.Height () / m_nRowHeight - 1;
-		m_nVertScrollTotal = GetTotalItems (FALSE /* Visible only */);
+		m_nVertScrollTotal = GetTotalItems (FALSE /* Visible only */, TRUE /* Calc rows */);
 
 		if (m_nVertScrollTotal <= m_nVertScrollPage)
 		{
@@ -7482,7 +8272,7 @@ void CBCGPPropList::SetScrollSizes ()
 			m_nVertScrollTotal = 0;
 		}
 
-		m_nVertScrollOffset = min (m_nVertScrollOffset, m_nVertScrollTotal);
+		m_nVertScrollOffset = max(0, min (m_nVertScrollOffset, m_nVertScrollTotal - m_nVertScrollPage + 1));
 	}
 
 	SCROLLINFO si;
@@ -7501,7 +8291,7 @@ void CBCGPPropList::SetScrollSizes ()
 	m_wndScrollVert.EnableWindow ();
 }
 //******************************************************************************************
-int CBCGPPropList::GetTotalItems (BOOL bIncludeHidden) const
+int CBCGPPropList::GetTotalItems (BOOL bIncludeHidden, BOOL bCalcRows) const
 {
 	ASSERT_VALID (this);
 
@@ -7509,7 +8299,7 @@ int CBCGPPropList::GetTotalItems (BOOL bIncludeHidden) const
 
 	if (m_bAlphabeticMode)
 	{
-		if (bIncludeHidden)
+		if (bIncludeHidden && !bCalcRows)
 		{
 			return (int) m_lstTerminalProps.GetCount ();
 		}
@@ -7519,13 +8309,15 @@ int CBCGPPropList::GetTotalItems (BOOL bIncludeHidden) const
 			CBCGPProp* pProp = m_lstTerminalProps.GetNext (pos);
 			ASSERT_VALID (pProp);
 
-			if (pProp->IsVisibleInFilter())
+			if (pProp->IsVisibleInFilter() || bIncludeHidden)
 			{
-				nCount++;
+				const int nInc = bCalcRows ? pProp->GetRowsNumber() : 1;
+
+				nCount += nInc;
 
 				if (pProp->IsExpanded())
 				{
-					nCount += pProp->GetExpandedSubItems();
+					nCount += pProp->GetExpandedSubItems(TRUE, bCalcRows);
 				}
 			}
 		}
@@ -7538,7 +8330,9 @@ int CBCGPPropList::GetTotalItems (BOOL bIncludeHidden) const
 		CBCGPProp* pProp = m_lstProps.GetNext (pos);
 		ASSERT_VALID (pProp);
 
-		nCount += pProp->GetExpandedSubItems (bIncludeHidden) + 1;
+		const int nInc = bCalcRows ? pProp->GetRowsNumber() : 1;
+
+		nCount += pProp->GetExpandedSubItems (bIncludeHidden, bCalcRows) + nInc;
 	}
 
 	return nCount;
@@ -7608,7 +8402,11 @@ void CBCGPPropList::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 	int dy = m_nRowHeight * (nPrevOffset - m_nVertScrollOffset);
 	ScrollWindow (0, dy, m_rectList, m_rectList);
 
-	if (m_pSel != NULL)
+	if (m_nVertScrollOffset == 0)
+	{
+		RedrawWindow();
+	}
+	else if (m_pSel != NULL)
 	{
 		ASSERT_VALID (m_pSel);
 		RedrawWindow (m_pSel->m_rectButton);
@@ -7657,7 +8455,7 @@ BOOL CBCGPPropList::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/)
 //*******************************************************************************************
 void CBCGPPropList::OnLButtonDblClk(UINT nFlags, CPoint point) 
 {
-	CWnd::OnLButtonDblClk(nFlags, point);
+	CBCGPWnd::OnLButtonDblClk(nFlags, point);
 
 	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
 	{
@@ -7734,7 +8532,7 @@ BOOL CBCGPPropList::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 
 		if (point.y <= rectClient.top + m_nToolbarHeight)
 		{
-			return CWnd::OnSetCursor(pWnd, nHitTest, message);
+			return CBCGPWnd::OnSetCursor(pWnd, nHitTest, message);
 		}
 
 		if (HasCommands () && m_bAreCommandsVisible &&
@@ -7782,14 +8580,14 @@ BOOL CBCGPPropList::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 		}
 	}
 	
-	return CWnd::OnSetCursor(pWnd, nHitTest, message);
+	return CBCGPWnd::OnSetCursor(pWnd, nHitTest, message);
 }
 //******************************************************************************************
 void CBCGPPropList::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags) 
 {
 	if (m_lstProps.IsEmpty ())
 	{
-		CWnd::OnKeyDown(nChar, nRepCnt, nFlags);
+		CBCGPWnd::OnKeyDown(nChar, nRepCnt, nFlags);
 		return;
 	}
 
@@ -7991,7 +8789,7 @@ void CBCGPPropList::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		return;
 	}
 
-	CWnd::OnKeyDown(nChar, nRepCnt, nFlags);
+	CBCGPWnd::OnKeyDown(nChar, nRepCnt, nFlags);
 }
 //******************************************************************************************
 void CBCGPPropList::EnsureVisible (CBCGPProp* pProp, BOOL bExpandParents/* = FALSE*/)
@@ -8073,7 +8871,7 @@ void CBCGPPropList::ExpandAll (BOOL bExapand/* = TRUE*/)
 //******************************************************************************************
 void CBCGPPropList::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags) 
 {
-	CWnd::OnChar(nChar, nRepCnt, nFlags);
+	CBCGPWnd::OnChar(nChar, nRepCnt, nFlags);
 
 	if (m_pSel == NULL || !m_pSel->m_bEnabled)
 	{
@@ -8092,7 +8890,7 @@ void CBCGPPropList::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
 //*******************************************************************************************
 HBRUSH CBCGPPropList::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor) 
 {
-	HBRUSH hbr = CWnd::OnCtlColor(pDC, pWnd, nCtlColor);
+	HBRUSH hbr = CBCGPWnd::OnCtlColor(pDC, pWnd, nCtlColor);
 	
 	if (m_pSel != NULL && 
 		pWnd->GetSafeHwnd () == m_pSel->m_pWndInPlace->GetSafeHwnd ())
@@ -8226,6 +9024,27 @@ void CBCGPPropList::OnComboKillFocus()
 	}
 }
 //****************************************************************************************
+void CBCGPPropList::OnButtonKillFocus()
+{
+	if (m_pSel != NULL && m_pSel->m_bInPlaceEdit != NULL && m_pSel->m_bEnabled)
+	{
+		ASSERT_VALID (m_pSel);
+		
+		CBCGPDateTimeCtrl* pWndDateTime = DYNAMIC_DOWNCAST(CBCGPDateTimeCtrl, m_pSel->m_pWndInPlace);
+		if (pWndDateTime->GetSafeHwnd() != NULL && !pWndDateTime->IsDroppedDown() && m_pSel->OnEditKillFocus())
+		{
+			if (!EndEditItem ())
+			{
+				pWndDateTime->SetFocus();
+			}
+			else
+			{
+				OnKillFocus(GetFocus());
+			}
+		}
+	}
+}
+//****************************************************************************************
 void CBCGPPropList::SetBoolLabels (LPCTSTR lpszTrue, LPCTSTR lpszFalse)
 {
 	ASSERT_VALID (this);
@@ -8306,7 +9125,7 @@ void CBCGPPropList::SetVSDotNetLook (BOOL bSet)
 //****************************************************************************************
 BOOL CBCGPPropList::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) 
 {
-	BOOL bRes = CWnd::OnNotify(wParam, lParam, pResult);
+	BOOL bRes = CBCGPWnd::OnNotify(wParam, lParam, pResult);
 
 	NMHDR* pNMHDR = (NMHDR*)lParam;
 	ASSERT (pNMHDR != NULL);
@@ -8333,7 +9152,7 @@ void CBCGPPropList::OnDestroy()
 	m_IPToolTip.DestroyWindow ();
 	m_ToolTip.DestroyWindow ();
 
-	CWnd::OnDestroy();
+	CBCGPWnd::OnDestroy();
 }
 //*****************************************************************************************
 BOOL CBCGPPropList::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResult*/)
@@ -8349,30 +9168,44 @@ BOOL CBCGPPropList::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResult*/
 	::GetCursorPos (&point);
 	ScreenToClient (&point);
 
-	CBCGPProp* pProp = HitTest (point);
-	if (pProp == NULL)
+	if (m_rectDescr.PtInRect(point))
 	{
-		return FALSE;
-	}
-
-	if (point.x < m_rectList.left + m_nLeftColumnWidth)
-	{
-		if (pProp->m_bHasState && pProp->m_rectState.PtInRect(point) && !pProp->m_strStateToolTip.IsEmpty())
+		if (m_pSel != NULL && m_pSel->IsVisible() && m_pSel->m_bDescriptionTruncated)
 		{
-			strTipText = pProp->m_strStateToolTip;
+			strTipText = m_pSel->GetDescription().IsEmpty() ? m_pSel->GetName() : m_pSel->GetDescription();
 		}
-		else if (!pProp->m_bNameIsTrancated || m_bAlwaysShowUserTT)
+		else
 		{
-			// User-defined tooltip
-			strTipText = pProp->GetNameTooltip ();
+			strTipText.Empty();
 		}
 	}
 	else
 	{
-		if (!pProp->m_bValueIsTrancated || m_bAlwaysShowUserTT)
+		CBCGPProp* pProp = HitTest (point);
+		if (pProp == NULL)
 		{
-			// User-defined tooltip
-			strTipText = pProp->GetValueTooltip ();
+			return FALSE;
+		}
+
+		if (point.x < m_rectList.left + m_nLeftColumnWidth)
+		{
+			if (pProp->m_bHasState && pProp->m_rectState.PtInRect(point) && !pProp->m_strStateToolTip.IsEmpty())
+			{
+				strTipText = pProp->m_strStateToolTip;
+			}
+			else if (!pProp->m_bNameIsTrancated || m_bAlwaysShowUserTT)
+			{
+				// User-defined tooltip
+				strTipText = pProp->GetNameTooltip ();
+			}
+		}
+		else
+		{
+			if (!pProp->m_bValueIsTrancated || m_bAlwaysShowUserTT)
+			{
+				// User-defined tooltip
+				strTipText = pProp->GetValueTooltip ();
+			}
 		}
 	}
 
@@ -8392,7 +9225,7 @@ BOOL CBCGPPropList::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResult*/
 //****************************************************************************************
 void CBCGPPropList::OnMouseMove(UINT nFlags, CPoint point) 
 {
-	CWnd::OnMouseMove(nFlags, point);
+	CBCGPWnd::OnMouseMove(nFlags, point);
 
 	if (m_bTracking)
 	{
@@ -8418,7 +9251,7 @@ void CBCGPPropList::OnMouseMove(UINT nFlags, CPoint point)
 	{
 		CBCGPProp* pProp = HitTest(point);
 
-		if (pProp != NULL)
+		if (pProp != NULL && pProp->IsMenuButtonVisible())
 		{
 			BOOL bWasHighlighted = pProp->m_bButtonIsHighlighted;
 
@@ -8499,7 +9332,7 @@ LRESULT CBCGPPropList::OnMouseLeave(WPARAM,LPARAM)
 //*****************************************************************************************
 void CBCGPPropList::OnLButtonUp(UINT nFlags, CPoint point) 
 {
-	CWnd::OnLButtonUp(nFlags, point);
+	CBCGPWnd::OnLButtonUp(nFlags, point);
 
 	if (m_bTracking)
 	{
@@ -8563,7 +9396,10 @@ void CBCGPPropList::OnLButtonUp(UINT nFlags, CPoint point)
 		GetClientRect (rectClient);
 
 		point.y = max (point.y, m_nRowHeight + m_nToolbarHeight + m_nHeaderHeight);
-		m_nCommandsHeight = rectClient.Height () - point.y + 2 - m_nDescrHeight;
+
+		int nDescrHeight = m_bDescriptionArea ? m_nDescrHeight : 0;
+		m_nCommandsHeight = rectClient.Height () - point.y + 2 - nDescrHeight;
+
 		m_nCommandsHeight = max (m_nRowHeight, m_nCommandsHeight);
 
 		AdjustLayout ();
@@ -8583,7 +9419,7 @@ void CBCGPPropList::OnLButtonUp(UINT nFlags, CPoint point)
 //****************************************************************************************
 void CBCGPPropList::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR* lpncsp) 
 {
-	CWnd::OnNcCalcSize(bCalcValidRects, lpncsp);
+	CBCGPWnd::OnNcCalcSize(bCalcValidRects, lpncsp);
 
 	if (GetStyle() & WS_BORDER) 
 	{
@@ -8695,13 +9531,19 @@ BOOL CBCGPPropList::ProcessClipboardAccelerators (UINT nChar)
 
 	ASSERT_VALID (m_pSel);
 
-	BOOL bIsCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000);
+	BOOL bIsRAlt = (::GetAsyncKeyState (VK_RMENU) & 0x8000) != 0;
+	BOOL bIsCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000) && !bIsRAlt;
 	BOOL bIsShift = (::GetAsyncKeyState (VK_SHIFT) & 0x8000);
 
 	if (bIsCtrl && (nChar == _T('C') || nChar == VK_INSERT))
 	{
 		m_pSel->m_pWndInPlace->SendMessage (WM_COPY);
 		return TRUE;
+	}
+
+	if (!m_pSel->m_bAllowEdit)
+	{
+		return bIsCtrl || bIsShift;
 	}
 
 	if (bIsCtrl && nChar == _T('V') || (bIsShift && nChar == VK_INSERT))
@@ -8727,23 +9569,7 @@ int CBCGPPropList::CompareProps (const CBCGPProp* pProp1, const CBCGPProp* pProp
 
 	return pProp1->m_strName.Compare (pProp2->m_strName);
 }
-//************************************************************************************
-void CBCGPPropList::NotifyAccessibility (CBCGPProp* pProp)
-{
-	if (!globalData.IsAccessibilitySupport () || pProp == NULL)
-	{
-		return;
-	}
 
-	m_pAccProp = pProp;
-
-	CPoint pt(pProp->m_Rect.left, pProp->m_Rect.top);
-	ClientToScreen(&pt);
-	LPARAM lParam = MAKELPARAM(pt.x, pt.y);
-
-	globalData.NotifyWinEvent (EVENT_OBJECT_FOCUS, GetSafeHwnd(), OBJID_CLIENT, (LONG)lParam);
-}
-//********************************************************************************
 void CBCGPPropList::MarkModifiedProperties (BOOL bMark/* = TRUE*/,
 											BOOL bRedraw/* = TRUE*/)
 {
@@ -8811,35 +9637,97 @@ BOOL CBCGPPropList::OnCommand(WPARAM wParam, LPARAM lParam)
 		}
 	}
 	
-	return CWnd::OnCommand(wParam, lParam);
+	return CBCGPWnd::OnCommand(wParam, lParam);
+}
+
+//****************************************************************************
+BOOL CBCGPPropList::OnSetAccData(long lVal)
+{
+	ASSERT_VALID(this);
+
+	m_AccData.Clear();
+	int count = FindAllPropertiesCount();
+	if (lVal != CHILDID_SELF && lVal > count + m_nAccFirstPropertyOffset)
+	{
+		return FALSE;
+	}
+
+	CBCGPProp* pProp = AccessiblePropByIndex(lVal);
+	if (pProp != NULL)
+	{
+		pProp->SetACCData(this, m_AccData);
+		return TRUE;
+	}
+
+	return FALSE;
 }
 //****************************************************************************
-BOOL CBCGPPropList::OnSetAccData (long lVal)
+LPDISPATCH CBCGPPropList::GetAccessibleDispatch()
 {
-	ASSERT_VALID (this);
-
-	if (lVal == 0)
+	if (m_pStdObject != NULL)
 	{
-		return FALSE;
+		m_pStdObject->AddRef();
+		return m_pStdObject;
 	}
 
-	CPoint pt(BCG_GET_X_LPARAM(lVal), BCG_GET_Y_LPARAM(lVal));
-	ScreenToClient (&pt);
+	return NULL;
+}
+//****************************************************************************
 
-	CBCGPProp* pProp = HitTest (pt);
-	if (pProp == NULL)
+CBCGPProp* CBCGPPropList::FindPropByIndex(CBCGPProp* prop, int& lCurIndex, long lVal)
+{
+	for (int i = 0; i < prop->GetSubItemsCount(); i++)
 	{
-		ASSERT(FALSE);
-		return FALSE;
+		if (lCurIndex == lVal - 1)
+		{
+			return prop->GetSubItem(i);
+		}
+
+		lCurIndex++;
+
+		CBCGPProp* pSubItem = FindPropByIndex(prop->GetSubItem(i), lCurIndex, lVal);
+		if (pSubItem != NULL)
+		{
+			return pSubItem;
+		}		
+	}	
+	return NULL;
+}
+
+//****************************************************************************
+
+CBCGPProp*  CBCGPPropList::AccessiblePropByIndex(long lVal)
+{
+	if (lVal <= m_nAccFirstPropertyOffset)
+	{
+		return NULL;
 	}
 
-	m_AccData.Clear ();
+	int nCurrentIndex = m_nAccFirstPropertyOffset;
 
-	ASSERT_VALID (pProp);
+	CList<CBCGPProp*, CBCGPProp*>& lst = (IsAlphabeticMode())? m_lstTerminalProps : m_lstProps;
 
-	pProp->SetACCData (this, m_AccData);
+	for (POSITION pos = lst.GetHeadPosition(); pos != NULL;)
+	{
+		if (nCurrentIndex == lVal - 1)
+		{
+			return lst.GetNext(pos);
+		}
 
-	return TRUE;
+		CBCGPProp* prop = lst.GetNext(pos);
+
+		nCurrentIndex++;
+
+		long count = FindAllPropertiesCount(prop);
+
+		if (lVal <= nCurrentIndex + count)
+		{
+			return FindPropByIndex(prop, nCurrentIndex, lVal);
+		}
+
+		nCurrentIndex += count;
+	}
+	return NULL;
 }
 //****************************************************************************
 LRESULT CBCGPPropList::OnGetObject(WPARAM wParam, LPARAM lParam)
@@ -8854,26 +9742,118 @@ HRESULT CBCGPPropList::get_accChildCount(long *pcountChildren)
 		return E_INVALIDARG;
 	}
 
-	*pcountChildren = 0;
+	*pcountChildren = FindAllPropertiesCount () + m_nAccFirstPropertyOffset;
 	return S_OK;
 }
-//****************************************************************************
-HRESULT CBCGPPropList::get_accChild(VARIANT /*varChild*/, IDispatch **ppdispChild)
+//*****************************************************************************
+long  CBCGPPropList::FindAccPropIndex(CBCGPProp* pParentProp, CBCGPProp* pTargetProp, long& index)
 {
-	if (!(*ppdispChild))
+	if (pParentProp->GetSubItemsCount() == 0)
+	{
+		return -1;
+	}
+	for (int i = 0; i < pParentProp->GetSubItemsCount(); i++)
+	{
+		CBCGPProp* pSubProp = pParentProp->GetSubItem(i);
+
+		index++;	
+
+		if (pSubProp == pTargetProp)
+		{
+			return index;
+		}
+			
+		long lIndexSubItem = FindAccPropIndex(pSubProp, pTargetProp, index);
+
+		if (lIndexSubItem  > -1)
+		{
+			return lIndexSubItem;
+		}
+	}
+	return -1;
+}
+//*****************************************************************************
+long CBCGPPropList::GetAccChildIndex(CBCGPProp* pTargetProp)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pTargetProp);
+
+	long nIndex = 0;
+	
+	CList<CBCGPProp*, CBCGPProp*>& lst = (IsAlphabeticMode())? m_lstTerminalProps : m_lstProps;
+
+	for (POSITION pos = lst.GetHeadPosition(); pos != NULL;)
+	{
+		CBCGPProp* pListProp = lst.GetNext(pos);
+
+		ASSERT_VALID(pListProp);
+		
+		nIndex++;
+
+		if (pListProp == pTargetProp)
+		{
+			return nIndex + m_nAccFirstPropertyOffset;
+		}
+
+		long lIndexSubItem = FindAccPropIndex(pListProp, pTargetProp, nIndex);
+
+		if (lIndexSubItem  > -1)
+		{
+			return lIndexSubItem + m_nAccFirstPropertyOffset;
+		}
+	}
+
+	return 0;
+}
+//****************************************************************************
+long CBCGPPropList::FindAllPropertiesCount(CBCGPProp* prop)
+{
+	long count = 0;	
+
+	CList<CBCGPProp*, CBCGPProp*>& lst = (IsAlphabeticMode())? m_lstTerminalProps : m_lstProps;
+
+	if (prop == NULL)
+	{
+		for (POSITION pos = lst.GetHeadPosition(); pos != NULL;)
+		{
+			count += FindAllPropertiesCount(lst.GetNext(pos));
+			count++;
+		}
+		return count;
+	}
+
+	count = prop->GetSubItemsCount();
+
+	for (int i = 0; i < prop->GetSubItemsCount(); i++)
+	{
+		count += FindAllPropertiesCount(prop->GetSubItem(i));
+	}
+
+	return count;
+}
+
+//************************************************************************************
+void CBCGPPropList::NotifyAccessibility (CBCGPProp* pProp)
+{
+	if (!globalData.IsAccessibilitySupport () || pProp == NULL)
+	{
+		return;
+	}
+
+	globalData.NotifyWinEvent(EVENT_OBJECT_FOCUS, GetSafeHwnd(), OBJID_CLIENT, GetAccChildIndex(pProp));
+}
+//****************************************************************************
+HRESULT CBCGPPropList::get_accChild(VARIANT varChild, IDispatch** ppdispChild)
+{
+	if (ppdispChild == NULL)
 	{
 		return E_INVALIDARG;
 	}
-
-	if (m_pStdObject != NULL)
+	if ((m_bToolBar && m_wndToolBar.GetSafeHwnd() != NULL) && (varChild.vt == VT_I4)  && (varChild.lVal == nToolbarAccIndex))
 	{
-		*ppdispChild = m_pStdObject;
+		return AccessibleObjectFromWindow(m_wndToolBar.GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)ppdispChild);
 	}
-	else
-	{
-		*ppdispChild = NULL;
-	}
-	return S_OK;
+	return S_FALSE;
 }
 //****************************************************************************
 HRESULT CBCGPPropList::get_accName(VARIANT varChild, BSTR *pszName)
@@ -8882,6 +9862,7 @@ HRESULT CBCGPPropList::get_accName(VARIANT varChild, BSTR *pszName)
 	{
 		CString strText;
 		GetWindowText(strText);
+
 		if (strText.GetLength() == 0)
 		{
 			*pszName  = SysAllocString(L"PropertyList");
@@ -8892,20 +9873,23 @@ HRESULT CBCGPPropList::get_accName(VARIANT varChild, BSTR *pszName)
 		return S_OK;
 	}
 
-	if (m_pAccProp != NULL)
+	long count = FindAllPropertiesCount();
+
+	if (varChild.lVal > m_nAccFirstPropertyOffset && varChild.lVal != CHILDID_SELF && varChild.lVal <= (count + m_nAccFirstPropertyOffset))
 	{
-		if (m_pAccProp->IsInPlaceEditing ())
+		CBCGPProp* pProp = AccessiblePropByIndex(varChild.lVal);
+
+		if (pProp != NULL)
 		{
-			CString strValue = m_pAccProp->FormatProperty();
-			*pszName = strValue.AllocSysString();
+			OnSetAccData(varChild.lVal);
+			CString strName = pProp->GetName();
+			*pszName = strName.AllocSysString();
+
 			return S_OK;
 		}
-		CString strName = m_pAccProp->GetName();
-		*pszName = strName.AllocSysString();
-		return S_OK;
 	}
 
-	return S_OK;
+	return S_FALSE;
 }
 //****************************************************************************
 HRESULT CBCGPPropList::get_accValue(VARIANT varChild, BSTR *pszValue)
@@ -8915,17 +9899,28 @@ HRESULT CBCGPPropList::get_accValue(VARIANT varChild, BSTR *pszValue)
 		return S_FALSE;
 	}
 
-	if (m_pAccProp != NULL)
+	if (varChild.lVal > m_nAccFirstPropertyOffset && varChild.lVal != CHILDID_SELF && varChild.lVal <= FindAllPropertiesCount() + m_nAccFirstPropertyOffset)
 	{
-		BOOL bGroup = (m_pAccProp->IsGroup() && !m_pAccProp->m_bIsValueList);
-		if (!bGroup)
+		CBCGPProp* pProp = AccessiblePropByIndex(varChild.lVal);
+
+		if (pProp != NULL)
 		{
-			CString strValue = m_pAccProp->FormatProperty();
+			BOOL bGroup = (pProp->IsGroup() && !pProp->m_bIsValueList);
+			OnSetAccData(varChild.lVal);
+			
+			if (bGroup)
+			{
+				CString strValue = _T("Group");
+				*pszValue = strValue.AllocSysString();
+				return S_OK;
+			}
+
+			CString strValue = pProp->FormatProperty();
 			*pszValue = strValue.AllocSysString();
+
 			return S_OK;
 		}
 	}
-
 	return S_FALSE;
 }
 //****************************************************************************
@@ -8942,13 +9937,20 @@ HRESULT CBCGPPropList::get_accDescription(VARIANT varChild, BSTR *pszDescription
 		return S_OK;
 	}
 
-	if (m_pAccProp != NULL)
+	if (varChild.lVal > m_nAccFirstPropertyOffset && varChild.lVal != CHILDID_SELF && varChild.lVal <= FindAllPropertiesCount() + m_nAccFirstPropertyOffset)
 	{
-		CString strName = m_pAccProp->GetName();
-		*pszDescription = strName.AllocSysString();
-	}
+		CBCGPProp* pProp = AccessiblePropByIndex(varChild.lVal);
 
-	return S_OK;
+		if (pProp != NULL)
+		{
+			OnSetAccData(varChild.lVal);
+			CString strName = pProp->GetName();
+			*pszDescription = strName.AllocSysString();
+
+			return S_OK;
+		}
+	}
+	return S_FALSE;
 }
 //****************************************************************************
 HRESULT CBCGPPropList::get_accRole(VARIANT varChild, VARIANT *pvarRole)
@@ -8961,10 +9963,11 @@ HRESULT CBCGPPropList::get_accRole(VARIANT varChild, VARIANT *pvarRole)
 	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
 	{
 		pvarRole->vt = VT_I4;
-		pvarRole->lVal = ROLE_SYSTEM_LIST;
+		pvarRole->lVal = ROLE_SYSTEM_TABLE;
 		return S_OK;
 	}
-
+	
+	OnSetAccData(varChild.lVal);
 	pvarRole->vt = VT_I4;
 	pvarRole->lVal = ROLE_SYSTEM_ROW;
 
@@ -8981,24 +9984,42 @@ HRESULT CBCGPPropList::get_accState(VARIANT varChild, VARIANT *pvarState)
 	}
 
 	pvarState->vt = VT_I4;
-	pvarState->lVal = STATE_SYSTEM_FOCUSABLE;
-	pvarState->lVal |= STATE_SYSTEM_SELECTABLE;
 	
-	if (m_pAccProp != NULL)
+	CBCGPProp* pAccProp = AccessiblePropByIndex(varChild.lVal);
+
+	if (pAccProp != NULL)
 	{
-		if (m_pAccProp->IsSelected())
+		if (pAccProp->IsSelected())
 		{
 			pvarState->lVal |= STATE_SYSTEM_FOCUSED;
 			pvarState->lVal |= STATE_SYSTEM_SELECTED;
 		}
 
-		BOOL bGroup = (m_pAccProp->IsGroup() && !m_pAccProp->m_bIsValueList);
-		if (!m_pAccProp->IsEnabled() || bGroup)
+		BOOL bGroup = (pAccProp->IsGroup() && !pAccProp->m_bIsValueList);
+		if (!pAccProp->IsEnabled() || bGroup)
 		{
 			pvarState->lVal |= STATE_SYSTEM_READONLY;
 		}
+
+		bool bIsHidden = (!pAccProp->IsParentExpanded() && !IsAlphabeticMode ()) || (pAccProp->IsGroup() && !pAccProp->m_bIsValueList && IsAlphabeticMode ()) ||
+			(pAccProp->GetParent() != NULL && pAccProp->GetParent()->m_bIsValueList && !pAccProp->IsParentExpanded() && IsAlphabeticMode ()) ||!pAccProp->IsVisibleInFilter();
+
+		if (bIsHidden)
+		{
+			pvarState->lVal |= STATE_SYSTEM_INVISIBLE;
+		}
+		else
+		{
+			pvarState->lVal |= STATE_SYSTEM_FOCUSABLE|STATE_SYSTEM_SELECTABLE;
+		}
+
+		if (pAccProp->IsGroup())
+		{
+			pvarState->lVal |= (pAccProp->IsExpanded() ? STATE_SYSTEM_EXPANDED : STATE_SYSTEM_COLLAPSED);
+		}
 	}
 
+	OnSetAccData(varChild.lVal);
 	return S_OK;
 }
 //****************************************************************************
@@ -9036,9 +10057,22 @@ HRESULT CBCGPPropList::get_accSelection(VARIANT *pvarChildren)
 	return DISP_E_MEMBERNOTFOUND;
 }
 //****************************************************************************
-HRESULT CBCGPPropList::get_accDefaultAction(VARIANT /*varChild*/, BSTR* /*pszDefaultAction*/)
+HRESULT CBCGPPropList::get_accDefaultAction(VARIANT varChild, BSTR* pszDefaultAction)
 {
-	return DISP_E_MEMBERNOTFOUND; 
+	if (varChild.vt == VT_I4 && varChild.lVal > 0)
+	{
+		CBCGPProp* pProp = AccessiblePropByIndex(varChild.lVal);
+
+		if (pProp != NULL)
+		{
+			CString strDefAction = pProp->GetAccDefaultAction();
+			*pszDefaultAction = strDefAction.AllocSysString();
+
+			return S_OK;
+		}
+	}
+
+	return S_FALSE; 
 }
 //****************************************************************************
 HRESULT CBCGPPropList::accSelect(long flagsSelect, VARIANT varChild)
@@ -9073,14 +10107,33 @@ HRESULT CBCGPPropList::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, lo
 	}
 	else
 	{
-		if (m_pAccProp != NULL)
+		CBCGPProp* pAccProp = AccessiblePropByIndex(varChild.lVal);
+		if (pAccProp != NULL)
 		{
-			CRect rcProp = m_pAccProp->m_Rect;
+			CRect rcProp = pAccProp->GetRect();
 			ClientToScreen(&rcProp);
+
 			*pxLeft = rcProp.left;
 			*pyTop = rcProp.top;
 			*pcxWidth = rcProp.Width();
 			*pcyHeight = rcProp.Height();
+		}
+		else
+		{
+			if (m_bToolBar && varChild.lVal == nToolbarAccIndex)
+			{
+				CRect rcToolBar;
+				m_wndToolBar.GetWindowRect(&rcToolBar);
+			
+				*pxLeft = rcToolBar.left;
+				*pyTop = rcToolBar.top;
+				*pcxWidth = rcToolBar.Width();
+				*pcyHeight = rcToolBar.Height();
+			}
+			else
+			{
+				hr = S_FALSE;
+			}
 		}
 	}
 
@@ -9098,20 +10151,144 @@ HRESULT CBCGPPropList::accHitTest(long  xLeft, long yTop, VARIANT *pvarChild)
 	ScreenToClient(&pt);
 
 	CBCGPProp* pProp = HitTest(pt);
+
 	if (pProp != NULL)
 	{
-		LPARAM lParam = MAKELPARAM((WORD)xLeft, (WORD)yTop);
-		pvarChild->vt = VT_I4;
-		pvarChild->lVal = (LONG)lParam;
+			int nIndex = -1;
+			for (int i = m_nAccFirstPropertyOffset; i < FindAllPropertiesCount() + m_nAccFirstPropertyOffset; i++)
+			{
+				CBCGPProp* pCurProp = AccessiblePropByIndex(i + 1);
+				if (pProp == pCurProp)
+				{
+					nIndex = i;
+					break;
+				}
+			}
+
+		if (nIndex >= m_nAccFirstPropertyOffset)
+		{
+			pvarChild->vt = VT_I4;
+			pvarChild->lVal = nIndex + 1;
+			pProp->SetACCData(this, m_AccData);
+			return S_OK;
+		}
+		return S_FALSE;
 	}
 	else
 	{
+		
+		CRect rcToolBar;
+		m_wndToolBar.GetWindowRect(&rcToolBar);
+		ScreenToClient(&rcToolBar);
+
+		if (rcToolBar.PtInRect(pt))
+		{
+			pvarChild->lVal = nToolbarAccIndex;
+			
+			pvarChild->pdispVal = NULL;
+			pvarChild->vt = VT_DISPATCH;
+
+			AccessibleObjectFromWindow(m_wndToolBar.GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)&pvarChild->pdispVal);
+
+			if (pvarChild->pdispVal != NULL)
+			{
+				return S_OK;
+			}
+			return S_FALSE;
+		}	
 		pvarChild->vt = VT_I4;
 		pvarChild->lVal = CHILDID_SELF;
 	}
 
-	m_pAccProp = pProp;
 	return S_OK;
+}
+//******************************************************************************
+HRESULT CBCGPPropList::accDoDefaultAction(VARIANT varChild)
+{
+	if (varChild.vt != VT_I4)
+	{
+		return E_INVALIDARG;
+	}
+
+	CBCGPProp* pAccProp = AccessiblePropByIndex(varChild.lVal);
+	if (pAccProp != NULL)
+	{
+		if (pAccProp->OnAccDefaultAction())
+		{
+			return S_OK;
+		}		
+	}
+
+	return S_FALSE;
+}
+//******************************************************************************
+HRESULT  CBCGPPropList::accNavigate(long navDir, VARIANT varStart, VARIANT *pvarEndUpAt)
+{
+	pvarEndUpAt->vt = VT_EMPTY;
+
+	if (varStart.vt != VT_I4)
+	{
+		return E_INVALIDARG;
+	}
+
+	int nFirstIndex = m_nAccFirstPropertyOffset + 1;
+	int nLastIndex = FindAllPropertiesCount() + m_nAccFirstPropertyOffset;
+
+	switch (navDir)
+	{
+	case NAVDIR_FIRSTCHILD:
+		if (varStart.lVal == CHILDID_SELF)
+		{
+			pvarEndUpAt->vt = VT_I4;
+			pvarEndUpAt->lVal = nFirstIndex;
+			return S_OK;	
+		}
+		break;
+
+	case NAVDIR_LASTCHILD:
+		if (varStart.lVal == CHILDID_SELF)
+		{
+			pvarEndUpAt->vt = VT_I4;
+			pvarEndUpAt->lVal = nLastIndex;
+			return S_OK;
+		}
+		break;
+
+	case NAVDIR_NEXT:   
+	case NAVDIR_RIGHT:
+	case NAVDIR_DOWN:
+		if (varStart.lVal != CHILDID_SELF)
+		{
+			pvarEndUpAt->vt = VT_I4;
+			pvarEndUpAt->lVal = varStart.lVal + 1;
+			
+			if (pvarEndUpAt->lVal > nLastIndex)
+			{
+				pvarEndUpAt->vt = VT_EMPTY;
+				return S_FALSE;
+			}
+			return S_OK;
+		}
+		break;
+
+	case NAVDIR_PREVIOUS: 
+	case NAVDIR_LEFT:
+	case NAVDIR_UP:
+		if (varStart.lVal != CHILDID_SELF)
+		{
+			pvarEndUpAt->vt = VT_I4;
+			pvarEndUpAt->lVal = varStart.lVal - 1;
+			if (pvarEndUpAt->lVal < nFirstIndex)
+			{
+				pvarEndUpAt->vt = VT_EMPTY;
+				return S_FALSE;
+			}
+			return S_OK;
+		}
+		break;
+	}
+
+	return S_FALSE;
 }
 //****************************************************************************
 LRESULT CBCGPPropList::OnPrintClient(WPARAM wp, LPARAM lp)
@@ -9182,7 +10359,7 @@ BOOL CBCGPPropList::OnDrawMenuButton(CDC* pDC, CBCGPProp* /*pProp*/, CRect rect,
 	{
 		CBCGPLocalResource locaRes;
 
-		const CSize sizeImage(11, 11);
+		const CSize sizeImage(MENU_ICON_SIZE, MENU_ICON_SIZE);
 
 		m_AdvImages.SetImageSize (sizeImage);
 		m_AdvImages.SetTransparentColor (globalData.clrBtnFace);
@@ -9193,6 +10370,13 @@ BOOL CBCGPPropList::OnDrawMenuButton(CDC* pDC, CBCGPProp* /*pProp*/, CRect rect,
 		{
 			return FALSE;
 		}
+
+		if (m_AdvImages.GetBitsPerPixel() < 24 && !globalData.IsHighContastMode())
+		{
+			m_AdvImages.ConvertTo24Bits();
+		}
+
+		globalUtils.ScaleByDPI(m_AdvImages);
 	}
 
 	int nIndex = 0;
@@ -9220,12 +10404,15 @@ void CBCGPPropList::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
 	{
 		ASSERT_VALID(m_pSel);
 
-		if (!m_pSel->IsGroup () || m_pSel->m_bIsValueList)
+		if (m_pSel->IsMenuButtonVisible())
 		{
-			m_pSel->OnClickMenuButton(CPoint(m_rectList.left, m_pSel->m_Rect.bottom + 1));
-		}
+			if (!m_pSel->IsGroup () || m_pSel->m_bIsValueList || m_bAllowCopyPasteGroups)
+			{
+				m_pSel->OnClickMenuButton(CPoint(m_rectList.left, m_pSel->m_Rect.bottom + 1));
+			}
 
-		return;
+			return;
+		}
 	}
 
 	Default();
@@ -9279,7 +10466,15 @@ void CBCGPPropList::SetPropertiesFilter(LPCTSTR lpszFilter)
 		m_pSel = NULL;
 	}
 
+	m_nVertScrollOffset = 0;
+	m_wndScrollVert.SetScrollPos(0);
+
 	AdjustLayout();
+
+	if (m_pSel != NULL)
+	{
+		EnsureVisible(m_pSel);
+	}
 }
 //****************************************************************************
 BOOL CBCGPPropList::IsPropertyMatchedToFilter(CBCGPProp* pProp, const CString& strFilter) const
@@ -9362,7 +10557,7 @@ BOOL CBCGPPropList::OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERIN
 		return GetParent()->OnCmdMsg(nID, nCode, pExtra, pHandlerInfo);
 	}
 	
-	return CWnd::OnCmdMsg(nID, nCode, pExtra, pHandlerInfo);
+	return CBCGPWnd::OnCmdMsg(nID, nCode, pExtra, pHandlerInfo);
 }
 //****************************************************************************
 void CBCGPPropList::SetNameAlign(int nAlign, BOOL bRedraw)
@@ -9384,6 +10579,30 @@ void CBCGPPropList::SetNameAlign(int nAlign, BOOL bRedraw)
 		RedrawWindow ();
 	}
 }
+//****************************************************************************
+void CBCGPPropList::EnableVerticalScrollBar(BOOL bEnable, BOOL bAdjustLayout)
+{
+	m_bVerticalScrollBarEnabled = bEnable;
+
+	if (bAdjustLayout)
+	{
+		AdjustLayout ();
+		
+		if (GetSafeHwnd () != NULL)
+		{
+			RedrawWindow ();
+		}
+	}
+}
+//**************************************************************************
+LRESULT CBCGPPropList::OnBCGSetControlVMMode(WPARAM wp, LPARAM lp)
+{
+	LRESULT lRes = CBCGPWnd::OnBCGSetControlVMMode(wp, lp);
+	OnChangeVisualMode();
+
+	return lRes;
+}
 
 #endif // BCGP_EXCLUDE_PROP_LIST
+
 

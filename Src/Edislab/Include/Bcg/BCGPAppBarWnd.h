@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -270,6 +270,8 @@ protected:
 	afx_msg LRESULT OnEnterSizeMove(WPARAM,LPARAM);
 	afx_msg LRESULT OnExitSizeMove(WPARAM,LPARAM);
 	afx_msg BCGNcHitTestType OnNcHitTest(CPoint point);
+	afx_msg LRESULT OnThemeChanged(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnChangeVisualManager (WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 };
 

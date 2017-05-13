@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -97,11 +97,17 @@ class BCGCBPRODLLEXPORT CBCGPRibbonCategoryScroll : public CBCGPRibbonButton
 	}
 
 	BOOL	m_bIsLeft;
+	BOOL	m_bIsVertical;
 
 public:
 	BOOL IsLeftScroll () const
 	{
 		return m_bIsLeft;
+	}
+
+	BOOL IsVertical() const
+	{
+		return m_bIsVertical;
 	}
 };
 
@@ -125,6 +131,7 @@ class BCGCBPRODLLEXPORT CBCGPRibbonCategory :  public CBCGPBaseAccessibleObject
 	friend class CBCGPRibbonCustomizeRibbonPage;
 	friend class CBCGPRibbonCustomCategory;
 	friend class CBCGPRibbonTabsGroup;
+	friend class CBCGPVisualManager;
 
 	DECLARE_DYNCREATE(CBCGPRibbonCategory)
 
@@ -174,6 +181,11 @@ public:
 	CRect GetTabRect () const
 	{
 		return m_Tab.m_rect;
+	}
+
+	CRect GetOriginalTabRect() const
+	{
+		return m_rectTabOriginal;
 	}
 
 	CRect GetRect () const
@@ -231,7 +243,7 @@ public:
 
 	BOOL IsVisible () const
 	{
-		return m_bIsVisible;
+		return m_bIsVisible && !IsHiddenInAppMode();
 	}
 
 	CBCGPBaseRibbonElement* GetDroppedDown ();
@@ -262,6 +274,11 @@ public:
 	{
 		return &m_Tab;
 	}
+
+	UINT GetApplicationModes() const { return m_nApplicationModes; }
+	void SetApplicationModes(UINT nAppModes) { m_nApplicationModes = nAppModes; }
+
+	BOOL IsHiddenInAppMode() const;
 
 // Operations
 public:
@@ -304,6 +321,8 @@ public:
 	void GetElementsByName (LPCTSTR, 
 		CArray <CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arElements, DWORD dwFlags = 0);
 
+	BOOL QueryElements(const CStringArray& arWords, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, int nMaxResults, BOOL bDescription, BOOL bAll);
+
 	void GetVisibleElements (
 		CArray <CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arElements);
 
@@ -312,6 +331,11 @@ public:
 	int GetTextTopLine () const;
 
 	void OnChangeVisualManager();
+
+	int GetVisiblePanels(CArray<CBCGPRibbonPanel*,CBCGPRibbonPanel*>& arPanels) const;
+
+	CBCGPBaseRibbonElement* SetHiddenElementRTC(int nIndex, CRuntimeClass* pRTC);
+	CBCGPBaseRibbonElement* SetHiddenElementRTCByID (UINT uiCmdID, CRuntimeClass* pRTC);
 
 // Overrides
 	virtual void RecalcLayout (CDC* pDC);
@@ -333,13 +357,19 @@ public:
 	
 	virtual void OnRTLChanged (BOOL bIsRTL);
 	virtual BOOL OnScrollHorz (BOOL bScrollLeft, int nScrollOffset = 0);
+	virtual BOOL OnScrollVert (BOOL bScrollUp, int nScrollOffset = 0);
 
 	virtual void ReposPanels (CDC* pDC);
 	virtual void ReposPanelsVert (CDC* pDC);
+	virtual void OnChangeRibbonFont();
 
 	virtual BOOL OnKey (UINT nChar);
 
 	virtual CBCGPRibbonMainPanel* GetMainPanel();
+
+	virtual void OnUpdateToolTips();
+
+	virtual BOOL IsGrayDisabledImages() const;
 
 	//Accessibility
 	virtual HRESULT get_accParent(IDispatch **ppdispParent);
@@ -383,6 +413,7 @@ protected:
 
 	CString										m_strName;
 	int											m_nKey;
+	UINT										m_nApplicationModes;
 	BOOL										m_bIsPrintPreview;
 	BOOL										m_bIsActive;
 	BOOL										m_bIsVisible;
@@ -395,6 +426,7 @@ protected:
 	BOOL										m_bMouseIsPressed;
 	CRect										m_rect;
 	CBCGPRibbonTab								m_Tab;
+	CRect										m_rectTabOriginal;
 	CBCGPRibbonCategoryScroll					m_ScrollLeft;
 	CBCGPRibbonCategoryScroll					m_ScrollRight;
 	int											m_nScrollOffset;
@@ -403,16 +435,24 @@ protected:
 	int											m_nLastCategoryWidth;
 	int											m_nLastCategoryOffsetY;
 	int											m_nMinWidth;
+	int											m_nMinDlgBarHeight;
 	CArray<int, int>							m_arCollapseOrder;
 	clock_t										m_ActiveTime;
 	BOOL										m_bIsNew;
 	BOOL										m_bToBeDeleted;
+	BOOL										m_bHideControls;
 
 	//----------------------
 	// Category image lists:
 	//----------------------
 	CBCGPToolBarImages		m_SmallImages;
 	CBCGPToolBarImages		m_LargeImages;
+
+	CBCGPToolBarImages		m_SmallImagesDisabled;
+	CBCGPToolBarImages		m_LargeImagesDisabled;
+
+	CBCGPToolBarImages		m_SmallImagesLight;
+	CBCGPToolBarImages		m_LargeImagesLight;
 
 	//---------------------------------
 	// Category elements (non-visible):

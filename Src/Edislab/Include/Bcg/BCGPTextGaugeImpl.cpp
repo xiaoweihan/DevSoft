@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,6 +18,7 @@
 #include "bcgcbpro.h"
 #include "BCGPTextGaugeImpl.h"
 #include "BCGPDrawManager.h"
+#include "BCGPVisualCtrl.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -76,7 +77,40 @@ void CBCGPTextGaugeImpl::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& /*re
 	const CBCGPBrush& br = m_bOff ? m_brTextLight : m_brText;
 
 	CreateResources(CBCGPBrush(), FALSE);
-	pGM->DrawText(m_strText, rect, m_textFormat, br);
+
+	CBCGPRect rectText = rect;
+	BOOL bClipText = m_textFormat.IsClipText();
+
+	if (m_dblScrollOffset != 0.0)
+	{
+		if (m_bIsHorizontalScroll)
+		{
+			rectText.OffsetRect(-m_dblScrollOffset, 0.0);
+		}
+		else
+		{
+			rectText.OffsetRect(0.0, -m_dblScrollOffset);
+		}
+
+		if (bClipText)
+		{
+			m_textFormat.SetClipText(FALSE);
+		}
+
+		pGM->SetClipRect(rect);
+	}
+
+	pGM->DrawText(m_strText, rectText, m_textFormat, br);
+
+	if (m_dblScrollOffset != 0.0)
+	{
+		pGM->ReleaseClipArea();
+
+		if (bClipText)
+		{
+			m_textFormat.SetClipText();
+		}
+	}
 
 	pGM->DrawRectangle(rect, GetOutlineBrush (), GetScaleRatioMid());
 	
@@ -185,4 +219,110 @@ void CBCGPTextGaugeImpl::CopyFrom(const CBCGPBaseVisualObject& srcObj)
 	m_brText = src.m_brText;
 	m_brTextLight = src.m_brTextLight;
 	m_textFormat = src.m_textFormat;
+}
+//*******************************************************************************
+CBCGPSize CBCGPTextGaugeImpl::GetContentTotalSize(CBCGPGraphicsManager* pGM)
+{
+	ASSERT_VALID(pGM);
+
+	CBCGPSize size(0.0, 0.0);
+	double dblWidth = 0.0;
+
+	if (m_textFormat.IsWordWrap())
+	{
+		dblWidth = m_rect.Width();
+		if (dblWidth <= 0.0)
+		{
+			return size;
+		}
+	}
+
+	CreateResources(CBCGPBrush(), FALSE);
+
+	if (pGM->GetType() == CBCGPGraphicsManager::BCGP_GRAPHICS_MANAGER_GDI)
+	{
+		CClientDC dc(NULL);
+		pGM->BindDC(&dc, FALSE);
+
+		size = pGM->GetTextSize(m_strText, m_textFormat, dblWidth);
+
+		pGM->BindDC(NULL);
+	}
+	else
+	{
+		size = pGM->GetTextSize(m_strText, m_textFormat, dblWidth);
+	}
+
+	return size;
+}
+//*******************************************************************************
+void CBCGPTextGaugeImpl::ResumeScrolling(const CString& strAddedText, BOOL bCleanOldInvisible)
+{
+	if (strAddedText.IsEmpty())
+	{
+		return;
+	}
+
+	int nOldTextLen = m_strText.GetLength();
+
+	CBCGPGraphicsManager* pGM = NULL;
+
+	CBCGPBaseVisualCtrl* pWnd = DYNAMIC_DOWNCAST(CBCGPBaseVisualCtrl, GetParentWnd());
+	if (pWnd->GetSafeHwnd() != NULL)
+	{
+		pGM = pWnd->GetGraphicsManager();
+	}
+	
+	if (bCleanOldInvisible && m_dblScrollOffset > 0.0 && pGM != NULL && m_bIsHorizontalScroll)
+	{
+		CreateResources(CBCGPBrush(), FALSE);
+
+		double dblWidth = m_textFormat.IsWordWrap() ? m_rect.Width() : 0.0;
+
+		if (!m_textFormat.IsWordWrap() || dblWidth > 0.0)
+		{
+			for (int i = 0; i < m_strText.GetLength(); i++)
+			{
+				CString strLeft = m_strText.Left(i + 1);
+				
+				double cx = 0.0;
+
+				if (pGM->GetType() == CBCGPGraphicsManager::BCGP_GRAPHICS_MANAGER_GDI)
+				{
+					CClientDC dc(NULL);
+					pGM->BindDC(&dc, FALSE);
+					
+					cx = pGM->GetTextSize(strLeft, m_textFormat, dblWidth).cx;
+					
+					pGM->BindDC(NULL);
+				}
+				else
+				{
+					cx = pGM->GetTextSize(strLeft, m_textFormat, dblWidth).cx;
+				}
+
+				if (cx >= m_dblScrollOffset)
+				{
+					m_dblScrollOffset -= cx;
+					m_strText.Delete(0, i + 1);
+					break;
+				}
+			}
+		}
+	}
+
+	m_strText += strAddedText;
+
+	if (nOldTextLen != 0)
+	{
+		// Adjust scroll time:
+		int nNewTextLen = m_strText.GetLength();
+
+		m_dblScrollTime = m_dblScrollTime * nNewTextLen / nOldTextLen;
+	}
+	
+	m_bScrollInternal = TRUE;
+
+	StartContentScrolling(m_dblScrollTime, m_dblScrollDelay, m_bIsHorizontalScroll, m_nScrollFlags,
+		m_ScrollAnimationType, &m_ScrollAnimationOptions);
 }

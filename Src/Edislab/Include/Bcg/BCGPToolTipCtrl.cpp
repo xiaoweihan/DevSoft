@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -25,6 +25,8 @@
 #include "BCGPOutlookBarPane.h"
 #include "BCGPRibbonButton.h"
 #include "BCGPRibbonBar.h"
+#include "BCGPGlobalUtils.h"
+#include "BCGPMDIFrameWnd.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -43,11 +45,15 @@ static char THIS_FILE[] = __FILE__;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPToolTipCtrl
 
+UINT BCGM_GET_TOOLTIP_IMAGE_SIZE	= ::RegisterWindowMessage (_T("BCGM_GET_TOOLTIP_IMAGE_SIZE"));
+UINT BCGM_ON_DRAW_TOOLTIP_IMAGE		= ::RegisterWindowMessage (_T("BCGM_ON_DRAW_TOOLTIP_IMAGE"));
+
 IMPLEMENT_DYNCREATE(CBCGPToolTipCtrl, CToolTipCtrl)
 
 CBCGPToolTipCtrl::CBCGPToolTipCtrl(CBCGPToolTipParams* pParams/* = NULL*/)
 {
 	m_bResetDelayTime = FALSE;
+	m_bIsOwnerDrawImage = FALSE;
 
 	SetParams (pParams);
 
@@ -101,6 +107,7 @@ void CBCGPToolTipCtrl::OnPaint()
 	GetMargin (rectMargin);
 
 	CRect rectText = rect;
+	CRect rectHelp = rectText;
 
 	rectText.DeflateRect (rectMargin);
 	rectText.DeflateRect (m_ptMargin.x, m_ptMargin.y);
@@ -127,6 +134,8 @@ void CBCGPToolTipCtrl::OnPaint()
 	//-----------
 	// Draw icon:
 	//-----------
+	int nImageBottom = 0;
+
 	if (m_sizeImage != CSize (0, 0) && m_Params.m_bDrawIcon)
 	{
 		CRect rectImage = rectText;
@@ -136,6 +145,7 @@ void CBCGPToolTipCtrl::OnPaint()
 		OnDrawIcon (pDC, rectImage);
 
 		rectText.left += m_sizeImage.cx + m_ptMargin.x;
+		nImageBottom = rectImage.bottom + m_ptMargin.y;
 	}
 
 	pDC->SetBkMode (TRANSPARENT);
@@ -146,13 +156,15 @@ void CBCGPToolTipCtrl::OnPaint()
 	//------------
 	int nTextHeight = OnDrawLabel (pDC, rectText, FALSE).cy;
 
+	rectHelp.top = rectText.top + nTextHeight + 3 * m_ptMargin.y / 2;
+
 	//------------------------------
 	// Draw separator + description:
 	//------------------------------
 	if (!m_strDescription.IsEmpty () && m_Params.m_bDrawDescription)
 	{
 		CRect rectDescr = rectText;
-		rectDescr.top += nTextHeight + 3 * m_ptMargin.y / 2;
+		rectDescr.top = rectHelp.top;
 
 		if (m_Params.m_bDrawSeparator)
 		{
@@ -160,15 +172,37 @@ void CBCGPToolTipCtrl::OnPaint()
 				rectDescr.right, rectDescr.top - m_ptMargin.y / 2);
 		}
 
-		OnDrawDescription (pDC, rectDescr, FALSE);
+		CSize sizeDescr = OnDrawDescription (pDC, rectDescr, FALSE);
+
+		rectHelp.top += sizeDescr.cy + m_ptMargin.y;
 	}
 
+	//--------------------------
+	// Draw context help prompt:
+	//--------------------------
+	if (!m_strHelpPrompt.IsEmpty())
+	{
+		rectHelp.top = max(rectHelp.top, nImageBottom);
+
+		int nPadding = globalUtils.ScaleByDPI(5);
+
+		CBCGPDrawManager dm(*pDC);
+		dm.DrawLine(rectHelp.left + nPadding, rectHelp.top, rectHelp.right - nPadding, rectHelp.top, 
+			m_Params.m_clrBorder == (COLORREF)-1 ?
+			CBCGPVisualManager::GetInstance()->GetSeparatorColor() : m_Params.m_clrBorder);
+
+		rectHelp.DeflateRect(m_ptMargin.x, 0);
+		OnDrawHelpPrompt(pDC, rectHelp, FALSE);
+	}
+	
 	pDC->SelectObject (pOldPen);
 }
 //**********************************************************************
 void CBCGPToolTipCtrl::OnShow(NMHDR* /*pNMHDR*/, LRESULT* pResult)
 {
 	*pResult = 0;
+
+	m_bIsOwnerDrawImage = FALSE;
 
 	if (m_Params.m_bVislManagerTheme)
 	{
@@ -187,7 +221,7 @@ void CBCGPToolTipCtrl::OnShow(NMHDR* /*pNMHDR*/, LRESULT* pResult)
 	GetHotButton ();
 
 	m_sizeImage = m_Params.m_bDrawIcon ? GetIconSize () : CSize (0, 0);
-	m_ptMargin = CPoint (6, 4);
+	m_ptMargin = globalUtils.ScaleByDPI(CPoint (6, 4));
 
 	m_ptMargin.x += m_Params.m_nPaddingX;
 	m_ptMargin.y += m_Params.m_nPaddingY;
@@ -220,6 +254,13 @@ void CBCGPToolTipCtrl::OnShow(NMHDR* /*pNMHDR*/, LRESULT* pResult)
 		cy = max (cy, m_sizeImage.cy);
 	}
 
+	CSize sizeHelp = OnDrawHelpPrompt(&dc, rectText, TRUE);
+	if (sizeHelp != CSize(0, 0))
+	{
+		cy += sizeHelp.cy + m_ptMargin.y;
+		cx = max (cx, sizeHelp.cx);
+	}
+
 	if (m_sizeImage.cx > 0 && m_Params.m_bDrawIcon)
 	{
 		cx += m_sizeImage.cx + m_ptMargin.x;
@@ -236,6 +277,11 @@ void CBCGPToolTipCtrl::OnShow(NMHDR* /*pNMHDR*/, LRESULT* pResult)
 
 	CRect rectWindow;
 	GetWindowRect (rectWindow);
+
+	CRgn rgn;
+	rgn.CreateRectRgn(rectWindow.left, rectWindow.top, rectWindow.right + 1, rectWindow.bottom + 1);
+	
+	SetWindowRgn(rgn, FALSE);
 
 	int x = rectWindow.left;
 	int y = rectWindow.top;
@@ -312,12 +358,30 @@ void CBCGPToolTipCtrl::OnShow(NMHDR* /*pNMHDR*/, LRESULT* pResult)
 	}
 
 	m_sizeCornerRadius = CBCGPVisualManager::GetInstance()->GetSystemToolTipCornerRadius(this);
-	
-	SetWindowPos (&wndTop, -1, -1, -1, -1, SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOSIZE | SWP_DRAWFRAME);
+
+	CWnd* pWndTop = CBCGPMDIFrameWnd::GetActiveTearOffFrame();
+	SetWindowPos(pWndTop == NULL ? &wndTop : pWndTop, -1, -1, -1, -1, SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOSIZE | SWP_DRAWFRAME);
+
+    SetWindowRgn(NULL, FALSE);
 }
 //**********************************************************************
 void CBCGPToolTipCtrl::OnPop(NMHDR* /*pNMHDR*/, LRESULT* pResult)
 {
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_pRibbonButton != NULL)
+	{
+		ASSERT_VALID(m_pRibbonButton);
+		
+		CBCGPRibbonBar* pRibbonBar = m_pRibbonButton->GetTopLevelRibbonBar();
+		if (pRibbonBar != NULL)
+		{
+			pRibbonBar->SetContextHelpActiveID(NULL);
+		}
+	}
+#endif
+
+	m_strHelpPrompt.Empty();
+
 	m_pHotButton = NULL;
 	m_pToolBarImages = NULL;
 	m_strDescription.Empty ();
@@ -354,8 +418,19 @@ void CBCGPToolTipCtrl::OnFillBackground (CDC* pDC, CRect rect, COLORREF& clrText
 	}
 }
 //**********************************************************************
-CSize CBCGPToolTipCtrl::GetIconSize ()
+CSize CBCGPToolTipCtrl::GetIconSize()
 {
+	CWnd* pWndParent = GetParent();
+	if (pWndParent->GetSafeHwnd() != NULL)
+	{
+		CSize size(0, 0);
+		if (pWndParent->SendMessage(BCGM_GET_TOOLTIP_IMAGE_SIZE, 0, (LPARAM)&size))
+		{
+			m_bIsOwnerDrawImage = TRUE;
+			return size;
+		}
+	}
+
 #ifndef BCGP_EXCLUDE_RIBBON
 	if (m_pRibbonButton != NULL)
 	{
@@ -372,17 +447,7 @@ CSize CBCGPToolTipCtrl::GetIconSize ()
 
 	ASSERT_VALID (m_pHotButton);
 
-	CSize size = m_pHotButton->GetImage () >= 0 ? m_pToolBarImages->GetImageSize () : CSize (0, 0);
-	if (size != CSize(0, 0))
-	{
-		double scale = globalData.GetRibbonImageScale ();
-		if (scale > 1.)
-		{
-			size.cx = (int)(.5 + scale * size.cx);
-			size.cy = (int)(.5 + scale * size.cy);
-		}
-	}
-
+	CSize size = globalUtils.ScaleByDPI(m_pHotButton->GetImage () >= 0 ? m_pToolBarImages->GetImageSize () : CSize (0, 0));
 	return size;
 }
 //**********************************************************************
@@ -390,6 +455,12 @@ void CBCGPToolTipCtrl::OnDrawBorder (CDC* pDC, CRect rect,
 									 COLORREF clrLine)
 {
 	ASSERT_VALID (pDC);
+
+	if (globalData.bIsWindows8)
+	{
+		pDC->Draw3dRect (rect, clrLine, clrLine);
+		return;
+	}
 
 	const int nOffsetX = m_sizeCornerRadius.cx / 2;
 	const int nOffsetY = m_sizeCornerRadius.cy / 2;
@@ -418,6 +489,15 @@ void CBCGPToolTipCtrl::OnDrawBorder (CDC* pDC, CRect rect,
 BOOL CBCGPToolTipCtrl::OnDrawIcon (CDC* pDC, CRect rectImage)
 {
 	ASSERT_VALID (pDC);
+
+	if (m_bIsOwnerDrawImage)
+	{
+		CWnd* pWndParent = GetParent();
+		if (pWndParent->GetSafeHwnd() != NULL)
+		{
+			return (BOOL)pWndParent->SendMessage(BCGM_ON_DRAW_TOOLTIP_IMAGE, (WPARAM)pDC->GetSafeHdc(), (LPARAM)&rectImage);
+		}
+	}
 
 #ifndef BCGP_EXCLUDE_RIBBON
 	if (m_pRibbonButton != NULL)
@@ -458,12 +538,14 @@ BOOL CBCGPToolTipCtrl::OnDrawIcon (CDC* pDC, CRect rectImage)
 	UINT nSaveStyle = m_pHotButton->m_nStyle;
 	BOOL bSaveText = m_pHotButton->m_bText;
 	BOOL bSaveImage = m_pHotButton->m_bImage;
+	BOOL bSaveTextBelow = m_pHotButton->m_bTextBelow;
 
 	BOOL bSaveLargeIcons = CBCGPToolBar::m_bLargeIcons;
 	CBCGPToolBar::m_bLargeIcons = FALSE;
 
 	m_pHotButton->m_bText = FALSE;
 	m_pHotButton->m_bImage = TRUE;
+	m_pHotButton->m_bTextBelow = FALSE;
 
 	m_pHotButton->m_nStyle = 0;
 
@@ -472,6 +554,7 @@ BOOL CBCGPToolTipCtrl::OnDrawIcon (CDC* pDC, CRect rectImage)
 	m_pHotButton->m_nStyle = nSaveStyle;
 	m_pHotButton->m_bText = bSaveText;
 	m_pHotButton->m_bImage = bSaveImage;
+	m_pHotButton->m_bTextBelow = bSaveTextBelow;
 
 	CBCGPToolBar::m_bLargeIcons = bSaveLargeIcons;
 
@@ -496,6 +579,7 @@ CSize CBCGPToolTipCtrl::OnDrawLabel (CDC* pDC, CRect rect, BOOL bCalcOnly)
 	CString strText (GetLabel ());
 
 	strText.Replace (_T("\t"), _T("    "));
+	strText.Replace(_T("&&"), _T("&"));
 
 	BOOL bDrawDescr = m_Params.m_bDrawDescription && !m_strDescription.IsEmpty ();
 
@@ -524,7 +608,7 @@ CSize CBCGPToolTipCtrl::OnDrawLabel (CDC* pDC, CRect rect, BOOL bCalcOnly)
 		{
 			UINT nFormat = DT_LEFT | DT_NOCLIP | DT_SINGLELINE;
 		
-			if (!bDrawDescr)
+			if (!bDrawDescr && m_strHelpPrompt.IsEmpty())
 			{
 				nFormat |= DT_VCENTER;
 			}
@@ -555,6 +639,8 @@ CSize CBCGPToolTipCtrl::OnDrawDescription (CDC* pDC, CRect rect, BOOL bCalcOnly)
 		return sizeText;
 	}
 
+	CRect rectSaved = rect;
+
 	CFont* pOldFont = pDC->SelectObject (&globalData.fontTooltip);
 	int nFixedWidth = GetFixedWidth ();
 
@@ -572,16 +658,69 @@ CSize CBCGPToolTipCtrl::OnDrawDescription (CDC* pDC, CRect rect, BOOL bCalcOnly)
 		rect.right = rect.left + m_Params.m_nMaxDescrWidth;
 	}
 
-	UINT nFormat = DT_WORDBREAK;
+	if (rect.Width() < rectSaved.Width())
+	{
+		rect = rectSaved;
+	}
+
+	UINT nFormat = DT_WORDBREAK | DT_NOCLIP | DT_NOPREFIX;
 	if (bCalcOnly)
 	{
 		nFormat |= DT_CALCRECT;
 	}
 
-	int nDescrHeight = pDC->DrawText (m_strDescription, rect, nFormat);
+	CString strDescr(m_strDescription);
+	strDescr.Replace(_T("&&"), _T("&"));
+
+	int nDescrHeight = pDC->DrawText (strDescr, rect, nFormat);
 	pDC->SelectObject (pOldFont);
 
 	return CSize (rect.Width (), nDescrHeight);
+}
+//**********************************************************************
+CSize CBCGPToolTipCtrl::OnDrawHelpPrompt(CDC* pDC, CRect rect, BOOL bCalcOnly)
+{
+	ASSERT_VALID (pDC);
+
+	if (m_strHelpPrompt.IsEmpty())
+	{
+		return CSize(0, 0);
+	}
+
+	int nIconWidth = 0;
+
+	if (m_Params.m_hiconHelp != NULL)
+	{
+		nIconWidth = globalData.m_sizeSmallIcon.cx + 2 * m_ptMargin.x;
+
+		if (!bCalcOnly)
+		{
+			CPoint ptIcon(
+					rect.left + m_ptMargin.x,
+					rect.top + max(0, (int)(0.5 + 0.5 * (rect.Height() - globalData.m_sizeSmallIcon.cy))));
+			
+			::DrawIconEx(pDC->GetSafeHdc (), 
+				ptIcon.x,
+				ptIcon.y,
+				m_Params.m_hiconHelp, globalData.m_sizeSmallIcon.cx, globalData.m_sizeSmallIcon.cy, 0, NULL,
+				DI_NORMAL);
+			
+			rect.left += nIconWidth;
+		}
+	}
+
+	CFont* pOldFont = pDC->SelectObject (&globalData.fontTooltip);
+
+	UINT nFormat = DT_SINGLELINE | DT_LEFT | DT_VCENTER;
+	if (bCalcOnly)
+	{
+		nFormat |= DT_CALCRECT;
+	}
+
+	int nHelpHeight = pDC->DrawText(m_strHelpPrompt, rect, nFormat);
+	pDC->SelectObject (pOldFont);
+
+	return CSize(nIconWidth + rect.Width(), nHelpHeight);
 }
 //**********************************************************************
 void CBCGPToolTipCtrl::OnDrawSeparator (CDC* pDC, int x1, int x2, int y)
@@ -730,11 +869,21 @@ void CBCGPToolTipCtrl::SetLocation (CPoint pt)
 	m_ptLocation = pt;
 }
 //**********************************************************************
-void CBCGPToolTipCtrl::SetHotRibbonButton (CBCGPRibbonButton* pRibbonButton)
+void CBCGPToolTipCtrl::SetHotRibbonButton (CBCGPRibbonButton* pRibbonButton, LPCTSTR lpszHelpPrompt)
 {
 	ASSERT_VALID (this);
 
 	m_pRibbonButton = pRibbonButton;
+
+	m_strHelpPrompt.Empty();
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (lpszHelpPrompt != NULL && pRibbonButton != NULL && 
+		pRibbonButton->GetID() != 0 && pRibbonButton->GetID() != (UINT)-1)
+	{
+		m_strHelpPrompt = lpszHelpPrompt;
+	}
+#endif
 }
 //**********************************************************************
 int CBCGPToolTipCtrl::GetFixedWidth ()

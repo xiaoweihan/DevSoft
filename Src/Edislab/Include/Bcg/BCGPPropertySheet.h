@@ -11,7 +11,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -63,6 +63,9 @@ class CBCGPPropSheetPane : public CBCGPOutlookBarPane
 	friend class CBCGPPropertySheet;
 
 	virtual BOOL OnSendCommand (const CBCGPToolbarButton* pButton);
+#if (!defined _BCGSUITE_) && (!defined _BCGSUITE_INC_)
+	virtual BOOL OnDrawButtonImage(CDC* pDC, CBCGPOutlookButton* pButton, CBCGPToolBarImages* pImages, int iImageIndex, CRect rectIcon);
+#endif
 	void EnsureVisible (int iButton);
 
 	CBCGPPropertySheet* m_pParent;
@@ -121,6 +124,9 @@ class BCGCBPRODLLEXPORT CBCGPPropertySheet :	public CPropertySheet,
 	friend class CBCGPRibbonBackstageViewItemPropertySheet;
 	friend class CBCGPDlgImpl;
 	friend class CBCGPPopupMenu;
+	friend class CBCGPVisualManager2007;
+	friend class CBCGPVisualManagerCarbon;
+	friend class CBCGPGlobalUtils;
 
 	DECLARE_DYNAMIC(CBCGPPropertySheet)
 
@@ -140,10 +146,11 @@ public:
 		PropSheetLook_Wizard,
 		PropSheetLook_AeroWizard,
 		PropSheetLook_Pointer,
+		PropSheetLook_Slider,
 	};
 
 	// Should be called BEFORE DoModal or Create!
-	void SetLook (PropSheetLook look, int nNavControlWidth = 100, BOOL bGlassEffect = TRUE /* PropSheetLook_AeroWizard */);
+	void SetLook (PropSheetLook look, int nNavControlWidth = 100, BOOL bGlassEffect = TRUE /* PropSheetLook_AeroWizard */, BOOL bSimplifiedBackIcon = TRUE /* PropSheetLook_AeroWizard */);
 	PropSheetLook GetLook () const
 	{
 		return m_look;
@@ -192,7 +199,7 @@ public:
 	}
 	
 	// Layout:
-	void EnableLayout(BOOL bEnable = TRUE, CRuntimeClass* pRTC = NULL);
+	void EnableLayout(BOOL bEnable = TRUE, CRuntimeClass* pRTC = NULL, BOOL bResizeBox = FALSE);
 	BOOL IsLayoutEnabled() const
 	{
 		return m_Impl.IsLayoutEnabled();
@@ -205,9 +212,10 @@ public:
 
 	virtual void AdjustControlsLayout();
 
-	void EnableLoadWindowPlacement(BOOL bEnable = TRUE)
+	void EnableLoadWindowPlacement(BOOL bEnable = TRUE, LPCTSTR szWindowPlacementProfile = NULL)
 	{
 		m_Impl.m_bLoadWindowPlacement = bEnable;
+		m_Impl.m_strWindowPlacementProfile = szWindowPlacementProfile;
 	}
 
 	BOOL IsWindowPlacementEnabled() const
@@ -225,7 +233,10 @@ public:
 	void EnableTabsScrolling(BOOL bEnable = TRUE);
 
 	// Page transition effects:
-	void EnablePageTransitionEffect(CBCGPPageTransitionManager::BCGPPageTransitionEffect effect, int nTime = 300 /* ms */);
+	void EnablePageTransitionEffect(CBCGPPageTransitionManager::BCGPPageTransitionEffect effect, 
+		int nTime = 300 /* ms */,
+		BCGPAnimationType animationType = BCGPANIMATION_AccelerateDecelerate,
+		CBCGPAnimationManagerOptions* pAnimationOptions = NULL);
 
 	BOOL IsPageTransitionAvailable() const
 	{
@@ -234,6 +245,11 @@ public:
 
 	BOOL SetActivePageWithEffects(int nPage);
 
+	BOOL InAdjustLayout() const
+	{
+		return m_bInAdjustLayout;
+	}
+
 protected:
 	PropSheetLook		m_look;
 	CBCGPOutlookBar		m_wndOutlookBar;
@@ -241,11 +257,13 @@ protected:
 	CBCGPPropSheetTab	m_wndTab;
 	CBCGPTreeCtrl		m_wndTree;
 	CBCGPListBox		m_wndList;
+	CFont				m_fntList;
 	int					m_nBarWidth;
 	int					m_nActivePage;
 	CImageList			m_Icons;
 	BOOL				m_bAlphaBlendIcons;
 	int					m_nHeaderHeight;
+	BOOL				m_bSyncHeaderHeightWithListItemHeight;
 	int					m_nAeroHeight;
 	BOOL				m_bDrawHeaderOnAeroCaption;
 	BOOL				m_bWasMaximized;
@@ -255,6 +273,7 @@ protected:
 	CBCGPToolBarImages	m_NavImages16;
 	BOOL				m_bGlassArea;
 	BOOL				m_bGlassEffect;
+	BOOL				m_bSimplifiedBackIcon;
 	BOOL				m_bIsReady;
 	CSize				m_sizePrev;
 	CSize				m_sizeOriginal;
@@ -262,6 +281,7 @@ protected:
 	BOOL				m_bBackstageMode;
 	BOOL				m_bIsTabsScrolling;
 	int					m_nNewActivePage;
+	BOOL				m_bDisableShadows;
 
 	CList<CBCGPPropSheetCategory*,CBCGPPropSheetCategory*>	m_lstTreeCategories;
 
@@ -273,8 +293,8 @@ protected:
 
 // Operations
 public:
-	BOOL SetIconsList (UINT uiImageListResID, int cx, COLORREF clrTransparent = RGB (255, 0, 255));
-	void SetIconsList (HIMAGELIST hIcons);
+	BOOL SetIconsList (UINT uiImageListResID, int cx, COLORREF clrTransparent = RGB (255, 0, 255), BOOL bIsDPIScale = FALSE);
+	void SetIconsList (HIMAGELIST hIcons, BOOL bIsDPIScale = FALSE);
 
 	void AddPage(CPropertyPage* pPage);
 	void AddGroup(LPCTSTR lpszGroup);	// For PropSheetLook_List style only!
@@ -307,6 +327,8 @@ public:
 
 	virtual void OnDrawPageHeader (CDC* pDC, int nPage, CRect rectHeader);
 	virtual BOOL OnWizardChangePageWidthTransitionEffect(CBCGPPropertyPage* pCurrPage, BOOL bNext);
+
+	virtual BOOL OnDrawPageIcon(CDC* /*pDC*/, int /*nPage*/, CBCGPToolBarImages* /*pImages*/, int /*iImageIndex*/, CRect /*rectIcon*/)	{ return FALSE; }
 	
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPPropertySheet)
@@ -316,6 +338,8 @@ public:
 	protected:
 	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
 	//}}AFX_VIRTUAL
+
+	virtual void OnRTLChanged (BOOL bIsRTL);
 
 // Implementation
 public:
@@ -345,7 +369,9 @@ protected:
 	afx_msg BOOL OnNcActivate(BOOL bActive);
 	afx_msg void OnEnable(BOOL bEnable);
 	afx_msg void OnPaint();
+	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	//}}AFX_MSG
+	afx_msg void OnStyleChanged(int nStyleType, LPSTYLESTRUCT lpStyleStruct);
 	afx_msg LRESULT OnAfterActivatePage(WPARAM,LPARAM);
 	afx_msg LRESULT OnAdjustButtons(WPARAM,LPARAM);
 	afx_msg void OnSelectTree(NMHDR* pNMHDR, LRESULT* pResult);
@@ -357,6 +383,8 @@ protected:
 	afx_msg LRESULT OnSetText(WPARAM, LPARAM);
 	afx_msg LRESULT OnPowerBroadcast(WPARAM wp, LPARAM);
 	afx_msg LRESULT OnAdjustWizardPage(WPARAM, LPARAM);
+	afx_msg LRESULT OnDPIChanged(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnThemeChanged(WPARAM wp, LPARAM lp);
 	DECLARE_MESSAGE_MAP()
 
 	void InternalAddPage (int nTab);
@@ -373,6 +401,9 @@ protected:
 	virtual void OnPageTransitionFinished();
 
 	void SetActiveMenu (CBCGPPopupMenu* pMenu);
+	virtual void UpdateListBoxFont();
+
+	BOOL CreateListBox();
 };
 
 /////////////////////////////////////////////////////////////////////////////

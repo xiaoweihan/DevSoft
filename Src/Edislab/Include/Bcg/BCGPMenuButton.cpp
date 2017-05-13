@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,6 +18,7 @@
 #include "BCGCBPro.h"
 #include "BCGGlobals.h"
 #include "BCGPDrawManager.h"
+#include "BCGPPopupDlg.h"
 
 #ifndef _BCGSUITE_
 #include "MenuImages.h"
@@ -48,6 +49,11 @@ CBCGPMenuButton::CBCGPMenuButton()
 	m_bOSMenu = TRUE;
 	m_bDefaultClick = FALSE;
 	m_bClickOnMenu = FALSE;
+	m_pRTIPopupDlg = NULL;
+	m_lpszPopupDlgTemplateName = NULL;
+	m_pPopupDlg = NULL;
+	m_bIsResizablePopup = FALSE;
+	m_bIsRightAlignedPopup = FALSE;
 }
 //*****************************************************************************************
 CBCGPMenuButton::~CBCGPMenuButton()
@@ -140,25 +146,65 @@ void CBCGPMenuButton::OnDraw (CDC* pDC, const CRect& rect, UINT uiState)
 //*****************************************************************************************
 void CBCGPMenuButton::OnShowMenu () 
 {
-	if (m_hMenu == NULL || m_bMenuIsActive)
+	CRect rectWindow;
+	GetWindowRect (rectWindow);
+	
+	int x = (m_bRightArrow || m_bIsRightAlignedPopup) ? rectWindow.right : rectWindow.left;
+	int y = m_bRightArrow ? rectWindow.top : rectWindow.bottom;
+	
+	if (m_pRTIPopupDlg != NULL)
 	{
+		if (m_pPopupDlg->GetSafeHwnd() != NULL)
+		{
+			ClosePopupDlg(FALSE);
+		}
+		else
+		{
+			ASSERT(m_lpszPopupDlgTemplateName != NULL);
+			ASSERT(m_pRTIPopupDlg != NULL);
+			
+			CBCGPDlgPopupMenu* pPopupMenu = new CBCGPDlgPopupMenu(this, m_pRTIPopupDlg, m_lpszPopupDlgTemplateName);
+			if (pPopupMenu != NULL)
+			{
+				pPopupMenu->m_bIsResizable = m_bIsResizablePopup;
+				pPopupMenu->SetRightAlign(m_bIsRightAlignedPopup);
+				
+				m_pPopupDlg = pPopupMenu->m_pDlg;
+				if (m_pPopupDlg != NULL)
+				{
+					m_pPopupDlg->m_pParentEdit = new CBCGPParentMenuButtonPtr(this);
+				}
+				
+				CBCGPPopupMenu* pMenuActive = CBCGPPopupMenu::GetActiveMenu ();
+				if (pMenuActive->GetSafeHwnd() != NULL)
+				{
+					pMenuActive->SendMessage(WM_CLOSE);
+				}
+
+				OnBeforeShowPopupDlg(m_pPopupDlg);
+
+				if (m_bStayPressed)
+				{
+					m_bPushed = TRUE;
+					m_bHighlighted = TRUE;
+				}
+
+				if (GetExStyle() & WS_EX_LAYOUTRTL)
+				{
+					x = (m_bRightArrow || m_bIsRightAlignedPopup) ? rectWindow.left : rectWindow.right;
+				}
+
+				m_bMenuIsActive = TRUE;
+				pPopupMenu->Create(this, x, y, NULL, FALSE, FALSE);
+			}
+		}
+
 		return;
 	}
 
-	CRect rectWindow;
-	GetWindowRect (rectWindow);
-
-	int x, y;
-
-	if (m_bRightArrow)
+	if (m_hMenu == NULL || m_bMenuIsActive)
 	{
-		x = rectWindow.right;
-		y = rectWindow.top;
-	}
-	else
-	{
-		x = rectWindow.left;
-		y = rectWindow.bottom;
+		return;
 	}
 
 	if (m_bStayPressed)
@@ -328,4 +374,42 @@ void CBCGPMenuButton::OnLButtonDblClk(UINT nFlags, CPoint point)
 		ReleaseCapture ();
 		m_bCaptured = FALSE;
 	}
+}
+//********************************************************************************
+void CBCGPMenuButton::EnablePopupDialog(CRuntimeClass* pRTI, UINT nIDTemplate, BOOL bIsResizable, BOOL bIsRightAligned)
+{
+	EnablePopupDialog(pRTI, MAKEINTRESOURCE(nIDTemplate), bIsResizable, bIsRightAligned);
+}
+//********************************************************************************
+void CBCGPMenuButton::EnablePopupDialog(CRuntimeClass* pRTI, LPCTSTR lpszTemplateName, BOOL bIsResizable, BOOL bIsRightAligned)
+{
+	ASSERT(pRTI != NULL);
+
+	if (pRTI != NULL && pRTI->m_pfnCreateObject == NULL)
+	{
+		TRACE(_T("CBCGPMenuButton::EnablePopupDialog: you've to add DECLARE_DYNCREATE to your popup dialog class\n"));
+		ASSERT(FALSE);
+		
+		pRTI = NULL;
+	}
+
+	m_pRTIPopupDlg = pRTI;
+	m_lpszPopupDlgTemplateName = lpszTemplateName;
+	m_bIsResizablePopup = bIsResizable;
+	m_bIsRightAlignedPopup = bIsRightAligned;
+}
+//*****************************************************************************
+void CBCGPMenuButton::ClosePopupDlg(BOOL /*bOK*/, DWORD_PTR /*dwUserData*/)
+{
+	if (m_pPopupDlg->GetSafeHwnd() != NULL)
+	{
+		m_pPopupDlg->GetParent()->PostMessage(WM_CLOSE);
+		m_pPopupDlg = NULL;
+	}
+	
+	m_bPushed = FALSE;
+	m_bHighlighted = FALSE;
+	m_bMenuIsActive = FALSE;
+
+	RedrawWindow(NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
 }

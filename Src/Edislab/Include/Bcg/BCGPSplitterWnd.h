@@ -11,7 +11,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -25,6 +25,8 @@
 
 class BCGCBPRODLLEXPORT CBCGPSplitterWnd : public CSplitterWnd
 {
+	friend class CBCGPFrameImpl;
+
 	DECLARE_DYNAMIC(CBCGPSplitterWnd)
 
 // Construction
@@ -32,10 +34,13 @@ public:
 	CBCGPSplitterWnd();
 
 // Attributes
-public:
+protected:
+	BOOL m_bCyclicPaneActivation;
 
 // Operations
 public:
+	BOOL ActivateFirstPane();
+	BOOL ActivateLastPane();
 
 // Overrides
 	// ClassWizard generated virtual function overrides
@@ -44,6 +49,7 @@ public:
 
 	virtual void OnDrawSplitter (CDC* pDC, ESplitType nType, const CRect& rect);
 	virtual void RecalcLayout();    // call after changing sizes
+	virtual BOOL CanActivateNext(BOOL bPrev = FALSE);
 
 // Implementation
 public:

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -64,6 +64,7 @@ CBCGPPrintPreviewCtrl::CBCGPPrintPreviewCtrl()
 	, m_bInsideUpdate  (FALSE)
 	, m_bDrawFocus     (TRUE)
 	, m_bBackstageMode (FALSE)
+	, m_nMaxZoomLevel  (100)
 {
 	m_bScrollBars[0] = FALSE;
 	m_bScrollBars[1] = FALSE;
@@ -303,7 +304,7 @@ CSize CBCGPPrintPreviewCtrl::GetPreviewMargins() const
 
 void CBCGPPrintPreviewCtrl::OnPreviewClose()
 {
-	if (m_pPrintView != NULL)
+	if (m_pPrintView->GetSafeHwnd() != NULL && ::IsWindow(m_pPrintView->GetSafeHwnd()))
 	{
 		((BCGPView*)m_pPrintView)->OnEndPrinting(m_pPreviewDC, m_pPreviewInfo);
 	}
@@ -486,7 +487,7 @@ void CBCGPPrintPreviewCtrl::SetCurrentPage (UINT nPage, BOOL bRedraw)
 
 void CBCGPPrintPreviewCtrl::SetZoomType (int nZoomType, BOOL bRedraw)
 {
-	nZoomType = max(min(nZoomType, 100), 0);
+	nZoomType = max(min(nZoomType, m_nMaxZoomLevel), 0);
 	if (m_nZoomType == nZoomType)
 	{
 		return;
@@ -595,9 +596,9 @@ void CBCGPPrintPreviewCtrl::DoDraw(CDC* pDC)
 			UINT nPage = GetStartPage ();
 			BOOL bContinue = TRUE;
 
-			if (bMultiPages)
+			CRgn rgn;
+			if (bMultiPages && !rtClient.IsRectEmpty())
 			{
-				CRgn rgn;
 				rgn.CreateRectRgnIndirect (rtClient);
 				pDC->SelectClipRgn (&rgn);
 			}
@@ -614,9 +615,19 @@ void CBCGPPrintPreviewCtrl::DoDraw(CDC* pDC)
 					}
 
 					CRect rectFrame(rectThumbnail);
-					rectFrame.InflateRect (rtFrameMargins);
 
-					m_ctrlFrame.DrawFrame(pDC, rectFrame, (nPage == m_nCurrentPage) ? 1 : 0);
+					if (CBCGPVisualManager::GetInstance()->IsPrintPreviewShadow())
+					{
+						rectFrame.InflateRect (rtFrameMargins);
+						m_ctrlFrame.DrawFrame(pDC, rectFrame, (nPage == m_nCurrentPage) ? 1 : 0);
+					}
+					else
+					{
+						rectFrame.InflateRect(1, 1);
+
+						COLORREF clrFrame = CBCGPVisualManager::GetInstance()->GetPrintPreviewFrameColor(nPage == m_nCurrentPage);
+						pDC->Draw3dRect(rectFrame, clrFrame, clrFrame);
+					}
 
 					bContinue = DoDrawPage(&m_pageDC, rectPage, nPage);
 					if (bContinue)
@@ -632,7 +643,7 @@ void CBCGPPrintPreviewCtrl::DoDraw(CDC* pDC)
 						break;
 					}
 
-					if (bMultiPages)
+					if (bMultiPages && rgn.GetSafeHandle() != NULL)
 					{
 						CRgn rgnThumbnail;
 						rgnThumbnail.CreateRectRgnIndirect (rectThumbnail);
@@ -650,7 +661,11 @@ void CBCGPPrintPreviewCtrl::DoDraw(CDC* pDC)
 				rectThumbnail.OffsetRect (0, m_rectThumbnail.Height() + szMargins.cy);
 			}
 
-			pDC->SelectClipRgn (NULL);
+			if (rgn.GetSafeHandle() != NULL)
+			{
+				pDC->SelectClipRgn (NULL);
+			}
+
 			pDC->SetStretchBltMode(nStretchMode);
 		}
 
@@ -679,13 +694,26 @@ void CBCGPPrintPreviewCtrl::DoDrawBackground(CDC* pDC, const CRect& rect)
 {
 	ASSERT_VALID(pDC);
 
+	CWnd* pParent = GetParent();
+
 	if (m_bBackstageMode)
 	{
-		CBCGPVisualManager::GetInstance()->OnFillRibbonBackstageForm(pDC, GetParent(), rect);
+		CBCGPVisualManager::GetInstance()->OnFillRibbonBackstageForm(pDC, pParent, rect);
+
+		if (pParent->GetSafeHwnd() != NULL)
+		{
+			CPoint pt(0, 0);
+			MapWindowPoints(pParent, &pt, 1);
+			pt = pDC->OffsetWindowOrg (pt.x, pt.y);
+			
+			pParent->SendMessage (WM_ERASEBKGND, (WPARAM)pDC->m_hDC);
+			
+			pDC->SetWindowOrg(pt.x, pt.y);
+		}
 	}
 	else if (m_bVisualManagerStyle)
 	{
-		CBrush& br = CBCGPVisualManager::GetInstance ()->GetDlgBackBrush (GetParent());
+		CBrush& br = CBCGPVisualManager::GetInstance ()->GetDlgBackBrush(pParent);
 		pDC->FillRect(rect, &br);
 	}
 	else
@@ -857,7 +885,7 @@ void CBCGPPrintPreviewCtrl::RecalcLayout(BOOL bUpdateScrollBars/* = TRUE*/)
 		m_dZoom = m_nZoomType / 100.0;
 	}
 
-	m_dZoom = min((int)(m_dZoom * 100.0) / 100.0, 1.0);
+	m_dZoom = min((int)(m_dZoom * 100.0) / 100.0, 0.01 * m_nMaxZoomLevel);
 
 	m_rectThumbnail.right = (int)(m_sizePrinter.cx * m_dZoom / m_dScalePPIX);
 	m_rectThumbnail.bottom = (int)(m_sizePrinter.cy * m_dZoom / m_dScalePPIY);
@@ -1295,3 +1323,14 @@ LRESULT CBCGPPrintPreviewCtrl::OnBCGSetControlBackStageMode (WPARAM, LPARAM)
 	m_bBackstageMode = TRUE;
 	return 0;
 }
+
+BOOL CBCGPPrintPreviewCtrl::IsInternalScrollBarThemed() const
+{
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_PRINT_PREVIEW) != 0;
+}
+
+void CBCGPPrintPreviewCtrl::SetMaxZoomLevel(int nLevel)
+{
+	m_nMaxZoomLevel = nLevel;
+}
+

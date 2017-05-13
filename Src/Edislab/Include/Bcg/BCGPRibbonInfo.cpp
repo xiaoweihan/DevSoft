@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -39,6 +39,7 @@ static LPCTSTR s_szTag_PaletteTop             = _T("PALETTE_TOP");
 static LPCTSTR s_szTag_AlwaysLarge            = _T("ALWAYS_LARGE");
 static LPCTSTR s_szTag_AlwaysShowDescription  = _T("ALWAYS_DESCRIPTION");
 static LPCTSTR s_szTag_QATType                = _T("QAT_TYPE");
+static LPCTSTR s_szTag_DontCloseParentPopup   = _T("DONTCLOSEPARENTPOPUP");
 
 static LPCTSTR s_szTag_Index                  = _T("INDEX");
 static LPCTSTR s_szTag_IndexSmall             = _T("INDEX_SMALL");
@@ -71,6 +72,7 @@ static LPCTSTR s_szTag_MenuResizeVertical     = _T("MENU_RESIZE_VERTICAL");
 static LPCTSTR s_szTag_DrawDisabledItems      = _T("DRAW_DISABLED_ITEMS");
 static LPCTSTR s_szTag_IconsInRow             = _T("ICONS_IN_ROW");
 static LPCTSTR s_szTag_IconWidth              = _T("ICON_WIDTH");
+static LPCTSTR s_szTag_InitialColumns         = _T("INITIAL_COLUMNS");
 static LPCTSTR s_szTag_SizeIcon               = _T("SIZE_ICON");
 
 static LPCTSTR s_szTag_Color                  = _T("COLOR");
@@ -79,6 +81,16 @@ static LPCTSTR s_szTag_SimpleButtonLook       = _T("SIMPLE_LOOK");
 static LPCTSTR s_szTag_AutomaticColorBtn      = _T("AUTOMATIC_BTN");
 static LPCTSTR s_szTag_OtherColorBtn          = _T("OTHER_BTN");
 static LPCTSTR s_szTag_Border                 = _T("BORDER");
+
+static LPCTSTR s_szTag_EnableCheckBoxes       = _T("ENABLE_CHECKBOXES");
+static LPCTSTR s_szTag_CheckBoxLocation       = _T("CHECKBOX_LOCATION");
+static LPCTSTR s_szTag_CheckBoxOverlaps       = _T("CHECKBOX_OVERLAPS");
+
+static LPCTSTR s_szTag_EnableLabels           = _T("ENABLE_LABELS");
+static LPCTSTR s_szTag_LabelLocation          = _T("LABEL_LOCATION");
+static LPCTSTR s_szTag_LabelColor             = _T("LABEL_COLOR");
+static LPCTSTR s_szTag_Tooltips				  = _T("TOOLTIPS");
+static LPCTSTR s_szTag_IconKeys               = _T("ICONKEYS");
 
 static LPCTSTR s_szTag_Style                  = _T("STYLE");
 static LPCTSTR s_szTag_Pos                    = _T("POS");
@@ -93,6 +105,8 @@ static LPCTSTR s_szTag_TextAlign              = _T("TEXT_ALIGN");
 static LPCTSTR s_szTag_QATTop                 = _T("QAT_TOP");
 static LPCTSTR s_szTag_JustifyColumns         = _T("JUSTIFY_COLUMNS");
 static LPCTSTR s_szTag_CenterColumnVert       = _T("CENTER_COLUMN_VERT");
+static LPCTSTR s_szTag_CollapseMode           = _T("COLLAPSE_MODE");
+static LPCTSTR s_szTag_AlwaysAlignByColumn    = _T("ALWAYS_ALIGN_BY_COLUMN");
 
 static LPCTSTR s_szTag_Enable                 = _T("ENABLE");
 static LPCTSTR s_szTag_EnableToolTips         = _T("ENABLE_TOOLTIPS");
@@ -101,6 +115,7 @@ static LPCTSTR s_szTag_EnableKeys             = _T("ENABLE_KEYS");
 static LPCTSTR s_szTag_EnablePrintPreview     = _T("ENABLE_PRINTPREVIEW");
 static LPCTSTR s_szTag_DrawUsingFont          = _T("ENABLE_DRAWUSINGFONT");
 static LPCTSTR s_szTag_EnableBackstageMode    = _T("ENABLE_BACKSTAGEMODE");
+static LPCTSTR s_szTag_EnableBackstagePageCaptions = _T("ENABLE_BACKSTAGEPAGECAPTIONS");
 
 static LPCTSTR s_szTag_Label                  = _T("LABEL");
 static LPCTSTR s_szTag_Visible                = _T("VISIBLE");
@@ -136,9 +151,14 @@ static LPCTSTR s_szTag_CategoryMain           = _T("CATEGORY_MAIN");
 static LPCTSTR s_szTag_CategoryBackstage      = _T("CATEGORY_BACKSTAGE");
 static LPCTSTR s_szTag_CollapseOrder          = _T("COLLAPSE_ORDER");
 static LPCTSTR s_szTag_SortOrder              = _T("SORT_ORDER");
+static LPCTSTR s_szTag_HelpContext            = _T("HELP_CONTEXT");
+static LPCTSTR s_szTag_TooltipPrompt          = _T("TOOLTIP_PROMPT");
+static LPCTSTR s_szTag_CommandSearch          = _T("COMMAND_SEARCH");
 
 static LPCTSTR s_szTag_Body                   = _T("BCGP_RIBBON");
 static LPCTSTR s_szTag_Sizes                  = _T("SIZES");
+static LPCTSTR s_szTag_Mode                   = _T("MODE");
+static LPCTSTR s_szTag_ApplicationModes       = _T("APPLICATION_MODES");
 
 static LPCTSTR s_szTag_Image                  = _T("IMAGE");
 static LPCTSTR s_szTag_Image_Scenic           = _T("IMAGE_SCENIC");
@@ -192,6 +212,7 @@ CBCGPBaseRibbonInfo::XElement::XElement(const CString& strElementName)
 	: CBCGPBaseInfo::XBase (strElementName)
 	, m_bIsOnPaletteTop    (FALSE)
 	, m_bIsAlwaysLarge     (FALSE)
+	, m_nApplicationModes  ((UINT)-1)
 {
 }
 
@@ -231,7 +252,9 @@ CBCGPBaseRibbonInfo::XElementButton::XElementButton(const CString& strElementNam
 	, m_nSmallImageIndex        (-1)
 	, m_nLargeImageIndex        (-1)
 	, m_bIsDefaultCommand       (TRUE)
+	, m_bIsAlwaysShowDescription(FALSE)
 	, m_QATType                 (CBCGPRibbonButton::BCGPRibbonButton_Show_Default)
+	, m_bDontCloseParentPopupOnClick(FALSE)
 {
 }
 
@@ -242,6 +265,7 @@ CBCGPBaseRibbonInfo::XElementButton::XElementButton()
 	, m_bIsDefaultCommand       (TRUE)
 	, m_bIsAlwaysShowDescription(FALSE)
 	, m_QATType                 (CBCGPRibbonButton::BCGPRibbonButton_Show_Default)
+	, m_bDontCloseParentPopupOnClick(FALSE)
 {
 }
 
@@ -378,6 +402,13 @@ CBCGPBaseRibbonInfo::XElementButtonPalette::XElementButtonPalette(const CString&
 	, m_bDrawDisabledItems            (FALSE)
 	, m_nIconsInRow                   (-1)
 	, m_sizeIcon                      (0, 0)
+	, m_nInitialColumns               (0)
+	, m_bItemCheckBoxes               (FALSE)
+	, m_CheckBoxLocation              (CBCGPRibbonPaletteButton::RibbonPalleteCheckbox_BottomRight)
+	, m_bCheckBoxOverlapsIcon         (TRUE)
+	, m_bItemTextLabels               (FALSE)
+	, m_TextLabelLocation             (CBCGPRibbonPaletteButton::RibbonPalleteTextLabel_Bottom)
+	, m_clrTextLabel                  ((COLORREF)-1)
 {
 }
 
@@ -389,6 +420,13 @@ CBCGPBaseRibbonInfo::XElementButtonPalette::XElementButtonPalette()
 	, m_bDrawDisabledItems            (FALSE)
 	, m_nIconsInRow                   (-1)
 	, m_sizeIcon                      (0, 0)
+	, m_nInitialColumns               (0)
+	, m_bItemCheckBoxes               (FALSE)
+	, m_CheckBoxLocation              (CBCGPRibbonPaletteButton::RibbonPalleteCheckbox_BottomRight)
+	, m_bCheckBoxOverlapsIcon         (TRUE)
+	, m_bItemTextLabels               (FALSE)
+	, m_TextLabelLocation             (CBCGPRibbonPaletteButton::RibbonPalleteTextLabel_Bottom)
+	, m_clrTextLabel                  ((COLORREF)-1)
 {
 }
 
@@ -509,10 +547,13 @@ CBCGPBaseRibbonInfo::XElementStatusPane::~XElementStatusPane()
 }
 
 CBCGPBaseRibbonInfo::XPanel::XPanel()
-	: CBCGPBaseInfo::XBase (CBCGPBaseRibbonInfo::s_szPanel)
-	, m_nImageIndex        (-1)
-	, m_bJustifyColumns    (FALSE)
-	, m_bCenterColumnVert  (FALSE)
+	: CBCGPBaseInfo::XBase  (CBCGPBaseRibbonInfo::s_szPanel)
+	, m_nImageIndex         (-1)
+	, m_bJustifyColumns     (FALSE)
+	, m_bCenterColumnVert   (FALSE)
+	, m_CollapseMode        (0)
+	, m_nApplicationModes   ((UINT)-1)
+	, m_bAlwaysAlignByColumn(FALSE)
 {
 }
 
@@ -530,6 +571,7 @@ CBCGPBaseRibbonInfo::XPanel::~XPanel()
 
 CBCGPBaseRibbonInfo::XCategory::XCategory()
 	: CBCGPBaseInfo::XBase (CBCGPBaseRibbonInfo::s_szCategory)
+	, m_nApplicationModes  ((UINT)-1)
 {
 }
 
@@ -641,6 +683,10 @@ CBCGPBaseRibbonInfo::XRibbonBar::XRibbonBar()
 	, m_MainCategory       (NULL)
 	, m_bBackstageMode     (FALSE)
 	, m_BackstageCategory  (NULL)
+	, m_bBackstagePageCaptions(FALSE)
+	, m_bContextHelp       (FALSE)
+	, m_bCommandSearch     (FALSE)
+	, m_nCommandSearchWidth(-1)
 {
 }
 
@@ -861,6 +907,7 @@ BOOL CBCGPBaseRibbonInfo::XElement::FromTag (const CString& strTag)
 	tm.ReadEntityString (s_szTag_MenuKeys, m_strMenuKeys);
 	tm.ReadBool (s_szTag_PaletteTop, m_bIsOnPaletteTop);
 	tm.ReadBool (s_szTag_AlwaysLarge, m_bIsAlwaysLarge);
+	tm.ReadUInt (s_szTag_ApplicationModes, m_nApplicationModes);
 
 	return TRUE;
 }
@@ -880,6 +927,7 @@ void CBCGPBaseRibbonInfo::XElement::ToTag (CString& strTag) const
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteEntityString (s_szTag_MenuKeys, m_strMenuKeys));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_PaletteTop, m_bIsOnPaletteTop, FALSE));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_AlwaysLarge, m_bIsAlwaysLarge, FALSE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteUInt (s_szTag_ApplicationModes, m_nApplicationModes, (UINT)-1));
 }
 
 BOOL CBCGPBaseRibbonInfo::XElementSeparator::FromTag (const CString& strTag)
@@ -887,6 +935,7 @@ BOOL CBCGPBaseRibbonInfo::XElementSeparator::FromTag (const CString& strTag)
 	CBCGPTagManager tm (strTag);
 
 	tm.ReadBool (s_szTag_Horiz, m_bIsHoriz);
+	tm.ReadUInt (s_szTag_ApplicationModes, m_nApplicationModes);
 
 	return TRUE;
 }
@@ -896,6 +945,7 @@ void CBCGPBaseRibbonInfo::XElementSeparator::ToTag (CString& strTag) const
 	XBase::ToTag (strTag);
 
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_Horiz, m_bIsHoriz, FALSE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteUInt (s_szTag_ApplicationModes, m_nApplicationModes, (UINT)-1));
 }
 
 BOOL CBCGPBaseRibbonInfo::XElementGroup::FromTag (const CString& strTag)
@@ -971,11 +1021,17 @@ BOOL CBCGPBaseRibbonInfo::XElementButton::FromTag (const CString& strTag)
 	tm.ReadInt (s_szTag_IndexSmall, m_nSmallImageIndex);
 	tm.ReadInt (s_szTag_IndexLarge, m_nLargeImageIndex);
 	tm.ReadBool (s_szTag_DefaultCommand, m_bIsDefaultCommand);
-	tm.ReadBool (s_szTag_AlwaysShowDescription, m_bIsAlwaysShowDescription);
+
+	if (GetElementName ().Compare (s_szButton) == 0)
+	{
+		tm.ReadBool (s_szTag_AlwaysShowDescription, m_bIsAlwaysShowDescription);
+	}
 
 	int QATType = (int)CBCGPRibbonButton::BCGPRibbonButton_Show_Default;
 	tm.ReadInt (s_szTag_QATType, QATType);
 	m_QATType = (CBCGPRibbonButton::RibbonButtonOnQAT)bcg_clamp (QATType, (int)CBCGPRibbonButton::BCGPRibbonButton_Show_Default, (int)CBCGPRibbonButton::BCGPRibbonButton_Show_As_RadioButton);
+
+	tm.ReadBool (s_szTag_DontCloseParentPopup, m_bDontCloseParentPopupOnClick);
 
 	return XElement::FromTag (tm.GetBuffer ());
 }
@@ -994,6 +1050,7 @@ void CBCGPBaseRibbonInfo::XElementButton::ToTag (CString& strTag) const
 	}
 
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_QATType, (int)m_QATType, (int)CBCGPRibbonButton::BCGPRibbonButton_Show_Default));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_DontCloseParentPopup, m_bDontCloseParentPopupOnClick, FALSE));
 
 	CString strElements;
 
@@ -1300,6 +1357,7 @@ BOOL CBCGPBaseRibbonInfo::XElementButtonPalette::FromTag (const CString& strTag)
 	tm.ReadBool (s_szTag_MenuResize, m_bEnableMenuResize);
 	tm.ReadBool (s_szTag_MenuResizeVertical, m_bMenuResizeVertical);
 	tm.ReadBool (s_szTag_DrawDisabledItems, m_bDrawDisabledItems);
+	tm.ReadInt (s_szTag_InitialColumns, m_nInitialColumns);
 	tm.ReadInt (s_szTag_IconsInRow, m_nIconsInRow);
 	if (!tm.ReadSize (s_szTag_SizeBox, m_sizeIcon))
 	{
@@ -1313,6 +1371,48 @@ BOOL CBCGPBaseRibbonInfo::XElementButtonPalette::FromTag (const CString& strTag)
 		m_Images.m_Image.SetImageSize (m_sizeIcon);
 	}
 
+	tm.ReadBool (s_szTag_EnableCheckBoxes, m_bItemCheckBoxes);
+
+	int nLocation = (int)CBCGPRibbonPaletteButton::RibbonPalleteCheckbox_BottomRight;
+ 	tm.ReadInt (s_szTag_CheckBoxLocation, nLocation);
+	m_CheckBoxLocation = (CBCGPRibbonPaletteButton::RibbonPalleteCheckboxLocation)bcg_clamp
+		(
+			nLocation,
+			(int)CBCGPRibbonPaletteButton::RibbonPalleteCheckbox_TopLeft,
+			(int)CBCGPRibbonPaletteButton::RibbonPalleteCheckbox_BottomRight
+		);
+
+	tm.ReadBool (s_szTag_CheckBoxOverlaps, m_bCheckBoxOverlapsIcon);
+	
+ 	tm.ReadBool (s_szTag_EnableLabels, m_bItemTextLabels);
+
+	nLocation = (int)CBCGPRibbonPaletteButton::RibbonPalleteTextLabel_Bottom;
+ 	tm.ReadInt (s_szTag_LabelLocation, nLocation);
+	m_TextLabelLocation = (CBCGPRibbonPaletteButton::RibbonPalleteTextLabelLocation)bcg_clamp
+		(
+			nLocation,
+			(int)CBCGPRibbonPaletteButton::RibbonPalleteTextLabel_Top,
+			(int)CBCGPRibbonPaletteButton::RibbonPalleteTextLabel_Bottom
+		);
+
+ 	tm.ReadColor (s_szTag_LabelColor, m_clrTextLabel);
+
+	CString strTooltips;
+	tm.ReadEntityString (s_szTag_Tooltips, strTooltips);
+	CBCGPTagManager::ParseString(strTooltips, _T("\t"), m_arTooltips, FALSE, TRUE);
+	if (!strTooltips.IsEmpty() && m_arTooltips.GetSize() == 0)
+	{
+		m_arTooltips.Add(strTooltips);
+	}
+
+	CString strKeys;
+	tm.ReadEntityString (s_szTag_IconKeys, strKeys);
+	CBCGPTagManager::ParseString(strKeys, _T("\t"), m_arKeys, FALSE, TRUE);
+	if (!strKeys.IsEmpty() && m_arKeys.GetSize() == 0)
+	{
+		m_arKeys.Add(strKeys);
+	}
+
 	return XElementButton::FromTag (tm.GetBuffer ());
 }
 
@@ -1324,8 +1424,45 @@ void CBCGPBaseRibbonInfo::XElementButtonPalette::ToTag (CString& strTag) const
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_MenuResize, m_bEnableMenuResize, FALSE));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_MenuResizeVertical, m_bMenuResizeVertical, FALSE));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_DrawDisabledItems, m_bDrawDisabledItems, FALSE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_InitialColumns, m_nInitialColumns, 0));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_IconsInRow, m_nIconsInRow, -1));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteSize (s_szTag_SizeIcon, m_sizeIcon, CSize (0, 0)));
+
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_EnableCheckBoxes, m_bItemCheckBoxes, FALSE));
+ 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_CheckBoxLocation, (int)m_CheckBoxLocation, (int)CBCGPRibbonPaletteButton::RibbonPalleteCheckbox_BottomRight));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_CheckBoxOverlaps, m_bCheckBoxOverlapsIcon, TRUE));
+
+ 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_EnableLabels, m_bItemTextLabels, FALSE));
+ 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_LabelLocation, (int)m_TextLabelLocation, (int)CBCGPRibbonPaletteButton::RibbonPalleteTextLabel_Bottom));
+ 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_LabelColor, m_clrTextLabel, (COLORREF)-1));
+
+	int i = 0;
+
+	CString strTooltips;
+	int nCount = (int)m_arTooltips.GetSize();
+	for (i = 0; i < nCount; i++)
+	{
+		strTooltips += m_arTooltips[i];
+		if (i < (nCount - 1))
+		{
+			strTooltips += _T("\t");
+		}
+	}
+
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteEntityString (s_szTag_Tooltips, strTooltips));
+
+	CString strKeys;
+	nCount = (int)m_arKeys.GetSize();
+	for (i = 0; i < nCount; i++)
+	{
+		strKeys += m_arKeys[i];
+		if (i < (nCount - 1))
+		{
+			strKeys += _T("\t");
+		}
+	}
+
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteEntityString (s_szTag_IconKeys, strKeys));
 
 	if (m_arGroups.GetSize () > 0)
 	{
@@ -1589,9 +1726,12 @@ BOOL CBCGPBaseRibbonInfo::XPanel::FromTag (const CString& strTag)
 
 	tm.ReadBool (s_szTag_JustifyColumns, m_bJustifyColumns);
 	tm.ReadBool (s_szTag_CenterColumnVert, m_bCenterColumnVert);
+	tm.ReadInt (s_szTag_CollapseMode, m_CollapseMode);
 	tm.ReadInt (s_szTag_Index, m_nImageIndex);
 	tm.ReadEntityString (s_szTag_Name, m_strName);
 	tm.ReadEntityString (s_szTag_Keys, m_strKeys);
+	tm.ReadUInt (s_szTag_ApplicationModes, m_nApplicationModes);
+	tm.ReadBool (s_szTag_AlwaysAlignByColumn, m_bAlwaysAlignByColumn);
 
 	return TRUE;
 }
@@ -1605,6 +1745,9 @@ void CBCGPBaseRibbonInfo::XPanel::ToTag (CString& strTag) const
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_Index, m_nImageIndex, -1));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_JustifyColumns, m_bJustifyColumns, FALSE));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_CenterColumnVert, m_bCenterColumnVert, FALSE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_CollapseMode, m_CollapseMode, 0));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteUInt (s_szTag_ApplicationModes, m_nApplicationModes, (UINT)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_AlwaysAlignByColumn, m_bAlwaysAlignByColumn, FALSE));
 
 	CString strButton;
 	m_btnLaunch.ToTag (strButton);
@@ -1688,6 +1831,8 @@ BOOL CBCGPBaseRibbonInfo::XCategory::FromTag (const CString& strTag)
 		}
 	}
 
+	tm.ReadUInt (s_szTag_ApplicationModes, m_nApplicationModes);
+
 	return TRUE;
 }
 
@@ -1697,6 +1842,7 @@ void CBCGPBaseRibbonInfo::XCategory::ToTag (CString& strTag) const
 
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteEntityString (s_szTag_Name, m_strName));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteEntityString (s_szTag_Keys, m_strKeys));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteUInt (s_szTag_ApplicationModes, m_nApplicationModes, (UINT)-1));
 
 	CString strImage;
 	m_SmallImages.ToTag (strImage);
@@ -2101,12 +2247,33 @@ BOOL CBCGPBaseRibbonInfo::XRibbonBar::FromTag (const CString& strTag)
 		}
 	}
 
+	CString strHelpContext;
+	if (tm.ExcludeTag (s_szTag_HelpContext, strHelpContext))
+	{
+		CBCGPTagManager tmHelpContext (strHelpContext);
+		tmHelpContext.ReadBool(s_szTag_Enable, m_bContextHelp);
+		tmHelpContext.ReadEntityString(s_szTag_TooltipPrompt, m_strContextHelpTooltipPrompt);
+	}
+
+	CString strCommandSearch;
+	if (tm.ExcludeTag (s_szTag_CommandSearch, strCommandSearch))
+	{
+		CBCGPTagManager tmCommandSearch (strCommandSearch);
+		tmCommandSearch.ReadBool(s_szTag_Enable, m_bCommandSearch);
+		tmCommandSearch.ReadInt(s_szTag_Width, m_nCommandSearchWidth);
+		tmCommandSearch.ReadEntityString(s_szTag_TooltipPrompt, m_strCommandSearchPrompt);
+		tmCommandSearch.ReadEntityString(s_szTag_ToolTip, m_strCommandSearchToolTip);
+		tmCommandSearch.ReadEntityString(s_szTag_Description, m_strCommandSearchDescription);
+		tmCommandSearch.ReadEntityString(s_szTag_Keys, m_strCommandSearchKeys);
+	}
+
 	tm.ReadBool (s_szTag_EnableToolTips, m_bToolTip);
 	tm.ReadBool (s_szTag_EnableToolTipsDescr, m_bToolTipDescr);
 	tm.ReadBool (s_szTag_EnableKeys, m_bKeyTips);
 	tm.ReadBool (s_szTag_EnablePrintPreview, m_bPrintPreview);
 	tm.ReadBool (s_szTag_DrawUsingFont, m_bDrawUsingFont);
 	tm.ReadBool (s_szTag_EnableBackstageMode, m_bBackstageMode);
+	tm.ReadBool (s_szTag_EnableBackstagePageCaptions, m_bBackstagePageCaptions);
 
     CString strImage;
     if (tm.ExcludeTag(s_szTag_Image, strImage))
@@ -2127,6 +2294,7 @@ void CBCGPBaseRibbonInfo::XRibbonBar::ToTag (CString& strTag) const
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_EnablePrintPreview, m_bPrintPreview, TRUE));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_DrawUsingFont, m_bDrawUsingFont, FALSE));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_EnableBackstageMode, m_bBackstageMode, FALSE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_EnableBackstagePageCaptions, m_bBackstagePageCaptions, FALSE));
 
 	CString strImage;
 	m_Images.ToTag (strImage);
@@ -2154,6 +2322,20 @@ void CBCGPBaseRibbonInfo::XRibbonBar::ToTag (CString& strTag) const
 	}
 
 	int i = 0;
+
+	CString strHelpContext;
+	CBCGPTagManager::WriteTag (strHelpContext, CBCGPTagManager::WriteBool (s_szTag_Enable, m_bContextHelp, FALSE));
+	CBCGPTagManager::WriteTag (strHelpContext, CBCGPTagManager::WriteEntityString (s_szTag_TooltipPrompt, m_strContextHelpTooltipPrompt, CString(), TRUE));
+	CBCGPTagManager::WriteItem (strTag, s_szTag_HelpContext, strHelpContext);
+
+	CString strCommandSearch;
+	CBCGPTagManager::WriteTag (strCommandSearch, CBCGPTagManager::WriteBool (s_szTag_Enable, m_bCommandSearch, FALSE));
+	CBCGPTagManager::WriteTag (strCommandSearch, CBCGPTagManager::WriteInt (s_szTag_Width, m_nCommandSearchWidth, -1));
+	CBCGPTagManager::WriteTag (strCommandSearch, CBCGPTagManager::WriteEntityString (s_szTag_TooltipPrompt, m_strCommandSearchPrompt, CString(), TRUE));
+	CBCGPTagManager::WriteTag (strCommandSearch, CBCGPTagManager::WriteEntityString (s_szTag_ToolTip, m_strCommandSearchToolTip));
+	CBCGPTagManager::WriteTag (strCommandSearch, CBCGPTagManager::WriteEntityString (s_szTag_Description, m_strCommandSearchDescription));
+	CBCGPTagManager::WriteTag (strCommandSearch, CBCGPTagManager::WriteEntityString (s_szTag_Keys, m_strCommandSearchKeys));
+	CBCGPTagManager::WriteItem (strTag, s_szTag_CommandSearch, strCommandSearch);
 
 	CString strQATElements;
 	m_QAT.ToTag (strQATElements);
@@ -2266,6 +2448,38 @@ void CBCGPBaseRibbonInfo::XStatusBar::ToTag (CString& strTag) const
 	CBCGPTagManager::WriteItem (strTag, s_szTag_ElementsExtended, strExElements);
 }
 
+
+CBCGPBaseRibbonInfo::XApplicationModes::XApplicationModes()
+{
+}
+
+CBCGPBaseRibbonInfo::XApplicationModes::~XApplicationModes()
+{
+}
+
+BOOL CBCGPBaseRibbonInfo::XApplicationModes::FromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	CString strMode;
+	while (tm.ExcludeTag (s_szTag_Mode, strMode))
+	{
+		CBCGPTagManager::Entity_FromTag(strMode);
+		m_Modes.AddTail (strMode);
+	}
+
+	return TRUE;
+}
+
+void CBCGPBaseRibbonInfo::XApplicationModes::ToTag (CString& strTag) const
+{
+	POSITION pos = m_Modes.GetHeadPosition();
+	while (pos != NULL)
+	{
+		CBCGPTagManager::WriteTag(strTag, CBCGPTagManager::WriteEntityString (s_szTag_Mode, m_Modes.GetNext(pos), CString(), TRUE));
+	}
+}
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -2368,6 +2582,14 @@ BOOL CBCGPRibbonInfo::FromTag (const CString& strTag)
 		}
 	}
 
+	{
+		CString strApplicationModes;
+		if (tm.ExcludeTag (s_szTag_ApplicationModes, strApplicationModes))
+		{
+			m_ApplicationModes.FromTag (strApplicationModes);
+		}
+	}
+
 	if (bRibbon)
 	{
 		m_RibbonBar.m_Images.m_Image.SetImageSize (m_sizeImage [e_ImagesSmall]);
@@ -2463,6 +2685,10 @@ void CBCGPRibbonInfo::ToTag (CString& strTag) const
 	CBCGPTagManager::WriteItem (strHeader, s_szTag_Sizes, strSizes);
 
 	CBCGPTagManager::WriteItem (strData, CBCGPBaseInfo::s_szTag_Header, strHeader);
+
+	CString strApplicationModes;
+	m_ApplicationModes.ToTag (strApplicationModes);
+	CBCGPTagManager::WriteItem (strData, s_szTag_ApplicationModes, strApplicationModes);
 
 	if ((dwFlags & e_UseRibbon) == e_UseRibbon)
 	{

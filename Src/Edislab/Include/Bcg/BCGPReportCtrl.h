@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -60,6 +60,8 @@ public:
 
 // Overrides
 public:
+	virtual void OnFillGroupBackground (CDC* pDC, CRect rect, BOOL bGroupUnderline);
+
 	virtual void OnDrawName (CDC* pDC, CRect rect);
 	virtual void OnDrawPreview (CDC* pDC, CRect rect);
 	virtual void OnDrawExpandBox (CDC* pDC, CRect rectExpand);
@@ -76,14 +78,19 @@ public:
 	}
 
 	virtual CRect GetNameTooltipRect ();
+	virtual CRect GetCheckBoxRect(int dx) const;
+	virtual BOOL HasCheckBox () const;
+
+	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
+
+	virtual void GetPreviewText (CString& str) const;
+	virtual void OnMeasureGridRowRect (CRect& rect);
 
 protected:
 	virtual BOOL HasValueField () const
 	{
 		return (m_arrRowItems.GetSize () > 0);
 	}
-	virtual void GetPreviewText (CString& str) const;
-	virtual void OnMeasureGridRowRect (CRect& rect);
 	
 	int CalcPreview (const CRect& rec);
 	
@@ -166,6 +173,8 @@ protected:
 	virtual void OnResizeColumns ();
 	void SetRecalcPreview ();
 
+	virtual void OnScaleChanged(double dblOldScale);
+
 	// Generated message map functions
 protected:
 	//{{AFX_MSG(CBCGPReportCtrl)
@@ -184,6 +193,8 @@ protected:
 	int		m_nPreviewRowRightMargin; // Custom Right margin for description text, if < 0 use default value
 
 	CDC*	m_pPreviewDC;	// used to calculate preview height
+
+	BOOL	m_bAutoGroupCheckBoxes;
 };
 
 #endif // BCGP_EXCLUDE_GRID_CTRL

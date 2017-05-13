@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,7 @@
 #include "bcgprores.h"
 #include "bcgglobals.h"
 #include "BCGPVisualManager.h"
+#include "BCGPRibbonBar.h"
 
 #ifndef BCGP_EXCLUDE_RIBBON
 
@@ -124,7 +125,9 @@ void CBCGPRibbonHyperlink::OnDraw (CDC* pDC)
 	}
 
 	// Set font:
-	CFont* pOldFont = pDC->SelectObject (&globalData.fontUnderline);
+	CBCGPRibbonBar* pTopLevelRibbon = GetTopLevelRibbonBar();
+	
+	CFont* pOldFont = pDC->SelectObject((pTopLevelRibbon->GetSafeHwnd() != NULL) ? pTopLevelRibbon->GetUnderlineFont() : &globalData.fontUnderline);
 	ASSERT (pOldFont != NULL);
 
 	COLORREF clrTextOld = pDC->SetTextColor (
@@ -170,15 +173,6 @@ BOOL CBCGPRibbonHyperlink::OpenLink ()
 	return ShellExecute (NULL, m_strLink);
 }
 //********************************************************************************
-void CBCGPRibbonHyperlink::OnMouseMove (CPoint point)
-{
-	ASSERT_VALID (this);
-
-	CBCGPRibbonButton::OnMouseMove (point);
-
-	::SetCursor (globalData.GetHandCursor ());
-}
-//********************************************************************************
 void CBCGPRibbonHyperlink::OnSetIcon ()
 {
 	ASSERT_VALID (this);
@@ -193,8 +187,8 @@ void CBCGPRibbonHyperlink::OnSetIcon ()
 				AfxGetResourceHandle (),
 				MAKEINTRESOURCE (IDI_BCGRES_LINK),
 				IMAGE_ICON,
-				16,
-				16,
+				::GetSystemMetrics (SM_CXSMICON),
+				::GetSystemMetrics (SM_CYSMICON),
 				LR_SHARED);
 		}
 
@@ -227,6 +221,16 @@ BOOL CBCGPRibbonHyperlink::SetACCData(CWnd* pParent, CBCGPAccessibilityData& dat
 void CBCGPRibbonHyperlink::OnAccDefaultAction()
 {
 	OpenLink();
+}
+//********************************************************************************
+HCURSOR CBCGPRibbonHyperlink::GetCursor() const
+{
+	if (m_bQuickAccessMode || m_bFloatyMode || IsDisabled())
+	{
+		return CBCGPRibbonButton::GetCursor();
+	}
+
+	return globalData.GetHandCursor();
 }
 
 #endif // BCGP_EXCLUDE_RIBBON

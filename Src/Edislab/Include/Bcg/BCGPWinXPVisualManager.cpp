@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -42,9 +42,14 @@
 #include "BCGPOutlookWnd.h"
 #include "BCGPPropList.h"
 #include "BCGPGridCtrl.h"
+#include "BCGPDropDown.h"
+#include "BCGPListBox.h"
+#include "BCGPDateTimeCtrl.h"
+#include "BCGPWinUITiles.h"
 
 #ifndef BCGP_EXCLUDE_RIBBON
 #include "BCGPRibbonProgressBar.h"
+#include "BCGPRibbonPaletteButton.h"
 #endif
 
 #ifdef _DEBUG
@@ -80,23 +85,31 @@ CBCGPWinXPVisualManager::CBCGPWinXPVisualManager(BOOL bIsTemporary) :
 
 	m_bOfficeStyleMenus = FALSE;
 
-	m_nVertMargin = 12;
-	m_nHorzMargin = 12;
-	m_nGroupVertOffset = 15;
-	m_nGroupCaptionHeight = 25;
-	m_nGroupCaptionHorzOffset = 13;
-	m_nGroupCaptionVertOffset = 7;
-	m_nTasksHorzOffset = 12;
-	m_nTasksIconHorzOffset = 5;
-	m_nTasksIconVertOffset = 4;
+	m_nVertMargin = globalUtils.ScaleByDPI(12);
+	m_nHorzMargin = globalUtils.ScaleByDPI(12);
+	m_nGroupVertOffset = globalUtils.ScaleByDPI(15);
+	m_nGroupCaptionHeight = globalUtils.ScaleByDPI(25);
+	m_nGroupCaptionHorzOffset = globalUtils.ScaleByDPI(13);
+	m_nGroupCaptionVertOffset = globalUtils.ScaleByDPI(7);
+	m_nTasksHorzOffset = globalUtils.ScaleByDPI(12);
+	m_nTasksIconHorzOffset = globalUtils.ScaleByDPI(5);
+	m_nTasksIconVertOffset = globalUtils.ScaleByDPI(4);
 	m_bActiveCaptions = TRUE;
 
-	globalData.UpdateSysColors ();
+	if (!bIsTemporary)
+	{
+		globalData.UpdateSysColors ();
+	}
+
 	OnUpdateSystemColors ();
 }
 
 CBCGPWinXPVisualManager::~CBCGPWinXPVisualManager()
 {
+	if (afxCurrentResourceHandle != NULL)
+	{
+		CBCGPMenuImages::SetColor (CBCGPMenuImages::ImageBlack2, (COLORREF)-1);
+	}
 }
 
 BOOL CBCGPWinXPVisualManager::IsWinXPThemeAvailible ()
@@ -125,6 +138,11 @@ void CBCGPWinXPVisualManager::OnUpdateSystemColors ()
 	m_bShadowHighlightedImage = TRUE;
 
 	CBCGPWinXPThemeManager::UpdateSystemColors ();
+
+	if (afxCurrentResourceHandle != NULL)
+	{
+		CBCGPMenuImages::SetColor (CBCGPMenuImages::ImageBlack2, globalData.clrHotText);
+	}
 
 	if (m_hThemeWindow != NULL)
 	{
@@ -300,11 +318,28 @@ void CBCGPWinXPVisualManager::OnFillBarBackground (CDC* pDC, CBCGPBaseControlBar
 	if (m_pfDrawThemeBackground == NULL || 
 		m_hThemeRebar == NULL || 
 		pBar->IsDialogControl () ||
-		pBar->IsKindOf (RUNTIME_CLASS (CBCGPCaptionBar)) ||
 		pBar->IsKindOf (RUNTIME_CLASS (CBCGPCalculator)) ||
 		pBar->IsKindOf (RUNTIME_CLASS (CBCGPColorBar)))
 	{
 		CBCGPVisualManagerXP::OnFillBarBackground (pDC, pBar,rectClient, rectClip, bNCArea);
+		return;
+	}
+
+	if (pBar->IsKindOf (RUNTIME_CLASS (CBCGPCaptionBar)))
+	{
+		CBCGPCaptionBar* pCaptionBar = (CBCGPCaptionBar*) pBar;
+
+		CRect rectFill = rectClient;
+		rectFill.InflateRect(2, 2);
+
+		if (pCaptionBar->m_clrBarBackground != (COLORREF)-1 ||
+			m_hThemeRebar == NULL ||
+			(*m_pfDrawThemeBackground)(m_hThemeRebar, pDC->GetSafeHdc(), 0, 0, &rectFill, 0) != S_OK ||
+			m_hThemeToolTip == NULL || 
+			(*m_pfDrawThemeBackground)(m_hThemeToolTip, pDC->GetSafeHdc(), TTP_STANDARD, 0, &rectClient, 0) != S_OK)
+		{
+			CBCGPVisualManagerXP::OnFillBarBackground (pDC, pBar,rectClient, rectClip, bNCArea);
+		}
 		return;
 	}
 
@@ -345,6 +380,20 @@ void CBCGPWinXPVisualManager::OnFillBarBackground (CDC* pDC, CBCGPBaseControlBar
 		return;
 	}
 
+	if (pBar->IsKindOf(RUNTIME_CLASS(CBCGPDropDownToolBar)))
+	{
+		if (m_pfDrawThemeBackground == NULL || m_hThemeRebar == NULL)
+		{
+			pDC->FillRect (rectClient, &globalData.brBarFace);
+		}
+		else
+		{
+			(*m_pfDrawThemeBackground) (m_hThemeRebar, pDC->GetSafeHdc(),
+				0, 0, &rectClient, 0);
+		}
+		return;
+	}
+
 	FillRebarPane (pDC, pBar, rectClient);
 }
 //*************************************************************************************
@@ -365,6 +414,11 @@ void CBCGPWinXPVisualManager::OnFillButtonInterior (CDC* pDC,
 	if (m_hThemeToolBar == NULL)
 	{
 		CBCGPVisualManagerXP::OnFillButtonInterior (pDC, pButton, rect, state);
+		return;
+	}
+
+	if (pButton != NULL && pButton->IsExplorerNavigationButton())
+	{
 		return;
 	}
 
@@ -432,10 +486,31 @@ COLORREF CBCGPWinXPVisualManager::GetToolbarButtonTextColor (CBCGPToolbarButton*
 {
 	ASSERT_VALID (pButton);
 
-	if (m_hThemeToolBar == NULL ||
-		pButton->IsKindOf (RUNTIME_CLASS (CBCGPOutlookButton)))
+	if (m_hThemeToolBar == NULL || pButton->IsKindOf (RUNTIME_CLASS (CBCGPOutlookButton)))
 	{
 		return CBCGPVisualManagerXP::GetToolbarButtonTextColor (pButton, state);
+	}
+
+	if (pButton->IsExplorerNavigationButton())
+	{
+		int nState = TS_NORMAL;
+		
+		if (pButton->m_nStyle & TBBS_DISABLED)
+		{
+			nState = TS_DISABLED;
+		}
+		else if (state == ButtonsIsPressed)
+		{
+			return CBCGPDrawManager::ColorMakeDarker(globalData.clrHotText);
+		}
+		else if (state == ButtonsIsHighlighted)
+		{
+			return globalData.clrHotText;
+		}
+		
+		COLORREF clrText = 0;
+		(*m_pfGetThemeColor) (m_hThemeToolBar, TP_BUTTON, nState, TMT_TEXTCOLOR, &clrText);
+		return clrText;
 	}
 
 	return CBCGPVisualManager::GetToolbarButtonTextColor (pButton, state);
@@ -456,18 +531,25 @@ void CBCGPWinXPVisualManager::OnHighlightMenuItem (CDC*pDC, CBCGPToolbarMenuButt
 		return;
 	}
 	
-	(*m_pfDrawThemeBackground) (m_hThemeMenu, pDC->GetSafeHdc(), 
-		MENU_POPUPITEM, MPI_HOT, &rect, 0);
+	int nStateId = MPI_HOT;
 
-	(*m_pfGetThemeColor) (m_hThemeMenu, MENU_POPUPITEM, MPI_HOT, TMT_TEXTCOLOR, &clrText);
+	if (pButton != NULL && (pButton->m_nStyle & TBBS_DISABLED))
+	{
+		nStateId = MPI_DISABLEDHOT;
+	}
+
+	(*m_pfDrawThemeBackground) (m_hThemeMenu, pDC->GetSafeHdc(), MENU_POPUPITEM, nStateId, &rect, 0);
+	(*m_pfGetThemeColor) (m_hThemeMenu, MENU_POPUPITEM, nStateId, TMT_TEXTCOLOR, &clrText);
 }
 //************************************************************************************
 COLORREF CBCGPWinXPVisualManager::GetHighlightedMenuItemTextColor (CBCGPToolbarMenuButton* pButton)
 {
 	if (m_hThemeMenu != NULL && !m_bOfficeStyleMenus)
 	{
+		BOOL bIsDisabled = pButton != NULL && (pButton->m_nStyle & TBBS_DISABLED);
+
 		COLORREF clrText = 0;
-		(*m_pfGetThemeColor) (m_hThemeMenu, MENU_POPUPITEM, 0, TMT_TEXTCOLOR, &clrText);
+		(*m_pfGetThemeColor) (m_hThemeMenu, MENU_POPUPITEM, bIsDisabled ? MPI_DISABLEDHOT : MPI_HOT, TMT_TEXTCOLOR, &clrText);
 		return clrText;
 	}
 
@@ -513,9 +595,7 @@ void CBCGPWinXPVisualManager::OnFillMenuImageRect (CDC* pDC,
 
 	if (pButton->m_nStyle & TBBS_CHECKED)
 	{
-		(*m_pfDrawThemeBackground) (m_hThemeMenu, pDC->GetSafeHdc(), 
-			/*MENU_POPUPCHECKBACKGROUND*/12, 
-			2 /* MCB_NORMAL */, &rect, 0);
+		(*m_pfDrawThemeBackground) (m_hThemeMenu, pDC->GetSafeHdc(), MENU_POPUPCHECKBACKGROUND, MCB_NORMAL, &rect, 0);
 	}
 }
 //************************************************************************************
@@ -769,6 +849,49 @@ void CBCGPWinXPVisualManager::OnDrawCaptionButton (CDC* pDC, CBCGPCaptionButton*
 	else
 	{
 		(*m_pfDrawThemeBackground) (hTheme, pDC->GetSafeHdc(), nPart, nState, &rect, 0);
+	}
+}
+//**********************************************************************************
+COLORREF CBCGPWinXPVisualManager::GetCaptionBarTextColor (CBCGPCaptionBar* pBar)
+{
+	ASSERT_VALID (pBar);
+
+	if (globalData.IsHighContastMode() || pBar->IsMessageBarMode() || m_hThemeToolTip == NULL || m_pfGetThemeColor == NULL ||
+		pBar->m_clrBarBackground != (COLORREF)-1)
+	{
+		return CBCGPVisualManagerXP::GetCaptionBarTextColor(pBar);
+	}
+
+	COLORREF clrText = globalData.clrBarText;
+	(*m_pfGetThemeColor)(m_hThemeToolTip, TTP_STANDARD, 0, TMT_TEXTCOLOR, &clrText);
+
+	return clrText;
+}
+//***********************************************************************************
+void CBCGPWinXPVisualManager::OnDrawCaptionBarBorder (CDC* pDC, 
+	CBCGPCaptionBar* pBar, CRect rect, COLORREF clrBarBorder, BOOL bFlatBorder)
+{
+	ASSERT_VALID (pDC);
+
+	if (globalData.IsHighContastMode() || m_hThemeRebar == NULL)
+	{
+		CBCGPVisualManagerXP::OnDrawCaptionBarBorder(pDC, pBar, rect, clrBarBorder, bFlatBorder);
+		return;
+	}
+
+	if (clrBarBorder == (COLORREF) -1)
+	{
+		(*m_pfDrawThemeBackground) (m_hThemeRebar, pDC->GetSafeHdc(), 0, 0, &rect, 0);
+	}
+	else
+	{
+		CBrush brBorder (clrBarBorder);
+		pDC->FillRect (rect, &brBorder);
+	}
+
+	if (!bFlatBorder)
+	{
+		pDC->Draw3dRect (rect, globalData.clrBarHilite, globalData.clrBarShadow);
 	}
 }
 //**********************************************************************************
@@ -1093,9 +1216,12 @@ void CBCGPWinXPVisualManager::OnDrawMiniFrameBorder (
 		WP_SMALLCAPTION,
 		0, &rectBorder, 0);
 
-	pDC->Draw3dRect (rectBorder, globalData.clrBarFace, globalData.clrBarDkShadow);
-	rectBorder.DeflateRect (1, 1);
-	pDC->Draw3dRect (rectBorder, globalData.clrBarHilite, globalData.clrBarShadow);
+	if (pFrameWnd == NULL || !pFrameWnd->IsMaximized())
+	{
+		pDC->Draw3dRect (rectBorder, globalData.clrBarFace, globalData.clrBarDkShadow);
+		rectBorder.DeflateRect (1, 1);
+		pDC->Draw3dRect (rectBorder, globalData.clrBarHilite, globalData.clrBarShadow);
+	}
 }
 //**************************************************************************************
 void CBCGPWinXPVisualManager::OnDrawFloatingToolbarBorder (
@@ -1143,6 +1269,49 @@ void CBCGPWinXPVisualManager::OnFillOutlookPageButton (CDC* pDC, const CRect& re
 
 	(*m_pfDrawThemeBackground) (m_hThemeButton, pDC->GetSafeHdc(), BP_PUSHBUTTON, 
 		nState, &rect, 0);
+}
+//*******************************************************************************
+void CBCGPWinXPVisualManager::OnFillOutlookBarCaption (CDC* pDC, CRect rectCaption, COLORREF& clrText)
+{
+	if (!globalData.bIsWindowsVista || globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
+	{
+		CBCGPVisualManagerXP::OnFillOutlookBarCaption (pDC, rectCaption, clrText);
+		return;
+	}
+
+	CBCGPDrawManager dm(*pDC);
+
+	dm.FillGradient (rectCaption, 
+		globalData.clrInactiveCaptionGradient, 
+		globalData.clrInactiveCaption, 
+		TRUE);
+		
+	clrText = globalData.clrInactiveCaptionText;
+}
+//********************************************************************************
+COLORREF CBCGPWinXPVisualManager::OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption)
+{
+	if (!globalData.bIsWindowsVista || globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || m_hThemeToolBar == NULL)
+	{
+		return CBCGPVisualManagerXP::OnDrawOutlookPopupButton(pDC, rectBtn, bIsHighlighted, bIsPressed, bIsOnCaption);
+	}
+
+	if (bIsHighlighted || bIsPressed)
+	{
+		int nState = bIsPressed ? TS_PRESSED : TS_HOT;
+		CRect rect = rectBtn;
+
+		(*m_pfDrawThemeBackground) (m_hThemeToolBar, pDC->GetSafeHdc(), TP_BUTTON, nState, &rect, 0);
+	}
+	else
+	{
+		if (bIsOnCaption)
+		{
+			return globalData.clrInactiveCaptionText;
+		}
+	}
+
+	return globalData.clrBarText;
 }
 //****************************************************************************************
 void CBCGPWinXPVisualManager::OnDrawOutlookPageButtonBorder (CDC* pDC, 
@@ -1233,6 +1402,12 @@ void CBCGPWinXPVisualManager::OnDrawHeaderCtrlSortArrow (CBCGPHeaderCtrl* pCtrl,
 
 
 	int nState = bIsUp ? HSAS_SORTEDUP : HSAS_SORTEDDOWN;
+	int nMinWidth = rect.Height() * 3 / 2;
+	
+	if (rect.Width() < nMinWidth)
+	{
+		rect.InflateRect(nMinWidth / 2, 0);
+	}
 
 	if ((*m_pfDrawThemeBackground) (m_hThemeHeader, pDC->GetSafeHdc(), 
 								HP_HEADERSORTARROW, nState, &rect, 0) != S_OK)
@@ -1910,7 +2085,7 @@ void CBCGPWinXPVisualManager::OnDrawTab (CDC* pDC, CRect rectTab,
 
 	if (!m_b3DTabsXPTheme || m_hThemeTab == NULL || pTabWnd->IsFlatTab () || 
 		pTabWnd->IsOneNoteStyle () || pTabWnd->IsVS2005Style () ||
-		pTabWnd->IsLeftRightRounded () || pTabWnd->IsPointerStyle())
+		pTabWnd->IsLeftRightRounded () || pTabWnd->IsPointerStyle() || pTabWnd->IsDotsStyle())
 	{
 		CBCGPVisualManagerXP::OnDrawTab (pDC, rectTab, iTab, bIsActive, pTabWnd);
 		return;
@@ -2001,7 +2176,7 @@ void CBCGPWinXPVisualManager::OnEraseTabsArea (CDC* pDC, CRect rect,
 
 	if (!m_b3DTabsXPTheme || m_hThemeTab == NULL || pTabWnd->IsFlatTab () || 
 		pTabWnd->IsOneNoteStyle () || pTabWnd->IsVS2005Style () ||
-		pTabWnd->IsDialogControl () || pTabWnd->IsPointerStyle())
+		pTabWnd->IsDialogControl () || pTabWnd->IsPointerStyle() || pTabWnd->IsDotsStyle())
 	{
 		CBCGPVisualManagerXP::OnEraseTabsArea (pDC, rect, pTabWnd);
 		return;
@@ -2117,6 +2292,38 @@ BOOL CBCGPWinXPVisualManager::IsDefaultWinXPPopupButton (CBCGPPopupWndButton* pB
 {
 	ASSERT_VALID (pButton);
 	return m_hThemeWindow != NULL && pButton->IsCloseButton () && pButton->IsCaptionButton ();
+}
+//**********************************************************************************
+COLORREF CBCGPWinXPVisualManager::OnDrawPopupWindowCaption (CDC* pDC, CRect rectCaption, CBCGPPopupWindow* pPopupWnd)
+{
+	ASSERT_VALID(pDC);
+	ASSERT_VALID(pPopupWnd);
+	
+	if (m_hThemeWindow == NULL || globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || pPopupWnd->HasSmallCaption())
+	{
+		return CBCGPVisualManagerXP::OnDrawPopupWindowCaption (pDC, rectCaption, pPopupWnd);
+	}
+
+	switch (pPopupWnd->GetStemLocation())
+	{
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopCenter:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopLeft:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopRight:
+		rectCaption.top -= pPopupWnd->GetStemSize();
+		break;
+
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_Left:
+		rectCaption.left -= pPopupWnd->GetStemSize();
+		break;
+	}
+
+	rectCaption.InflateRect(5, 5);
+
+	(*m_pfDrawThemeBackground) (m_hThemeWindow, pDC->GetSafeHdc(), 
+		WP_CAPTION,
+		0, &rectCaption, 0);
+
+	return globalData.clrCaptionText;
 }
 
 #endif // BCGP_EXCLUDE_POPUP_WINDOW
@@ -2449,6 +2656,49 @@ void CBCGPWinXPVisualManager::OnDrawRibbonPaletteButton (
 		pDC->LineTo(rectButton.left, rectButton.bottom);
 	}
 }
+//*****************************************************************************
+void CBCGPWinXPVisualManager::OnDrawRibbonDefaultPaneButton (
+					CDC* pDC, 
+					CBCGPRibbonButton* pButton)
+{
+	ASSERT_VALID (pDC);
+	ASSERT_VALID (pButton);
+
+	if (pButton->IsQATMode () && !pButton->IsSearchResultMode () && m_hThemeButton != NULL)
+	{
+		CRect rect = pButton->GetRect();
+
+		int nState = PBS_NORMAL;
+		if (pButton->IsPressed() || pButton->IsDroppedDown())
+		{
+			nState = PBS_PRESSED;
+		}
+		else if (pButton->IsHighlighted())
+		{
+			nState = PBS_HOT;
+		}
+		
+		(*m_pfDrawThemeBackground) (m_hThemeButton, pDC->GetSafeHdc(), BP_PUSHBUTTON, 
+			nState, &rect, 0);
+
+		OnDrawRibbonDefaultPaneButtonContext (pDC, pButton);
+		return;
+	}
+
+	CBCGPVisualManagerXP::OnDrawRibbonDefaultPaneButton (pDC, pButton);
+}
+//*****************************************************************************
+void CBCGPWinXPVisualManager::GetRibbonSliderColors (CBCGPRibbonSlider* /*pSlider*/, 
+					BOOL bIsHighlighted, 
+					BOOL bIsPressed,
+					BOOL bIsDisabled,
+					COLORREF& clrLine,
+					COLORREF& clrFill)
+{
+	clrLine = bIsDisabled ? globalData.clrBtnShadow : globalData.clrBtnDkShadow;
+	clrFill = bIsPressed && bIsHighlighted ? globalData.clrBtnShadow :
+		bIsHighlighted ? globalData.clrBtnHilite : globalData.clrBtnFace;
+}
 
 #endif
 
@@ -2518,10 +2768,12 @@ COLORREF CBCGPWinXPVisualManager::OnFillPropertyListSelectedItem(CDC* pDC, CBCGP
 		return CBCGPVisualManagerXP::OnFillPropertyListSelectedItem(pDC, pProp, pWndList, rectFill, bFocused);
 	}
 	
-	(*m_pfDrawThemeBackground) (m_hThemeMenu, pDC->GetSafeHdc(), MENU_POPUPITEM, MPI_HOT, &rectFill, 0);
+	int nStateID = pProp->IsEnabled() ? MPI_HOT : MPI_DISABLEDHOT;
+
+	(*m_pfDrawThemeBackground) (m_hThemeMenu, pDC->GetSafeHdc(), MENU_POPUPITEM, nStateID, &rectFill, 0);
 
 	COLORREF clrText = 0;
-	(*m_pfGetThemeColor) (m_hThemeMenu, MENU_POPUPITEM, MPI_HOT, TMT_TEXTCOLOR, &clrText);
+	(*m_pfGetThemeColor) (m_hThemeMenu, MENU_POPUPITEM, nStateID, TMT_TEXTCOLOR, &clrText);
 
 	return pProp->IsEnabled() ? clrText : globalData.clrGrayedText;
 }
@@ -2569,8 +2821,10 @@ COLORREF CBCGPWinXPVisualManager::OnFillListBoxItem (CDC* pDC, CBCGPListBox* pLi
 
 	if (bIsSelected || bIsHighlihted)
 	{
-		(*m_pfDrawThemeBackground) (m_hThemeMenu, pDC->GetSafeHdc(), MENU_POPUPITEM, MPI_HOT, &rect, 0);
-		(*m_pfGetThemeColor) (m_hThemeMenu, MENU_POPUPITEM, MPI_HOT, TMT_TEXTCOLOR, &clrText);
+		int iStateId = pListBox->IsEnabled(nItem) ? MPI_HOT : MPI_DISABLEDHOT;
+
+		(*m_pfDrawThemeBackground) (m_hThemeMenu, pDC->GetSafeHdc(), MENU_POPUPITEM, iStateId, &rect, 0);
+		(*m_pfGetThemeColor) (m_hThemeMenu, MENU_POPUPITEM, iStateId, TMT_TEXTCOLOR, &clrText);
 	}
 
 	return clrText;
@@ -2599,3 +2853,44 @@ COLORREF CBCGPWinXPVisualManager::OnFillComboBoxItem (CDC* pDC, CBCGPComboBox* p
 	return clrText;
 }
 
+void CBCGPWinXPVisualManager::GetWinUITilesColors(CBCGPWinUITilesColors& colors)
+{
+	CBCGPVisualManagerXP::GetWinUITilesColors(colors);
+
+	if (m_hThemeToolBar == NULL || globalData.m_nBitsPerPixel <= 8)
+	{
+		return;
+	}
+
+	COLORREF clrFill = (COLORREF)-1;
+	(*m_pfGetThemeColor)(m_hThemeComboBox, CP_BACKGROUND, 0, TMT_FILLCOLOR, &clrFill);
+	colors.m_brFill = clrFill;
+
+	COLORREF clrBorder = (COLORREF)-1;
+	(*m_pfGetThemeColor)(m_hThemeComboBox, CP_BORDER, 0, TMT_BORDERCOLOR, &clrBorder);
+	colors.m_brBorder = clrBorder;
+
+	COLORREF clrTileFill = (COLORREF)-1;
+	(*m_pfGetThemeColor) (m_hThemeToolBar, TP_BUTTON, TS_NORMAL, TMT_FILLCOLORHINT, &clrTileFill);
+	colors.m_brTileFill = clrTileFill;
+
+	COLORREF clrTileText = (COLORREF)-1;
+	(*m_pfGetThemeColor) (m_hThemeToolBar, TP_BUTTON, TS_NORMAL, TMT_TEXTCOLOR, &clrTileText);
+	colors.m_colorTileText = clrTileText;
+
+	colors.m_colorTileBorder = globalData.clrBarShadow;
+
+	colors.m_colorTileBorderHighlighted = m_clrMenuItemBorder;
+
+	COLORREF clrTileBorder = (COLORREF)-1;
+	(*m_pfGetThemeColor) (m_hThemeToolBar, TP_BUTTON, TS_CHECKED, TMT_BORDERCOLORHINT, &clrTileBorder);
+	colors.m_colorSelectedTileBorder = clrTileBorder;
+
+	colors.m_brTileFillHighlighted = m_clrHighlight;
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	colors.m_colorCaptionText = GetRibbonBackstageInfoTextColor();
+#else
+	colors.m_colorCaptionText = globalData.clrBarText;
+#endif
+}

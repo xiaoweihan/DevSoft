@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -35,12 +35,12 @@ class CBCGPRibbonCommandsListBox;
 class CBCGPPopupMenu;
 class CBCGPRibbonQuickAccessToolbar;
 class CBCGPRibbonKeyTip;
+class CBCGPGridCtrl;
 class CBCGPGridRow;
 class CBCGPRibbonCustomElement;
 
 #include "bcgpaccessibility.h"
 #include "BCGPWnd.h"
-#include "BCGPToolBar.h"
 
 class BCGCBPRODLLEXPORT CBCGPBaseRibbonElement :  public CBCGPBaseAccessibleObject
 {
@@ -68,6 +68,7 @@ class BCGCBPRODLLEXPORT CBCGPBaseRibbonElement :  public CBCGPBaseAccessibleObje
 	friend class CBCGPRibbonCustomizeRibbonPage;
 	friend class CBCGPRibbonMainButton;
 	friend class CBCGPRibbonTabsGroup;
+	friend class CBCGPRibbonCommandsComboBox;
 
 	DECLARE_DYNAMIC(CBCGPBaseRibbonElement)
 
@@ -293,12 +294,7 @@ public:
 
 	virtual CSize GetSize (CDC* pDC)
 	{
-		if (!CBCGPToolBar::IsCommandPermitted (m_nID))
-		{
-			return CSize (0, 0);
-		}
-
-		if (g_pUserToolsManager != NULL && g_pUserToolsManager->GetToolsEntryCmd() == m_nID)
+		if (IsHiddenInAppMode())
 		{
 			return CSize (0, 0);
 		}
@@ -363,8 +359,9 @@ public:
 		}
 	}
 
-	virtual CSize GetImageSize (RibbonImageType /*type*/) const
+	virtual CSize GetImageSize (RibbonImageType type) const
 	{
+		UNREFERENCED_PARAMETER(type);
 		return CSize (0, 0);
 	}
 
@@ -440,6 +437,8 @@ public:
 		return m_bQuickAccessMode;
 	}
 
+	BOOL IsOnQATPopupMenu() const;
+
 	BOOL IsStatusBarMode () const
 	{
 		return m_bStatusBarMode;
@@ -448,6 +447,11 @@ public:
 	BOOL IsSearchResultMode () const
 	{
 		return m_bSearchResultMode;
+	}
+
+	BOOL IsCommandSearchMenu() const
+	{
+		return m_bCommandSearchMenu;
 	}
 
 	virtual BOOL IsWholeRowHeight () const
@@ -478,6 +482,11 @@ public:
 		return TRUE;
 	}
 
+	virtual CRect GetRectInWnd() const
+	{
+		return m_rect;
+	}
+
 	CBCGPBaseRibbonElement*	GetOriginal () const
 	{
 		return m_pOriginal;
@@ -503,7 +512,36 @@ public:
 		return m_bFloatyMode;
 	}
 
-	void SetForceDrawDisabledOnList(BOOL bSet) { m_bForceDrawDisabledOnList = bSet; }
+	void SetForceDrawDisabledOnList(BOOL bSet) 
+	{ 
+		m_bForceDrawDisabledOnList = bSet; 
+	}
+
+	UINT GetApplicationModes() const 
+	{ 
+		return m_nApplicationModes; 
+	}
+
+	virtual void SetApplicationModes(UINT nAppModes, BOOL bIncludeSubItems = TRUE)
+	{ 
+		UNREFERENCED_PARAMETER(bIncludeSubItems);
+		m_nApplicationModes = nAppModes; 
+	}
+
+	BOOL HasParentMenu() const
+	{
+		return m_pParentMenu != NULL;
+	}
+
+	virtual BOOL IsDrawSimplifiedIcon()
+	{
+		return FALSE;
+	}
+
+	BOOL IsDrawingOnList() const
+	{
+		return m_bIsDrawingOnList;
+	}
 
 // Overrides
 public:
@@ -519,7 +557,13 @@ public:
 
 	virtual void OnDraw (CDC* pDC) = 0;
 	virtual void OnCalcTextSize (CDC* /*pDC*/)	{}
-	virtual void CleanUpSizes ()	{}
+	virtual void CleanUpSizes ()				{}
+	virtual void OnChangeRibbonFont()			{}
+
+	virtual HCURSOR GetCursor() const
+	{
+		return NULL;
+	}
 
 	virtual BOOL CanBeStretched ()
 	{
@@ -593,6 +637,10 @@ public:
 		arElements.Add (this);
 	}
 
+	virtual BOOL QueryElements(const CStringArray& arWords, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, int nMaxResults, BOOL bDescription, BOOL bAll);
+
+	virtual void OnUpdateToolTips() {}
+
 	virtual void OnRTLChanged (BOOL /*bIsRTL*/)	{}
 	virtual void OnAfterAddToParent (CBCGPBaseRibbonElement* /*pParentElem*/)	{}
 
@@ -655,6 +703,26 @@ public:
 		return TRUE;
 	}
 
+	void SetDisplayIconInBackstageViewMode(BOOL bSet = TRUE)
+	{
+		m_bDisplayIconInBackstageViewMode = bSet;
+	}
+
+	BOOL IsDisplayIconInBackstageViewMode() const
+	{
+		return m_bDisplayIconInBackstageViewMode;
+	}
+
+	BOOL IsAlwaysShowDescription () const
+	{
+		return m_bAlwaysShowDescription;
+	}
+
+	virtual void SetCommandSearchMenu(BOOL bSet = TRUE)
+	{
+		m_bCommandSearchMenu = bSet;
+	}
+
 // Accessibility:
 	virtual HRESULT get_accParent(IDispatch **ppdispParent);
 	virtual HRESULT accLocation(long* pxLeft, long* pyTop, long* pcxWidth, long* pcyHeight, VARIANT varChild);
@@ -663,13 +731,19 @@ public:
 	virtual HRESULT accDoDefaultAction(VARIANT varChild);
 	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
 
+	virtual int DoDrawText (CDC* pDC, const CString& strText, CRect rectText, UINT uiDTFlags, COLORREF clrText = (COLORREF)-1);
+
 protected:
 	virtual void OnLButtonDown (CPoint point);
 	virtual void OnLButtonUp (CPoint /*point*/)		{}
-	virtual void OnMouseMove (CPoint /*point*/)		{}
+	virtual void OnMouseMove (CPoint point);
 	virtual void OnLButtonDblClk (CPoint /*point*/)	{}
 	virtual void OnHighlight (BOOL /*bHighlight*/)	{}
-	virtual void OnSetFocus (BOOL /*bSet*/)			{}
+	
+	virtual void OnSetFocus (BOOL bSet)
+	{
+		UNREFERENCED_PARAMETER(bSet);
+	}
 
 	virtual void OnUpdateCmdUI (CBCGPRibbonCmdUI* pCmdUI, CFrameWnd* pTarget, BOOL bDisableIfNoHndler);
 	virtual BOOL NotifyControlCommand (BOOL bAccelerator, int nNotifyCode, WPARAM wParam, LPARAM lParam);
@@ -682,14 +756,16 @@ protected:
 
 	virtual int GetDropDownImageWidth () const;
 
-	virtual BOOL OnProcessKey (UINT /*nChar*/)	{	return FALSE;	}
+	virtual BOOL OnProcessKey (UINT nChar)	
+	{	
+		UNREFERENCED_PARAMETER(nChar);
+		return FALSE;	
+	}
 
+	virtual BOOL IsCloseDropDownByTabKey() const{	return FALSE;	}
 	virtual BOOL HasFocus () const				{	return FALSE;	}
 
 	virtual void OnAccDefaultAction()			{	NotifyCommand(TRUE);	}
-
-	virtual int DoDrawText (CDC* pDC, const CString& strText, CRect rectText, UINT uiDTFlags,
-							COLORREF clrText = (COLORREF)-1);
 
 	virtual BOOL CanBeSeparated() const			{	return TRUE;	}
 	virtual BOOL IsCustomIconAllowed() const	{	return TRUE;	}
@@ -697,6 +773,8 @@ protected:
 	virtual void OnChangeVisualManager() {}
 
 	virtual BOOL IsCaptionButton () const { return FALSE; }
+	
+	virtual void OnBeforeDestroyParentMenuBar(CBCGPRibbonPanelMenuBar* /*pParentMenu*/)	{}
 
 // Operations
 public:
@@ -714,12 +792,14 @@ protected:
 	}
 
 	virtual void ApplyCustomizationData(CBCGPRibbonCustomElement& customElement);
+	virtual BOOL IsHiddenInAppMode() const;
 
 // Attributes
 protected:
 	RibbonElementLocation		m_Location;
 	UINT						m_nID;
 	DWORD_PTR					m_dwData;
+	UINT						m_nApplicationModes;
 	CString						m_strText;
 	CString						m_strKeys;
 	CString						m_strMenuKeys;
@@ -735,10 +815,13 @@ protected:
 	BOOL						m_bQuickAccessMode;
 	BOOL						m_bStatusBarMode;
 	BOOL						m_bSearchResultMode;
+	BOOL						m_bCommandSearchMenu;
+	BOOL						m_bIsTemporaryPopupItem;
 	BOOL						m_bIsHighlighted;
 	BOOL						m_bIsFocused;
 	BOOL						m_bIsPressed;
 	BOOL						m_bIsDisabled;
+	BOOL						m_bTemporaryDisabled;
 	BOOL						m_bIsChecked;
 	BOOL						m_bIsRadio;
 	BOOL						m_bIsDroppedDown;
@@ -763,6 +846,7 @@ protected:
 	BOOL						m_bCanBeStretchedOnDialogBar;
 	int							m_nTextGlassGlowSize;
 	BOOL						m_bIsBackstageViewMode;
+	BOOL						m_bDisplayIconInBackstageViewMode;
 	int							m_nExtraMaginX;
 	CWnd*						m_pWndTargetCmd;
 	BOOL						m_bIsCustom;
@@ -770,6 +854,11 @@ protected:
 	BOOL						m_bIsNew;
 	BOOL						m_bForceDrawDisabledOnList;
 	CSize						m_sizePadding;
+	BOOL						m_bIsTemporary;
+	BOOL						m_bIsDontDrawSimplifiedImage;
+	BOOL						m_bAlwaysShowDescription;
+	BOOL						m_bIsDrawingOnList;
+	BOOL						m_bIsFixedWidth;
 };
 
 class BCGCBPRODLLEXPORT CBCGPRibbonSeparator : public CBCGPBaseRibbonElement
@@ -804,6 +893,11 @@ public:
 		return m_bIsHoriz;
 	}
 
+	virtual BOOL CanBeAddedToQAT () const
+	{
+		return TRUE;
+	}
+
 protected:
 	virtual void OnDraw (CDC* pDC);
 	virtual CSize GetRegularSize (CDC* pDC);
@@ -816,6 +910,10 @@ protected:
 
 	BOOL	m_bIsHoriz;
 };
+
+#define BCGP_SHOW_FOLDERS_LIST						0x0001
+#define BCGP_SHOW_PINS								0x0002
+#define	BCGP_BACKSTAGE_RECENT_VIEW_DEFAULT_FLAGS	(BCGP_SHOW_FOLDERS_LIST | BCGP_SHOW_PINS)
 
 #endif // BCGP_EXCLUDE_RIBBON
 

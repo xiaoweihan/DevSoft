@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -24,10 +24,11 @@
 #include "BCGPRibbonBar.h"
 #include "BCGPBaseInfo.h"
 #include "BCGPRibbonComboBox.h"
+#include "BCGPRibbonPaletteButton.h"
 
 #ifndef BCGP_EXCLUDE_RIBBON
 
-class CBCGPBaseRibbonInfo: public CBCGPBaseInfo
+class BCGCBPRODLLEXPORT CBCGPBaseRibbonInfo: public CBCGPBaseInfo
 {
 public:
 	static CBCGPBaseInfo::XBase* CreateBaseFromName (const CString& name);
@@ -55,6 +56,7 @@ public:
 		CString			m_strMenuKeys;
 		BOOL			m_bIsOnPaletteTop;
 		BOOL			m_bIsAlwaysLarge;
+		UINT			m_nApplicationModes;
 	};
 	typedef CArray<XElement*, XElement*> XArrayElement;
 
@@ -103,6 +105,7 @@ public:
 		BOOL			m_bIsAlwaysShowDescription;
 		CBCGPRibbonButton::RibbonButtonOnQAT
 						m_QATType;
+		BOOL			m_bDontCloseParentPopupOnClick;
 		XArrayElement	m_arSubItems;
 	};
 
@@ -242,13 +245,27 @@ public:
 		virtual void ToTag (CString& strTag) const;
 
 	public:
-		BOOL			m_bIsButtonMode;
-		BOOL			m_bEnableMenuResize;
-		BOOL			m_bMenuResizeVertical;
-		BOOL			m_bDrawDisabledItems;
-		int				m_nIconsInRow;
-		CSize			m_sizeIcon;
-		XImage			m_Images;
+		BOOL				m_bIsButtonMode;
+		BOOL				m_bEnableMenuResize;
+		BOOL				m_bMenuResizeVertical;
+		BOOL				m_bDrawDisabledItems;
+		int					m_nIconsInRow;
+		CSize				m_sizeIcon;
+		int					m_nInitialColumns;
+		XImage				m_Images;
+
+		BOOL				m_bItemCheckBoxes;
+		CBCGPRibbonPaletteButton::RibbonPalleteCheckboxLocation
+							m_CheckBoxLocation;
+		BOOL				m_bCheckBoxOverlapsIcon;
+
+		BOOL				m_bItemTextLabels;
+		CBCGPRibbonPaletteButton::RibbonPalleteTextLabelLocation
+							m_TextLabelLocation;
+		COLORREF			m_clrTextLabel;
+
+		CStringArray		m_arTooltips;
+		CStringArray		m_arKeys;
 		XArrayPaletteGroup	m_arGroups;
 	};
 
@@ -399,8 +416,11 @@ public:
 		int						m_nImageIndex;
 		BOOL					m_bJustifyColumns;
 		BOOL					m_bCenterColumnVert;
+		int						m_CollapseMode;
 		XElementButtonLaunch	m_btnLaunch;
 		XArrayElement			m_arElements;
+		UINT					m_nApplicationModes;
+		BOOL					m_bAlwaysAlignByColumn;
 	};
 	typedef CArray<XPanel*, XPanel*> XArrayPanel;
 
@@ -421,6 +441,7 @@ public:
 		XArrayPanel				m_arPanels;
 		XArrayElement			m_arElements;
 		CArray<int, int>		m_arCollapseOrder;
+		UINT					m_nApplicationModes;
 	};
 	typedef CArray<XCategory*, XCategory*> XArrayCategory;
 
@@ -534,9 +555,21 @@ public:
 		XElementGroup			m_TabElements;
 		XArrayCategory			m_arCategories;
 		XArrayContext			m_arContexts;
+
+		BOOL					m_bContextHelp;
+		CString					m_strContextHelpTooltipPrompt;
+		XArrayID				m_lstElementsWithContextHelp;
+
+		BOOL					m_bCommandSearch;
+		int						m_nCommandSearchWidth;
+		CString					m_strCommandSearchPrompt;
+		CString					m_strCommandSearchToolTip;
+		CString					m_strCommandSearchDescription;
+		CString					m_strCommandSearchKeys;
 		
 		BOOL					m_bBackstageMode;
 		XCategoryBackstage*		m_BackstageCategory;
+		BOOL					m_bBackstagePageCaptions;
 	};
 
 	class XStatusBar: public CBCGPBaseInfo::XBase
@@ -568,6 +601,19 @@ public:
 		XStatusElements			m_Elements;
 		XStatusElements			m_ExElements;
 		XImage					m_Images;
+	};
+
+	class XApplicationModes
+	{
+	public:
+		XApplicationModes();
+		virtual ~XApplicationModes();
+
+		virtual BOOL FromTag (const CString& strTag);
+		virtual void ToTag (CString& strTag) const;
+
+	public:
+		CStringList				m_Modes;
 	};
 
 protected:
@@ -607,7 +653,7 @@ public:
 	static LPCTSTR s_szStatusBar;
 };
 
-class CBCGPRibbonInfo: public CBCGPBaseRibbonInfo
+class BCGCBPRODLLEXPORT CBCGPRibbonInfo: public CBCGPBaseRibbonInfo
 {
 public:
 	enum XImages
@@ -665,16 +711,26 @@ public:
 		return m_StatusBar;
 	}
 
+	inline XApplicationModes& GetApplicationModes ()
+	{
+		return m_ApplicationModes;
+	}
+	inline const XApplicationModes& GetApplicationModes () const
+	{
+		return m_ApplicationModes;
+	}
+
 protected:
 	void AddElementImages (XElement& info, XArrayImages& images);
 
 private:
-	CSize		m_sizeImage[e_ImagesLast + 1];
-	XRibbonBar	m_RibbonBar;
-	XStatusBar	m_StatusBar;
+	CSize				m_sizeImage[e_ImagesLast + 1];
+	XRibbonBar			m_RibbonBar;
+	XStatusBar			m_StatusBar;
+	XApplicationModes	m_ApplicationModes;
 };
 
-class CBCGPRibbonCustomizationInfo: public CBCGPBaseRibbonInfo
+class BCGCBPRODLLEXPORT CBCGPRibbonCustomizationInfo: public CBCGPBaseRibbonInfo
 {
 public:
 	typedef CArray<int, int> XArrayInt;

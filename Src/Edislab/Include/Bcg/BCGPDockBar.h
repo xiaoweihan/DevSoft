@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -30,9 +30,11 @@ typedef enum BCG_DS_TYPE
 	DS_TYPE_UNDEFINED = 0x0,
 	DS_STATIC = 0x1,
 	DS_RESIZABLE = 0x2
-};
+}
+BCG_DS_TYPE;
 
-#pragma warning( disable : 4100 34 )
+#pragma warning (push)
+#pragma warning (disable : 4100 34)
 
 class BCGCBPRODLLEXPORT CBCGPDockBar : public CBCGPBaseControlBar
 {
@@ -153,7 +155,7 @@ protected:
 	UINT		m_nDockBarID; // for compatibility with MFC
 };
 
-#pragma warning( default : 4100 34 )
+#pragma warning (pop)
 
 /////////////////////////////////////////////////////////////////////////////
 

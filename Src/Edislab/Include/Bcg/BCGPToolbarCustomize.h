@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 #define __BCGPTOOLBARCUSTOMIZE_H__
 
 #include "BCGCBPro.h"
+#include "BCGPPropertySheet.h"
 #include "BCGPToolbarCustomizePages.h"
 #include "BCGPToolsPage.h"
 #include "BCGPMenuPage.h"
@@ -51,7 +52,7 @@ class CBCGPUserTool;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPToolbarCustomize
 
-class BCGCBPRODLLEXPORT CBCGPToolbarCustomize : public CPropertySheet
+class BCGCBPRODLLEXPORT CBCGPToolbarCustomize : public CBCGPPropertySheet
 {
 	friend class CBCGPToolBar;
 	friend class CBCGPToolsPage;
@@ -102,10 +103,9 @@ protected:
 	BOOL				m_bAutoSetFromMenus;
 	UINT				m_uiFlags;
 	BOOL				m_bSaveMenuAmps;
+	UINT				m_uiControlbarsMenuEntryID;
 
 	CBCGPButton			m_btnHelp;
-
-	UINT				m_uiControlbarsMenuEntryID;
 
 // Operations
 public:

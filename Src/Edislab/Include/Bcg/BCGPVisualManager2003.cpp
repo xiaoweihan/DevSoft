@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -52,6 +52,8 @@
 #include "BCGPGanttChart.h"
 #include "BCGPGridCtrl.h"
 #include "BCGPPropList.h"
+#include "BCGPGlobalUtils.h"
+#include "BCGPWinUITiles.h"
 
 #ifndef BCGP_EXCLUDE_RIBBON
 #include "BCGPRibbonProgressBar.h"
@@ -116,15 +118,15 @@ CBCGPVisualManager2003::CBCGPVisualManager2003()
 	m_bFadeInactiveImage = FALSE;
 	m_nMenuShadowDepth = 3;
 
-	m_nVertMargin = 8;
-	m_nHorzMargin = 8;
-	m_nGroupVertOffset = 8;
-	m_nGroupCaptionHeight = 18;
-	m_nGroupCaptionHorzOffset = 3;
-	m_nGroupCaptionVertOffset = 3;
-	m_nTasksHorzOffset = 8;
-	m_nTasksIconHorzOffset = 5;
-	m_nTasksIconVertOffset = 4;
+	m_nVertMargin = globalUtils.ScaleByDPI(8);
+	m_nHorzMargin = globalUtils.ScaleByDPI(8);
+	m_nGroupVertOffset = globalUtils.ScaleByDPI(8);
+	m_nGroupCaptionHeight = globalUtils.ScaleByDPI(18);
+	m_nGroupCaptionHorzOffset = globalUtils.ScaleByDPI(3);
+	m_nGroupCaptionVertOffset = globalUtils.ScaleByDPI(3);
+	m_nTasksHorzOffset = globalUtils.ScaleByDPI(8);
+	m_nTasksIconHorzOffset = globalUtils.ScaleByDPI(5);
+	m_nTasksIconVertOffset = globalUtils.ScaleByDPI(4);
 	m_bActiveCaptions = TRUE;
 	m_bEmbossGripper = TRUE;
 	m_bTabFillGradient = TRUE;
@@ -194,7 +196,7 @@ void CBCGPVisualManager2003::DrawCustomizeButton (CDC* pDC, CRect rect, BOOL bIs
 		rect.top += nEllipse;
 	}
 
-	const int nMargin = GetToolBarCustomizeButtonMargin ();
+	const int nMargin = GetToolBarCustomizeButtonMargin();
 
 	CSize sizeImage = CBCGPMenuImages::Size ();
 	if (CBCGPToolBar::IsLargeIcons ())
@@ -269,6 +271,11 @@ void CBCGPVisualManager2003::DrawCustomizeButton (CDC* pDC, CRect rect, BOOL bIs
 	}
 
 	pDC->SelectClipRgn (NULL);
+}
+//*****************************************************************************
+int CBCGPVisualManager2003::GetToolBarCustomizeButtonMargin() const
+{
+	return globalUtils.ScaleByDPI(1);
 }
 //***********************************************************************************
 BOOL CBCGPVisualManager2003::IsToolbarRoundShape (CBCGPToolBar* pToolBar)
@@ -652,7 +659,8 @@ void CBCGPVisualManager2003::OnDrawBarGripper (CDC* pDC, CRect rectGripper, BOOL
 	}
 	else
 	{
-		rectGripper.top = rectGripper.bottom - nBoxSize;
+		rectGripper.top = rectGripper.CenterPoint().y - nBoxSize / 2 + 1;
+		rectGripper.bottom = rectGripper.top + nBoxSize;
 	}
 
 	CBCGPToolBar* pToolBar = DYNAMIC_DOWNCAST (CBCGPToolBar, pBar);
@@ -895,8 +903,9 @@ void CBCGPVisualManager2003::OnDrawSeparator (CDC* pDC, CBCGPBaseControlBar* pBa
 
 	if (bHorz)
 	{
-		const int nDelta = max (0, (pToolBar->GetButtonSize ().cy - pToolBar->GetImageSize ().cy) / 2);
-		rect.DeflateRect (0, nDelta);
+		int nHeight = rect.Height () / 5;
+		rect.top    += nHeight;
+		rect.bottom -= nHeight;
 
 		int x = rect.left += rect.Width () / 2 - 1;
 
@@ -920,8 +929,9 @@ void CBCGPVisualManager2003::OnDrawSeparator (CDC* pDC, CBCGPBaseControlBar* pBa
 	}
 	else
 	{
-		const int nDelta = max (0, (pToolBar->GetButtonSize ().cx - pToolBar->GetImageSize ().cx) / 2);
-		rect.DeflateRect (nDelta, 0);
+		int nWidth = rect.Width () / 5;
+		rect.left  += nWidth;
+		rect.right -= nWidth;
 
 		int y = rect.top += rect.Height () / 2 - 1;
 
@@ -1353,6 +1363,8 @@ void CBCGPVisualManager2003::OnUpdateSystemColors ()
 	m_clrDockingBarScrollButton = m_clrBarGradientDark;
 
 	m_clrGridSelectAllActive = m_clrHighlightDn;
+
+	m_clrSliderTic = globalData.clrBarDkShadow;
 }
 //***********************************************************************************
 void CBCGPVisualManager2003::OnFillHighlightedArea (CDC* pDC, CRect rect, 
@@ -1508,7 +1520,12 @@ void CBCGPVisualManager2003::OnDrawComboDropButton (CDC* pDC, CRect rect,
 				bIsDropped ? &m_brHighlightDn : &m_brHighlight,
 				NULL);
 
-			if (!bIsCtrl)
+			if (bIsCtrl)
+			{
+				COLORREF clrBorder = m_clrMenuItemBorder;
+				pDC->Draw3dRect(rect, clrBorder, clrBorder);
+			}
+			else
 			{
 				if (CBCGPToolBarImages::m_bIsDrawOnGlass)
 				{
@@ -1563,17 +1580,19 @@ void CBCGPVisualManager2003::OnDrawTearOffCaption (CDC* pDC, CRect rect, BOOL bI
 		return;
 	}
 
-	const int iBorderSize = 1;
+	const int iBorderSize = globalUtils.ScaleByDPI(1);
 	ASSERT_VALID (pDC);
 
 	pDC->FillRect (rect, &m_brMenuLight);
 
-	rect.DeflateRect (iBorderSize, 1);
+	rect.DeflateRect (iBorderSize, globalUtils.ScaleByDPI(1));
 
 	if (bIsActive)
 	{
 		OnFillHighlightedArea (pDC, rect, bIsActive ? &m_brHighlight : &m_brBarBkgnd,
 			NULL);
+
+		rect.DeflateRect(globalUtils.ScaleByDPI(1), 0);
 	}
 	else
 	{
@@ -1878,14 +1897,16 @@ void CBCGPVisualManager2003::OnDrawTab (CDC* pDC, CRect rectTab,
 		pDC->FillRect (rectFill, &br);
 	}
 
+	const int nTabImageMargin = globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_IMAGE_MARGIN);
+
 	if (pTabWnd->GetLocation () == CBCGPBaseTabWnd::LOCATION_BOTTOM)
 	{
-		rectTab.left += rectTab.Height () + CBCGPBaseTabWnd::TAB_IMAGE_MARGIN;
+		rectTab.left += rectTab.Height () + nTabImageMargin;
 	}
 	else
 	{
 		rectTab.left += rectTab.Height ();
-		rectTab.right -= CBCGPBaseTabWnd::TAB_IMAGE_MARGIN;
+		rectTab.right -= nTabImageMargin;
 	}
 
 	COLORREF clrText = pTabWnd->GetTabTextColor (iTab);
@@ -1915,7 +1936,7 @@ void CBCGPVisualManager2003::OnFillTab (CDC* pDC, CRect rectFill, CBrush* pbrFil
 	ASSERT_VALID (pTabWnd);
 
 	if (pTabWnd->IsFlatTab () || globalData.m_nBitsPerPixel <= 8 || 
-		globalData.IsHighContastMode () || pTabWnd->IsDialogControl () || pTabWnd->IsPointerStyle())
+		globalData.IsHighContastMode () || pTabWnd->IsDialogControl (TRUE) || pTabWnd->IsPointerStyle())
 	{
 		CBCGPVisualManagerXP::OnFillTab (pDC, rectFill, pbrFill,
 									 iTab, bIsActive, pTabWnd);
@@ -1942,7 +1963,14 @@ void CBCGPVisualManager2003::OnFillTab (CDC* pDC, CRect rectFill, CBrush* pbrFil
 		{
 			if (bIsActive)
 			{
-				pDC->FillRect (rectFill, &globalData.brWindow);
+				if (IsDarkTheme())
+				{
+					pDC->FillRect(rectFill, &globalData.brBarFace);
+				}
+				else
+				{
+					pDC->FillRect (rectFill, &globalData.brWindow);
+				}
 				return;
 			}
 		}
@@ -1952,7 +1980,15 @@ void CBCGPVisualManager2003::OnFillTab (CDC* pDC, CRect rectFill, CBrush* pbrFil
 			{
 				if (bIsActive)
 				{
-					pDC->FillRect (rectFill, &globalData.brWindow);
+					if (IsDarkTheme())
+					{
+					pDC->FillRect(rectFill, &globalData.brBarFace);
+					}
+					else
+					{
+						pDC->FillRect (rectFill, &globalData.brWindow);
+					}
+
 					return;
 				}
 			}
@@ -1990,7 +2026,7 @@ BOOL CBCGPVisualManager2003::OnEraseTabsFrame (CDC* pDC, CRect rect, const CBCGP
 	ASSERT_VALID (pTabWnd);
 
 	if (pTabWnd->IsFlatTab () || globalData.m_nBitsPerPixel <= 8 || 
-		globalData.IsHighContastMode () || pTabWnd->IsDialogControl ())
+		globalData.IsHighContastMode () || pTabWnd->IsDialogControl (TRUE))
 	{
 		return CBCGPVisualManagerXP::OnEraseTabsFrame (pDC, rect, pTabWnd);
 	}
@@ -1999,7 +2035,16 @@ BOOL CBCGPVisualManager2003::OnEraseTabsFrame (CDC* pDC, CRect rect, const CBCGP
 	if (clrActiveTab == (COLORREF)-1 && 
 		(pTabWnd->IsOneNoteStyle () || pTabWnd->IsVS2005Style ()))
 	{
-		pDC->FillRect (rect, &globalData.brWindow);
+		clrActiveTab = GetActiveTabBackColor(pTabWnd);
+		if (clrActiveTab != (COLORREF)-1)
+		{
+			pDC->FillSolidRect(rect, clrActiveTab);
+		}
+		else
+		{
+			pDC->FillRect (rect, &globalData.brWindow);
+		}
+
 		return TRUE;
 	}
 
@@ -2037,7 +2082,7 @@ void CBCGPVisualManager2003::OnEraseTabsButton (CDC* pDC, CRect rect,
 
 	if (pWndTab == NULL || pBaseTab->IsFlatTab () || 
 		globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
-		pBaseTab->IsDialogControl ())
+		pBaseTab->IsDialogControl (TRUE))
 	{
 		if (pBaseTab->IsDialogControl () && pBaseTab->IsVisualManagerStyle ())
 		{
@@ -2217,7 +2262,7 @@ void CBCGPVisualManager2003::GetTabFrameColors (const CBCGPBaseTabWnd* pTabWnd,
 			   pbrFace, pbrBlack);
 
 	if (pTabWnd->IsOneNoteStyle () || globalData.m_nBitsPerPixel <= 8 || 
-		globalData.IsHighContastMode () || pTabWnd->IsDialogControl () ||
+		globalData.IsHighContastMode () || pTabWnd->IsDialogControl (TRUE) ||
 		!m_bIsStandardWinXPTheme)
 	{
 		return;
@@ -2309,14 +2354,8 @@ void CBCGPVisualManager2003::OnDrawTasksGroupCaption(
 			//--------------------
 			// Draw expanding box:
 			//--------------------
-			int nBoxSize = 9;
+			int nBoxSize = globalUtils.ScaleByDPI(9);
 			int nBoxOffset = 6;
-
-			if (globalData.GetRibbonImageScale () != 1.)
-			{
-				nBoxSize = (int)(.5 + nBoxSize * globalData.GetRibbonImageScale ());
-			}
-
 
 			CRect rectButton = rectFill;
 			
@@ -2805,6 +2844,18 @@ void CBCGPVisualManager2003::OnFillOutlookBarCaption (CDC* pDC, CRect rectCaptio
 	clrText = globalData.clrBarHilite;
 }
 //********************************************************************************
+COLORREF CBCGPVisualManager2003::OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption)
+{
+	COLORREF clr = CBCGPVisualManagerXP::OnDrawOutlookPopupButton(pDC, rectBtn, bIsHighlighted, bIsPressed, bIsOnCaption);
+
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
+	{
+		return clr;
+	}
+
+	return bIsOnCaption && !bIsHighlighted && !bIsPressed ? globalData.clrBarHilite : clr;
+}
+//********************************************************************************
 BOOL CBCGPVisualManager2003::OnDrawCalculatorButton (CDC* pDC, 
 	CRect rect, CBCGPToolbarButton* pButton, 
 	CBCGPVisualManager::BCGBUTTON_STATE state, 
@@ -3186,6 +3237,12 @@ void CBCGPVisualManager2003::OnDrawHeaderCtrlSortArrow (CBCGPHeaderCtrl* pCtrl,
 
 
 	int nState = bIsUp ? HSAS_SORTEDUP : HSAS_SORTEDDOWN;
+	int nMinWidth = rect.Height() * 3 / 2;
+	
+	if (rect.Width() < nMinWidth)
+	{
+		rect.InflateRect(nMinWidth / 2, 0);
+	}
 
 	if ((*m_pfDrawThemeBackground) (m_hThemeHeader, pDC->GetSafeHdc(), 
 								HP_HEADERSORTARROW, nState, &rect, 0) != S_OK)
@@ -3208,6 +3265,11 @@ void CBCGPVisualManager2003::OnFillPopupWindowBackground (CDC* pDC, CRect rect)
 
 	CBCGPDrawManager dm (*pDC);
 	dm.FillGradient (rect, m_clrBarGradientDark, m_clrBarGradientLight);
+}
+//**********************************************************************************
+COLORREF CBCGPVisualManager2003::GetPopupWindowBorderBorderColor()
+{
+	return m_clrMenuItemBorder;
 }
 //**********************************************************************************
 void CBCGPVisualManager2003::OnDrawPopupWindowBorder (CDC* pDC, CRect rect)
@@ -3252,11 +3314,26 @@ COLORREF CBCGPVisualManager2003::OnDrawPopupWindowCaption (CDC* pDC, CRect rectC
 
 	CBCGPDrawManager dm (*pDC);
 
+	CRect rectFill = rectCaption;
+
+	switch (pPopupWnd->GetStemLocation())
+	{
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopCenter:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopLeft:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopRight:
+		rectFill.top -= pPopupWnd->GetStemSize();
+		break;
+
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_Left:
+		rectFill.left -= pPopupWnd->GetStemSize();
+		break;
+	}
+
 	if (pPopupWnd->HasSmallCaption ())
 	{
 		if (pPopupWnd->IsSmallCaptionGripper())
 		{
-			dm.FillGradient (rectCaption, m_clrCaptionBarGradientDark, m_clrCaptionBarGradientLight, TRUE);
+			dm.FillGradient (rectFill, m_clrCaptionBarGradientDark, m_clrCaptionBarGradientLight, TRUE);
 
 			CRect rectGripper = rectCaption;
 
@@ -3273,12 +3350,12 @@ COLORREF CBCGPVisualManager2003::OnDrawPopupWindowCaption (CDC* pDC, CRect rectC
 		}
 		else
 		{
-			pDC->FillSolidRect(rectCaption, m_clrBarGradientLight);
+			pDC->FillSolidRect(rectFill, m_clrBarGradientLight);
 		}
 	}
 	else
 	{
-		dm.FillGradient (rectCaption, m_clrToolBarGradientDark, m_clrToolBarGradientLight, TRUE);
+		dm.FillGradient (rectFill, m_clrToolBarGradientDark, m_clrToolBarGradientLight, TRUE);
 	}
 
 	return globalData.clrBarText;
@@ -3485,6 +3562,23 @@ COLORREF CBCGPVisualManager2003::GetReportCtrlGroupBackgoundColor ()
 	return m_clrHighlightMenuItem;
 }
 
+void CBCGPVisualManager2003::OnDrawGridGroupUnderline (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rectFill)
+{
+	ASSERT_VALID (pCtrl);
+
+	if (!pCtrl->IsVisualManagerStyle())
+	{
+		CBCGPVisualManagerXP::OnDrawGridGroupUnderline (pCtrl, pDC, rectFill);
+		return;
+	}
+
+	ASSERT_VALID (pDC);
+
+	COLORREF clrOld = pDC->GetBkColor ();
+	pDC->FillSolidRect (rectFill, m_clrToolBarBottomLine);
+	pDC->SetBkColor (clrOld);
+}
+
 void CBCGPVisualManager2003::OnDrawGridSelectionBorder (CBCGPGridCtrl* /*pCtrl*/, CDC* pDC, CRect rect)
 {
 	ASSERT_VALID (pDC);
@@ -3644,6 +3738,16 @@ BOOL CBCGPVisualManager2003::OnDrawGridSelectAllAreaBorder (CBCGPGridCtrl* pCtrl
 	return OnDrawGridHeaderItemBorder (pCtrl, pDC, rect, bPressed);
 }
 //******************************************************************************
+COLORREF CBCGPVisualManager2003::GetGridTreeLineColor (CBCGPGridCtrl* pCtrl)
+{
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode())
+	{
+		return CBCGPVisualManager::GetGridTreeLineColor(pCtrl);
+	}
+
+	return m_clrSeparator;
+}
+//******************************************************************************
 BOOL CBCGPVisualManager2003::OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_GRID_COLOR_DATA& theme)
 {
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
@@ -3653,12 +3757,12 @@ BOOL CBCGPVisualManager2003::OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_GRI
 	}
 
 	theme.m_clrHorzLine                     = m_clrToolBarGradientDark;
-	theme.m_clrVertLine                     = m_clrToolBarBottomLine;
+	theme.m_clrVertLine                     = theme.m_clrHorzLine;
 
 	theme.m_EvenColors.m_clrBackground      = m_clrToolBarGradientLight;
 	theme.m_EvenColors.m_clrText            = globalData.clrBarText;
 
-	theme.m_OddColors.m_clrBackground       = m_clrToolBarGradientDark;
+	theme.m_OddColors.m_clrBackground       = CBCGPDrawManager::SmartMixColors(m_clrToolBarGradientDark, m_clrToolBarGradientLight);
 	theme.m_OddColors.m_clrText             = globalData.clrBarText;
 
 	theme.m_SelColors.m_clrBackground       = m_clrHighlightMenuItem;
@@ -3682,8 +3786,8 @@ BOOL CBCGPVisualManager2003::OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_GRI
 	theme.m_GroupSelColors.m_clrGradient    = m_clrHighlightGradientLight;
 	theme.m_GroupSelColors.m_clrText		= globalData.clrBarText;
 
-	theme.m_LeftOffsetColors.m_clrBackground= m_clrToolBarGradientDark;
-	theme.m_LeftOffsetColors.m_clrBorder	   = theme.m_clrHorzLine;
+	theme.m_LeftOffsetColors.m_clrBackground= GetGridLeftOffsetColor(pCtrl);
+	theme.m_LeftOffsetColors.m_clrBorder	   = theme.m_clrVertLine;
 
 	return TRUE;
 }
@@ -4051,6 +4155,27 @@ COLORREF CBCGPVisualManager2003::OnDrawRibbonCategoryCaption (
 		
 		CBCGPDrawManager dm (*pDC);
 		dm.FillGradient (rect, clrFill, globalData.clrBarFace, TRUE);
+
+		int xTabRight = pContextCaption->GetRightTabX ();
+		
+		if (xTabRight > 0)
+		{
+			CRect rectTab (pContextCaption->GetParentRibbonBar ()->GetActiveCategory ()->GetTabRect ());
+
+			CRect rectLeft = rectTab;
+			rectLeft.left = rect.left;
+			rectLeft.right = rect.left + 1;
+			rectLeft.bottom = rectLeft.top + 2 * rectTab.Height() / 3;
+
+			dm.FillGradient(rectLeft, globalData.clrBarShadow, globalData.clrBarDkShadow, TRUE);
+
+			CRect rectRight = rectTab;
+			rectRight.left = xTabRight - 1;
+			rectRight.right = xTabRight;
+			rectRight.bottom = rectRight.top + 2 * rectTab.Height() / 3;
+			
+			dm.FillGradient(rectRight, globalData.clrBarShadow, globalData.clrBarDkShadow, TRUE);
+		}
 	}
 
 	return globalData.clrBarText;
@@ -4230,3 +4355,33 @@ COLORREF CBCGPVisualManager2003::OnFillPropertyListSelectedItem(CDC* pDC, CBCGPP
 }
 
 #endif
+
+void CBCGPVisualManager2003::GetWinUITilesColors(CBCGPWinUITilesColors& colors)
+{
+	CBCGPVisualManagerXP::GetWinUITilesColors(colors);
+
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
+	{
+		return;
+	}
+	
+	CBrush& brFill = GetDlgBackBrush(NULL);
+	
+	LOGBRUSH lbr;
+	brFill.GetLogBrush(&lbr);
+	
+	colors.m_brFill = lbr.lbColor;
+	colors.m_brBorder = globalData.clrBarShadow;
+
+	colors.m_brTileFill = globalData.clrBarFace;
+	colors.m_colorTileText = globalData.clrBarText;
+	
+	colors.m_colorTileBorder = globalData.clrBarShadow;
+	colors.m_colorSelectedTileBorder = colors.m_colorTileBorderHighlighted = m_clrMenuItemBorder;
+
+	colors.m_brTileFillHighlighted = CBCGPBrush(m_clrHighlightGradientDark, m_clrHighlightGradientLight, CBCGPBrush::BCGP_GRADIENT_HORIZONTAL);
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	colors.m_colorCaptionText = GetRibbonBackstageInfoTextColor();
+#endif
+}

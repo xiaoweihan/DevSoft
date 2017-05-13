@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "stdafx.h"
 #include "bcgcbpro.h"
 #include "BCGGlobals.h"
+#include "BCGPGlobalUtils.h"
 #include "BCGPCaptionButton.h"
 #include "BCGPVisualManager.h"
 
@@ -26,7 +27,7 @@ static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
 
-int CBCGPCaptionButton::m_nButtonMargin = 3;
+int CBCGPCaptionButton::m_nButtonMargin = 4;
 int CBCGPCaptionButton::m_nButtonMarginVert = 4;
 
 //////////////////////////////////////////////////////////////////////
@@ -35,6 +36,9 @@ int CBCGPCaptionButton::m_nButtonMarginVert = 4;
 
 CBCGPCaptionButton::CBCGPCaptionButton()
 {
+	m_nButtonMargin = globalUtils.ScaleByDPI(4);
+	m_nButtonMarginVert = globalUtils.ScaleByDPI(4);
+
 	m_bPushed = FALSE;
 	m_bFocused = FALSE;
 	m_bDroppedDown = FALSE;
@@ -48,6 +52,9 @@ CBCGPCaptionButton::CBCGPCaptionButton()
 
 CBCGPCaptionButton::CBCGPCaptionButton(UINT nHit, BOOL bLeftAlign)
 {
+	m_nButtonMargin = globalUtils.ScaleByDPI(4);
+	m_nButtonMarginVert = globalUtils.ScaleByDPI(4);
+
 	m_bPushed = FALSE;
 	m_bFocused = FALSE;
 	m_bDroppedDown = FALSE;

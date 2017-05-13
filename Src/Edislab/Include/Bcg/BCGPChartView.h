@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 #endif // _MSC_VER > 1000
 
 #include "BCGCBPro.h"
+#include "BCGPFormView.h"
 #include "BCGPChartFormat.h"
 #include "BCGPChartLegend.h"
 
@@ -30,7 +31,7 @@ class CBCGPChartLegendCtrl;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPChartView view
 
-class BCGCBPRODLLEXPORT CBCGPChartView : public CScrollView
+class BCGCBPRODLLEXPORT CBCGPChartView : public CBCGPScrollView
 {
 protected:
 	CBCGPChartView();           // protected constructor used by dynamic creation
@@ -105,6 +106,7 @@ protected:
 	//}}AFX_MSG
 	afx_msg void OnFilePrintPreview();
 	afx_msg LRESULT OnPrepareTaskBarPreview(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnChangeVisualManager (WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 };
 

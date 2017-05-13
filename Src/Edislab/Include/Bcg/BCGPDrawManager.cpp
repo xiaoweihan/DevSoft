@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -120,11 +120,6 @@ HBITMAP CBCGPDrawManager::CreateBitmap_32 (HBITMAP bitmap, COLORREF clrTranspare
 		return NULL;
 	}
 
-	if (bmp.bmBits == NULL)
-	{
-		return NULL;
-	}
-
 	int nHeight = bmp.bmHeight;
 	LPVOID lpBits = NULL;
 	HBITMAP hbmp = CreateBitmap_32 (CSize (bmp.bmWidth, nHeight), &lpBits);
@@ -134,7 +129,7 @@ HBITMAP CBCGPDrawManager::CreateBitmap_32 (HBITMAP bitmap, COLORREF clrTranspare
 	{
 		DWORD nSizeImage = bmp.bmWidth * nHeight;
 
-		if (bmp.bmBitsPixel == 32)
+		if (bmp.bmBitsPixel == 32 && bmp.bmBits != NULL)
 		{
 			memcpy (lpBits, bmp.bmBits, nSizeImage * 4);
 		}
@@ -200,11 +195,6 @@ HBITMAP CBCGPDrawManager::CreateBitmap_24(HBITMAP bitmap)
 
 	BITMAP bmp;
 	if (::GetObject (bitmap, sizeof (BITMAP), &bmp) == 0)
-	{
-		return NULL;
-	}
-
-	if (bmp.bmBits == NULL)
 	{
 		return NULL;
 	}
@@ -367,7 +357,7 @@ BOOL CBCGPDrawManager::HighlightRect (CRect rect, int nPercentage, COLORREF clrT
 	}
 
 	//-------------------------------------------
-	// Copy highligted bitmap back to the screen:
+	// Copy highlighted bitmap back to the screen:
 	//-------------------------------------------
 	m_dc.BitBlt (rect.left, rect.top, cx, cy, &dcMem, 0, 0, SRCCOPY);
 
@@ -576,7 +566,7 @@ BOOL CBCGPDrawManager::GrayRect (CRect rect, int nPercentage, COLORREF clrTransp
 	}
 	
 	//-------------------------------------------
-	// Copy highligted bitmap back to the screen:
+	// Copy highlighted bitmap back to the screen:
 	//-------------------------------------------
 	m_dc.BitBlt (rect.left, rect.top, cx, cy, &dcMem, 0, 0, SRCCOPY);
 
@@ -2312,7 +2302,7 @@ void CBCGPDrawManager::DrawRect (const CRect& rect, COLORREF clrFill, COLORREF c
 	DeleteObject (hmbpDib);
 }
 
-void CBCGPDrawManager::DrawFocusRect(const CRect& rect)
+void CBCGPDrawManager::DrawFocusRect(const CRect& rect, COLORREF clrLine)
 {
 	CRect rt (rect);
 	rt.NormalizeRect ();
@@ -2369,8 +2359,6 @@ void CBCGPDrawManager::DrawFocusRect(const CRect& rect)
 	int xE = size.cx;
 	int yB = 1;
 	int yE = size.cy;
-
-	COLORREF clrLine = RGB(127, 127, 127);
 
 	COLORREF clr = RGB (GetBValue (clrLine),
 						GetGValue (clrLine),
@@ -2433,6 +2421,43 @@ void CBCGPDrawManager::DrawFocusRect(const CRect& rect)
 
 	dcMem.SelectObject (pOldBmp);
 	DeleteObject (hmbpDib);
+}
+
+void CBCGPDrawManager::DrawCheckMark(const CRect& rect, COLORREF clrLine, int nLineWidth/* = 1*/)
+{
+	if (CBCGPToolBarImages::m_bIsDrawOnGlass)
+	{
+		CRect rect1 = rect;
+		
+		for (int i = 0; i < nLineWidth; i++)
+		{
+			DrawLine(rect1.left + i, rect1.CenterPoint().y - i, rect1.CenterPoint().x + i - 1, rect1.bottom - i - 1, clrLine);
+			DrawLine(rect1.CenterPoint().x, rect1.bottom, rect1.right, rect1.top, clrLine);
+			
+			rect1.OffsetRect(1, 1);
+		}
+		return;
+	}
+
+	LOGBRUSH lb;
+	memset(&lb, 0, sizeof(lb));
+	
+	lb.lbColor = clrLine;
+	lb.lbStyle = BS_SOLID;
+	lb.lbHatch = 0;
+
+	CPen pen;
+	pen.Attach(::ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_FLAT | PS_JOIN_ROUND, nLineWidth, &lb, 0, NULL));
+
+	CBCGPPenSelector ps(m_dc, &pen);
+
+	POINT pt[3];
+
+	pt[0] = CPoint(rect.left, rect.CenterPoint().y);
+	pt[1] = CPoint(rect.CenterPoint().x, rect.bottom);
+	pt[2] = CPoint(rect.right, rect.top);
+
+	m_dc.Polyline(pt, 3);
 }
 
 void CBCGPDrawManager::SetAlphaPixel (COLORREF* pBits, 
@@ -3172,8 +3197,13 @@ BOOL CBCGPDrawManager::IsPaleColor(COLORREF clr)
 	return L >= 0.9;
 }
 
-COLORREF CBCGPDrawManager::ColorMakeLighter(COLORREF clr, double dblRatio)
+COLORREF CBCGPDrawManager::ColorMakeLighter(COLORREF clr, double dblRatio, BOOL bKeepSaturation)
 {
+	if (clr == 0 && dblRatio == .1)
+	{
+		return RGB(50, 50, 50);
+	}
+
 	double H;
 	double S;
 	double L;
@@ -3193,11 +3223,11 @@ COLORREF CBCGPDrawManager::ColorMakeLighter(COLORREF clr, double dblRatio)
 		return HLStoRGB_ONE (
 			H,
 			min (1., L * dblRatio),
-			min (1., S * dblRatio));
+			bKeepSaturation ? S : min (1., S * dblRatio));
 	}
 }
 
-COLORREF CBCGPDrawManager::ColorMakeDarker(COLORREF clr, double dblRatio)
+COLORREF CBCGPDrawManager::ColorMakeDarker(COLORREF clr, double dblRatio, BOOL bKeepSaturation)
 {
 	double H;
 	double S;
@@ -3210,7 +3240,7 @@ COLORREF CBCGPDrawManager::ColorMakeDarker(COLORREF clr, double dblRatio)
 	clr = HLStoRGB_ONE (
 		H,
 		min (1., L * dblRatio),
-		min (1., S * dblRatio));
+		bKeepSaturation ? S : min (1., S * dblRatio));
 
 	return clr;
 }
@@ -3314,7 +3344,7 @@ CBCGPFontSelector::CBCGPFontSelector (CDC& dc, int nPointSize, LPCTSTR lpszFaceN
 CBCGPFontSelector::CBCGPFontSelector (CDC& dc, const LOGFONT* pLogFont)
 	: m_dc (dc), m_pOldFont (NULL)
 {
-	m_font.CreatePointFontIndirect (pLogFont);
+	m_font.CreateFontIndirect (pLogFont);
 	m_pOldFont = m_dc.SelectObject (&m_font);
 }
 

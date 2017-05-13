@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,6 +29,7 @@
 #include "CustomizeButton.h"
 #include "BCGPKeyboardManager.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPGlobalUtils.h"
 
 extern CBCGPWorkspace* g_pWorkspace;
 
@@ -38,8 +39,8 @@ CLIPFORMAT CBCGPToolbarButton::m_cFormat = 0;
 CString	 CBCGPToolbarButton::m_strClipboardFormatName;
 BOOL CBCGPToolbarButton::m_bWrapText = TRUE;
 
-static const int nTextMargin = 3;
-static const int nSeparatorWidth = 8;
+#define TOOLBAR_BUTTON_TEXT_MARGIN	globalUtils.ScaleByDPI(3)
+#define TOOLBAR_SEPARATOR_WIDTH		globalUtils.ScaleByDPI(8)
 static const CString strDummyAmpSeq = _T("\001\001");
 
 CList<UINT, UINT> CBCGPToolbarButton::m_lstProtectedCommands;
@@ -120,6 +121,8 @@ void CBCGPToolbarButton::Initialize ()
 	m_pWndParent = NULL;
 	m_bOnGlass = FALSE;
 	m_bRibbonImage = FALSE;
+	m_bCustomImage = FALSE;
+	m_bIsDragged = FALSE;
 }
 //*********************************************************************************
 CBCGPToolbarButton::~CBCGPToolbarButton()
@@ -217,7 +220,7 @@ CBCGPToolbarButton* CBCGPToolbarButton::CreateFromOleData  (COleDataObject* pDat
 	try
 	{
 		//-------------------------------------
-		// Get file refering to clipboard data:
+		// Get file referring to clipboard data:
 		//-------------------------------------
 		CFile* pFile = pDataObject->GetFileData (GetClipboardFormat ());
 		if (pFile == NULL)
@@ -243,7 +246,9 @@ CBCGPToolbarButton* CBCGPToolbarButton::CreateFromOleData  (COleDataObject* pDat
 
 			if (pButton != NULL)
 			{
+				pButton->m_bIsDragged = TRUE;
 				pButton->Serialize (ar);
+				pButton->m_bIsDragged = FALSE;
 			}
 		}
 
@@ -319,7 +324,7 @@ void CBCGPToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages
 
 	if (IsDrawText () && !(m_bTextBelow && bHorz))
 	{
-		int nMargin = IsDrawImage () ? 0 : nTextMargin;
+		int nMargin = IsDrawImage () ? 0 : TOOLBAR_BUTTON_TEXT_MARGIN;
 		iTextLen = sizeText.cx + nMargin;
 	}
 
@@ -331,7 +336,7 @@ void CBCGPToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages
 		ASSERT (bHorz);
 
 		dx = rectInternal.Width ();
-		dy = sizeImage.cy + 2 * nTextMargin;
+		dy = sizeImage.cy + 2 * TOOLBAR_BUTTON_TEXT_MARGIN;
 	}
 	else
 	{
@@ -344,7 +349,7 @@ void CBCGPToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages
 	ptImageOffset.x = (dx - sizeImage.cx) / 2;
 	ptImageOffset.y = (dy - sizeImage.cy) / 2;
 
-	CPoint ptTextOffset (nTextMargin, nTextMargin);
+	CPoint ptTextOffset (TOOLBAR_BUTTON_TEXT_MARGIN, TOOLBAR_BUTTON_TEXT_MARGIN);
 
 	if (IsDrawText () && !(m_bTextBelow && bHorz))
 	{
@@ -353,17 +358,16 @@ void CBCGPToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages
 
 		if (bHorz)
 		{
-			ptImageOffset.x -= nTextMargin;
+			ptImageOffset.x -= TOOLBAR_BUTTON_TEXT_MARGIN;
 			ptTextOffset.y = (dy - tm.tmHeight - 1) / 2;
 		}
 		else
 		{
-			ptImageOffset.y -= nTextMargin;
+			ptImageOffset.y -= TOOLBAR_BUTTON_TEXT_MARGIN;
 			ptTextOffset.x = (dx - tm.tmHeight + 1) / 2;
 		}
 	}
 
-	CPoint ptImageOffsetInButton (0, 0);
 	BOOL bPressed = FALSE;
 
 	BOOL bDrawImageShadow = 
@@ -494,7 +498,7 @@ void CBCGPToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages
 		{
 			ASSERT (bHorz);
 
-			ptTextOffset.y += sizeImage.cy + nTextMargin;
+			ptTextOffset.y += sizeImage.cy + TOOLBAR_BUTTON_TEXT_MARGIN;
 			uiTextFormat = DT_CENTER;
 
 			if (m_bWrapText)
@@ -509,7 +513,7 @@ void CBCGPToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages
 		{
 			if (IsDrawImage ())
 			{
-				const int nExtra = CBCGPToolBar::IsLargeIcons () ? 2 * nTextMargin : 0;
+				const int nExtra = CBCGPToolBar::IsLargeIcons () ? 2 * TOOLBAR_BUTTON_TEXT_MARGIN : 0;
 
 				if (bHorz)
 				{
@@ -520,11 +524,11 @@ void CBCGPToolbarButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages
 					ptTextOffset.y += sizeImage.cy + nExtra;
 				}
 			
-				rectText.left = x + ptTextOffset.x + nTextMargin;
+				rectText.left = x + ptTextOffset.x + TOOLBAR_BUTTON_TEXT_MARGIN;
 			}
 			else
 			{
-				rectText.left = x + nTextMargin + 1;
+				rectText.left = x + TOOLBAR_BUTTON_TEXT_MARGIN + 1;
 			}
 
 			uiTextFormat = DT_SINGLELINE;
@@ -657,11 +661,11 @@ SIZE CBCGPToolbarButton::OnCalculateSize (
 	{
 		if (bHorz)
 		{
-			size.cx = m_iImage > 0 ? m_iImage : nSeparatorWidth;
+			size.cx = m_iImage > 0 ? m_iImage : TOOLBAR_SEPARATOR_WIDTH;
 		}
 		else
 		{
-			size.cy = nSeparatorWidth;
+			size.cy = TOOLBAR_SEPARATOR_WIDTH;
 		}
 	}
 	else
@@ -691,10 +695,10 @@ SIZE CBCGPToolbarButton::OnCalculateSize (
 		{
 			if (m_bTextBelow && bHorz)
 			{
-				//----------------------------------------------------------
-				// Try format text that it ocuppies no more tow lines an its
-				// width less than 3 images:
-				//----------------------------------------------------------
+				//------------------------------------------------------------
+				// Try format text that it ocuppies no more than two lines and
+				// its width is less than 3 images:
+				//------------------------------------------------------------
 				CRect rectText (0, 0, 
 					sizeDefault.cx * 3, sizeDefault.cy);
 
@@ -706,9 +710,9 @@ SIZE CBCGPToolbarButton::OnCalculateSize (
 
 				pDC->DrawText (GetDisplayText(), rectText, uiTextFormat);
 				m_sizeText = rectText.Size ();
-				m_sizeText.cx += 2 * nTextMargin;
+				m_sizeText.cx += 2 * TOOLBAR_BUTTON_TEXT_MARGIN;
 
-				size.cx = max (size.cx, m_sizeText.cx) + 4 * nTextMargin;
+				size.cx = max (size.cx, m_sizeText.cx) + 4 * TOOLBAR_BUTTON_TEXT_MARGIN;
 				size.cy += m_sizeText.cy + CY_BORDER; 
 			}
 			else if (IsDrawText ())
@@ -718,7 +722,7 @@ SIZE CBCGPToolbarButton::OnCalculateSize (
 				strWithoutAmp.Remove (_T('&'));
 				strWithoutAmp.Replace (strDummyAmpSeq, _T("&"));
 
-				int nTextExtra = bHasImage ? 2 * nTextMargin : 3 * nTextMargin;
+				int nTextExtra = bHasImage ? 2 * TOOLBAR_BUTTON_TEXT_MARGIN : 3 * TOOLBAR_BUTTON_TEXT_MARGIN;
 				int iTextLen = pDC->GetTextExtent (strWithoutAmp).cx + nTextExtra;
 
 				if (bHorz)
@@ -735,13 +739,15 @@ SIZE CBCGPToolbarButton::OnCalculateSize (
 
 	return size;
 }
-//************************************************************************************
+
 BOOL CBCGPToolbarButton::PrepareDrag (COleDataSource& srcItem)
 {
 	if (!CanBeStored ())
 	{
 		return TRUE;
 	}
+
+	CBCGPRAII<BOOL> raii(m_bIsDragged, TRUE);
 
 	try
 	{
@@ -912,7 +918,7 @@ int CBCGPToolbarButton::OnDrawOnCustomizeList (
 			(pDC, rectFill, bSelected);
 
 	CRect rectText = rect;
-	rectText.left += sizeMenuImage.cx + 2 * IMAGE_MARGIN + 2;
+	rectText.left += sizeMenuImage.cx + 2 * globalUtils.ScaleByDPI(IMAGE_MARGIN) + 2;
 
 	iWidth = sizeButton.cx;
 
@@ -1024,12 +1030,6 @@ BOOL CBCGPToolbarButton::OnToolHitTest(const CWnd* pWnd, TOOLINFO* pTI)
 				return pOleFrame->OnMenuButtonToolHitTest (this, pTI);
 			}
 		}
-	}
-
-	CBCGPFrameWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPFrameWnd, pTopFrame);
-	if (pFrame != NULL)
-	{
-		return pFrame->OnMenuButtonToolHitTest (this, pTI);
 	}
 
 	return FALSE;

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -35,7 +35,8 @@ struct BCGCBPRODLLEXPORT CBCGPLinearGaugeColors
 		BCGP_LINEAR_GAUGE_GOLD              = 2,
 		BCGP_LINEAR_GAUGE_BLACK             = 3,
 		BCGP_LINEAR_GAUGE_WHITE             = 4,
-		BCGP_LINEAR_GAUGE_COLOR_THEME_LAST  = BCGP_LINEAR_GAUGE_WHITE
+		BCGP_LINEAR_GAUGE_VISUAL_MANAGER    = 5,
+		BCGP_LINEAR_GAUGE_COLOR_THEME_LAST  = BCGP_LINEAR_GAUGE_VISUAL_MANAGER
 	};
 
 	CBCGPLinearGaugeColors(BCGP_LINEAR_GAUGE_COLOR_THEME theme = BCGP_LINEAR_GAUGE_BLUE)
@@ -60,9 +61,15 @@ struct BCGCBPRODLLEXPORT CBCGPLinearGaugeColors
 		m_brFill = src.m_brFill;
 		m_brTickMarkFill = src.m_brTickMarkFill;
 		m_brTickMarkOutline = src.m_brTickMarkOutline;
+		m_bIsVisualManagerTheme = src.m_bIsVisualManagerTheme;
 	}
 
 	void SetTheme(BCGP_LINEAR_GAUGE_COLOR_THEME theme);
+
+	BOOL IsVisualManagerTheme() const
+	{
+		return m_bIsVisualManagerTheme;
+	}
 
 	CBCGPBrush	m_brPointerFill;
 	CBCGPBrush	m_brPointerOutline;
@@ -79,6 +86,9 @@ struct BCGCBPRODLLEXPORT CBCGPLinearGaugeColors
 
 	CBCGPBrush	m_brTickMarkFill;
 	CBCGPBrush	m_brTickMarkOutline;
+
+protected:
+	BOOL		m_bIsVisualManagerTheme;
 };
 
 class BCGCBPRODLLEXPORT CBCGPLinearGaugePointer : public CBCGPGaugeDataObject
@@ -134,9 +144,9 @@ public:
 		m_brOutline = brOutline;
 	}
 
-	CBCGPLinearGaugePointer(const CBCGPLinearGaugePointer& srcIn)
+	CBCGPLinearGaugePointer(const CBCGPLinearGaugePointer& src)
 	{
-		CopyFrom(srcIn);
+		CopyFrom(src);
 	}
 
 	virtual CBCGPVisualDataObject* CreateCopy () const
@@ -185,6 +195,8 @@ protected:
 
 class BCGCBPRODLLEXPORT CBCGPLinearGaugeImpl : public CBCGPGaugeImpl
 {
+	friend class CBCGPLinearGaugeCtrl;
+
 	DECLARE_DYNCREATE(CBCGPLinearGaugeImpl)
 
 public:
@@ -214,11 +226,13 @@ public:
 	void SetColors(CBCGPLinearGaugeColors::BCGP_LINEAR_GAUGE_COLOR_THEME theme)
 	{
 		m_Colors.SetTheme(theme);
+		SetDirty();
 	}
 
 	void SetColors(const CBCGPLinearGaugeColors& colors)
 	{
 		m_Colors = colors;
+		SetDirty();
 	}
 	
 	const CBCGPTextFormat& GetTextFormat() const
@@ -292,6 +306,15 @@ protected:
 		return hr;
 	}
 
+	virtual void OnChangeVisualManager()
+	{
+		if (GetColors().IsVisualManagerTheme())
+		{
+			SetColors(CBCGPLinearGaugeColors::BCGP_LINEAR_GAUGE_VISUAL_MANAGER);
+			Redraw();
+		}
+	}
+	
 protected:
 	BOOL					m_bIsVertical;
 	CBCGPImage				m_ImageCache;

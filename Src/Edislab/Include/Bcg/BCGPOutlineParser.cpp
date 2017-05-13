@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -37,6 +37,8 @@ CBCGPOutlineParser::CBCGPOutlineParser()
 	m_strDelimiters = _T(" \t\n,./?<>;:\"'{[}]~`%^&*()-+=!");
 	m_bCaseSensitive = TRUE;
 	m_bWholeWords = FALSE;
+
+	m_pParentEdit = NULL;
 }
 //************************************************************************************
 CBCGPOutlineParser::~CBCGPOutlineParser()
@@ -60,7 +62,7 @@ void CBCGPOutlineParser::Init ()
 	// Default init for C++ outline blocks:
 	AddEscapeSequence (_T("\\\""));
 	AddEscapeSequence (_T("\\\\"));
-	AddBlockType (_T("\""),	_T("\""),	_T("\"\""),	FALSE,	TRUE);
+	AddBlockType (_T("\""),	_T("\""),	_T("\"\""),	FALSE,	TRUE, NULL, TRUE);
 	AddBlockType (_T("//"),	_T("\n"),	_T("/**/"),	FALSE,	TRUE);
 	AddBlockType (_T("/*"),	_T("*/"),	_T("/**/"),	FALSE,	FALSE);
 
@@ -97,6 +99,26 @@ void CBCGPOutlineParser::AddBlockType (LPCTSTR lpszOpen, LPCTSTR lpszClose, LPCT
 		lpszOpen, lpszClose, (lpszReplace != NULL) ? lpszReplace : _T("..."), bNested, bIgnore, pKeywordsList);
 
 	m_arrBlockTypes.Add (pNewBlockType);
+}
+//************************************************************************************
+void CBCGPOutlineParser::AddBlockType (LPCTSTR lpszOpen, LPCTSTR lpszClose, LPCTSTR lpszReplace, 
+				   BOOL bNested, BOOL bIgnore, CStringList* pKeywordsList, BOOL bOneLine)
+{
+	AddBlockType(lpszOpen, lpszClose, lpszReplace, bNested, bIgnore, pKeywordsList);
+
+	// Set up m_bOneLine option:
+	if (bOneLine && m_arrBlockTypes.GetSize() > 0)
+	{
+		BlockType* pBlockType = m_arrBlockTypes[m_arrBlockTypes.GetSize() - 1];
+		ASSERT(pBlockType != NULL);
+
+		pBlockType->m_bOneLine = bOneLine;
+
+		if (pBlockType->m_strClose.IsEmpty())
+		{
+			pBlockType->m_strClose = _T("\n");
+		}
+	}
 }
 //************************************************************************************
 void CBCGPOutlineParser::AddEscapeSequence (LPCTSTR lpszStr)
@@ -138,7 +160,8 @@ BOOL CBCGPOutlineParser::Compare (const CString& strBuffer, const int nBufferOff
 		}
 	}
 
-	if (m_bWholeWords /*&& strCompareWith.FindOneOf (m_strDelimiters) == -1*/)
+	if (m_bWholeWords && (strCompareWith.FindOneOf (m_strDelimiters) == -1 ||
+		strCompareWith.SpanIncluding(m_strDelimiters).Compare(strCompareWith) != 0))
 	{
 		if ((nBufferOffset > 0 &&
 			 m_strDelimiters.Find (strBuffer [nBufferOffset - 1]) == -1) ||
@@ -169,6 +192,12 @@ BOOL CBCGPOutlineParser::IsEscapeSequence (const CString& strBuffer, int& nBuffe
 	}
 
 	return FALSE;
+}
+//************************************************************************************
+BOOL CBCGPOutlineParser::IsEOL (const CString& strBuffer, int nBufferOffset) const
+{
+	int nEndOffset;
+	return Compare(strBuffer, nBufferOffset, _T("\n"), nEndOffset);
 }
 //************************************************************************************
 BOOL CBCGPOutlineParser::IsValuedChar (TCHAR ch) const
@@ -270,7 +299,22 @@ Lexeme CBCGPOutlineParser::GetNext (const CString& strIn, int& nOffset, const in
 								return lexem;
 							}
 
+							if (pBlockType->m_bOneLine && IsEOL(strIn, nOffset))
+							{
+								lexem.m_nEnd = nOffset - 1;
+								return lexem;
+							}
+
 							nOffset++;
+						}
+
+						if (nOffset == strIn.GetLength())
+						{
+							if (pBlockType->m_bOneLine || pBlockType->m_strClose == _T("\n"))
+							{
+								lexem.m_nEnd = nOffset - 1;
+								return lexem;
+							}
 						}
 					}
 					
@@ -727,9 +771,8 @@ void CBCGPOutlineParser::DoUpdateOffsets (const CString& strBuffer,
 					nSearchTo = pNextNode->m_nStart;
 				}
 			}
-			int nNewEnd = GetEndOffset (strBuffer, pNode->m_nEnd, nSearchTo);
-			ASSERT (nNewEnd <= nSearchTo);
-			pNode->m_nEnd = nNewEnd;
+
+			pNode->m_nEnd = GetEndOffset (strBuffer, pNode->m_nEnd, nSearchTo);
 
 			pPreviousNode = pNode;
 			lstIgnoreBlocks.AddTail (pNode);

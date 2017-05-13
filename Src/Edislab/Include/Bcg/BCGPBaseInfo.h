@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,11 +21,13 @@
 #pragma once
 #endif // _MSC_VER > 1000
 
+#include "BCGCBPro.h"
+
 #ifndef _BCGSUITE_
 #include "BCGPToolBarImages.h"
 #endif
 
-class CBCGPBaseInfo
+class BCGCBPRODLLEXPORT CBCGPBaseInfo
 {
 public:
 	static LPCTSTR s_szTag_Header;
@@ -57,6 +59,7 @@ public:
 		CString	m_Name;
 		UINT	m_Value;
 	};
+	typedef CArray<XID, XID> XArrayID;
 	
 	class XImage
 	{

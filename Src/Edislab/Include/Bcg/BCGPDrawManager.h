@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -86,7 +86,8 @@ public:
 	void DrawEllipse   (const CRect& rect, COLORREF clrFill, COLORREF clrLine, int nPenStyle = PS_SOLID);
 	void DrawRect (const CRect& rect, COLORREF clrFill, COLORREF clrLine);
 	void DrawArc(const CRect& rect, double dblStartAngle, double dblFinishAngle, BOOL bIsClockwise, COLORREF clrLine, int nPenStyle = PS_SOLID);
-	void DrawFocusRect(const CRect& rectFocus);
+	void DrawFocusRect(const CRect& rectFocus, COLORREF clrLine = RGB(127, 127, 127));
+	void DrawCheckMark(const CRect& rect, COLORREF clr, int nLineWidth = 1);
 	
 	static void DrawAlpha (CDC* pDstDC, const CRect& rectDst, CDC* pSrcDC, const CRect& rectSrc, BYTE nOpacity = 255);
 
@@ -110,12 +111,12 @@ public:
 	static double MakeHue_ONE (double H);
 	static double MakeHue_TWO (double H);
 
-// Color darkness/lightness:
+// Color darkness/luminosity:
 	static BOOL IsDarkColor(COLORREF clr);
 	static BOOL IsLightColor(COLORREF clr);
 	static BOOL IsPaleColor(COLORREF clr);
-	static COLORREF ColorMakeLighter(COLORREF clr, double dblRatio = .1);
-	static COLORREF ColorMakeDarker(COLORREF clr, double dblRatio = .1);
+	static COLORREF ColorMakeLighter(COLORREF clr, double dblRatio = .1, BOOL bKeepSaturation = FALSE);
+	static COLORREF ColorMakeDarker(COLORREF clr, double dblRatio = .1, BOOL bKeepSaturation = FALSE);
 	static COLORREF ColorMakePale(COLORREF clr, double dblLum = .97);
 	static COLORREF GetInterlaceColor(COLORREF clr);
 
@@ -193,7 +194,7 @@ class BCGCBPRODLLEXPORT CBCGPFontSelector
 {
 public:
     CBCGPFontSelector (CDC& dc, CFont* pFont);
-    CBCGPFontSelector (CDC& dc, int nPointSize, LPCTSTR lpszFaceName);
+    CBCGPFontSelector (CDC& dc, int nPointSize, LPCTSTR lpszFaceName);	// Create point font
     CBCGPFontSelector (CDC& dc, const LOGFONT* pLogFont);
     ~CBCGPFontSelector ();
 

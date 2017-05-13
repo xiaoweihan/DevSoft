@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,6 +27,7 @@
 
 #ifndef _BCGSUITE_
 #include "BCGPDockManager.h"
+#include "BCGPTooltipManager.h"
 #endif
 
 #ifdef _DEBUG
@@ -144,9 +145,14 @@ BEGIN_MESSAGE_MAP(CBCGPDialogBar, CBCGPDockingControlBar)
 	ON_WM_DESTROY()
 	ON_WM_CREATE()
 	ON_WM_SIZE()
+	ON_WM_MOUSEMOVE()
+	ON_WM_SETCURSOR()
+	ON_WM_LBUTTONUP()
 	//}}AFX_MSG_MAP
 	ON_MESSAGE(WM_INITDIALOG, HandleInitDialog)
 	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)	
+	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
+	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnNeedTipText)
 END_MESSAGE_MAP()
 
 //*****************************************************************************************
@@ -189,6 +195,7 @@ LRESULT CBCGPDialogBar::HandleInitDialog(WPARAM wParam, LPARAM lParam)
 		bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig);
 	}
 
+	m_Impl.CreateTooltipInfo();
 	return TRUE;
 }
 
@@ -206,22 +213,30 @@ BOOL CBCGPDialogBar::OnEraseBkgnd(CDC* pDC)
 	CRect rectClient;
 	GetClientRect (rectClient);
 
+	BOOL bIsReady = FALSE;
+
 	if (IsVisualManagerStyle ())
 	{
 #ifndef _BCGSUITE_
 		if (IsRebarPane())
 		{
 			CBCGPVisualManager::GetInstance ()->FillRebarPane(pDC, this, rectClient);
-			return TRUE;
+			bIsReady = TRUE;
 		}
 #endif
-		if (CBCGPVisualManager::GetInstance ()->OnFillDialog (pDC, this, rectClient))
+		if (!bIsReady && CBCGPVisualManager::GetInstance ()->OnFillDialog (pDC, this, rectClient))
 		{
-			return TRUE;
+			bIsReady = TRUE;
 		}
 	}
 
-	pDC->FillRect (rectClient, &globalData.brBtnFace);
+	if (!bIsReady)
+	{
+		pDC->FillRect (rectClient, &globalData.brBtnFace);
+		bIsReady = TRUE;
+	}
+
+	m_Impl.DrawControlInfoTips(pDC);
 	return TRUE;
 }
 //*****************************************************************************************
@@ -356,7 +371,9 @@ int CBCGPDialogBar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 void CBCGPDialogBar::OnSize(UINT nType, int cx, int cy) 
 {
 	CBCGPDockingControlBar::OnSize(nType, cx, cy);
+	
 	AdjustControlsLayout();
+	m_Impl.UpdateToolTipsRect();
 }
 //****************************************************************************
 BOOL CBCGPDialogBar::ScrollHorzAvailable(BOOL bLeft)
@@ -685,4 +702,103 @@ BOOL CBCGPDialogBar::OnGestureEventPan(const CPoint& ptFrom, const CPoint& ptTo,
 	}
 		
 	return FALSE;
+}
+//*************************************************************************************
+void CBCGPDialogBar::SetControlInfoTip(UINT nCtrlID, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	m_Impl.SetControlInfoTip(nCtrlID, lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
+}
+//*************************************************************************************
+void CBCGPDialogBar::SetControlInfoTip(CWnd* pWndCtrl, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	m_Impl.SetControlInfoTip(pWndCtrl, lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
+}
+//*************************************************************************************
+BOOL CBCGPDialogBar::OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult)
+{
+	if (m_Impl.OnNeedTipText(id, pNMH, pResult))
+	{
+		return TRUE;
+	}
+
+	return CBCGPDockingControlBar::OnNeedTipText(id, pNMH, pResult);
+}
+//**************************************************************************
+LRESULT CBCGPDialogBar::OnBCGUpdateToolTips (WPARAM wp, LPARAM lp)
+{
+	UINT nTypes = (UINT) wp;
+
+	if (nTypes & BCGP_TOOLTIP_TYPE_DEFAULT)
+	{
+		m_Impl.CreateTooltipInfo();
+	}
+
+#ifdef _BCGSUITE_
+	return CBCGPDockingControlBar::OnUpdateToolTips(wp, lp);
+#else
+	return CBCGPDockingControlBar::OnBCGUpdateToolTips(wp, lp);
+#endif
+}
+//**************************************************************************
+BOOL CBCGPDialogBar::PreTranslateMessage(MSG* pMsg) 
+{
+   	switch (pMsg->message)
+	{
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_LBUTTONUP:
+	case WM_RBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_MOUSEMOVE:
+		if (m_Impl.m_pToolTipInfo->GetSafeHwnd () != NULL)
+		{
+			m_Impl.m_pToolTipInfo->RelayEvent(pMsg);
+		}
+		break;
+	}
+	
+	return CBCGPDockingControlBar::PreTranslateMessage(pMsg);
+}
+//**************************************************************************
+void CBCGPDialogBar::OnMouseMove(UINT nFlags, CPoint point) 
+{
+	CBCGPDockingControlBar::OnMouseMove(nFlags, point);
+
+	if (m_Impl.m_pToolTipInfo->GetSafeHwnd () != NULL && !m_Impl.m_mapCtrlInfoTip.IsEmpty())
+	{
+		CString strDescription;
+		CString strTipText;
+		BOOL bIsClickable = FALSE;
+		
+		HWND hwnd = m_Impl.GetControlInfoTipFromPoint(point, strTipText, strDescription, bIsClickable);
+		
+		if (hwnd != m_Impl.m_hwndInfoTipCurr)
+		{
+			m_Impl.m_pToolTipInfo->Pop();
+			m_Impl.m_hwndInfoTipCurr = hwnd;
+		}
+	}
+}
+//**************************************************************************
+BOOL CBCGPDialogBar::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message) 
+{
+	if (m_Impl.OnSetCursor())
+	{
+		return TRUE;
+	}
+	
+	return CBCGPDockingControlBar::OnSetCursor(pWnd, nHitTest, message);
+}
+//************************************************************************
+void CBCGPDialogBar::OnLButtonUp(UINT nFlags, CPoint point) 
+{
+	if (m_Impl.ProcessInfoTipClick(point))
+	{
+		return;
+	}
+	
+	CBCGPDockingControlBar::OnLButtonUp(nFlags, point);
 }

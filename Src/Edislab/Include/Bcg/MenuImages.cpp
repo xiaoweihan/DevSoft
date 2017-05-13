@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,8 +22,53 @@
 #include "bcgglobals.h"
 
 static const COLORREF clrTransparent = RGB (255, 0, 255);
-static const int iImageWidth = 9;
-static const int iImageHeight = 9;
+
+static CSize GetOriginalImageSize(UINT* pnResID = NULL, double* pdblScale = NULL)
+{
+	CSize size(9, 9);
+	double dblScale = globalData.GetRibbonImageScale();
+	UINT nResID = IDB_BCGBARRES_MENU_IMAGES;
+
+	if (globalData.Is32BitIcons())
+	{
+#ifndef _BCGSUITE_
+		if (dblScale > 1.51)
+		{
+			nResID = IDB_BCGBARRES_MENU_IMAGES24_200;
+			dblScale = dblScale / 2.0;
+			size = CSize(18, 18);
+		}
+		else if (dblScale > 1.26)
+		{
+			nResID = IDB_BCGBARRES_MENU_IMAGES24_150;
+			dblScale = dblScale / 1.5;
+			size = CSize(13, 13);
+		}
+		else if (dblScale > 1.1)
+		{
+			nResID = IDB_BCGBARRES_MENU_IMAGES24_125;
+			dblScale = dblScale / 1.25;
+			size = CSize(11, 11);
+		}
+		else
+#endif
+		{
+			nResID = IDB_BCGBARRES_MENU_IMAGES24;
+		}
+	}
+
+	if (pnResID != NULL)
+	{
+		*pnResID = nResID;
+	}
+
+	if (pdblScale != NULL)
+	{
+		*pdblScale = dblScale;
+	}
+
+	return size;
+}
 
 CBCGPToolBarImages CBCGPMenuImages::m_ImagesBlack;
 CBCGPToolBarImages CBCGPMenuImages::m_ImagesDkGray;
@@ -33,10 +78,11 @@ CBCGPToolBarImages CBCGPMenuImages::m_ImagesWhite;
 CBCGPToolBarImages CBCGPMenuImages::m_ImagesBlack2;
 
 BOOL CBCGPMenuImages::m_bInitializing = FALSE;
+BOOL CBCGPMenuImages::m_bCleannedUpGlobally = FALSE;
 
 BOOL CBCGPMenuImages::Initialize ()
 {
-	if (m_bInitializing)
+	if (m_bInitializing || m_bCleannedUpGlobally)
 	{
 		return FALSE;
 	}
@@ -49,10 +95,15 @@ BOOL CBCGPMenuImages::Initialize ()
 	m_bInitializing = TRUE;
 
 	CBCGPLocalResource locaRes;
-	m_ImagesBlack.SetImageSize (CSize (iImageWidth, iImageHeight));
-	if (!m_ImagesBlack.Load (globalData.Is32BitIcons () ? IDB_BCGBARRES_MENU_IMAGES24 : IDB_BCGBARRES_MENU_IMAGES))
+	
+	UINT nImageResID = 0;
+	double dblScale = 1.0;
+
+	m_ImagesBlack.SetImageSize (GetOriginalImageSize(&nImageResID, &dblScale));
+
+	if (!m_ImagesBlack.Load(nImageResID))
 	{
-		TRACE(_T("CBCGPMenuImages. Can't load menu images %x\n"), IDB_BCGBARRES_MENU_IMAGES);
+		TRACE(_T("CBCGPMenuImages. Can't load menu images %x\n"), nImageResID);
 		m_bInitializing = FALSE;
 		return FALSE;
 	}
@@ -62,7 +113,12 @@ BOOL CBCGPMenuImages::Initialize ()
 		m_ImagesBlack.Mirror ();
 	}
 
-	m_ImagesBlack.SetTransparentColor (clrTransparent);
+#ifndef _BCGSUITE_
+	if (m_ImagesBlack.GetBitsPerPixel() < 32)
+#endif
+	{
+		m_ImagesBlack.SetTransparentColor (clrTransparent);
+	}
 
 	CreateCopy (m_ImagesGray, RGB (128, 128, 128));
 	CreateCopy (m_ImagesDkGray, RGB (72, 72, 72));
@@ -71,18 +127,14 @@ BOOL CBCGPMenuImages::Initialize ()
 	CreateCopy (m_ImagesBlack2, RGB (0, 0, 0));
 
 #ifndef _BCGSUITE_
-	if (m_ImagesBlack.IsValid ())
+	if (m_ImagesBlack.IsValid() && dblScale != 1.0)
 	{
-		double dblScale = globalData.GetRibbonImageScale ();
-		if (dblScale != 1.0)
-		{
-			m_ImagesBlack.SmoothResize (dblScale);
-			m_ImagesGray.SmoothResize (dblScale);
-			m_ImagesDkGray.SmoothResize (dblScale);
-			m_ImagesLtGray.SmoothResize (dblScale);
-			m_ImagesWhite.SmoothResize (dblScale);
-			m_ImagesBlack2.SmoothResize (dblScale);
-		}
+		m_ImagesBlack.SmoothResize (dblScale);
+		m_ImagesGray.SmoothResize (dblScale);
+		m_ImagesDkGray.SmoothResize (dblScale);
+		m_ImagesLtGray.SmoothResize (dblScale);
+		m_ImagesWhite.SmoothResize (dblScale);
+		m_ImagesBlack2.SmoothResize (dblScale);
 	}
 #endif
 
@@ -93,11 +145,16 @@ BOOL CBCGPMenuImages::Initialize ()
 //****************************************************************************************
 CSize CBCGPMenuImages::Size()
 {
+	if (m_bCleannedUpGlobally)
+	{
+		return CSize(0, 0);
+	}
+
 	if (m_bInitializing)
 	{
-		CSize size (iImageWidth, iImageHeight);
+		double dblScale = 1.0;
+		CSize size = GetOriginalImageSize(NULL, &dblScale);
 
-		double dblScale = globalData.GetRibbonImageScale ();
 		if (dblScale != 1.0)
 		{
 			size.cx = (int)(size.cx * dblScale);
@@ -149,7 +206,7 @@ void CBCGPMenuImages::Draw (CDC* pDC, IMAGES_IDS id, const CRect& rectImage,
 	Draw (pDC, id, ptImage, state, sizeImageDest);
 }
 //*************************************************************************************
-void CBCGPMenuImages::CleanUp ()
+void CBCGPMenuImages::CleanUp (BOOL bIsGlobalCleanUp/* = FALSE*/)
 {
 	if (m_bInitializing)
 	{
@@ -165,26 +222,57 @@ void CBCGPMenuImages::CleanUp ()
 		m_ImagesWhite.Clear ();
 		m_ImagesBlack2.Clear ();
 	}
+
+	m_bCleannedUpGlobally = bIsGlobalCleanUp;
 }
 //***********************************************************************************
 void CBCGPMenuImages::CreateCopy (CBCGPToolBarImages& images, COLORREF clr)
 {
+	if (m_bCleannedUpGlobally)
+	{
+		return;
+	}
+
 	m_ImagesBlack.CopyTo (images);
-	images.MapTo3dColors (TRUE, RGB (0, 0, 0), clr);
+
+#ifndef _BCGSUITE_
+	if (m_ImagesBlack.GetBitsPerPixel() == 32)
+	{
+		images.AddaptColors(RGB (0, 0, 0), clr, FALSE);
+	}
+	else
+#endif
+	{
+		images.MapTo3dColors (TRUE, RGB (0, 0, 0), clr);
+	}
 }
 //***********************************************************************************
 void CBCGPMenuImages::SetColor (CBCGPMenuImages::IMAGE_STATE state,
 							COLORREF color)
 {
+	if (m_bCleannedUpGlobally)
+	{
+		return;
+	}
+
 	Initialize ();
 
 	CBCGPLocalResource locaRes;
 
 	CBCGPToolBarImages imagesTmp;
 
-	imagesTmp.SetImageSize (CSize (iImageWidth, iImageHeight));
-	imagesTmp.Load (globalData.Is32BitIcons () ? IDB_BCGBARRES_MENU_IMAGES24 : IDB_BCGBARRES_MENU_IMAGES);
-	imagesTmp.SetTransparentColor (clrTransparent);
+	UINT nImageResID = 0;
+	double dblScale = 1.0;
+
+	imagesTmp.SetImageSize(GetOriginalImageSize(&nImageResID, &dblScale));
+	imagesTmp.Load (nImageResID);
+
+#ifndef _BCGSUITE_
+	if (imagesTmp.GetBitsPerPixel() < 32)
+#endif
+	{
+		imagesTmp.SetTransparentColor (clrTransparent);
+	}
 
 #ifndef _BCGSUITE_
 	if (imagesTmp.IsRTL ())
@@ -201,13 +289,22 @@ void CBCGPMenuImages::SetColor (CBCGPMenuImages::IMAGE_STATE state,
 
 	if (color != (COLORREF)-1)
 	{
-		imagesTmp.MapTo3dColors (TRUE, RGB (0, 0, 0), color);
+#ifndef _BCGSUITE_
+		if (imagesTmp.GetBitsPerPixel() == 32)
+		{
+			imagesTmp.AddaptColors(RGB (0, 0, 0), color, FALSE);
+		}
+		else
+#endif
+		{
+			imagesTmp.MapTo3dColors (TRUE, RGB (0, 0, 0), color);
+		}
 	}
 
 #ifndef _BCGSUITE_
 	if (!m_bInitializing)
 	{
-		imagesTmp.SmoothResize (globalData.GetRibbonImageScale ());
+		imagesTmp.SmoothResize(dblScale);
 	}
 #endif
 
@@ -224,7 +321,7 @@ CBCGPMenuImages::IMAGE_STATE CBCGPMenuImages::GetStateByColor(COLORREF color, BO
 
 	double H, L, S;
 	CBCGPDrawManager::RGBtoHSL(color, &H, &S, &L);
-
+	
 	if (bIsBackgroundColor)
 	{
 		return L < 0.7 ? CBCGPMenuImages::ImageWhite : CBCGPMenuImages::ImageBlack;

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,8 @@
 static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
+
+static const double dblDisabledOpacity = 0.4;
 
 CBCGPSwitchColors::CBCGPSwitchColors()
 {
@@ -215,6 +217,18 @@ void CBCGPSwitchImpl::OnDrawGutter(CBCGPGraphicsManager* pGM, const CBCGPRect& r
 	CBCGPRect rectFill = rect;
 
 	const CBCGPImage& image = IsOn() ? m_imageGutterOn : m_imageGutterOff;
+	CBCGPBrush& brFill = IsOn() ? m_Colors.m_brFillOn : m_Colors.m_brFillOff;
+
+	double dblOutlineOpacity = m_Colors.m_brOutline.GetOpacity();
+	double dblFillOpacity = brFill.GetOpacity();
+	double dblFillAllOpacity = m_Colors.m_brFill.GetOpacity();
+
+	if (!IsEnabled())
+	{
+		m_Colors.m_brOutline.SetOpacity(dblDisabledOpacity * dblOutlineOpacity);
+		m_Colors.m_brFill.SetOpacity(dblDisabledOpacity * dblFillAllOpacity);
+		brFill.SetOpacity(dblDisabledOpacity * dblFillOpacity);
+	}
 
 	if (m_Style == BCGP_SWITCH_RECTANGLE || m_Style == BCGP_SWITCH_RECTANGLE_NARROW_GUTTER)
 	{
@@ -229,7 +243,7 @@ void CBCGPSwitchImpl::OnDrawGutter(CBCGPGraphicsManager* pGM, const CBCGPRect& r
 			}
 			else
 			{
-				pGM->FillRectangle(rectFill, IsOn() ? m_Colors.m_brFillOn : m_Colors.m_brFillOff);
+				pGM->FillRectangle(rectFill, brFill);
 				pGM->DrawRectangle(rectFill, m_Colors.m_brOutline);
 			}
 		}
@@ -246,7 +260,7 @@ void CBCGPSwitchImpl::OnDrawGutter(CBCGPGraphicsManager* pGM, const CBCGPRect& r
 				
 				rectFill.DeflateRect(dblPad, dblPad);
 				
-				pGM->FillRectangle(rectFill, IsOn() ? m_Colors.m_brFillOn : m_Colors.m_brFillOff);
+				pGM->FillRectangle(rectFill, brFill);
 			}
 		}
 	}
@@ -283,16 +297,37 @@ void CBCGPSwitchImpl::OnDrawGutter(CBCGPGraphicsManager* pGM, const CBCGPRect& r
 		{
 			CBCGPRoundedRect rectFillRounded(rectFill, radius, radius);
 			
-			pGM->FillRoundedRectangle(rectFillRounded, IsOn() ? m_Colors.m_brFillOn : m_Colors.m_brFillOff);
+			pGM->FillRoundedRectangle(rectFillRounded, brFill);
 			pGM->DrawRoundedRectangle(rectFillRounded, m_Colors.m_brOutline);
 		}
+	}
+
+	if (!IsEnabled())
+	{
+		m_Colors.m_brOutline.SetOpacity(dblOutlineOpacity);
+		m_Colors.m_brFill.SetOpacity(dblFillAllOpacity);
+		brFill.SetOpacity(dblFillOpacity);
 	}
 }
 //*******************************************************************************
 void CBCGPSwitchImpl::OnDrawLabel(CBCGPGraphicsManager* pGM, const CBCGPRect& rectLabel)
 {
 	ASSERT_VALID(pGM);
-	pGM->DrawText(GetLabel(IsOn()), rectLabel, m_textFormat, IsOn() ? m_Colors.m_brLabelOn : m_Colors.m_brLabelOff);
+
+	CBCGPBrush& brText = IsOn() ? m_Colors.m_brLabelOn : m_Colors.m_brLabelOff;
+
+	double dblTextOpacity = brText.GetOpacity();
+	if (!IsEnabled())
+	{
+		brText.SetOpacity(dblDisabledOpacity * dblTextOpacity);
+	}
+
+	pGM->DrawText(GetLabel(IsOn()), rectLabel, m_textFormat, brText);
+
+	if (!IsEnabled())
+	{
+		brText.SetOpacity(dblTextOpacity);
+	}
 }
 //*******************************************************************************
 void CBCGPSwitchImpl::OnDrawThumb(CBCGPGraphicsManager* pGM, const CBCGPRect& rectThumb, double dblRoundedRectCornerRadius)
@@ -305,6 +340,15 @@ void CBCGPSwitchImpl::OnDrawThumb(CBCGPGraphicsManager* pGM, const CBCGPRect& re
 	{
 		DoDrawImage(pGM, image, rectThumb);
 		return;
+	}
+
+	double dblOutlineOpacity = m_Colors.m_brOutlineThumb.GetOpacity();
+	double dblFillOpacity = m_Colors.m_brFillThumb.GetOpacity();
+	
+	if (!IsEnabled())
+	{
+		m_Colors.m_brOutlineThumb.SetOpacity(dblDisabledOpacity * dblOutlineOpacity);
+		m_Colors.m_brFillThumb.SetOpacity(dblDisabledOpacity * dblFillOpacity);
 	}
 
 	switch (m_Style)
@@ -329,6 +373,12 @@ void CBCGPSwitchImpl::OnDrawThumb(CBCGPGraphicsManager* pGM, const CBCGPRect& re
 		pGM->FillRectangle(rectThumb, m_Colors.m_brFillThumb);
 		pGM->DrawRectangle(rectThumb, m_Colors.m_brOutlineThumb);
 		break;
+	}
+
+	if (!IsEnabled())
+	{
+		m_Colors.m_brOutlineThumb.SetOpacity(dblOutlineOpacity);
+		m_Colors.m_brFillThumb.SetOpacity(dblFillOpacity);
 	}
 }
 //*******************************************************************************
@@ -437,9 +487,11 @@ void CBCGPSwitchImpl::DoDrawImage(CBCGPGraphicsManager* pGM, const CBCGPImage& i
 {
 	ASSERT_VALID(pGM);
 
+	double dblOpacity = IsEnabled() ? 1.0 : dblDisabledOpacity;
+
 	if (m_bImageScaling)
 	{
-		pGM->DrawImage(image, rect.TopLeft(), rect.Size());
+		pGM->DrawImage(image, rect.TopLeft(), rect.Size(), dblOpacity);
 		return;
 	}
 
@@ -448,7 +500,7 @@ void CBCGPSwitchImpl::DoDrawImage(CBCGPGraphicsManager* pGM, const CBCGPImage& i
 	double x = rect.left + max(0.0, 0.5 * (rect.Width() - sizeImage.cx));
 	double y = rect.top + max(0.0, 0.5 * (rect.Height() - sizeImage.cy));
 
-	pGM->DrawImage(image, CBCGPPoint(x, y));
+	pGM->DrawImage(image, CBCGPPoint(x, y), CBCGPSize(), dblOpacity);
 }
 //*******************************************************************************
 void AFXAPI DDX_Switch(CDataExchange* pDX, int nIDC, int& value)

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,6 +27,8 @@
 
 #include "BCGCBPro.h"
 
+class CBCGPRibbonBar;
+
 static CString strDelimiter = _T("; ");
 
 class BCGCBPRODLLEXPORT CBCGPKeyboardManager : public CObject
@@ -38,7 +40,7 @@ public:
 	CBCGPKeyboardManager();
 	virtual ~CBCGPKeyboardManager();
 
-// Operattion:
+// Operation:
 public:
 	BOOL LoadState (LPCTSTR lpszProfileName = NULL, CFrameWnd* pDefaultFrame = NULL);
 	BOOL SaveState (LPCTSTR lpszProfileName = NULL, CFrameWnd* pDefaultFrame = NULL);
@@ -50,7 +52,7 @@ public:
 	virtual void ResetAll ();
 
 	static BOOL FindDefaultAccelerator (UINT uiCmd, CString& str, CFrameWnd* pWndFrame,
-										BOOL bIsDefaultFrame);
+										BOOL bIsDefaultFrame, LPACCEL lpAccelOut = NULL);
 	static BOOL IsKeyPrintable (const UINT nChar);
 	static UINT TranslateCharToUpper (const UINT nChar);
 	static BOOL IsKeyHandled (WORD nKey, BYTE fVirt, CFrameWnd* pWndFrame, BOOL bIsDefaultFrame);
@@ -73,8 +75,10 @@ protected:
 	BOOL SaveAccelaratorState (LPCTSTR lpszProfileName,
 		UINT uiResId, HACCEL hAccelTable);
 	BOOL LoadAccelaratorState (LPCTSTR lpszProfileName, 
-		UINT uiResId, HACCEL& hAccelTable);
+		UINT uiResId, HACCEL& hAccelTable, CBCGPRibbonBar* pRibbonBar = NULL);
 	
+	void RemoveRibbonUnusableItems(HACCEL& hAccellTable, CBCGPRibbonBar* pRibbonBar);
+
 	static void SetAccelTable (LPACCEL& lpAccel, HACCEL& hAccelLast, int& nSize,
 								const HACCEL hAccelCur);
 

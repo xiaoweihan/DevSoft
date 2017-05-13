@@ -1,6 +1,6 @@
 // BCGCalendarBar.cpp : implementation file
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -67,6 +67,7 @@
 
 #include "BCGPDateTimeCtrl.h"
 #include "BCGPLocalResource.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -99,7 +100,7 @@ static void ClearTime (COleDateTime& date)
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPCalendar
 
-IMPLEMENT_DYNAMIC(CBCGPCalendar, CWnd)
+IMPLEMENT_SERIAL(CBCGPCalendar, CWnd, 1)
 
 CBCGPCalendar::CBCGPCalendar()
 {
@@ -108,6 +109,7 @@ CBCGPCalendar::CBCGPCalendar()
 	m_nStartYear = today.GetYear ();
 
 	m_bMultipleSelection = FALSE;
+	m_nMaxWeekDayCharacters = 2;
 
 	SetDate (today);
 
@@ -117,7 +119,9 @@ CBCGPCalendar::CBCGPCalendar()
 	m_nMonths = 0;
 	m_sizeBox = CSize (0, 0);
 
-	m_nFirstDayOfWeek = 0;
+	SetFirstDayOfWeek(-1);
+	SetFirstWeekOfYear(-1);
+
 	m_arWeekDays.SetSize (DAYS_IN_WEEK);
 
 	m_rectBtnPrev.SetRectEmpty ();
@@ -167,6 +171,11 @@ CBCGPCalendar::CBCGPCalendar()
 	m_MaxDate = COleDateTime (iLastAllowedYear, 12, 31, 23, 59, 59);
 
 	m_bDontChangeLocale = FALSE;
+
+	m_hFont	= NULL;
+	m_szCellPad = CSize(5, 2);
+
+	m_bCustomColors = FALSE;
 }
 
 CBCGPCalendar::~CBCGPCalendar()
@@ -197,12 +206,91 @@ BEGIN_MESSAGE_MAP(CBCGPCalendar, CWnd)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
 	ON_MESSAGE(WM_PRINT, OnPrint)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
+	ON_MESSAGE(WM_SETFONT, OnSetFont)
+	ON_MESSAGE(WM_GETFONT, OnGetFont)
 END_MESSAGE_MAP()
 
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPCalendar message handlers
 
+CFont* CBCGPCalendar::SelectFont(CDC* pDC, BOOL bBold)
+{
+	ASSERT_VALID (pDC);
+
+	if (m_hFont != NULL && ::GetObjectType (m_hFont) != OBJ_FONT)
+	{
+		m_hFont = NULL;
+	}
+
+	CFont* pOldFont = NULL;
+
+	if (bBold)
+	{
+		if (m_hFont != NULL && m_fontBold.GetSafeHandle() == NULL)
+		{
+			CFont* pFont = CFont::FromHandle(m_hFont);
+			ASSERT_VALID(pFont);
+			
+			LOGFONT lf;
+			memset(&lf, 0, sizeof (LOGFONT));
+			
+			pFont->GetLogFont (&lf);
+			lf.lfWeight = FW_BOLD;
+
+			m_fontBold.CreateFontIndirect (&lf);
+		}
+
+		pOldFont = m_fontBold.GetSafeHandle() == NULL ? 
+			(CFont*)pDC->SelectObject(&globalData.fontBold) : 
+			(CFont*)pDC->SelectObject(&m_fontBold);
+	}
+	else
+	{
+		pOldFont = m_hFont == NULL ?
+			(CFont*) pDC->SelectObject(&globalData.fontRegular) :
+			pDC->SelectObject (CFont::FromHandle (m_hFont));
+	}
+
+	ASSERT(pOldFont != NULL);
+	return pOldFont;
+}
+//*****************************************************************************
+LRESULT CBCGPCalendar::OnSetFont (WPARAM wParam, LPARAM lParam)
+{
+	BOOL bRedraw = (BOOL) LOWORD (lParam);
+
+	m_hFont = (HFONT) wParam;
+
+	if (m_fontBold.GetSafeHandle() != NULL)
+	{
+		m_fontBold.DeleteObject();
+	}
+
+	if (GetStyle () & WS_POPUP)
+	{
+		CClientDC dc(this);
+
+		CFont* pOldFont = SelectFont(&dc);
+		ASSERT_VALID(pOldFont);
+		
+		TEXTMETRIC tm;
+		dc.GetTextMetrics(&tm);
+		
+		m_szCellPad = CSize(max(1, tm.tmMaxCharWidth / 3), max(1, tm.tmHeight / 3));
+
+		dc.SelectObject(pOldFont);
+	}
+
+	RecalcLayout(bRedraw);
+	return 0;
+}
+//*****************************************************************************
+LRESULT CBCGPCalendar::OnGetFont (WPARAM, LPARAM)
+{
+	return (LRESULT) (m_hFont == NULL ? globalData.fontRegular.GetSafeHandle() : m_hFont);
+}
+//*****************************************************************************
 BOOL CBCGPCalendar::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/)
 {
 	return DoScroll(zDelta / WHEEL_DELTA);
@@ -247,8 +335,11 @@ void CBCGPCalendar::OnPaint()
 
 void CBCGPCalendar::OnDraw(CDC* pDCPaint) 
 {
-	m_Colors.Reset();
-	visualManager->GetCalendarColors (this, m_Colors);
+	if (!m_bCustomColors)
+	{
+		m_Colors.Reset();
+		visualManager->GetCalendarColors (this, m_Colors);
+	}
 
 	CBCGPMemDC memDC (*pDCPaint, this);
 	CDC* pDC = &memDC.GetDC ();
@@ -272,7 +363,7 @@ void CBCGPCalendar::OnDraw(CDC* pDCPaint)
 	pDC->SetBkMode (TRANSPARENT);
 	pDC->SetTextColor (m_Colors.clrText == (COLORREF)-1 ? globalData.clrWindowText : m_Colors.clrText);
 	
-	CFont* pOldFont = pDC->SelectObject (&globalData.fontRegular);
+	CFont* pOldFont = SelectFont(pDC);
 	ASSERT (pOldFont != NULL);
 
 	CRect rectInter;
@@ -296,9 +387,11 @@ void CBCGPCalendar::OnDraw(CDC* pDCPaint)
 
 	if (IsWindowEnabled())
 	{
-		if (GetRValue (m_Colors.clrCaptionText) > 192 &&
-			GetGValue (m_Colors.clrCaptionText) > 192 &&
-			GetBValue (m_Colors.clrCaptionText) > 192)
+		COLORREF clrCaptionText = m_Colors.clrCaptionText == (COLORREF)-1 ? (m_Colors.clrText == (COLORREF)-1 ? globalData.clrWindowText : m_Colors.clrText): m_Colors.clrCaptionText;
+
+		if (GetRValue (clrCaptionText) > 192 &&
+			GetGValue (clrCaptionText) > 192 &&
+			GetBValue (clrCaptionText) > 192)
 		{
 			imageState = CBCGPMenuImages::ImageWhite;
 		}
@@ -309,7 +402,7 @@ void CBCGPCalendar::OnDraw(CDC* pDCPaint)
 	}
 	else
 	{
-		imageState = CBCGPMenuImages::ImageLtGray;
+		imageState = (globalData.m_bIsWhiteHighContrast ? CBCGPMenuImages::ImageGray : CBCGPMenuImages::ImageLtGray);
 	}
 
 	const BOOL bRTL = GetExStyle() & WS_EX_LAYOUTRTL;
@@ -337,13 +430,24 @@ void CBCGPCalendar::PostNcDestroy()
 	}
 }
 
+void CBCGPCalendar::NotifyCloseCalendar(COleDateTime date)
+{
+	ASSERT_VALID(this);
+
+	if (m_pParentBtn != NULL)
+	{
+		ASSERT_VALID (m_pParentBtn);
+		m_pParentBtn->ClosePopupCalendar(date);
+	}
+}
+
 void CBCGPCalendar::GetDayRects (int nMonthIndex, CRect rects [42], 
 									  int& xStart, int& nDaysInPrevMonth) const
 {
 	CRect rect;
 	GetMonthRect (nMonthIndex, rect);
 
-	rect.top += m_sizeBox.cy * 2 + 4;
+	rect.top += m_sizeBox.cy * 2 + m_szCellPad.cy * 2;
 	rect.DeflateRect (m_nDaysHorzMarginLeft, 0, m_nDaysHorzMarginRight, 0);
 
 	const BOOL bDrawPrevMonth = (nMonthIndex == 0);
@@ -379,36 +483,6 @@ void CBCGPCalendar::GetDayRects (int nMonthIndex, CRect rects [42],
 		int nDay = i + 1 - xStart;
 
 		rects [i] = CRect (0, 0, 0, 0);
-
-		if (date < m_MinDate || date > m_MaxDate)
-		{
-			continue;
-		}
-
-		if (date.GetYear() == m_MinDate.GetYear())
-		{
-			if (date.GetMonth() < m_MinDate.GetMonth())
-			{
-				continue;
-			}
-			else if (date.GetMonth() == m_MinDate.GetMonth() && nDay < m_MinDate.GetDay())
-			{
-				continue;
-			}
-		}
-
-		if (date.GetYear() == m_MaxDate.GetYear())
-		{
-			if (date.GetMonth() > m_MaxDate.GetMonth())
-			{
-				continue;
-			}
-			else if (date.GetMonth() == m_MaxDate.GetMonth() && nDay > m_MaxDate.GetDay())
-			{
-				continue;
-			}
-		}
-
 		BOOL bIsEmptyRect = FALSE;
 
 		if (nDay < 1)
@@ -453,7 +527,8 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 		dtFlags |= DT_RIGHT;
 	}
 
-	CBrush brSelected (m_Colors.clrSelected);
+	COLORREF clrSelected = (m_Colors.clrSelected == (COLORREF)-1) ? globalData.clrHilite : m_Colors.clrSelected;
+	CBrush brSelected(clrSelected);
 
 	CRect rectClip;
 	pDC->GetClipBox (rectClip);
@@ -461,11 +536,6 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 	int i = 0;
 
 	const COleDateTime date = GetMonthDate (nMonthIndex);
-
-	if (date < m_MinDate || date > m_MaxDate)
-	{
-		return;
-	}
 
 	const int nDaysInMonth = GetMaxMonthDay (date);
 	const COleDateTime today = COleDateTime::GetCurrentTime ();
@@ -476,7 +546,7 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 	// Draw month + year + prev/next buttons:
 	//---------------------------------------
 	CRect rectCaption = rect;
-	rectCaption.bottom = rectCaption.top + m_sizeBox.cy + 2;
+	rectCaption.bottom = rectCaption.top + m_sizeBox.cy + m_szCellPad.cy;
 
 	if (!m_bSingleMonth)
 	{
@@ -493,36 +563,40 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 		rectCaption.top += m_nVertMargin;
 	}
 
-	if (m_bGradientFillCaption)
+	if (m_Colors.clrCaption != (COLORREF)-1)
 	{
-		COLORREF clrLight;
-		COLORREF clrDark;
-		
-		if (GetRValue (m_Colors.clrCaption) > 192 &&
-			GetGValue (m_Colors.clrCaption) > 192 &&
-			GetBValue (m_Colors.clrCaption) > 192)
+		if (m_bGradientFillCaption)
 		{
-			clrLight = m_Colors.clrCaption;
-			clrDark = CBCGPDrawManager::PixelAlpha (clrLight, 80);
+			COLORREF clrLight;
+			COLORREF clrDark;
+
+			if (GetRValue (m_Colors.clrCaption) > 192 &&
+				GetGValue (m_Colors.clrCaption) > 192 &&
+				GetBValue (m_Colors.clrCaption) > 192)
+			{
+				clrLight = m_Colors.clrCaption;
+				clrDark = CBCGPDrawManager::PixelAlpha (clrLight, 80);
+			}
+			else
+			{
+				clrDark = m_Colors.clrCaption;
+				clrLight = CBCGPDrawManager::PixelAlpha (clrDark, 120);
+			}
+
+			CBCGPDrawManager dm (*pDC);
+			dm.FillGradient (rectCaption, clrDark, clrLight, TRUE);
 		}
 		else
 		{
-			clrDark = m_Colors.clrCaption;
-			clrLight = CBCGPDrawManager::PixelAlpha (clrDark, 120);
+			CBrush br (m_Colors.clrCaption);
+			pDC->FillRect (rectCaption, &br);
 		}
-
-		CBCGPDrawManager dm (*pDC);
-		dm.FillGradient (rectCaption, clrDark, clrLight, TRUE);
-	}
-	else
-	{
-		CBrush br (m_Colors.clrCaption);
-		pDC->FillRect (rectCaption, &br);
 	}
 
-	rectCaption.right -= 2;
+	rectCaption.right -= m_szCellPad.cy;
 
-	COLORREF cltTextOld = pDC->SetTextColor (m_Colors.clrCaptionText);
+	COLORREF cltTextOld = pDC->SetTextColor(
+		m_Colors.clrCaptionText == (COLORREF)-1 ? (m_Colors.clrText == (COLORREF)-1 ? globalData.clrWindowText : m_Colors.clrText): m_Colors.clrCaptionText);
 
 	{
 		CBCGPDefaultLocale dl(m_bDontChangeLocale);
@@ -552,7 +626,13 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 		rectWeekDay.left = rectWeeks.left + m_sizeBox.cx * i - 1;
 		rectWeekDay.right = rectWeekDay.left + m_sizeBox.cx;
 
-		pDC->DrawText (m_arWeekDays [i], rectWeekDay, dtFlags);
+		UINT nFormat = dtFlags;
+		if (m_nMaxWeekDayCharacters > 1)
+		{
+			nFormat |= DT_CENTER;
+		}
+
+		pDC->DrawText (m_arWeekDays [i], rectWeekDay, nFormat);
 	}
 
 	CPen pen (PS_SOLID, 1, m_Colors.clrLine == (COLORREF)-1 ? globalData.clrBtnShadow : m_Colors.clrLine);
@@ -565,7 +645,7 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 	pDC->MoveTo (xLineLeft, yLine);
 	pDC->LineTo (xLineRight, yLine);
 
-	rect.top = rectWeeks.bottom + 2;
+	rect.top = rectWeeks.bottom + m_szCellPad.cy;
 
 	BOOL bPrevMarked = FALSE;
 	CFont* pOldFont = NULL;
@@ -619,6 +699,12 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 	{
 		CRect rectDay = rects [i];
 		if (rectDay.IsRectEmpty ())
+		{
+			continue;
+		}
+
+		int nDir = 0;
+		if (HitTest(rectDay.CenterPoint(), nDir) == COleDateTime())
 		{
 			continue;
 		}
@@ -694,7 +780,9 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 		if (bIsSelected)
 		{
 			pDC->FillRect (rectDay, &brSelected);
-			pDC->SetTextColor (m_Colors.clrSelectedText);
+
+			COLORREF clrSelectedText = (m_Colors.clrSelectedText == (COLORREF)-1) ? globalData.clrTextHilite : m_Colors.clrSelectedText;
+			pDC->SetTextColor(clrSelectedText);
 		}
 
 		CString strDay;
@@ -708,7 +796,7 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 		{
 			if (!bPrevMarked)
 			{
-				pOldFont = pDC->SelectObject (&globalData.fontBold);
+				pOldFont = SelectFont(pDC, TRUE);
 			}
 		}
 		else
@@ -721,6 +809,8 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 			}
 		}
 
+		rectText.DeflateRect(m_szCellPad.cx / 2, 0);
+
 		pDC->DrawText (strDay, rectText, dtFlags);
 
 		bPrevMarked = bIsMarked;
@@ -729,7 +819,8 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 			date.GetMonth () == today.GetMonth () &&
 			nDay == today.GetDay ())
 		{
-			pDC->Draw3dRect (rectDay, m_Colors.clrTodayBorder, m_Colors.clrTodayBorder);
+			COLORREF clrBorder = m_Colors.clrTodayBorder == (COLORREF)-1 ? globalData.clrHilite : m_Colors.clrTodayBorder;
+			pDC->Draw3dRect(rectDay, clrBorder, clrBorder);
 		}
 
 		if (rectDay.bottom > yLineBottom)
@@ -766,6 +857,10 @@ void CBCGPCalendar::OnDrawMonth (CDC* pDC, CRect rect, int nMonthIndex)
 			if (nWeekNum == 54)
 			{
 				nWeekNum = 1;
+			}
+			else if (nWeekNum == 0)
+			{
+				nWeekNum = 53;
 			}
 
 			CString strNum;
@@ -824,7 +919,7 @@ void CBCGPCalendar::OnSelectionChanged ()
 	ASSERT_VALID (pOwner);
 
 	pOwner->SendMessage (BCGM_CALENDAR_ON_SELCHANGED,
-		0, (LPARAM) GetSafeHwnd ());
+		GetDlgCtrlID(), (LPARAM) GetSafeHwnd ());
 }
 
 void CBCGPCalendar::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR* lpncsp) 
@@ -956,7 +1051,7 @@ void CBCGPCalendar::RecalcLayout (BOOL bRedraw)
 	int i;
 
 	CClientDC dc (this);
-	CFont* pOldFont = dc.SelectObject (&globalData.fontRegular);
+	CFont* pOldFont = SelectFont(&dc);
 	ASSERT (pOldFont != NULL);
 
 	CRect rectClient;
@@ -964,22 +1059,23 @@ void CBCGPCalendar::RecalcLayout (BOOL bRedraw)
 
 	if (m_bTodayButton)
 	{
-		m_btnToday.SetFont (&globalData.fontRegular);
+		m_btnToday.SetFont(GetFont());
 
 		CString strToday;
 		m_btnToday.GetWindowText (strToday);
 
-		CSize sizeToday = dc.GetTextExtent (strToday) + CSize (10, 8);
+		CSize sizeToday = dc.GetTextExtent (strToday) + CSize (m_szCellPad.cx * 2, 8);
 		
 		int xToday = rectClient.CenterPoint ().x - sizeToday.cx / 2;
 		int yToday = rectClient.bottom - sizeToday.cy - 4;
 
-		m_btnToday.SetWindowPos (NULL, xToday, yToday, sizeToday.cx, sizeToday.cy,
+		m_btnToday.SetWindowPos (NULL, xToday, yToday - m_szCellPad.cy / 2, sizeToday.cx, sizeToday.cy,
 			SWP_NOZORDER | SWP_NOACTIVATE);
 
 		rectClient.bottom = yToday - 4;
 
-		m_btnToday.EnableWindow (IsWindowEnabled());
+		COleDateTime today = COleDateTime::GetCurrentTime();
+		m_btnToday.EnableWindow (IsWindowEnabled() && today >= m_MinDate && today <= m_MaxDate);
 	}
 	else
 	{
@@ -1005,12 +1101,50 @@ void CBCGPCalendar::RecalcLayout (BOOL bRedraw)
 
 	dc.SelectObject (&globalData.fontSmall);
 
+	//----------------
+	// Fill week days:
+	//----------------
+	{
+		COleDateTimeSpan day (1, 0, 0, 0);
+		CBCGPDefaultLocale dl(m_bDontChangeLocale);
+		
+		for (int iWeekDay = 0; iWeekDay < DAYS_IN_WEEK; iWeekDay ++)
+		{
+			COleDateTime dateTmp = COleDateTime::GetCurrentTime ();
+			int iDay = (iWeekDay + m_nFirstDayOfWeek) % DAYS_IN_WEEK;
+			
+			while (dateTmp.GetDayOfWeek () != iDay + 1)
+			{
+				dateTmp += day;
+			}
+			
+			CString strWeekDay = dateTmp.Format (_T ("%a"));
+			if (m_nMaxWeekDayCharacters < strWeekDay.GetLength())
+			{
+				strWeekDay = strWeekDay.Left(m_nMaxWeekDayCharacters);
+			}
+			
+			m_arWeekDays.SetAt (iWeekDay, strWeekDay);
+		}
+	}
+
 	CString strWeekNum = _T("99");
 	m_nDaysHorzMarginLeft = dc.GetTextExtent (strWeekNum).cx + iMaxDigitWidth;
 	
 	m_nDaysHorzMarginRight = (iMaxDigitWidth + 1) * 2;
 
-	m_sizeBox = CSize (iMaxDigitWidth * 2 + 5, iMaxDigitHeight + 2);
+	m_sizeBox = CSize (iMaxDigitWidth * 2 + m_szCellPad.cx, iMaxDigitHeight + m_szCellPad.cy);
+
+	if (m_nMaxWeekDayCharacters > 2 || m_bIsPopup)
+	{
+		const int nPadding = globalUtils.ScaleByDPI(8);
+
+		for (int iWeekDay = 0; iWeekDay < (int)m_arWeekDays.GetSize(); iWeekDay++)
+		{
+			CSize sizeWeekDay = dc.GetTextExtent(m_arWeekDays[iWeekDay]);
+			m_sizeBox.cx = max(m_sizeBox.cx, sizeWeekDay.cx + nPadding);
+		}
+	}
 
 	if (m_bSingleMonth)
 	{
@@ -1023,7 +1157,7 @@ void CBCGPCalendar::RecalcLayout (BOOL bRedraw)
 
 	m_sizeCalendar = CSize (
 		DAYS_IN_WEEK * m_sizeBox.cx + m_nDaysHorzMarginLeft + m_nDaysHorzMarginRight,
-		8 * m_sizeBox.cy + 5);
+		8 * m_sizeBox.cy + 3 * m_szCellPad.cy);
 
 	m_nCalendarsInRow = m_bSingleMonth ? 1 : max (1, rectClient.Width () / m_sizeCalendar.cx);
 
@@ -1034,42 +1168,7 @@ void CBCGPCalendar::RecalcLayout (BOOL bRedraw)
 
 	if (m_bTodayButton)
 	{
-		if (m_sizeCalendar.cy > rectClient.Height ())
-		{
-			m_btnToday.ShowWindow (SW_HIDE);
-			m_btnToday.EnableWindow (FALSE);
-		}
-		else
-		{
-			m_btnToday.ShowWindow (SW_SHOWNOACTIVATE);
-		}
-	}
-
-	//----------------
-	// Fill week days:
-	//----------------
-	{
-		COleDateTimeSpan day (1, 0, 0, 0);
-		CBCGPDefaultLocale dl(m_bDontChangeLocale);
-
-		for (int iWeekDay = 0; iWeekDay < DAYS_IN_WEEK; iWeekDay ++)
-		{
-			COleDateTime dateTmp = COleDateTime::GetCurrentTime ();
-			int iDay = (iWeekDay + m_nFirstDayOfWeek) % DAYS_IN_WEEK;
-
-			while (dateTmp.GetDayOfWeek () != iDay + 1)
-			{
-				dateTmp += day;
-			}
-
-			CString strWeekDay = dateTmp.Format (_T ("%a"));
-			if (!strWeekDay.IsEmpty ())
-			{
-				strWeekDay = strWeekDay.Left (1);
-			}
-
-			m_arWeekDays.SetAt (iWeekDay, strWeekDay);
-		}
+		m_btnToday.ShowWindow (SW_SHOWNOACTIVATE);
 	}
 
 	//--------------------------------
@@ -1078,12 +1177,12 @@ void CBCGPCalendar::RecalcLayout (BOOL bRedraw)
 	GetMonthRect (0, m_rectBtnPrev);
 
 	m_rectBtnPrev.right = m_rectBtnPrev.left + m_sizeBox.cx;
-	m_rectBtnPrev.bottom = m_rectBtnPrev.top + m_sizeBox.cy + 2;
+	m_rectBtnPrev.bottom = m_rectBtnPrev.top + m_sizeBox.cy + m_szCellPad.cy;
 
 	GetMonthRect (m_nCalendarsInRow - 1, m_rectBtnNext);
 
 	m_rectBtnNext.left = m_rectBtnNext.right - m_sizeBox.cx;
-	m_rectBtnNext.bottom = m_rectBtnNext.top + m_sizeBox.cy + 2;
+	m_rectBtnNext.bottom = m_rectBtnNext.top + m_sizeBox.cy + m_szCellPad.cy;
 
 	m_dateFirst = COleDateTime (m_nStartYear, m_nStartMonth, 1, 0, 0, 0);
 	
@@ -1196,15 +1295,38 @@ void CBCGPCalendar::RecalcLayout (BOOL bRedraw)
 	{
 		m_arStartWeekInMonth.SetSize (m_nMonths);
 		
+		COleDateTime jan1(GetMonthDate(0).GetYear(), 1, 1, 0, 0, 0);
+
+		const int nJan1DayOfWeek = jan1.GetDayOfWeek();
+		const int nDecemberDaysInFirstRow = (nJan1DayOfWeek - m_nFirstDayOfWeek + 6) % 7;
+
+		int nStartYearOffset = 0;
+		
+		switch (m_nFirstWeekOfYear)
+		{
+		case 0:
+		default:
+			// Use Jan 1
+			nStartYearOffset = 0;
+			break;
+			
+		case 1:
+			nStartYearOffset = (nDecemberDaysInFirstRow == 0) ? 0 : 1;
+			break;
+			
+		case 2:
+			nStartYearOffset = (nDecemberDaysInFirstRow < 4) ? 0 : 1;
+			break;
+		}
+
 		for (i = 0; i < m_nMonths; i++)
 		{
 			COleDateTime date = GetMonthDate (i);
-			COleDateTime jan1 (date.GetYear(), 1, 1, 0, 0, 0);
 
-			int nOffset1 = (jan1.GetDayOfWeek () + 6 - m_nFirstDayOfWeek) % 7 + 1;
+			int nOffset1 = (nJan1DayOfWeek + 6 - m_nFirstDayOfWeek) % 7 + 1;
 			int nOffset2 = (date.GetDayOfWeek () + 6 - m_nFirstDayOfWeek) % 7 + 1;
 
-			m_arStartWeekInMonth [i] = (date.GetDayOfYear () - (nOffset2 - nOffset1)) / 7 + 1;
+			m_arStartWeekInMonth [i] = (date.GetDayOfYear () - (nOffset2 - nOffset1)) / 7 + 1 - nStartYearOffset;
 		}
 	}
 	else
@@ -1605,10 +1727,9 @@ void CBCGPCalendar::OnLButtonUp(UINT nFlags, CPoint point)
 	}
 #endif
 	
-	if (m_pParentBtn != NULL && dateClicked != COleDateTime ())
+	if (dateClicked != COleDateTime ())
 	{
-		ASSERT_VALID (m_pParentBtn);
-		m_pParentBtn->ClosePopupCalendar (dateClicked);
+		NotifyCloseCalendar(dateClicked);
 	}
 }
 
@@ -1767,11 +1888,7 @@ void CBCGPCalendar::OnKillFocus(CWnd* pNewWnd)
 		return;
 	}
 	
-	if (m_pParentBtn != NULL)
-	{
-		ASSERT_VALID (m_pParentBtn);
-		m_pParentBtn->ClosePopupCalendar ();
-	}
+	NotifyCloseCalendar();
 }
 
 COleDateTime CBCGPCalendar::HitTest (CPoint point)
@@ -1861,7 +1978,13 @@ COleDateTime CBCGPCalendar::HitTest (CPoint point, int& nDir, LPRECT lpRect)
 				*lpRect = rectDay;
 			}
 
-			return COleDateTime (nYear, nMonth, nDay, 0, 0, 0);
+			COleDateTime dateHit(nYear, nMonth, nDay, 0, 0, 0);
+			if (dateHit < m_MinDate || dateHit > m_MaxDate)
+			{
+				return COleDateTime();
+			}
+
+			return dateHit;
 		}		
 	}
 
@@ -1880,7 +2003,7 @@ COleDateTime CBCGPCalendar::HitTestWeekNum (CPoint point, BOOL bStart)
 			continue;
 		}
 
-		rect.top += m_sizeBox.cy * 2 + 4;
+		rect.top += m_sizeBox.cy * 2 + m_szCellPad.cy * 2;
 		rect.bottom = rect.top + m_sizeBox.cy;
 
 		if (bStart)
@@ -1935,9 +2058,9 @@ int CBCGPCalendar::HitTestMonthName (CPoint point, CRect& rectMonthName)
 		}
 
 		CRect rectCaption = rect;
-		rectCaption.bottom = rectCaption.top + m_sizeBox.cy + 2;
+		rectCaption.bottom = rectCaption.top + m_sizeBox.cy + m_szCellPad.cy;
 
-		rectCaption.DeflateRect (m_sizeBox.cx + 2, 0);
+		rectCaption.DeflateRect (m_sizeBox.cx + m_szCellPad.cy, 0);
 		
 		if (rectCaption.PtInRect (point))
 		{
@@ -1953,7 +2076,7 @@ int CBCGPCalendar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
 	if (CWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
-	
+
 	CString strToday = _T("Today");
 
 	{
@@ -1966,6 +2089,11 @@ int CBCGPCalendar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	m_btnToday.m_bVisualManagerStyle = TRUE;
 
+	if (m_pParentBtn->GetSafeHwnd() != NULL)
+	{
+		SetFont(m_pParentBtn->GetFont());
+	}
+	
 	if (GetStyle () & WS_POPUP)
 	{
 		if (m_sizeCalendar == CSize (0, 0))
@@ -2049,6 +2177,11 @@ void CBCGPCalendar::OnDestroy()
 		m_hWndMonthPicker = NULL;
 	}
 
+	if (m_fontBold.GetSafeHandle() != NULL)
+	{
+		m_fontBold.DeleteObject();
+	}
+
 	CWnd::OnDestroy();
 }
 
@@ -2098,11 +2231,7 @@ void CBCGPCalendar::OnToday()
 		RecalcLayout ();
 	}
 
-	if (m_pParentBtn != NULL)
-	{
-		ASSERT_VALID (m_pParentBtn);
-		m_pParentBtn->ClosePopupCalendar (COleDateTime::GetCurrentTime ());
-	}
+	NotifyCloseCalendar(COleDateTime::GetCurrentTime());
 }
 
 void CBCGPCalendar::MarkDates (const CArray<DATE, DATE&>& arDates, BOOL bRedraw/* = TRUE*/)
@@ -2132,10 +2261,9 @@ BOOL CBCGPCalendar::PreTranslateMessage(MSG* pMsg)
     {
     case WM_KEYDOWN:
 		{
-			if (pMsg->wParam == VK_ESCAPE && m_pParentBtn != NULL)
+			if (pMsg->wParam == VK_ESCAPE)
 			{
-				ASSERT_VALID (m_pParentBtn);
-				m_pParentBtn->ClosePopupCalendar ();
+				NotifyCloseCalendar();
 				return TRUE;
 			}
 
@@ -2357,7 +2485,8 @@ void CBCGPCalendar::SetSelectedDates (const CList<DATE, DATE&>& lstDates,
 
 	for (pos = lstDates.GetHeadPosition (); pos != NULL;)
 	{
-		COleDateTime date = lstDates.GetNext (pos);
+		COleDateTime dateIn = lstDates.GetNext (pos);
+		COleDateTime date = COleDateTime(dateIn.GetYear(), dateIn.GetMonth(), dateIn.GetDay(), 0, 0, 0);
 
 		if (bIsFirst)
 		{
@@ -2468,11 +2597,39 @@ void CBCGPCalendar::EnableMutipleSelection (BOOL bEnable, int nMaxSelDays, BOOL 
 	}
 }
 
-void CBCGPCalendar::SetFirstDayOfWeek (int nDay)
+void CBCGPCalendar::SetFirstDayOfWeek(int nDay)
 {
-	ASSERT (nDay >= 0 && nDay < 7);
+	ASSERT (nDay < 7);
+
+	if (nDay < 0)
+	{
+		TCHAR szLocaleData[2];
+		GetLocaleInfo (LOCALE_USER_DEFAULT, LOCALE_IFIRSTDAYOFWEEK, szLocaleData, 2);
+
+		nDay = szLocaleData[0] - _T('0') + 1;
+		if (nDay == 7)
+		{
+			nDay = 0;
+		}
+	}
 
 	m_nFirstDayOfWeek = nDay;
+	RecalcLayout ();
+}
+
+void CBCGPCalendar::SetFirstWeekOfYear(int nVal)
+{
+	ASSERT(nVal <= 2);
+
+	if (nVal < 0)
+	{
+		TCHAR szLocaleData[2];
+		GetLocaleInfo (LOCALE_USER_DEFAULT, LOCALE_IFIRSTWEEKOFYEAR, szLocaleData, 2);
+		
+		nVal = szLocaleData[0] - _T('0');
+	}
+
+	m_nFirstWeekOfYear = nVal;
 	RecalcLayout ();
 }
 
@@ -2668,7 +2825,7 @@ void CBCGPCalendar::SetMinDate(const COleDateTime& dateMin)
 	}
 	else
 	{
-		m_MinDate = dateMin;
+		m_MinDate = COleDateTime(dateMin.GetYear(), dateMin.GetMonth(), dateMin.GetDay(), 0, 0, 0);
 
 		if (m_dateFirst < m_MinDate)
 		{
@@ -2697,7 +2854,7 @@ void CBCGPCalendar::SetMaxDate(const COleDateTime& dateMax)
 	}
 	else
 	{
-		m_MaxDate = dateMax;
+		m_MaxDate = COleDateTime(dateMax.GetYear(), dateMax.GetMonth(), dateMax.GetDay(), 23, 59, 59);
 
 		if (m_MaxDate.GetHour () == 0 && m_MaxDate.GetMinute () == 0)
 		{
@@ -3094,7 +3251,7 @@ void CBCGPCalendarBar::OnSelectionChanged ()
 		ASSERT_VALID (pOwner);
 
 		pOwner->SendMessage (BCGM_CALENDAR_ON_SELCHANGED,
-			0, (LPARAM) GetSafeHwnd ());
+			GetDlgCtrlID(), (LPARAM) GetSafeHwnd ());
 	}
 }
 //********************************************************************************
@@ -3206,12 +3363,7 @@ END_MESSAGE_MAP()
 
 BOOL CBCGPMonthPickerWnd::Create(CPoint ptCenter) 
 {
-	static CString strClassName;
-
-	if (strClassName.IsEmpty ())
-	{
-		strClassName = AfxRegisterWndClass (0, AfxGetApp()->LoadStandardCursor(IDC_ARROW));
-	}
+	CString strClassName = AfxRegisterWndClass (0, AfxGetApp()->LoadStandardCursor(IDC_ARROW));
 
 	return CMiniFrameWnd::CreateEx (WS_EX_PALETTEWINDOW,
 							strClassName, _T (""),
@@ -3236,7 +3388,7 @@ int CBCGPMonthPickerWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	COleDateTime day = COleDateTime::GetCurrentTime();
 
 	CClientDC dc (this);
-	CFont* pOldFont = dc.SelectObject (&globalData.fontRegular);
+	CFont* pOldFont = dc.SelectObject(m_pCalendarWnd->GetFont());
 
 	{
 		CBCGPDefaultLocale dl(m_pCalendarWnd->m_bDontChangeLocale);
@@ -3286,7 +3438,7 @@ void CBCGPMonthPickerWnd::OnPaint()
 	CBCGPMemDC memDC (dc, this);
 	CDC* pDC = &memDC.GetDC ();
 
-	CFont* pOldFont = pDC->SelectObject (&globalData.fontRegular);
+	CFont* pOldFont = pDC->SelectObject (m_pCalendarWnd->GetFont());
 	pDC->SetBkMode (TRANSPARENT);
 
 	CRect rectClient;

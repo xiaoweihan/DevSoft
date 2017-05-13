@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -55,7 +55,7 @@ protected:
 	UINT							m_uiStandardBtns;
 	BOOL							m_bNewItem;
 	CFont							m_font;
-	BOOL							m_bIsActualDelete;	// Indicated that Items is really deletd, not moved
+	BOOL							m_bIsActualDelete;	// Indicated that Items is really deleted, not moved
 	BOOL							m_bBrowseButton;
 	BOOL							m_bGrayDisabledButtons;
 	CString							m_strCaption;
@@ -125,19 +125,41 @@ public:
 	virtual void OnClickButton (int iButton);
 	virtual void OnKey (WORD wKey, BYTE fFlags);
 	virtual void OnEndEditLabel (LPCTSTR lpszLabel);
-	virtual int OnGetImage (LV_ITEM* /*pItem*/)
+
+	virtual int OnGetImage (LV_ITEM* pItem)
 	{
+		UNREFERENCED_PARAMETER(pItem);
 		return -1;
 	}
 	
 	virtual void OnSelectionChanged () {}
 
 	// "Standard" action overrides
-	virtual BOOL OnBeforeRemoveItem (int /*iItem*/)	{	return TRUE;	}
-	virtual void OnAfterAddItem (int /*iItem*/) {}
-	virtual void OnAfterRenameItem (int /*iItem*/) {}
-	virtual void OnAfterMoveItemUp (int /*iItem*/) {}
-	virtual void OnAfterMoveItemDown (int /*iItem*/) {}
+	virtual BOOL OnBeforeRemoveItem (int iItem)	
+	{	
+		UNREFERENCED_PARAMETER(iItem);
+		return TRUE;	
+	}
+
+	virtual void OnAfterAddItem (int iItem) 
+	{
+		UNREFERENCED_PARAMETER(iItem);
+	}
+
+	virtual void OnAfterRenameItem (int iItem) 
+	{
+		UNREFERENCED_PARAMETER(iItem);
+	}
+
+	virtual void OnAfterMoveItemUp (int iItem) 
+	{
+		UNREFERENCED_PARAMETER(iItem);
+	}
+
+	virtual void OnAfterMoveItemDown (int iItem) 
+	{
+		UNREFERENCED_PARAMETER(iItem);
+	}
 
 	virtual void OnBrowse () {}
 
@@ -175,6 +197,7 @@ protected:
 	afx_msg LRESULT OnSetText(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnBCGSetControlVMMode (WPARAM, LPARAM);
 	afx_msg LRESULT OnPrintClient(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnChangeVisualManager(WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 
 	virtual void DoPaint(CDC* pDC);

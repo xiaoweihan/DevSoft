@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -87,6 +87,7 @@ CBCGPStatusBar::CBCGPStatusBar()
 
 	m_bPaneDoubleClick = FALSE;
 	m_bDrawExtendedArea = FALSE;
+	m_bTemporaryHidden = FALSE;
 
 	m_rectSizeBox.SetRectEmpty ();
 }
@@ -202,7 +203,7 @@ BOOL CBCGPStatusBar::SetIndicators(const UINT* lpIDArray, int nIDCount)
 		VERIFY(SetPaneText(i, NULL, FALSE));    // no update
 		 //free Imagelist if any exist
 		SetPaneIcon(i, NULL, FALSE);
-
+		SetTipText(i, NULL);
 	}
 
 
@@ -563,19 +564,12 @@ void CBCGPStatusBar::SetPaneIcon (int nIndex, HICON hIcon, BOOL bUpdate, BOOL bA
 		return;
 	}
 
-	ICONINFO iconInfo;
-	::GetIconInfo (hIcon, &iconInfo);
-
-	BITMAP bitmap;
-	::GetObject (iconInfo.hbmColor, sizeof (BITMAP), &bitmap);
-
-	::DeleteObject (iconInfo.hbmColor);
-	::DeleteObject (iconInfo.hbmMask);
+	CSize sizeIcon = globalUtils.GetIconSize(hIcon);
 
 	if (pSBP->hImage == NULL)
 	{
-		pSBP->cxIcon = bitmap.bmWidth;
-		pSBP->cyIcon = bitmap.bmHeight;
+		pSBP->cxIcon = sizeIcon.cx;
+		pSBP->cyIcon = sizeIcon.cy;
 
 		DWORD dwFlags = ILC_MASK | ILC_COLORDDB;
 		if (bAlphaBlend)
@@ -590,8 +584,8 @@ void CBCGPStatusBar::SetPaneIcon (int nIndex, HICON hIcon, BOOL bUpdate, BOOL bA
 	}
 	else
 	{
-		ASSERT (pSBP->cxIcon == bitmap.bmWidth);
-		ASSERT (pSBP->cyIcon == bitmap.bmHeight);
+		ASSERT (pSBP->cxIcon == sizeIcon.cx);
+		ASSERT (pSBP->cyIcon == sizeIcon.cy);
 
 		::ImageList_ReplaceIcon (pSBP->hImage, 0, hIcon);
 	}
@@ -1369,6 +1363,8 @@ void CBCGPStatusBar::RecalcLayout ()
 	{
 		ASSERT(pSBP->cxText >= 0);
 		ASSERT(pSBP->cxIcon >= 0);
+		
+		CRect rectOld = pSBP->rect;
 
 		if (rect.left >= xMax)
 		{
@@ -1394,6 +1390,11 @@ void CBCGPStatusBar::RecalcLayout ()
 			pSBP->rect = rect;
 
 			rect.left = rect.right + m_cxDefaultGap;
+		}
+
+		if (rectOld != pSBP->rect)
+		{
+			OnPaneSizePosChanged(i, rectOld);
 		}
 	}
 
@@ -1644,8 +1645,219 @@ void CBCGPStatusBar::OnShowWindow(BOOL bShow, UINT nStatus)
 {
 	CBCGPControlBar::OnShowWindow(bShow, nStatus);
 	
-	if (CBCGPVisualManager::GetInstance ()->IsStatusBarCoversFrame() && GetParentFrame () != NULL)
+	if (!m_bTemporaryHidden && CBCGPVisualManager::GetInstance ()->IsStatusBarCoversFrame() && GetParentFrame () != NULL)
 	{
 		GetParentFrame ()->PostMessage (BCGM_CHANGEVISUALMANAGER);
 	}
+}
+//****************************************************************************
+HRESULT CBCGPStatusBar::get_accChildCount(long *pcountChildren)
+{
+	if (!pcountChildren)
+	{
+		return E_INVALIDARG;
+	}
+
+	*pcountChildren = GetCount ();
+	return S_OK;
+}
+//****************************************************************************
+HRESULT  CBCGPStatusBar::get_accChild(VARIANT /*varChild*/, IDispatch **ppdispChild)
+{
+	if (ppdispChild == NULL)
+	{
+		return E_INVALIDARG;
+	}
+
+	return S_FALSE;
+}
+//****************************************************************************
+HRESULT CBCGPStatusBar::get_accName(VARIANT varChild, BSTR *pszName)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		CString strText;
+		GetWindowText(strText);
+
+		if (strText.GetLength() == 0)
+		{
+			*pszName  = SysAllocString(L"StatusBar");
+			return S_OK;
+		}
+
+		*pszName = strText.AllocSysString();
+		return S_OK;
+	}
+
+	if (varChild.lVal > 0 && varChild.lVal != CHILDID_SELF && varChild.lVal <= GetCount ())
+	{
+		int nIndex = varChild.lVal - 1;
+
+		CBCGStatusBarPaneInfo* pPane = _GetPanePtr(nIndex);
+
+		if (pPane != NULL)
+		{
+			OnSetAccData(varChild.lVal);
+			CString strName = GetPaneText(nIndex);
+			*pszName = strName.AllocSysString();
+
+			return S_OK;
+		}
+	}
+
+	return S_FALSE;
+}
+//****************************************************************************
+HRESULT CBCGPStatusBar::get_accValue(VARIANT /*varChild*/, BSTR* /*pszValue*/)
+{
+	return S_FALSE;
+}
+//****************************************************************************
+HRESULT CBCGPStatusBar::get_accDescription(VARIANT varChild, BSTR *pszDescription)
+{
+	if (((varChild.vt != VT_I4) && (varChild.lVal != CHILDID_SELF)) || (NULL == pszDescription))
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		*pszDescription = SysAllocString(L"StatusBar");
+		return S_OK;
+	}
+
+	if (varChild.lVal != CHILDID_SELF && varChild.lVal <= GetCount ())
+	{
+		int nIndex = varChild.lVal - 1;
+
+		CBCGStatusBarPaneInfo* pPane = _GetPanePtr(nIndex);
+
+		if (pPane != NULL)
+		{
+			OnSetAccData(varChild.lVal);
+			CString strDescription = GetTipText(nIndex);
+			*pszDescription = strDescription.AllocSysString();
+
+			return S_OK;
+		}
+	}
+	return S_FALSE;
+}
+//***************************************************************************
+HRESULT CBCGPStatusBar::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	if (!pvarRole || ((varChild.vt != VT_I4) && (varChild.lVal != CHILDID_SELF)))
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		pvarRole->vt = VT_I4;
+		pvarRole->lVal = ROLE_SYSTEM_STATUSBAR;
+		return S_OK;
+	}
+
+	OnSetAccData(varChild.lVal);
+	pvarRole->vt = VT_I4;
+	pvarRole->lVal = ROLE_SYSTEM_STATICTEXT;
+
+	return S_OK;
+}
+//****************************************************************************
+HRESULT CBCGPStatusBar::get_accState(VARIANT varChild, VARIANT *pvarState)
+{
+	if (varChild.vt == VT_I4)
+	{
+		pvarState->vt = VT_I4;
+		pvarState->lVal = STATE_SYSTEM_NORMAL;
+		return S_OK;
+	}
+
+	return S_FALSE;
+}
+//****************************************************************************
+HRESULT CBCGPStatusBar::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild)
+{
+	HRESULT hr = S_FALSE;
+
+	if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight)
+	{
+		return E_INVALIDARG;
+	}
+
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		CRect rc;
+		GetWindowRect(rc);
+
+		*pxLeft = rc.left;
+		*pyTop = rc.top;
+		*pcxWidth = rc.Width();
+		*pcyHeight = rc.Height();
+
+		hr = S_OK;
+	}
+	else
+	{
+		int nIndex = varChild.lVal - 1;
+
+		CBCGStatusBarPaneInfo* pPane = _GetPanePtr(nIndex);
+
+		if (pPane != NULL)
+		{
+			CRect rcPane = pPane->rect;
+			ClientToScreen(&rcPane);
+
+			*pxLeft = rcPane.left;
+			*pyTop = rcPane.top;
+			*pcxWidth = rcPane.Width();
+			*pcyHeight = rcPane.Height();
+
+			hr = S_OK;
+		}
+	}
+
+	return hr;
+}
+//****************************************************************************
+HRESULT CBCGPStatusBar::accHitTest(long  xLeft, long yTop, VARIANT *pvarChild)
+{
+	if (!pvarChild)
+	{
+		return E_INVALIDARG;
+	}
+
+	CPoint pt(xLeft, yTop);
+	ScreenToClient(&pt);
+
+	CBCGStatusBarPaneInfo* pPane = HitTest(pt);
+
+	if (pPane != NULL)
+	{
+		int nIndex = -1;
+		for (int i = 0; i < GetCount(); i++)
+		{
+			CBCGStatusBarPaneInfo* pNextPane = _GetPanePtr(i);
+
+			if (pPane == pNextPane)
+			{
+				nIndex = i;
+				break;
+			}
+		}
+
+		if (nIndex >= 0)
+		{
+			pvarChild->vt = VT_I4;
+			pvarChild->lVal = nIndex + 1;
+			return S_OK;
+		}
+		return S_FALSE;
+	}
+	pvarChild->vt = VT_I4;
+	pvarChild->lVal = CHILDID_SELF;
+	
+
+	return S_OK;
 }

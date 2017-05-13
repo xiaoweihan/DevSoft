@@ -1,7 +1,7 @@
 // ColorPopup.cpp : implementation file
 //
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -14,6 +14,7 @@
 #include "BCGPColorMenuButton.h"
 #include "BCGPColorButton.h"
 #include "BCGPPropList.h"
+#include "BCGPGridCtrl.h"
 #include "BCGPControlBar.h"
 #include "ColorPopup.h"
 
@@ -45,15 +46,23 @@ int CColorPopup::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
 	if (CBCGPToolBar::IsCustomizeMode () && !m_bEnabledInCustomizeMode)
 	{
-		// Don't show color popup in cistomization mode
+		// Don't show color popup in customization mode
 		return -1;
 	}
 
 	if (CMiniFrameWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
 	
+	CWnd* pWndParent = GetParent ();
+	ASSERT_VALID (pWndParent);
+
 	DWORD toolbarStyle = dwDefaultToolbarStyle;
-	if (GetAnimationType () != NO_ANIMATION && !CBCGPToolBar::IsCustomizeMode ())
+
+	if (pWndParent->GetSafeHwnd() != NULL && (pWndParent->GetExStyle() & WS_EX_LAYOUTRTL))
+	{
+		ModifyStyleEx(0, WS_EX_LAYOUTRTL);
+	}
+	else if (GetAnimationType () != NO_ANIMATION && !CBCGPToolBar::IsCustomizeMode ())
 	{
 		toolbarStyle &= ~WS_VISIBLE;
 	}
@@ -63,9 +72,6 @@ int CColorPopup::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		TRACE(_T ("Can't create popup menu bar\n"));
 		return -1;
 	}
-
-	CWnd* pWndParent = GetParent ();
-	ASSERT_VALID (pWndParent);
 
 	m_wndColorBar.SetOwner (pWndParent);
 	m_wndColorBar.SetBarStyle(m_wndColorBar.GetBarStyle() | CBRS_TOOLTIPS);
@@ -127,6 +133,18 @@ CWnd* CColorPopup::GetParentArea (CRect& rectParentBtn)
 		{
 			rectParentBtn = pSelProp->GetRect();
 			return m_wndColorBar.m_pWndPropList;
+		}
+	}
+#endif
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+	if (m_wndColorBar.m_pWndGrid->GetSafeHwnd() != NULL)
+	{
+		CBCGPGridItem* pSelItem = m_wndColorBar.m_pWndGrid->GetCurSelItem();
+		if (pSelItem != NULL)
+		{
+			rectParentBtn = pSelItem->GetRect();
+			return m_wndColorBar.m_pWndGrid;
 		}
 	}
 #endif

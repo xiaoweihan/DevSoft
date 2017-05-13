@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -38,7 +38,9 @@
 #include "BCGSuiteVer.h"
 #endif
 
+#include "BCGPDrawManager.h"
 #include "BCGPDialog.h"
+#include "BCGPPropertySheet.h"
 #include "BCGPCalendarBar.h"
 #include "BCGPImageProcessing.h"
 #include "BCGPLocalResource.h"
@@ -62,6 +64,13 @@ static char THIS_FILE[]=__FILE__;
 
 CBCGPGlobalUtils globalUtils;
 
+#ifdef BCGP_PLATFORM_TOOLSET_DEF
+	#define BCGP_PLATFORM_TOOLSET_TEMP(x) (#x)
+	#define BCGP_PLATFORM_TOOLSET BCGP_PLATFORM_TOOLSET_TEMP(BCGP_PLATFORM_TOOLSET_DEF)
+#endif
+
+static BOOL s_bIsXPPlatformToolset = TRUE;
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -72,6 +81,14 @@ CBCGPGlobalUtils::CBCGPGlobalUtils()
 	m_bIsDragging = FALSE;
 	m_bUseMiniFrameParent = FALSE;
 	m_bIsAdjustLayout = FALSE;
+
+#if defined(BCGP_PLATFORM_TOOLSET)
+	#if (BCGP_PLATFORM_TOOLSET_VERSION > 90)
+		s_bIsXPPlatformToolset = strcmp(BCGP_PLATFORM_TOOLSET, "v110_xp") == 0 ||
+								strcmp(BCGP_PLATFORM_TOOLSET, "v120_xp") == 0 ||
+								strcmp(BCGP_PLATFORM_TOOLSET, "v140_xp") == 0;
+	#endif
+#endif
 }
 
 CBCGPGlobalUtils::~CBCGPGlobalUtils()
@@ -993,7 +1010,7 @@ HICON CBCGPGlobalUtils::GetWndIcon (CWnd* pWnd, BOOL* bDestroyIcon, BOOL bNoDefa
 		if (hIcon != NULL)
 		{
 			CImageList il;
-			il.Create (16, 16, ILC_COLOR32 | ILC_MASK, 0, 1);
+			il.Create (::GetSystemMetrics(SM_CXSMICON), ::GetSystemMetrics(SM_CYSMICON), ILC_COLOR32 | ILC_MASK, 0, 1);
 			il.Add (hIcon);
 
 			if (il.GetImageCount () == 1)
@@ -1054,6 +1071,27 @@ HICON CBCGPGlobalUtils::GrayIcon(HICON hIcon)
 	return images.ExtractIcon(0);
 
 #endif
+}
+
+CSize CBCGPGlobalUtils::GetIconSize(HICON hIcon)
+{
+	if (hIcon == NULL)
+	{
+		return CSize(0, 0);
+	}
+
+	ICONINFO info;
+	memset(&info, 0, sizeof (ICONINFO));
+
+	::GetIconInfo(hIcon, &info);
+	
+	BITMAP bmp;
+	::GetObject(info.hbmColor, sizeof(BITMAP), (LPVOID)&bmp);
+	
+	::DeleteObject(info.hbmColor);
+	::DeleteObject(info.hbmMask);
+
+	return CSize(bmp.bmWidth, bmp.bmHeight);
 }
 
 void CBCGPGlobalUtils::EnableWindowShadow(CWnd* pWnd, BOOL bEnable)
@@ -1158,7 +1196,23 @@ CSize CBCGPGlobalUtils::GetSystemBorders(CWnd *pWnd)
 
 	if (::IsWindow(pWnd->GetSafeHwnd()))
 	{
-		size = GetSystemBorders(pWnd->GetStyle());
+		DWORD dwStyle = pWnd->GetStyle();
+
+		if (pWnd->IsKindOf(RUNTIME_CLASS(CBCGPDialog)))
+		{
+			dwStyle |= ((CBCGPDialog*)pWnd)->m_Impl.m_bHasCaption ? WS_CAPTION : 0;
+		}
+		else if (pWnd->IsKindOf(RUNTIME_CLASS(CBCGPPropertySheet)))
+		{
+			dwStyle |= ((CBCGPPropertySheet*)pWnd)->m_Impl.m_bHasCaption ? WS_CAPTION : 0;
+		}
+#ifndef _BCGSUITE_
+		else if (pWnd->IsKindOf(RUNTIME_CLASS(CBCGPMDIChildWnd)))
+		{
+			dwStyle &= ~WS_CHILD;
+		}
+#endif
+		size = GetSystemBorders(dwStyle);
 	}
 
 	return size;
@@ -1172,7 +1226,7 @@ CSize CBCGPGlobalUtils::GetSystemBorders(DWORD dwStyle)
 
 	if ((dwStyle & WS_THICKFRAME) == WS_THICKFRAME)
 	{
-		if ((dwStyle & (WS_CHILD | WS_MINIMIZE)) != (WS_CHILD | WS_MINIMIZE))
+		if ((dwStyle & WS_CHILD) == 0 && (dwStyle & WS_MINIMIZE) == 0)
 		{
 			size.cx = ::GetSystemMetrics(SM_CXSIZEFRAME);
 			size.cy = ::GetSystemMetrics(SM_CYSIZEFRAME);
@@ -1183,7 +1237,7 @@ CSize CBCGPGlobalUtils::GetSystemBorders(DWORD dwStyle)
 				size.cy -= ::GetSystemMetrics(SM_CYBORDER);
 			}
 
-			if (size.cx != 0 && size.cy != 0)
+			if (size.cx != 0 && size.cy != 0 && (dwStyle & WS_MINIMIZE) == 0)
 			{
 				size.cx += ::GetSystemMetrics(SM_CXPADDEDBORDER);
 				size.cy += ::GetSystemMetrics(SM_CXPADDEDBORDER);
@@ -1199,6 +1253,12 @@ CSize CBCGPGlobalUtils::GetSystemBorders(DWORD dwStyle)
 	{
 		size.cx = ::GetSystemMetrics(SM_CXFIXEDFRAME);
 		size.cy = ::GetSystemMetrics(SM_CYFIXEDFRAME);
+
+		if (bCaption && !IsXPPlatformToolset() && (dwStyle & WS_MINIMIZE) == 0)
+		{
+			size.cx += ::GetSystemMetrics(SM_CXPADDEDBORDER) + ::GetSystemMetrics(SM_CXBORDER);
+			size.cy += ::GetSystemMetrics(SM_CXPADDEDBORDER) + ::GetSystemMetrics(SM_CYBORDER);
+		}
 	}
 
 	return size;
@@ -1335,6 +1395,230 @@ BOOL CBCGPGlobalUtils::ProcessMouseWheel(WPARAM wParam, LPARAM lParam)
 	return TRUE;
 }
 
+static int inline _ScaleByDPI(int val)
+{
+	return (int)(.5 + globalData.GetRibbonImageScale() * val);
+}
+
+double CBCGPGlobalUtils::ScaleByDPI(double val)
+{
+	return globalData.GetRibbonImageScale() == 1.0 ? val : (globalData.GetRibbonImageScale() * val);
+}
+
+float CBCGPGlobalUtils::ScaleByDPI(float val)
+{
+	return globalData.GetRibbonImageScale() == 1.0 ? val : (float)(globalData.GetRibbonImageScale() * val);
+}
+
+int CBCGPGlobalUtils::ScaleByDPI(int val)
+{
+	return globalData.GetRibbonImageScale() == 1.0 ? val : _ScaleByDPI(val);
+}
+
+CSize CBCGPGlobalUtils::ScaleByDPI(CSize size)
+{
+	if (globalData.GetRibbonImageScale() != 1.0)
+	{
+		size.cx = _ScaleByDPI(size.cx);
+		size.cy = _ScaleByDPI(size.cy);
+	}
+	
+	return size;
+}
+
+CRect CBCGPGlobalUtils::ScaleByDPI(CRect rect)
+{
+	if (globalData.GetRibbonImageScale() != 1.0)
+	{
+		rect.left = _ScaleByDPI(rect.left);
+		rect.right = _ScaleByDPI(rect.right);
+		rect.top = _ScaleByDPI(rect.top);
+		rect.bottom = _ScaleByDPI(rect.bottom);
+	}
+	
+	return rect;
+}
+
+CSize CBCGPGlobalUtils::ScaleByDPI(CBCGPToolBarImages& images)
+{
+#if (!defined _BCGSUITE_) || (_MSC_VER >= 1600)
+	if (globalData.GetRibbonImageScale() != 1.0 && !images.IsScaled())
+	{
+		images.SmoothResize(globalData.GetRibbonImageScale());
+	}
+#endif
+
+	return images.GetImageSize();
+}
+
+HICON CBCGPGlobalUtils::ScaleByDPI(HICON hIcon, BOOL bDestroySourceIcon, BOOL bAlphaBlend)
+{
+#if (!defined _BCGSUITE_) || (_MSC_VER >= 1600)
+	if (globalData.GetRibbonImageScale() != 1.0 && hIcon != NULL)
+	{
+		CBCGPToolBarImages images;
+		images.SetImageSize(GetIconSize(hIcon));
+		images.AddIcon(hIcon, bAlphaBlend);
+
+		if (bDestroySourceIcon)
+		{
+			::DestroyIcon(hIcon);
+		}
+		
+		ScaleByDPI(images);
+		
+		hIcon = images.ExtractIcon(0);
+	}
+#else
+	UNREFERENCED_PARAMETER(bDestroySourceIcon);
+	UNREFERENCED_PARAMETER(bAlphaBlend);
+#endif
+	return hIcon;
+}
+
+#ifndef _BCGSUITE_
+
+#ifndef WM_GETTITLEBARINFOEX
+#define WM_GETTITLEBARINFOEX            0x033F
+#endif
+
+#ifndef CCHILDREN_TITLEBAR
+#define CCHILDREN_TITLEBAR              5
+
+typedef struct tagTITLEBARINFOEX
+{
+    DWORD cbSize;
+    RECT rcTitleBar;
+    DWORD rgstate[CCHILDREN_TITLEBAR + 1];
+    RECT rgrect[CCHILDREN_TITLEBAR + 1];
+} TITLEBARINFOEX, *PTITLEBARINFOEX, *LPTITLEBARINFOEX;
+
+#endif
+
+CSize CBCGPGlobalUtils::GetCaptionButtonSize(CWnd* pWnd, int nButton)
+{
+	NONCLIENTMETRICS ncm;
+	globalData.GetNonClientMetrics(ncm);
+
+	CSize sizeButton(ncm.iCaptionWidth, ncm.iCaptionHeight);
+	
+	if (globalData.bIsWindowsVista && pWnd->GetSafeHwnd() != NULL)
+	{
+		TITLEBARINFOEX info;
+		memset(&info, 0, sizeof(info));
+		info.cbSize = sizeof(info);
+		
+		pWnd->SendMessage(WM_GETTITLEBARINFOEX, 0, (LPARAM)&info);
+
+		int nIndex = 5;
+
+		switch (nButton)
+		{
+		case SC_CLOSE:
+			nIndex = 5;
+			break;
+
+		case SC_MINIMIZE:
+			nIndex = 2;
+			break;
+			
+		case SC_MAXIMIZE:
+			nIndex = 3;
+			break;
+		}		
+			
+		CRect rectButton = info.rgrect[nIndex];
+		
+		if (!rectButton.IsRectEmpty())
+		{
+			sizeButton = rectButton.Size();
+		}
+	}
+
+	return sizeButton;
+}
+
+#endif
+
+BOOL CBCGPGlobalUtils::IsXPPlatformToolset()
+{
+    return s_bIsXPPlatformToolset;
+}
+//***********************************************************************************
+BOOL CBCGPGlobalUtils::CreateScreenshot(CBitmap& bmpScreenshot, CWnd* pWnd)
+{
+	if (bmpScreenshot.GetSafeHandle() != NULL)
+	{
+		bmpScreenshot.DeleteObject();
+	}
+
+	if (pWnd == NULL)
+	{
+		pWnd = AfxGetMainWnd();
+	}
+
+	if (pWnd->GetSafeHwnd() == NULL)
+	{
+		return FALSE;
+	}
+	
+	CRect rectWnd;
+	pWnd->GetWindowRect(rectWnd);
+	rectWnd.OffsetRect(-rectWnd.left, -rectWnd.top);
+
+	BOOL bRes = FALSE;
+	
+	CDC dc;
+	if (dc.CreateCompatibleDC(NULL))
+	{
+		LPBYTE pBitsWnd = NULL;
+		HBITMAP hBitmap = CBCGPDrawManager::CreateBitmap_32 (rectWnd.Size(), (void**)&pBitsWnd);
+
+		if (hBitmap != NULL)
+		{
+			HBITMAP hBitmapOld = (HBITMAP)dc.SelectObject(hBitmap);
+			if (hBitmapOld != NULL)
+			{
+				dc.FillRect(rectWnd, &globalData.brWindow);
+				pWnd->SendMessage(WM_PRINT, (WPARAM)dc.GetSafeHdc(), (LPARAM)(PRF_CLIENT | PRF_CHILDREN | PRF_NONCLIENT | PRF_ERASEBKGND));
+	
+				for (int i = 0; i < rectWnd.Width() * rectWnd.Height(); i++)
+				{
+					pBitsWnd[3] = 255;
+					pBitsWnd += 4;
+				}
+	
+				dc.SelectObject (hBitmapOld);
+
+				bRes = TRUE;
+			}
+	
+			bmpScreenshot.Attach(hBitmap);
+		}
+	}
+
+	return bRes;
+}
+//***********************************************************************************
+void CBCGPGlobalUtils::NotifyReleaseCapture(CWnd* pWnd)
+{
+	ASSERT_VALID(pWnd);
+
+	CWnd* pWndParent = pWnd->GetParent();
+
+	if (pWndParent->GetSafeHwnd() != NULL)
+	{
+		NMHDR nmhdr;
+		memset(&nmhdr, 0, sizeof(NMHDR));
+		
+		nmhdr.hwndFrom = pWnd->GetSafeHwnd(); 
+		nmhdr.idFrom = pWnd->GetDlgCtrlID(); 
+		nmhdr.code = NM_RELEASEDCAPTURE; 
+		
+		pWndParent->SendMessage(WM_NOTIFY, pWnd->GetDlgCtrlID(), (LPARAM)&nmhdr);
+	}
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPAboutDlg dialog
 
@@ -1347,8 +1631,9 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPAboutDlg)
 	enum { IDD = IDD_BCGBARRES_ABOUT_DLG };
+	CBCGPURLLinkButton	m_wndURLAxialis;
 	CBCGPURLLinkButton	m_wndURL;
-	CButton	m_wndPurchaseBtn;
+	CBCGPButton	m_wndPurchaseBtn;
 	CStatic	m_wndAppName;
 	CBCGPURLLinkButton	m_wndEMail;
 	CString	m_strAppName;
@@ -1407,6 +1692,7 @@ void CBCGPAboutDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CBCGPDialog::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPAboutDlg)
+	DDX_Control(pDX, IDC_BCGBARRES_URL2, m_wndURLAxialis);
 	DDX_Control(pDX, IDC_BCGBARRES_URL, m_wndURL);
 	DDX_Control(pDX, IDC_BCGBARRES_PURCHASE, m_wndPurchaseBtn);
 	DDX_Control(pDX, IDC_BCGBARRES_NAME, m_wndAppName);
@@ -1468,10 +1754,20 @@ BOOL CBCGPAboutDlg::OnInitDialog()
 	m_wndEMail.SetURL (_T("info@bcgsoft.com"));
 	m_wndEMail.SizeToContent ();
 	m_wndEMail.SetTooltip (_T("Send mail to us"));
-	m_wndEMail.m_bDrawFocus = FALSE;
 
+	m_wndURL.SizeToContent();
+	m_wndURLAxialis.SizeToContent();
+
+#ifndef _BCGSUITE_
 	m_wndURL.m_bDrawFocus = FALSE;
-	m_wndURL.SizeToContent ();
+	m_wndURL.m_bAlwaysUnderlineText = FALSE;
+
+	m_wndEMail.m_bDrawFocus = FALSE;
+	m_wndEMail.m_bAlwaysUnderlineText = FALSE;
+
+	m_wndURLAxialis.m_bDrawFocus = FALSE;
+	m_wndURLAxialis.m_bAlwaysUnderlineText = FALSE;
+#endif
 
 	//--------------------
 	// Set dialog caption:
@@ -1484,20 +1780,22 @@ BOOL CBCGPAboutDlg::OnInitDialog()
 	//----------------------------
 	// Hide Logo in High DPI mode:
 	//----------------------------
-#ifndef _BCGSUITE_
 	if (globalData.GetRibbonImageScale () > 1.)
 	{
 		CWnd* pWndLogo = GetDlgItem (IDC_BCGBARRES_DRAW_AREA);
 		if (pWndLogo->GetSafeHwnd () != NULL)
 		{
 			m_Logo.Load (IDB_BCGBARRES_LOGO);
-			m_Logo.SetSingleImage ();
-			m_Logo.SmoothResize (globalData.GetRibbonImageScale ());
 
+#ifndef _BCGSUITE_
+			m_Logo.SetSingleImage (FALSE);
+#else
+			m_Logo.SetSingleImage();
+#endif
+			globalUtils.ScaleByDPI(m_Logo);
 			pWndLogo->ShowWindow (SW_HIDE);
 		}
 	}
-#endif
 
 	//------------------------------------------
 	// Hide "Purchase" button in retail version:
@@ -1538,7 +1836,6 @@ void BCGPShowAboutDlg (UINT uiAppNameResID)
 {
 	CString strAppName;
 	strAppName.LoadString (uiAppNameResID);
-
+	
 	BCGPShowAboutDlg (strAppName);
 }
-

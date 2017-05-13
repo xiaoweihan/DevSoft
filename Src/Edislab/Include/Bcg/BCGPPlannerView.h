@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -105,16 +105,40 @@ public:
 		BCGP_PLANNER_WORKING_STATUS_LAST                     = BCGP_PLANNER_WORKING_STATUS_ISNORMALWORKINGDAYINWEEK
 	};
 
+	enum BCGP_PLANNER_WEEKBAR
+	{
+		BCGP_PLANNER_WEEKBAR_FIRST   = 0,
+		BCGP_PLANNER_WEEKBAR_DEFAULT = BCGP_PLANNER_WEEKBAR_FIRST,	// depends on current visual manager
+		BCGP_PLANNER_WEEKBAR_DAYS    = 1,							// show first and last days of week
+		BCGP_PLANNER_WEEKBAR_NUMBERS = 2,							// show week number
+		BCGP_PLANNER_WEEKBAR_CUSTOM  = 3,							// override GetWeekBarText in CBCGPPlannerManagerCtrl derived class to set custom text
+		BCGP_PLANNER_WEEKBAR_LAST    = BCGP_PLANNER_WEEKBAR_CUSTOM
+	};
+
+	enum BCGP_PLANNER_DRAW_TIME_FLAGS
+	{
+		BCGP_PLANNER_DRAW_TIME       = 0x01,
+		BCGP_PLANNER_DRAW_TIME_MULTI = 0x02,
+		BCGP_PLANNER_DRAW_TIME_SMART = 0x04,
+		BCGP_PLANNER_DRAW_TIME_ALL_FLAGS = (BCGP_PLANNER_DRAW_TIME | BCGP_PLANNER_DRAW_TIME_MULTI | BCGP_PLANNER_DRAW_TIME_SMART)
+	};
+
 	struct XBCGPPlannerWorkingParameters
 	{
 		const CBCGPPlannerView*	m_pView;
 		COLORREF				m_clrWorking;
 		COLORREF				m_clrNonWorking;
+		CRect					m_Margins;
+		CString					m_strText;
+		COLORREF				m_clrText;
 
-		XBCGPPlannerWorkingParameters(const CBCGPPlannerView* pView, COLORREF clrWorking = CLR_DEFAULT, COLORREF clrNonWorking = CLR_DEFAULT)
+		XBCGPPlannerWorkingParameters(const CBCGPPlannerView* pView, COLORREF clrWorking = CLR_DEFAULT, COLORREF clrNonWorking = CLR_DEFAULT, LPCTSTR szText = NULL, COLORREF clrText = CLR_DEFAULT)  // PRATILOG
 			: m_pView        (pView)
 			, m_clrWorking   (clrWorking)
 			, m_clrNonWorking(clrNonWorking)
+			, m_Margins      (4, 4, 4, 4)
+			, m_strText      (szText)
+			, m_clrText      (clrText)
 		{
 		}
 	};
@@ -179,11 +203,17 @@ public:
 	virtual void SetDateInterval (const COleDateTime& /*date1*/, const COleDateTime& /*date2*/) {}
 	virtual void SetCompressWeekend (BOOL /*bCompress*/) {}
 	virtual BOOL IsCompressWeekend () const	{	return FALSE;	}
-	virtual void SetDrawTimeFinish (BOOL /*bDraw*/) {};
-	virtual BOOL IsDrawTimeFinish () const	{ return FALSE;	};
-	virtual void SetDrawTimeAsIcons (BOOL /*bDraw*/) {};
-	virtual BOOL IsDrawTimeAsIcons () const	{	return FALSE;	};
-	virtual BOOL IsDrawAppsShadow () const	{	return FALSE;	};
+	virtual void SetDrawTimeFinish (BOOL /*bDraw*/) {}
+	virtual BOOL IsDrawTimeFinish () const	{ return FALSE;	}
+	virtual void SetDrawTimeAsIcons (BOOL /*bDraw*/) {}
+	virtual BOOL IsDrawTimeAsIcons () const	{	return FALSE;	}
+	virtual BOOL IsDrawAppsShadow () const	{	return FALSE;	}
+
+	void SetDrawTimeFlags (DWORD dwFlags) {	m_dwDrawTimeFlags = dwFlags;	}
+	DWORD GetDrawTimeFlags () const {	return m_dwDrawTimeFlags;	}
+
+	virtual void SetWeekBarType (BCGP_PLANNER_WEEKBAR /*type*/) {}
+	virtual BCGP_PLANNER_WEEKBAR GetWeekBarType () const	{	return BCGP_PLANNER_WEEKBAR_FIRST;	}
 
 	const CString& GetCaptionFormat () const
 	{
@@ -225,6 +255,8 @@ public:
 	{
 		return m_nRowHeight;
 	}
+
+	int GetCaptionHeight () const;
 	
 	DWORD GetDrawFlags() const;
 
@@ -350,9 +382,9 @@ protected:
 
 	virtual HFONT SetFont (HFONT hFont);
 
-	HFONT GetFont (BOOL bBold = FALSE);
+	HFONT GetFont (BOOL bBold = FALSE, BOOL bExtended = FALSE);
 	HFONT GetFontVert ();
-	HFONT SetCurrFont (CDC* pDC, BOOL bBold = FALSE);
+	HFONT SetCurrFont (CDC* pDC, BOOL bBold = FALSE, BOOL bExtended = FALSE);
 
 	virtual void OnActivate(CBCGPPlannerManagerCtrl* m_pPlanner, const CBCGPPlannerView* pOldView);
 	virtual void OnDeactivate(CBCGPPlannerManagerCtrl* m_pPlanner);
@@ -462,7 +494,9 @@ protected:
 	{
 		return FALSE;
 	}
-	
+
+	virtual void GetWeekBarText(const COleDateTime& day1, const COleDateTime& day2, CString& strText) const;
+
 	virtual CString GetAccName() const;
 	virtual CString GetAccValue() const;
 	virtual CString GetAccDescription() const;
@@ -503,6 +537,8 @@ protected:
 	CFont				m_Font;
 	CFont				m_FontBold;
 	CFont				m_FontVert;
+	CFont				m_FontEx;
+	CFont				m_FontBoldEx;
 
 	bool				m_bActive;
 
@@ -530,6 +566,8 @@ protected:
 	UINT                 m_htCaptureResourceCurrent;
 	
 	BOOL				m_bUpdateToolTipInfo;
+
+	DWORD				m_dwDrawTimeFlags;
 
 	BOOL IsTimerEditStarted () const
 	{

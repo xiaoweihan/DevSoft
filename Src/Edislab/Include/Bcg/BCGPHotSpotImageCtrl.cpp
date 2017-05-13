@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -19,11 +19,13 @@
 #include "BCGPLocalResource.h"
 #include "BCGPHotSpotImageCtrl.h"
 #include "BCGPDrawManager.h"
-#ifndef _BCGSUITE_
-#include "BCGPPopupMenu.h"
-#include "BCGPPngImage.h"
-#endif
+#include "BCGPGlobalUtils.h"
 
+#ifndef _BCGSUITE_
+	#include "BCGPPopupMenu.h"
+	#include "BCGPPngImage.h"
+	#include "BCGPTooltipManager.h"
+#endif
 
 #ifndef BCGP_EXCLUDE_HOT_SPOT_IMAGE
 
@@ -80,11 +82,14 @@ void CBCGPHotSpot::Serialize(CArchive& ar)
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPHotSpotImageCtrl
 
-CBCGPHotSpotImageCtrl::CBCGPHotSpotImageCtrl()
+CBCGPHotSpotImageCtrl::CBCGPHotSpotImageCtrl(BOOL bDPIAutoScale)
 {
-	m_bAutoDestroyImage	= FALSE;
-	m_hbmpImage			= NULL;
-	m_hbmpHot			= NULL;
+#if (!defined _BCGSUITE_) || (_MSC_VER >= 1600)
+	m_bDPIAutoScale		= bDPIAutoScale;
+#else
+	UNREFERENCED_PARAMETER(bDPIAutoScale);
+	m_bDPIAutoScale		= FALSE;
+#endif
 	m_sizeImage			= CSize (0, 0);
 	m_clrBack			= RGB (255, 255, 255);
 
@@ -105,6 +110,11 @@ CBCGPHotSpotImageCtrl::CBCGPHotSpotImageCtrl()
 	m_ScrollBarStyle	= CBCGPScrollBar::BCGP_SBSTYLE_DEFAULT;
 
 	m_rectView.SetRectEmpty ();
+
+	m_pToolTip = NULL;
+	m_bRebuildTooltips = FALSE;
+
+	m_bKeepHotSpotsOnCleanup = FALSE;
 }
 //*******************************************************************************
 CBCGPHotSpotImageCtrl::~CBCGPHotSpotImageCtrl()
@@ -127,6 +137,9 @@ BEGIN_MESSAGE_MAP(CBCGPHotSpotImageCtrl, CButton)
 	ON_WM_CREATE()
 	//}}AFX_MSG_MAP
 	ON_MESSAGE(WM_STYLECHANGING, OnStyleChanging)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
+	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
+	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnTTNeedTipText)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -160,6 +173,11 @@ void CBCGPHotSpotImageCtrl::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 {
 	ASSERT (lpDIS != NULL);
 	ASSERT (lpDIS->CtlType == ODT_BUTTON);
+
+	if (m_bRebuildTooltips)
+	{
+		RebuildToolTips();
+	}
 
 	CDC* pDCPaint = CDC::FromHandle (lpDIS->hDC);
 	ASSERT_VALID (pDCPaint);
@@ -227,6 +245,7 @@ void CBCGPHotSpotImageCtrl::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 		pHot = m_pClicked;
 	}
 
+	CRgn rgnHot;
 	if (pHot != NULL)
 	{
 		CRect rectHotSpot = pHot->m_rect;
@@ -234,13 +253,14 @@ void CBCGPHotSpotImageCtrl::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 
 		pDC->LPtoDP (&rectHotSpot);
 
-		CRgn rgn;
-		rgn.CreateRectRgnIndirect (rectHotSpot);
-
-		pDC->SelectClipRgn (&rgn);
+		rgnHot.CreateRectRgnIndirect (rectHotSpot);
+		pDC->SelectClipRgn (&rgnHot);
 
 		OnDrawHotSpot (pDC, rect, pHot);
+	}
 
+	if (rgnClip.GetSafeHandle() != NULL || rgnHot.GetSafeHandle() != NULL)
+	{
 		pDC->SelectClipRgn (NULL);
 	}
 }
@@ -263,7 +283,7 @@ void CBCGPHotSpotImageCtrl::OnDrawImage (CDC* pDC, CRect rectImage)
 {
 	ASSERT_VALID (pDC);
 
-	if (m_hbmpImage == NULL)
+	if (m_Image.GetCount() == 0)
 	{
 		return;
 	}
@@ -271,7 +291,7 @@ void CBCGPHotSpotImageCtrl::OnDrawImage (CDC* pDC, CRect rectImage)
 	rectImage.right = min (rectImage.right, m_sizeImage.cx);
 	rectImage.bottom = min (rectImage.bottom, m_sizeImage.cy);
 
-	pDC->DrawState (rectImage.TopLeft (), rectImage.Size (), m_hbmpImage, DSS_NORMAL);
+	m_Image.DrawEx(pDC, rectImage, 0);
 }
 //*******************************************************************************
 void CBCGPHotSpotImageCtrl::OnDrawHotSpot (CDC* pDC, CRect rectImage, CBCGPHotSpot* /*pHotSpot*/)
@@ -281,9 +301,9 @@ void CBCGPHotSpotImageCtrl::OnDrawHotSpot (CDC* pDC, CRect rectImage, CBCGPHotSp
 	rectImage.right = min (rectImage.right, m_sizeImage.cx);
 	rectImage.bottom = min (rectImage.bottom, m_sizeImage.cy);
 
-	if (m_hbmpHot != NULL)
+	if (m_ImageHot.GetCount() > 0)
 	{
-		pDC->DrawState (rectImage.TopLeft (), rectImage.Size (), m_hbmpHot, DSS_NORMAL);
+		m_ImageHot.DrawEx(pDC, rectImage, 0);
 	}
 
 	if (m_nHighlightPercentage > 0)
@@ -294,89 +314,94 @@ void CBCGPHotSpotImageCtrl::OnDrawHotSpot (CDC* pDC, CRect rectImage, CBCGPHotSp
 	}
 }
 //********************************************************************************
-BOOL CBCGPHotSpotImageCtrl::SetImage (UINT uiBmpResId, UINT uiBmpHotResId/* = 0*/)
+BOOL CBCGPHotSpotImageCtrl::SetImage (UINT uiBmpResId, UINT uiBmpHotResId/* = 0*/, BOOL bKeepHotSpots/* = FALSE*/)
 {
-	CleanUp ();
-
 	if (uiBmpResId == 0)
 	{
-		UpdateScrollBars ();
+		CBCGPRAII<BOOL> raii(m_bKeepHotSpotsOnCleanup, bKeepHotSpots);
+		CleanUp ();
 		return TRUE;
 	}
 
-	HBITMAP hbmp = NULL;
-
-	CBCGPPngImage pngImage;
-	if (pngImage.Load (uiBmpResId))
+	BOOL bIsBlackHighContrast = globalData.m_bIsBlackHighContrast;
+	if (bIsBlackHighContrast)
 	{
-		hbmp = (HBITMAP) pngImage.Detach ();
-	}
-	else
-	{
-		hbmp = (HBITMAP) ::LoadImage (
-			AfxGetResourceHandle (),
-			MAKEINTRESOURCE (uiBmpResId),
-			IMAGE_BITMAP,
-			0, 0,
-			LR_CREATEDIBSECTION | LR_LOADMAP3DCOLORS);
+		globalData.m_bIsBlackHighContrast = FALSE;
 	}
 
-	ASSERT (hbmp != NULL);
+	CBCGPToolBarImages image;
+	CBCGPToolBarImages imageHot;
 
-	HBITMAP hbmpHot = NULL;
+	image.SetMapTo3DColors(FALSE);
+	image.Load(uiBmpResId);
 
 	if (uiBmpHotResId != 0)
 	{
-		if (pngImage.Load (uiBmpHotResId))
-		{
-			hbmp = (HBITMAP) pngImage.Detach ();
-		}
-		else
-		{
-			hbmpHot = (HBITMAP) ::LoadImage (
-				AfxGetResourceHandle (),
-				MAKEINTRESOURCE (uiBmpHotResId),
-				IMAGE_BITMAP,
-				0, 0,
-				LR_CREATEDIBSECTION | LR_LOADMAP3DCOLORS);
-		}
-
-		ASSERT (hbmpHot != NULL);
+		imageHot.SetMapTo3DColors(FALSE);
+		imageHot.Load(uiBmpHotResId);
 	}
 
-	return SetImage (hbmp, hbmpHot, TRUE /* Auto-destoy */);
+	if (bIsBlackHighContrast)
+	{
+		globalData.m_bIsBlackHighContrast = TRUE;
+	}
+
+	return SetImage (image.GetImageWell(), imageHot.GetImageWell(), FALSE, bKeepHotSpots);
 }
 //*******************************************************************************
-BOOL CBCGPHotSpotImageCtrl::SetImage (HBITMAP hbmpImage, HBITMAP hbmpImageHot/* = NULL*/, BOOL bAutoDestroy/* = FALSE*/)
+BOOL CBCGPHotSpotImageCtrl::SetImage (HBITMAP hbmpImage, HBITMAP hbmpImageHot/* = NULL*/, BOOL bAutoDestroy/* = FALSE*/, BOOL bKeepHotSpots/* = FALSE*/)
 {
-	CleanUp ();
+	{
+		CBCGPRAII<BOOL> raii(m_bKeepHotSpotsOnCleanup, bKeepHotSpots);
+		CleanUp ();
+	}
 
 	ASSERT (hbmpImage != NULL);
 
-	m_hbmpImage = hbmpImage;
-	m_hbmpHot = hbmpImageHot;
+	m_Image.Clear();
+	m_ImageHot.Clear();
 
-	BITMAP bmp;
-	::GetObject (m_hbmpImage, sizeof (BITMAP), (LPVOID) &bmp);
+	m_Image.AddImage(hbmpImage, TRUE);
+	m_Image.SetSingleImage();
+	
+	if (hbmpImageHot != NULL)
+	{
+		m_ImageHot.AddImage(hbmpImageHot, TRUE);
+		m_ImageHot.SetSingleImage();
+	}
 
-	m_sizeImage.cx = bmp.bmWidth;
-	m_sizeImage.cy = bmp.bmHeight;
+	if (m_bDPIAutoScale && globalData.GetRibbonImageScale() > 1.0)
+	{
+		globalUtils.ScaleByDPI(m_Image);
+
+		if (m_ImageHot.GetCount() > 0)
+		{
+			globalUtils.ScaleByDPI(m_ImageHot);
+		}
+	}
+
+	m_sizeImage = m_Image.GetImageSize();
 
 	m_pageDev.cx = m_sizeImage.cx / 10;
 	m_pageDev.cy = m_sizeImage.cy / 10;
 	m_lineDev.cx = m_pageDev.cx / 10;
 	m_lineDev.cy = m_pageDev.cy / 10;
 
-	if (m_hbmpHot != NULL)
+	if (m_ImageHot.GetCount() > 0)
 	{
 		// Hot and cold bitmaps should have the same size!
-		::GetObject (m_hbmpHot, sizeof (BITMAP), (LPVOID) &bmp);
-
-		ASSERT (m_sizeImage.cx == bmp.bmWidth);
-		ASSERT (m_sizeImage.cy == bmp.bmHeight);
+		ASSERT (m_sizeImage.cx == m_ImageHot.GetImageSize().cx);
+		ASSERT (m_sizeImage.cy == m_ImageHot.GetImageSize().cy);
 	}
 
-	m_bAutoDestroyImage = bAutoDestroy;
+	if (bAutoDestroy)
+	{
+		::DeleteObject(hbmpImage);
+		if (hbmpImageHot != NULL)
+		{
+			::DeleteObject(hbmpImageHot);
+		}
+	}
 
 	if (GetSafeHwnd () != NULL)
 	{
@@ -389,26 +414,16 @@ BOOL CBCGPHotSpotImageCtrl::SetImage (HBITMAP hbmpImage, HBITMAP hbmpImageHot/* 
 //*******************************************************************************
 void CBCGPHotSpotImageCtrl::CleanUp ()
 {
-	if (m_bAutoDestroyImage)
-	{
-		if (m_hbmpImage != NULL)
-		{
-			::DeleteObject (m_hbmpImage);
-		}
+	CBCGPTooltipManager::DeleteToolTip(m_pToolTip);
 
-		if (m_hbmpHot != NULL)
+	if (!m_bKeepHotSpotsOnCleanup)
+	{
+		while (!m_lstHotSpots.IsEmpty ())
 		{
-			::DeleteObject (m_hbmpHot);
+			delete m_lstHotSpots.RemoveHead ();
 		}
 	}
 
-	while (!m_lstHotSpots.IsEmpty ())
-	{
-		delete m_lstHotSpots.RemoveHead ();
-	}
-
-	m_hbmpImage = NULL;
-	m_hbmpHot = NULL;
 	m_sizeImage = CSize (0, 0);
 
 	m_lineDev = CSize (0, 0);
@@ -448,7 +463,7 @@ CBCGPHotSpot* CBCGPHotSpotImageCtrl::FindHotSpot (UINT nID) const
 	return NULL;
 }
 //*******************************************************************************
-BOOL CBCGPHotSpotImageCtrl::AddHotSpot (UINT nID, CRect rect)
+BOOL CBCGPHotSpotImageCtrl::AddHotSpot (UINT nID, CRect rect, LPCTSTR lpszToolTip, LPCTSTR lpszToolTipDescription)
 {
 	if (FindHotSpot (nID) != NULL)
 	{
@@ -460,11 +475,44 @@ BOOL CBCGPHotSpotImageCtrl::AddHotSpot (UINT nID, CRect rect)
 	ASSERT (nID != 0);
 
 	CBCGPHotSpot* pHotSpot = new CBCGPHotSpot (nID);
-	pHotSpot->CreateRect (rect);
+
+	if (m_bDPIAutoScale && globalData.GetRibbonImageScale() > 1.0)
+	{
+		CPoint pt(globalUtils.ScaleByDPI(rect.left), globalUtils.ScaleByDPI(rect.top));
+		CSize size = globalUtils.ScaleByDPI(rect.Size());
+
+		pHotSpot->CreateRect(CRect(pt, size));
+	}
+	else
+	{
+		pHotSpot->CreateRect (rect);
+	}
+
+	if (lpszToolTip != NULL)
+	{
+		pHotSpot->m_strToolTip = lpszToolTip;
+		pHotSpot->m_strToolTipDescription = (lpszToolTipDescription == NULL) ? _T("") : lpszToolTipDescription;
+
+		m_bRebuildTooltips = TRUE;
+	}
 
 	m_lstHotSpots.AddTail (pHotSpot);
 
 	return TRUE;
+}
+//********************************************************************************
+void CBCGPHotSpotImageCtrl::SetHotSpotToolTip(UINT nID, LPCTSTR lpszToolTip, LPCTSTR lpszToolTipDescription)
+{
+	CBCGPHotSpot* pHotSpot = FindHotSpot(nID);
+	if (pHotSpot != NULL)
+	{
+		ASSERT_VALID(pHotSpot);
+
+		pHotSpot->m_strToolTip = (lpszToolTip == NULL) ? _T("") : lpszToolTip;
+		pHotSpot->m_strToolTipDescription = (lpszToolTipDescription == NULL) ? _T("") : lpszToolTipDescription;
+
+		m_bRebuildTooltips = TRUE;
+	}
 }
 //********************************************************************************
 BOOL CBCGPHotSpotImageCtrl::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message) 
@@ -740,6 +788,7 @@ void CBCGPHotSpotImageCtrl::OnSize(UINT nType, int cx, int cy)
 	CButton::OnSize(nType, cx, cy);
 	
 	UpdateScrollBars ();
+	RebuildToolTips();
 }
 //*******************************************************************************
 void CBCGPHotSpotImageCtrl::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar) 
@@ -905,6 +954,11 @@ int CBCGPHotSpotImageCtrl::OnCreate(LPCREATESTRUCT lpCreateStruct)
 //*******************************************************************************
 BOOL CBCGPHotSpotImageCtrl::OnScroll(UINT nScrollCode, UINT nPos, BOOL bDoScroll)
 {
+	if (m_pToolTip->GetSafeHwnd () != NULL)
+	{
+		m_pToolTip->Pop();
+	}
+
 	// calc new x position
 	int x = GetScrollPos(SB_HORZ);
 	int xOrig = x;
@@ -972,6 +1026,11 @@ BOOL CBCGPHotSpotImageCtrl::OnScroll(UINT nScrollCode, UINT nPos, BOOL bDoScroll
 //*******************************************************************************
 BOOL CBCGPHotSpotImageCtrl::OnScrollBy(CSize sizeScroll, BOOL bDoScroll)
 {
+	if (m_pToolTip->GetSafeHwnd () != NULL)
+	{
+		m_pToolTip->Pop();
+	}
+
 	int xOrig, x;
 	int yOrig, y;
 
@@ -1032,6 +1091,7 @@ BOOL CBCGPHotSpotImageCtrl::OnScrollBy(CSize sizeScroll, BOOL bDoScroll)
 		}
 	}
 
+	RebuildToolTips();
 	return TRUE;
 }
 //*******************************************************************************
@@ -1088,6 +1148,129 @@ CScrollBar* CBCGPHotSpotImageCtrl::GetScrollBarCtrl(int nBar) const
 	}
 
 	return NULL;
+}
+//*********************************************************************************
+LRESULT CBCGPHotSpotImageCtrl::OnChangeVisualManager(WPARAM, LPARAM)
+{
+	return 0;
+}
+//*********************************************************************************
+BOOL CBCGPHotSpotImageCtrl::PreTranslateMessage(MSG* pMsg) 
+{
+   	switch (pMsg->message)
+	{
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_LBUTTONUP:
+	case WM_RBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_NCLBUTTONDOWN:
+	case WM_NCRBUTTONDOWN:
+	case WM_NCMBUTTONDOWN:
+	case WM_NCLBUTTONUP:
+	case WM_NCRBUTTONUP:
+	case WM_NCMBUTTONUP:
+	case WM_MOUSEMOVE:
+		if (m_pToolTip->GetSafeHwnd () != NULL)
+		{
+			m_pToolTip->RelayEvent(pMsg);
+		}
+		break;
+	}
+	
+	return CButton::PreTranslateMessage(pMsg);
+}
+//***********************************************************************************************************
+BOOL CBCGPHotSpotImageCtrl::OnTTNeedTipText (UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResult*/)
+{
+	static CString strTipText;
+
+	int nItem = ((int)pNMH->idFrom) - 1;
+    if (nItem < 0)
+	{
+        return FALSE;
+	}
+
+	int i = 0;
+	
+	for (POSITION pos = m_lstHotSpots.GetHeadPosition (); pos != NULL; i++)
+	{
+		CBCGPHotSpot* pHotSpot = m_lstHotSpots.GetNext (pos);
+		ASSERT_VALID (pHotSpot);
+
+		if (i == nItem)
+		{
+			if (pHotSpot->GetToolTip().IsEmpty())
+			{
+				return FALSE;
+			}
+
+			strTipText = pHotSpot->GetToolTip();
+
+			LPNMTTDISPINFO	pTTDispInfo	= (LPNMTTDISPINFO) pNMH;
+			ASSERT((pTTDispInfo->uFlags & TTF_IDISHWND) == 0);
+
+			if (!pHotSpot->GetToolTipDescription().IsEmpty())
+			{
+				CBCGPToolTipCtrl* pToolTip = DYNAMIC_DOWNCAST(CBCGPToolTipCtrl, m_pToolTip);
+				if (pToolTip != NULL)
+				{
+					ASSERT_VALID (pToolTip);
+					pToolTip->SetDescription(pHotSpot->GetToolTipDescription());
+				}
+			}
+			
+			pTTDispInfo->lpszText = const_cast<LPTSTR> ((LPCTSTR)strTipText);
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+//**************************************************************************
+LRESULT CBCGPHotSpotImageCtrl::OnBCGUpdateToolTips(WPARAM wp, LPARAM)
+{
+	UINT nTypes = (UINT) wp;
+
+	if (m_pToolTip->GetSafeHwnd () == NULL)
+	{
+		return 0;
+	}
+
+	if (nTypes & BCGP_TOOLTIP_TYPE_DEFAULT)
+	{
+		RebuildToolTips();
+	}
+
+	return 0;
+}
+//**************************************************************************
+void CBCGPHotSpotImageCtrl::RebuildToolTips()
+{
+	CBCGPTooltipManager::DeleteToolTip(m_pToolTip);
+	CBCGPTooltipManager::CreateToolTip(m_pToolTip, this, BCGP_TOOLTIP_TYPE_DEFAULT);
+
+	int i = 0;
+	CPoint ptScrollOffset (GetScrollPos (SB_HORZ), GetScrollPos (SB_VERT));
+
+	for (POSITION pos = m_lstHotSpots.GetHeadPosition (); pos != NULL; i++)
+	{
+		CBCGPHotSpot* pHotSpot = m_lstHotSpots.GetNext (pos);
+		ASSERT_VALID (pHotSpot);
+
+		if (!pHotSpot->GetToolTip().IsEmpty())
+		{
+		   CRect rectTT = pHotSpot->m_rect;
+		   rectTT.OffsetRect(-ptScrollOffset);
+
+			m_pToolTip->AddTool(this, LPSTR_TEXTCALLBACK, rectTT, i + 1);
+		}
+	}
+
+	m_bRebuildTooltips = FALSE;
 }
 
 #endif // BCGP_EXCLUDE_HOT_SPOT_IMAGE

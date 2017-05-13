@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,7 +26,10 @@
 #include "BCGPTooltipManager.h"
 #include "BCGPTabbedControlBar.h"
 #include "BCGPLocalResource.h"
+#include "BCGPPngImage.h"
 #include "BCGProRes.h"
+#include "BCGPMDIFrameWnd.h"
+#include "BCGPEdit.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -117,6 +120,7 @@ UINT BCGM_ON_MOVE_TAB			= ::RegisterWindowMessage (_T("BCGM_ON_MOVE_TAB"));
 UINT BCGM_CHANGING_ACTIVE_TAB	= ::RegisterWindowMessage (_T("BCGM_ON_CHANGING_ACTIVE_TAB"));
 UINT BCGM_ON_GET_TAB_TOOLTIP	= ::RegisterWindowMessage (_T("BCGM_ON_GET_TAB_TOOLTIP"));
 UINT BCGM_NEW_TAB				= ::RegisterWindowMessage (_T("BCGM_NEW_TAB"));
+UINT BCGM_CHANGE_TAB_SELECTION	= ::RegisterWindowMessage (_T("BCGM_CHANGE_TAB_SELECTION"));
 
 IMPLEMENT_DYNAMIC(CBCGPBaseTabWnd, CBCGPWnd)
 
@@ -189,6 +193,9 @@ CBCGPBaseTabWnd::CBCGPBaseTabWnd()
 	m_bSetActiveTabFired = FALSE;
 	m_bUserSelectedTab = FALSE;
 
+	m_bMultipleSelection = FALSE;
+	m_bDontClearSelection = FALSE;
+
 	m_bSetActiveTabByMouseClick = FALSE;
 	m_bActivateTabOnRightClick = FALSE;
 
@@ -199,6 +206,9 @@ CBCGPBaseTabWnd::CBCGPBaseTabWnd()
 
 	m_hFontCustom = NULL;
 	m_bCaptionFont = FALSE;
+	m_bIconScaling = FALSE;
+	m_bKeepHiddenTabInvisible = FALSE;
+	m_bForceDeleteNewTab = FALSE;
 }
 //***************************************************************************************
 CBCGPBaseTabWnd::~CBCGPBaseTabWnd()
@@ -248,7 +258,7 @@ void CBCGPBaseTabWnd::CleanUp ()
 		{
 			BOOL bDeleteTabInfo = !pTab->m_pWnd->IsKindOf (RUNTIME_CLASS (CBCGPControlBar));
 
-			if (m_bAutoDestoyWindow)
+			if (m_bAutoDestoyWindow && pTab->m_pWnd->GetSafeHwnd() != NULL && ::IsWindow(pTab->m_pWnd->GetSafeHwnd()))
 			{
 				pTab->m_pWnd->DestroyWindow ();
 			}
@@ -315,7 +325,7 @@ void CBCGPBaseTabWnd::InsertTab(CWnd* pNewWnd, LPCTSTR lpszTabLabel, int nInsert
 	CWnd* pWndToAdd = CreateWrapper (pNewWnd, lpszTabLabel, bDetachable);
 	ASSERT_VALID (pWndToAdd);
 
-	if (!IsWindowVisible ())
+	if (!IsWindowVisible () && !m_bKeepHiddenTabInvisible)
 	{
 		ShowWindow (SW_SHOW);
 	}
@@ -367,6 +377,7 @@ void CBCGPBaseTabWnd::InsertTab(CWnd* pNewWnd, LPCTSTR lpszTabLabel, int nInsert
 
 	m_arTabIndexs.RemoveAll();
 
+	ClearSelectedTabs();
 	OnChangeTabs ();
 	RecalcLayout ();
 
@@ -375,7 +386,7 @@ void CBCGPBaseTabWnd::InsertTab(CWnd* pNewWnd, LPCTSTR lpszTabLabel, int nInsert
 		if (!m_bIsMDITab)
 		{
 			//----------------------------------------
-			// First tab automatically becames active:
+			// First tab automatically became active:
 			//----------------------------------------
 			SetActiveTab (0);
 		}
@@ -404,7 +415,7 @@ void CBCGPBaseTabWnd::InsertTab(CWnd* pNewWnd, LPCTSTR lpszTabLabel, int nInsert
 		}
 	}
 
-	if (!m_bHideInactiveWnd && pActiveWnd->GetSafeHwnd() != NULL && !m_bIsMDITab)
+	if (!m_bHideInactiveWnd && pActiveWnd->GetSafeHwnd() != NULL && !m_bIsMDITab && IsWindowVisible())
 	{
 		pActiveWnd->BringWindowToTop ();
 	}
@@ -449,6 +460,13 @@ BOOL CBCGPBaseTabWnd::RemoveTab (int iTab, BOOL bRecalcLayout)
 	CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [iTab];
 	ASSERT_VALID (pTab);
 
+	if (pTab->m_bIsNewTab && !m_bForceDeleteNewTab)
+	{
+		return FALSE;
+	}
+
+	BOOL bIsActiveTab = (iTab == m_iActiveTab);
+
 	if (m_pToolTip->GetSafeHwnd () != NULL)
 	{
 		m_pToolTip->DelTool (this, pTab->m_iTabID);
@@ -470,7 +488,7 @@ BOOL CBCGPBaseTabWnd::RemoveTab (int iTab, BOOL bRecalcLayout)
 	//-----------------------------------
 	// Destroy tab window and delete tab:
 	//-----------------------------------
-	if (m_bAutoDestoyWindow)
+	if (m_bAutoDestoyWindow && pTab->m_pWnd->GetSafeHwnd() != NULL && ::IsWindow(pTab->m_pWnd->GetSafeHwnd()))
 	{
 		ASSERT_VALID (pTab->m_pWnd);
 		pTab->m_pWnd->DestroyWindow ();
@@ -505,9 +523,20 @@ BOOL CBCGPBaseTabWnd::RemoveTab (int iTab, BOOL bRecalcLayout)
 			}
 		}
 		
-		m_iActiveTab = -1;
+		if (!bIsActiveTab && m_bActivateLastActiveTab)
+		{
+			if (m_iActiveTab > iTab)
+			{
+				m_iActiveTab--;
+			}
+		}
+		else
+		{
+			m_iActiveTab = -1;
+		}
 	}
 
+	ClearSelectedTabs();
 	OnChangeTabs ();
 
 	if (bRecalcLayout)
@@ -517,16 +546,30 @@ BOOL CBCGPBaseTabWnd::RemoveTab (int iTab, BOOL bRecalcLayout)
 		{
 			if (m_bActivateLastActiveTab && (m_iLastActiveTab != -1))
 			{
-				int iLastActiveTab = m_iLastActiveTab;
-				if (iTab < m_iLastActiveTab)
+				if (bIsActiveTab)
 				{
-					iLastActiveTab = m_iLastActiveTab -1;
+					int iLastActiveTab = m_iLastActiveTab;
+					if (iTab < m_iLastActiveTab)
+					{
+						iLastActiveTab = m_iLastActiveTab - 1;
+					}
+
+					int iTabToActivate = -1; 
+					GetFirstVisibleTab (iLastActiveTab, iTabToActivate);
+
+					SetActiveTab (iTabToActivate);
 				}
-
-				int iTabToActivate = -1; 
-				GetFirstVisibleTab (iLastActiveTab, iTabToActivate);
-
-				SetActiveTab (iTabToActivate);
+				else
+				{
+					if (m_iLastActiveTab == iTab)
+					{
+						m_iLastActiveTab = -1;
+					}
+					else if (m_iLastActiveTab > iTab)
+					{
+						m_iLastActiveTab--;
+					}
+				}
 			}
 			else
 			{
@@ -547,12 +590,20 @@ void CBCGPBaseTabWnd::RemoveAllTabs ()
 	m_iActiveTab = -1;
 	m_nNextTabID = 1;
 
+	CBCGPTabInfo* pNewTab = NULL;
+
 	while (m_iTabsNum > 0)
 	{
 		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [m_iTabsNum - 1];
 		ASSERT_VALID (pTab);
 
 		m_iTabsNum--;
+
+		if (pTab->m_bIsNewTab)
+		{
+			pNewTab = pTab;
+			continue;
+		}
 
 		if (m_pToolTip->GetSafeHwnd () != NULL)
 		{
@@ -564,7 +615,7 @@ void CBCGPBaseTabWnd::RemoveAllTabs ()
 			m_pToolTipClose->DelTool (this, pTab->m_iTabID);
 		}
 
-		if (m_bAutoDestoyWindow)
+		if (m_bAutoDestoyWindow && pTab->m_pWnd->GetSafeHwnd() != NULL && ::IsWindow(pTab->m_pWnd->GetSafeHwnd()))
 		{
 			pTab->m_pWnd->DestroyWindow ();
 		}
@@ -574,12 +625,19 @@ void CBCGPBaseTabWnd::RemoveAllTabs ()
 
 	if (m_pToolTip->GetSafeHwnd () != NULL)
 	{
-		ASSERT (m_pToolTip->GetToolCount () == 0);
+		ASSERT (m_pToolTip->GetToolCount () == (pNewTab == NULL ? 0 : 1));
 	}
 
 	m_arTabs.RemoveAll ();
 	m_arTabIndexs.RemoveAll();
 
+	if (pNewTab)
+	{
+		m_arTabs.Add(pNewTab);
+		m_iTabsNum = 1;
+	}
+
+	ClearSelectedTabs();
 	OnChangeTabs ();
 
 	RecalcLayout ();
@@ -981,8 +1039,10 @@ BOOL CBCGPBaseTabWnd::SetTabHicon (int iTab, HICON hIcon)
 
 	pTab->m_uiIcon = (UINT)-1;
 
-	m_sizeImage.cx = max (m_sizeImage.cx, globalData.m_sizeSmallIcon.cx);
-	m_sizeImage.cy = max (m_sizeImage.cy, globalData.m_sizeSmallIcon.cy);
+	CSize sizeIcon = globalUtils.GetIconSize(hIcon);
+	
+	m_sizeImage.cx = max (m_sizeImage.cx, max(sizeIcon.cx, globalData.m_sizeSmallIcon.cx));
+	m_sizeImage.cy = max (m_sizeImage.cy, max(sizeIcon.cy, globalData.m_sizeSmallIcon.cy));
 
 	SetTabsHeight ();
 
@@ -1346,6 +1406,55 @@ void CBCGPBaseTabWnd::OnLButtonDown(UINT nFlags, CPoint point)
 
 	if (iHighlighted >= 0)
 	{
+		if (m_bMultipleSelection && IsMultipleSelectionSupported())
+		{
+			if (::GetAsyncKeyState (VK_CONTROL) & 0x8000)
+			{
+				if (!IsTabNew(nTab))
+				{
+					ToggleTabSelectState(nTab);
+					FireChangeTabSelection();
+					return;
+				}
+			}
+			else if (::GetAsyncKeyState (VK_SHIFT) & 0x8000)
+			{
+				if (!IsTabNew(nTab))
+				{
+					if (MakeTabsMultipleSelection(nTab))
+					{
+						FireChangeTabSelection();
+					}
+					return;
+				}
+			}
+			else
+			{
+				if (!IsTabSelected(nTab))
+				{
+					if (ClearSelectedTabs())
+					{
+						FireChangeTabSelection();
+					}
+				}
+				else
+				{
+					if (nTab != m_iActiveTab)
+					{
+						BOOL bDontClearSelection = m_bDontClearSelection;
+						m_bDontClearSelection = TRUE;
+
+						SetActiveTab(nTab);
+
+						m_bDontClearSelection = bDontClearSelection;
+					}
+
+					EnterDragMode();
+					return;
+				}
+			}
+		}
+
 		BOOL bTabWasMoved = FALSE;
 
 		if (!ActivateOnBtnUp ())
@@ -1427,6 +1536,9 @@ void CBCGPBaseTabWnd::OnRButtonDown(UINT nFlags, CPoint point)
 
 	if (m_bActivateTabOnRightClick)
 	{
+		BOOL bDontClearSelection = m_bDontClearSelection;
+		m_bDontClearSelection = TRUE;
+
 		int nTab = GetTabFromPoint (point);
 		if (nTab >= 0 && nTab != m_iActiveTab)
 		{
@@ -1438,6 +1550,7 @@ void CBCGPBaseTabWnd::OnRButtonDown(UINT nFlags, CPoint point)
 			{
 				m_bSetActiveTabByMouseClick = FALSE;
 				m_bUserSelectedTab = FALSE;
+				m_bDontClearSelection = bDontClearSelection;
 				return;
 			}
 
@@ -1462,6 +1575,8 @@ void CBCGPBaseTabWnd::OnRButtonDown(UINT nFlags, CPoint point)
 				pWnd->SetFocus ();
 			}
 		}
+
+		m_bDontClearSelection = bDontClearSelection;
 	}
 }
 //***************************************************************************************
@@ -1487,8 +1602,7 @@ void CBCGPBaseTabWnd::OnLButtonDblClk(UINT nFlags, CPoint point)
 		int iTab = GetTabFromPoint (point); 
 		if (iTab  == GetActiveTab())
 		{
-			if (StartRenameTab (iTab))
-				return;
+			StartRenameTab(iTab);
 		}
 	}
 	else
@@ -1503,6 +1617,12 @@ void CBCGPBaseTabWnd::OnLButtonDblClk(UINT nFlags, CPoint point)
 //***************************************************************************************
 void CBCGPBaseTabWnd::OnLButtonUp(UINT nFlags, CPoint point) 
 {
+	if (m_bMultipleSelection && IsMultipleSelectionSupported() && ((::GetAsyncKeyState (VK_CONTROL) & 0x8000) || (::GetAsyncKeyState (VK_SHIFT) & 0x8000)))
+	{
+		CBCGPWnd::OnLButtonUp(nFlags, point);
+		return;
+	}
+
 	if (m_iHighlighted >= 0 && m_iHighlighted < m_arTabs.GetSize())
 	{
 		CBCGPTabInfo* pTab = (CBCGPTabInfo*)m_arTabs[m_iHighlighted];
@@ -1533,6 +1653,7 @@ void CBCGPBaseTabWnd::OnLButtonUp(UINT nFlags, CPoint point)
 		ASSERT_VALID (pWndParent);
 
 		pWndParent->SendMessage (BCGM_ON_MOVE_TAB, m_iTabBeforeDrag, m_iActiveTab);
+		
 		if (pWndParent->IsKindOf (RUNTIME_CLASS (CBCGPBaseTabbedBar)) ||
 			pWndParent->IsKindOf (RUNTIME_CLASS (CBCGPMainClientAreaWnd)))
 		{
@@ -1548,6 +1669,8 @@ void CBCGPBaseTabWnd::OnLButtonUp(UINT nFlags, CPoint point)
 	{
 		m_bReadyToDetach = FALSE;
 		ReleaseCapture ();
+		
+		ClearSelectedTabs();
 
 		if (!ActivateOnBtnUp ())
 		{
@@ -1688,6 +1811,11 @@ void CBCGPBaseTabWnd::OnMouseMove(UINT nFlags, CPoint point)
 		m_iHighlighted = -1;
 	}
 
+	if (!m_bHighLightTabs && !IsTabCloseButton())
+	{
+		m_iHighlighted = -1;
+	}
+
 	if (m_iHighlighted != iPrevHighlighted && (m_bHighLightTabs || IsTabCloseButton()))
 	{
 		if (iPrevHighlighted < 0)
@@ -1716,7 +1844,7 @@ void CBCGPBaseTabWnd::OnMouseMove(UINT nFlags, CPoint point)
 
 	if (m_bReadyToDetach)
 	{
-		int nNumTabs = m_iTabsNum; // how many tabs before detch
+		int nNumTabs = m_iTabsNum; // how many tabs before detach
 		
 		// try to rearrange tabs if their number > 1
 		if (IsPtInTabArea (point) && nNumTabs > 1 && m_bEnableTabSwap)
@@ -1755,7 +1883,7 @@ void CBCGPBaseTabWnd::OnMouseMove(UINT nFlags, CPoint point)
 		if (bDetachSucceeded && nNumTabs <= 2)
 		{
 			// last tab was detached successfully - run out, because the control 
-			// jas been destroyed
+			// has been destroyed
 			return;
 		}	
 
@@ -1932,10 +2060,10 @@ void CBCGPBaseTabWnd::ApplyRestoredTabInfo (BOOL bUseTabIndexes)
 			}
 		}
 	}
-	
-	if (nVisibleTabNumber > 0 && !SetActiveTab (m_nRestoredActiveTabID))
+
+	if (nVisibleTabNumber > 0)
 	{
-		SetActiveTab (0);
+		ApplyRestoreActiveTab();
 	}
 
 	if (nVisibleTabNumber == 0)
@@ -1948,6 +2076,14 @@ void CBCGPBaseTabWnd::ApplyRestoredTabInfo (BOOL bUseTabIndexes)
 	}
 		
 	RecalcLayout ();
+}
+//*************************************************************************************
+void CBCGPBaseTabWnd::ApplyRestoreActiveTab()
+{
+	if (!SetActiveTab (m_nRestoredActiveTabID))
+	{
+		SetActiveTab (0);
+	}
 }
 //*************************************************************************************
 void CBCGPBaseTabWnd::Serialize (CArchive& ar)
@@ -2254,22 +2390,28 @@ BOOL CBCGPBaseTabWnd::StartRenameTab (int iTab)
 		return FALSE;
 	}
 
+	CRect rectEdit = pTabInfo->m_rect;
+	CalcRectEdit(rectEdit);
+
+	if (rectEdit.IsRectEmpty())
+	{
+		return FALSE;
+	}
+
 	ASSERT (m_pInPlaceEdit == NULL);
 
-	m_pInPlaceEdit = new CEdit;
+	m_pInPlaceEdit = new CBCGPEdit;
 	ASSERT_VALID (m_pInPlaceEdit);
 
-	CRect rectEdit = pTabInfo->m_rect;
-	CalcRectEdit (rectEdit);
-	
-	if (!m_pInPlaceEdit->Create (WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL, rectEdit, 
-		this, 1))
+	if (!m_pInPlaceEdit->Create (WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, rectEdit, this, 1))
 	{
 		delete m_pInPlaceEdit;
 		m_pInPlaceEdit = NULL;
 
  		return FALSE;
 	}
+
+	((CBCGPEdit*)m_pInPlaceEdit)->m_bVisualManagerStyle = TRUE;
 
 	m_pInPlaceEdit->SetWindowText (pTabInfo->m_strText);
 	m_pInPlaceEdit->SetFont(GetTabFont());
@@ -2478,7 +2620,13 @@ int CBCGPBaseTabWnd::GetTabFullWidth (int iTab) const
 BOOL CBCGPBaseTabWnd::SetImageList (UINT uiID, int cx, COLORREF clrTransp)
 {
 	CBitmap bmp;
-	if (!bmp.LoadBitmap (uiID))
+
+	CBCGPPngImage pngImage;
+	if (pngImage.Load(uiID))
+	{
+		bmp.Attach((HBITMAP) pngImage.Detach());
+	}
+	else if (!bmp.LoadBitmap (uiID))
 	{
 		TRACE(_T("CBCGPTabWnd::SetImageList Can't load bitmap: %x\n"), uiID);
 		return FALSE;
@@ -2887,6 +3035,29 @@ BOOL CBCGPBaseTabWnd::IsColored () const
 	return FALSE;
 }
 //*********************************************************************************
+static CFrameWnd* GetMainParentFrame(CFrameWnd* pParentFrame)
+{
+	ASSERT_VALID (pParentFrame);
+
+	CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, pParentFrame);
+	if (pMDIFrame != NULL)
+	{
+		ASSERT_VALID(pMDIFrame);
+		
+		if (pMDIFrame->IsTearOff())
+		{
+			CFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CFrameWnd, AfxGetMainWnd());
+			if (pMainFrame != NULL)
+			{
+				ASSERT_VALID(pMainFrame);
+				pParentFrame = pMainFrame;
+			}
+		}
+	}
+
+	return pParentFrame;
+}
+//*********************************************************************************
 void CBCGPBaseTabWnd::FireChangeActiveTab (int nNewTab)
 {
 	CFrameWnd* pParentFrame = BCGCBProGetTopLevelFrame (this);
@@ -2896,6 +3067,8 @@ void CBCGPBaseTabWnd::FireChangeActiveTab (int nNewTab)
 	pParent->SendMessage (BCGM_CHANGE_ACTIVE_TAB, nNewTab, (LPARAM)this);
 	if (pParent != pParentFrame && pParentFrame != NULL)
 	{
+		pParentFrame = GetMainParentFrame(pParentFrame);
+
 		ASSERT_VALID (pParentFrame);
 		pParentFrame->SendMessage (BCGM_CHANGE_ACTIVE_TAB, nNewTab, (LPARAM)this);
 	}
@@ -2909,6 +3082,22 @@ void CBCGPBaseTabWnd::FireChangeActiveTab (int nNewTab)
 	
 		SetACCData(pTab, m_AccData, nNewTab == m_iActiveTab);
 		globalData.NotifyWinEvent(EVENT_OBJECT_SELECTION, GetSafeHwnd(), OBJID_CLIENT , nNewTab + 1);
+	}
+}
+//*********************************************************************************
+void CBCGPBaseTabWnd::FireChangeTabSelection()
+{
+	CFrameWnd* pParentFrame = BCGCBProGetTopLevelFrame (this);
+	CWnd* pParent = GetParent ();
+	ASSERT_VALID (pParent);
+	
+	pParent->SendMessage(BCGM_CHANGE_TAB_SELECTION, 0, (LPARAM)this);
+	if (pParent != pParentFrame && pParentFrame != NULL)
+	{
+		pParentFrame = GetMainParentFrame(pParentFrame);
+
+		ASSERT_VALID (pParentFrame);
+		pParentFrame->SendMessage (BCGM_CHANGE_TAB_SELECTION, 0, (LPARAM)this);
 	}
 }
 //*********************************************************************************
@@ -2926,6 +3115,8 @@ BOOL CBCGPBaseTabWnd::FireChangingActiveTab (int nNewTab)
 
 	if (pParent != pParentFrame && pParentFrame != NULL)
 	{
+		pParentFrame = GetMainParentFrame(pParentFrame);
+
 		ASSERT_VALID (pParentFrame);
 		bRes = (BOOL) pParentFrame->SendMessage (BCGM_CHANGING_ACTIVE_TAB, nNewTab, (LPARAM)this);
 	}
@@ -2947,6 +3138,8 @@ BOOL CBCGPBaseTabWnd::FireNewTab ()
 
 	if (pParent != pParentFrame && pParentFrame != NULL)
 	{
+		pParentFrame = GetMainParentFrame(pParentFrame);
+
 		ASSERT_VALID (pParentFrame);
 		bRes = (BOOL) pParentFrame->SendMessage (BCGM_NEW_TAB, 0, (LPARAM)this);
 	}
@@ -3083,8 +3276,11 @@ BOOL CBCGPBaseTabWnd::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResult
 	info.m_strText.Empty ();
 	
 	pParent->SendMessage (BCGM_ON_GET_TAB_TOOLTIP, 0, (LPARAM) &info);
+	
 	if (pParent != pParentFrame && pParentFrame != NULL)
 	{
+		pParentFrame = GetMainParentFrame(pParentFrame);
+
 		ASSERT_VALID (pParentFrame);
 		pParentFrame->SendMessage (BCGM_ON_GET_TAB_TOOLTIP, 0, (LPARAM) &info);
 	}
@@ -3129,19 +3325,60 @@ BOOL CBCGPBaseTabWnd::OnSetAccData (long lVal)
 
 	m_AccData.Clear ();
 
-	for (int i = 0; i < m_iTabsNum; i ++)
+	int nIndex = GetAccChildIndex(lVal);
+	
+	if (lVal == GetVisibleTabsNum() + 1)
 	{
-		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
-		ASSERT_VALID (pTab);
+		CWnd* pWnd = GetActiveWnd();
+		
+		CString strText;
+		CRect rect(0, 0, 0, 0);
 
-		if ((i + 1 == lVal) && pTab->m_bVisible && !pTab->m_rect.IsRectEmpty ())
+		if (pWnd->GetSafeHwnd() != NULL)
 		{
-			SetACCData (pTab, m_AccData, i == m_iActiveTab);
+			pWnd->GetWindowText(strText);
+			pWnd->GetClientRect(rect);
+		}
+
+		m_AccData.m_strAccName = strText; 
+		m_AccData.m_nAccHit = 1;
+		m_AccData.m_nAccRole = ROLE_SYSTEM_PANE;
+		m_AccData.m_rectAccLocation = rect;	
+
+		ClientToScreen(&m_AccData.m_rectAccLocation);
+		return TRUE;
+	}
+
+	if (nIndex != -1)
+	{
+		CBCGPTabInfo* pTab = (CBCGPTabInfo*)m_arTabs [nIndex];
+
+		if (pTab != NULL && !pTab->m_rect.IsRectEmpty ())
+		{
+			SetACCData(pTab, m_AccData, nIndex == m_iActiveTab);
 			return TRUE;
 		}
 	}
 	
 	return FALSE;
+}
+//****************************************************************************
+int CBCGPBaseTabWnd::GetAccChildIndex (long lVal)
+{
+	int nCount  = 0;
+	for (int i = 0; i < m_iTabsNum; i ++)
+	{
+		if (IsTabVisible (i))
+		{
+			nCount++;
+			if (nCount == lVal)
+			{
+				return i;
+			}
+		}
+	}
+
+	return -1;
 }
 //****************************************************************************
 HRESULT CBCGPBaseTabWnd::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
@@ -3157,16 +3394,41 @@ HRESULT CBCGPBaseTabWnd::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
 	CPoint pt (xLeft, yTop);
 	ScreenToClient (&pt);
 
+	int nCount  = 0;
+	
+	CWnd* pWnd = GetActiveWnd ();
+	if(pWnd != NULL && pWnd->GetSafeHwnd() != NULL)
+	{
+		CRect rect;
+		if(PtInRect(rect, pt))
+		{
+			pvarChild->pdispVal = NULL;
+			pvarChild->vt = VT_DISPATCH;
+
+			AccessibleObjectFromWindow(pWnd->GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)&pvarChild->pdispVal);
+
+			if(pvarChild->pdispVal != NULL)
+			{
+				return S_OK;
+			}
+			return S_FALSE;
+		}
+	}
+		
 	for (int i = 0; i < m_iTabsNum; i ++)
 	{
 		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
 		ASSERT_VALID (pTab);
 
-		if (pTab->m_rect.PtInRect (pt))
+		if (IsTabVisible (i))
 		{
-			pvarChild->lVal = i + 1;
-			SetACCData (pTab, m_AccData, i == m_iActiveTab);
-			break;
+			nCount++;
+			if (pTab->m_rect.PtInRect (pt))
+			{
+				pvarChild->lVal = nCount;
+				SetACCData (pTab, m_AccData, i == m_iActiveTab);
+				break;
+			}
 		}
 	}
 
@@ -3180,29 +3442,30 @@ HRESULT CBCGPBaseTabWnd::get_accChildCount(long *pcountChildren)
         return E_INVALIDARG;
     }
 
-	int count = 0;
-	for (int i = 0; i < m_iTabsNum; i ++)
-	{
-		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
-		ASSERT_VALID (pTab);
-
-		if (pTab->m_bVisible && !pTab->m_rect.IsRectEmpty ())
-		{
-			count++;
-		}
-	}
-
-	*pcountChildren = count;
+	*pcountChildren = GetVisibleTabsNum () + 1; 
 	return S_OK;
 }
 //****************************************************************************
-HRESULT CBCGPBaseTabWnd::get_accChild(VARIANT /*varChild*/, IDispatch **ppdispChild)
+HRESULT CBCGPBaseTabWnd::get_accChild(VARIANT varChild, IDispatch **ppdispChild)
 {
 	if( !ppdispChild )
     {
         return E_INVALIDARG;
     }
+	
+	if(varChild.lVal == (GetVisibleTabsNum() + 1))
+	{
+		CWnd* pWnd = GetActiveWnd ();
+		if(pWnd != NULL && pWnd->GetSafeHwnd() != NULL)
+		{
+			AccessibleObjectFromWindow(pWnd->GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)ppdispChild);
 
+			if(*ppdispChild != NULL)
+			{
+				return S_OK;
+			}
+		}
+	}
 	return S_FALSE;
 }
 //****************************************************************************
@@ -3291,7 +3554,7 @@ HRESULT CBCGPBaseTabWnd::accDoDefaultAction(VARIANT varChild)
 
 	if (varChild.lVal != CHILDID_SELF)
     {
-		int count = 0;
+		int count = 1;
 		for (int i = 0; i < m_iTabsNum; i ++)
 		{
 			CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
@@ -3503,4 +3766,217 @@ int CBCGPBaseTabWnd::GetTextHeight(int& nTextMargin)
 	dc.SelectObject (pOldFont);
 
 	return nTextHeight;
+}
+//*****************************************************************************
+void CBCGPBaseTabWnd::EnableMultipleSelection(BOOL bEnable/* = TRUE*/)
+{
+	m_bMultipleSelection = bEnable;
+
+	if (!m_bMultipleSelection)
+	{
+		ClearSelectedTabs();
+	}
+}
+//*****************************************************************************
+int CBCGPBaseTabWnd::GetSelectedTabsCount() const
+{
+	CList<int, int> lstSelectedTabs;
+	return GetSelectedTabs(lstSelectedTabs);
+}
+//*****************************************************************************
+int CBCGPBaseTabWnd::GetSelectedTabs(CList<int, int>& lstTabs) const
+{
+	lstTabs.RemoveAll();
+
+	if (IsMultipleSelectionSupported())
+	{
+		for (int i = 0; i < m_iTabsNum; i ++)
+		{
+			CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
+			ASSERT_VALID (pTab);
+
+			if (pTab->m_bIsSelected || i == m_iActiveTab)
+			{
+				lstTabs.AddTail(i);
+			}
+		}
+	}
+
+	if (lstTabs.GetCount() == 1 && lstTabs.GetHead() == m_iActiveTab)
+	{
+		lstTabs.RemoveAll();
+	}
+
+	return (int)lstTabs.GetCount();
+}
+//*****************************************************************************
+int CBCGPBaseTabWnd::ClearSelectedTabs()
+{
+	if (m_bDontClearSelection)
+	{
+		return 0;
+	}
+
+	int nSelCount = 0;
+
+	for (int i = 0; i < m_iTabsNum; i ++)
+	{
+		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
+		ASSERT_VALID (pTab);
+		
+		if (pTab->m_bIsSelected)
+		{
+			pTab->m_bIsSelected = FALSE;
+			nSelCount++;
+		}
+	}
+
+	if (GetSafeHwnd() != NULL && nSelCount > 0)
+	{
+		RedrawWindow();
+	}
+
+	return nSelCount;
+}
+//*****************************************************************************
+BOOL CBCGPBaseTabWnd::IsTabSelected(int iTab) const
+{
+	if (!m_bMultipleSelection || !IsMultipleSelectionSupported())
+	{
+		return FALSE;
+	}
+
+	if (iTab == m_iActiveTab && GetSelectedTabsCount() > 1)
+	{
+		return TRUE;
+	}
+
+	if (iTab >= 0 && iTab < m_iTabsNum)
+	{
+		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [iTab];
+		ASSERT_VALID (pTab);
+		
+		return pTab->m_bIsSelected;
+	}
+
+	return FALSE;
+}
+//*****************************************************************************
+BOOL CBCGPBaseTabWnd::MakeTabsMultipleSelection(int iClickedTab)
+{
+	if (!m_bMultipleSelection || !IsMultipleSelectionSupported())
+	{
+		return FALSE;
+	}
+	
+	if (iClickedTab < 0 || iClickedTab >= (int)m_arTabs.GetSize())
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+	
+	CList<int, int> lstSelectedTabs;
+	if (GetSelectedTabs(lstSelectedTabs) == 0 && iClickedTab == m_iActiveTab)
+	{
+		return FALSE;
+	}
+
+	int nFirst = -1;
+	int nLast = -1;
+
+	if (iClickedTab == m_iActiveTab)
+	{
+		nFirst = nLast = iClickedTab;
+	}
+	else
+	{
+		if (lstSelectedTabs.IsEmpty())
+		{
+			lstSelectedTabs.AddTail(m_iActiveTab);
+		}
+
+		if (lstSelectedTabs.GetHead() < iClickedTab)
+		{
+			nFirst = lstSelectedTabs.GetHead();
+			nLast = iClickedTab;
+		}
+		else
+		{
+			nFirst = iClickedTab;
+			nLast = lstSelectedTabs.GetTail();
+		}
+	}
+
+	for (int i = 0; i < m_iTabsNum; i ++)
+	{
+		CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
+		ASSERT_VALID (pTab);
+
+		pTab->m_bIsSelected = (i >= nFirst && i <= nLast);
+	}
+
+	RedrawWindow();
+	return TRUE;
+}
+//*****************************************************************************
+BOOL CBCGPBaseTabWnd::ToggleTabSelectState(int iTab, BOOL bRedraw)
+{
+	if (!m_bMultipleSelection || !IsMultipleSelectionSupported())
+	{
+		return FALSE;
+	}
+
+	if (iTab < 0 || iTab >= (int)m_arTabs.GetSize())
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+	CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [iTab];
+	ASSERT_VALID (pTab);
+	
+	BOOL bDontClearSelection = m_bDontClearSelection;
+	m_bDontClearSelection = TRUE;
+
+	if (!pTab->m_bIsSelected)
+	{
+		if (iTab != m_iActiveTab)
+		{
+			// Make tab active:
+			if (m_iActiveTab >= 0 && m_iActiveTab < (int)m_arTabs.GetSize())
+			{
+				CBCGPTabInfo* pActiveTab = (CBCGPTabInfo*)m_arTabs[m_iActiveTab];
+				ASSERT_VALID(pActiveTab);
+
+				pActiveTab->m_bIsSelected = TRUE;
+			}
+
+			SetActiveTab(iTab);
+		}
+	}
+	else if (iTab == m_iActiveTab)
+	{
+		// Deactivate tab.
+		for (int i = 0; i < m_iTabsNum; i ++)
+		{
+			CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
+			ASSERT_VALID (pTab);
+			
+			if (pTab->m_bIsSelected && i != iTab)
+			{
+				SetActiveTab(i);
+				break;
+			}
+		}
+	}
+
+	m_bDontClearSelection = bDontClearSelection;
+	pTab->m_bIsSelected = !pTab->m_bIsSelected;
+
+	if (bRedraw && GetSafeHwnd() != NULL)
+	{
+		RedrawWindow();
+	}
+
+	return pTab->m_bIsSelected;
 }

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -33,11 +33,6 @@ CBCGPChartCtrl::~CBCGPChartCtrl()
 		delete m_pChart;
 	}
 }
-
-BEGIN_MESSAGE_MAP(CBCGPChartCtrl, CBCGPVisualCtrl)
-	//{{AFX_MSG_MAP(CBCGPChartCtrl)
-	//}}AFX_MSG_MAP
-END_MESSAGE_MAP()
 
 BOOL CBCGPChartCtrl::CreateCustomChart(CRuntimeClass* pChartRTC)
 {

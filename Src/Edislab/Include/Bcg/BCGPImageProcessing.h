@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -473,5 +473,7 @@ BOOL BCGPDesaturateBitmap(HBITMAP hBitmap, COLORREF clrTransparent, BOOL bIsIgno
 BOOL BCGPAdjustmentBitmap(HBITMAP hBitmap, COLORREF clrTransparent, BOOL bIsIgnoreAlpha, const CBCGPColorLookupTable& table, BOOL bOnGray = FALSE);
 BOOL BCGPBlendBitmap(HBITMAP hBitmap, COLORREF clrTransparent, BOOL bIsIgnoreAlpha, double dblRatio);
 HBITMAP BCGPRotateBitmap(HBITMAP hBitmap, BOOL bCW = TRUE);
+BOOL BCGPModifyBitmapLuminosity(HBITMAP hBitmap, COLORREF clrTransparent, double dblRatio);
+BOOL BCGPInvertBitmapColors(HBITMAP hBitmap, COLORREF clrTransparent);
 
 #endif // !defined(AFX_BCGPIMAGEPROCESSING_H__847B8B25_AE4A_44E1_B1E8_CFE353B89B48__INCLUDED_)

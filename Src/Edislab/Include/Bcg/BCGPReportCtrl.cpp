@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,7 @@
 #ifndef BCGP_EXCLUDE_GRID_CTRL
 
 #include "bcgglobals.h"
+#include "bcgpglobalutils.h"
 
 #ifndef _BCGPGRID_STANDALONE
 	#include "BCGPVisualManager.h"
@@ -40,7 +41,8 @@ static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
 
-#define TEXT_MARGIN		3
+#define TEXT_MARGIN				3
+#define PREVIEW_ROW_VERT_MARGIN	(globalUtils.ScaleByDPI(2))
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPReportRow object
@@ -60,6 +62,43 @@ CBCGPReportRow::CBCGPReportRow (const CString& strGroupName, DWORD dwData)
 //******************************************************************************************
 CBCGPReportRow::~CBCGPReportRow()
 {
+}
+//******************************************************************************************
+void CBCGPReportRow::OnFillGroupBackground (CDC* pDC, CRect rectFill, BOOL bGroupUnderline)
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (pDC);
+	ASSERT_VALID (m_pWndList);
+	
+	BOOL bCustomColors = FALSE;
+	
+	if (!m_pWndList->IsHighlightGroups())
+	{
+		/*if (m_pWndList->m_ColorData.m_GroupColors.Draw (pDC, rectFill))
+		{
+			bCustomColors = TRUE;
+		}
+		else*/ if (m_pWndList->m_brGroupBackground.GetSafeHandle () != NULL ||
+			m_pWndList->m_brBackground.GetSafeHandle () != NULL)
+		{
+			CBrush& br = (m_pWndList->m_brGroupBackground.GetSafeHandle () != NULL) ? m_pWndList->m_brGroupBackground : m_pWndList->m_brBackground;
+			pDC->FillRect (rectFill, &br);
+			bCustomColors = TRUE;
+		}
+		else
+		{
+			visualManager->OnFillGridGroupBackground (m_pWndList, pDC, rectFill);
+		}
+	}
+	
+	// draw group underline
+	if (!bCustomColors && bGroupUnderline && IsGroup ())
+	{
+		rectFill.top = rectFill.bottom;
+		rectFill.InflateRect (0, 1);
+		
+		visualManager->OnDrawGridGroupUnderline (m_pWndList, pDC, rectFill);
+	}
 }
 //******************************************************************************************
 void CBCGPReportRow::OnDrawName (CDC* pDC, CRect rect)
@@ -121,7 +160,12 @@ void CBCGPReportRow::OnDrawName (CDC* pDC, CRect rect)
 		}
 	}
 
-	rect.DeflateRect (TEXT_MARGIN, 0);
+	if (HasCheckBox())
+	{
+		rect.left += m_pWndList->GetButtonWidth();
+	}
+
+	rect.DeflateRect (globalUtils.ScaleByDPI(TEXT_MARGIN), 0);
 	if (IsGroup ())
 	{
 		int nDeflate = (m_pWndList->m_nLargeRowHeight - m_pWndList->m_nRowHeight) / 2;
@@ -130,6 +174,7 @@ void CBCGPReportRow::OnDrawName (CDC* pDC, CRect rect)
 			rect.DeflateRect (0, nDeflate, 0, 0);
 		}
 	}
+	rect.left = min(rect.left, rect.right);
 
 	if (clrText != (COLORREF)-1)
 	{
@@ -155,12 +200,9 @@ void CBCGPReportRow::OnDrawPreview (CDC* pDC, CRect rect)
 
 	ASSERT (HasValueField ());
 
-	int dx = m_pWndList->IsSortingMode () && !m_pWndList->IsGrouping () ? 0 : GetHierarchyLevel () * m_pWndList->GetHierarchyLevelOffset ();
-
 	// Fill background for the preview area:
 	CRect rectDescr = rect;
 	rectDescr.top++;
-	rectDescr.left = rect.left + m_pWndList->GetExtraHierarchyOffset () + dx;
 	
 	COLORREF clrText = m_pWndList->GetTextColor ();
 	if (IsSelected ())
@@ -169,17 +211,43 @@ void CBCGPReportRow::OnDrawPreview (CDC* pDC, CRect rect)
 	}
 	else
 	{
-		if (m_pWndList->m_brBackground.GetSafeHandle () != NULL)
+		CBCGPGridItemID id = CBCGPGridItemID(GetRowId());
+		BOOL bCustomColors = FALSE;
+
+		if (!id.IsNull() && m_pWndList->IsAlternateRowsEnabled())
 		{
-			pDC->FillRect (rectDescr, &m_pWndList->m_brBackground);
+			if (m_pWndList->OnAlternateColor(id))
+			{
+				bCustomColors = m_pWndList->m_ColorData.m_EvenColors.Draw (pDC, rectDescr);
+				if (m_pWndList->m_ColorData.m_EvenColors.m_clrText != (COLORREF)-1)
+				{
+					clrText = m_pWndList->m_ColorData.m_EvenColors.m_clrText;
+				}
+			}
+			else
+			{
+				bCustomColors = m_pWndList->m_ColorData.m_OddColors.Draw (pDC, rectDescr);
+				if (m_pWndList->m_ColorData.m_OddColors.m_clrText != (COLORREF)-1)
+				{
+					clrText = m_pWndList->m_ColorData.m_OddColors.m_clrText;
+				}
+			}
 		}
 		else
 		{
-			COLORREF clr = visualManager->OnFillGridItem (
-				m_pWndList, pDC, rectDescr, IsSelected (), FALSE/*bActiveItem*/, FALSE);
-			if (clrText == (COLORREF)-1)
+			bCustomColors = m_pWndList->m_ColorData.m_clrBackground != (COLORREF)-1;
+		}
+
+		if (!bCustomColors)
+		{
+			if (m_pWndList->m_brBackground.GetSafeHandle () != NULL)
 			{
-				clrText = clr;
+				pDC->FillRect (rectDescr, &m_pWndList->m_brBackground);
+			}
+			else
+			{
+				clrText = visualManager->OnFillGridItem (
+					m_pWndList, pDC, rectDescr, IsSelected (), FALSE/*bActiveItem*/, FALSE);
 			}
 		}
 	}
@@ -375,6 +443,53 @@ CRect CBCGPReportRow::GetNameTooltipRect ()
 	return rectName;
 }
 //******************************************************************************************
+CRect CBCGPReportRow::GetCheckBoxRect(int dx) const
+{
+	CRect rect = CBCGPGridRow::GetCheckBoxRect(dx);
+
+	CBCGPGridCtrl* pWndList = GetOwnerList ();
+	if (pWndList != NULL)
+	{
+		if (IsGroup ())
+		{
+			int nDeflate = (pWndList->GetLargeRowHeight() - pWndList->GetRowHeight()) / 2;
+			if (nDeflate > 0)
+			{
+				rect.DeflateRect (0, nDeflate, 0, 0);
+			}
+		}
+		else
+		{
+			rect.bottom = min(rect.top + pWndList->GetRowHeight(), rect.bottom);
+		}
+	}
+
+	return rect;
+}
+//******************************************************************************************
+BOOL CBCGPReportRow::HasCheckBox () const
+{
+	if (IsGroup() && (m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0)
+	{
+		CBCGPReportCtrl* pReportWnd = (CBCGPReportCtrl*)GetOwnerList();
+		if (pReportWnd != NULL && !pReportWnd->m_bAutoGroupCheckBoxes)
+		{
+			return FALSE;
+		}
+	}
+
+	return CBCGPGridRow::HasCheckBox();
+}
+//******************************************************************************************
+BOOL CBCGPReportRow::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
+{
+	BOOL bRes = CBCGPGridRow::SetACCData (pParent, data);
+
+	data.m_strDescription = GetDescription ();
+
+	return bRes;
+}
+//******************************************************************************************
 void CBCGPReportRow::GetPreviewText (CString& str) const
 {
 	str = GetDescription ();
@@ -432,7 +547,7 @@ int CBCGPReportRow::CalcPreview (const CRect& rect)
 		CRect rectDescr = rect;
 		if (!m_pWndList->m_bIsPrinting)
 		{
-			int dx = m_pWndList->IsSortingMode () && !m_pWndList->IsGrouping () ? 0 : GetHierarchyLevel () * m_pWndList->GetHierarchyLevelOffset ();
+			int dx = m_pWndList->GetHierarchyOffset(this);
 
 			rectDescr.top++;
 			rectDescr.left = rect.left + m_pWndList->GetExtraHierarchyOffset () + dx;
@@ -449,7 +564,7 @@ int CBCGPReportRow::CalcPreview (const CRect& rect)
 
 		if (nHeight > 0)
 		{
-			int nBottomMargin = (m_pWndList->m_bIsPrinting ? 2 * m_pWndList->m_PrintParams.m_pageInfo.m_szOne.cy : 2);
+			int nBottomMargin = (m_pWndList->m_bIsPrinting ? 2 * m_pWndList->m_PrintParams.m_pageInfo.m_szOne.cy : 2 * PREVIEW_ROW_VERT_MARGIN);
 			return min (nHeight + nBottomMargin, nMaxHeight);
 		}
 	}
@@ -472,11 +587,14 @@ CBCGPReportCtrl::CBCGPReportCtrl()
 	m_bPreviewRow = FALSE;
 	m_nPreviewRowMaxLines = 3;
 	m_nPreviewRowHeight = 0;
+	m_bPreviewRowAutoLeftMargin = FALSE;
 	m_nPrintPreviewRowHeight = 0;
 	m_nPreviewRowLeftMargin = -1;
 	m_nPreviewRowRightMargin = -1;
 
 	m_pPreviewDC = NULL;
+
+	m_bAutoGroupCheckBoxes = FALSE;
 
 	m_bGridItemBorders = FALSE;
 	m_bGridLines = FALSE;
@@ -519,14 +637,14 @@ void CBCGPReportCtrl::SetRowHeight ()
 	}
 	else
 	{
-		m_nLargeRowHeight = m_nRowHeight + 14 + 2;
+		m_nLargeRowHeight = m_nRowHeight + globalUtils.ScaleByDPI(14 + 2);
 
 		CClientDC dc (this);
 		HFONT hfontOld = SetCurrFont (&dc);
 
 		TEXTMETRIC tm;
 		dc.GetTextMetrics (&tm);
-		m_nPreviewRowHeight = m_bPreviewRow ? m_nPreviewRowMaxLines * tm.tmHeight + 2 : 0;
+		m_nPreviewRowHeight = m_bPreviewRow ? m_nPreviewRowMaxLines * tm.tmHeight + globalUtils.ScaleByDPI(2) : 0;
 
 		::SelectObject (dc.GetSafeHdc (), hfontOld);
 	}
@@ -567,7 +685,7 @@ void CBCGPReportCtrl::RecalcMargins ()
 {
 	if (m_bPreviewRowAutoLeftMargin)
 	{
-		m_nPreviewRowLeftMargin = m_Columns.GetLeftTextOffset () + TEXT_MARGIN;
+		m_nPreviewRowLeftMargin = GetColumnsInfo().GetLeftTextOffset () + globalUtils.ScaleByDPI(TEXT_MARGIN);
 	}
 }
 //******************************************************************************************
@@ -581,14 +699,19 @@ CRect CBCGPReportCtrl::OnGetPreviewRowMargins (CBCGPGridRow* pRow) const
 		(m_nPreviewRowLeftMargin >= 0) ? m_nPreviewRowLeftMargin : nDefaultMargin,
 		(pRow->IsGroup () ? GetLargeRowHeight () : GetRowHeight ()),
 		(m_nPreviewRowRightMargin >= 0) ? m_nPreviewRowRightMargin : nDefaultMargin,
-		2);
+		PREVIEW_ROW_VERT_MARGIN);
+
+	if (pRow->HasCheckBox())
+	{
+		rect.left = max(rect.left, GetButtonWidth() + globalUtils.ScaleByDPI(TEXT_MARGIN));
+	}
 
 	return rect;
 }
 //******************************************************************************************
 int CBCGPReportCtrl::GetHierarchyOffset () const 
 {
-	int nLevel = m_Columns.GetGroupColumnCount ();
+	int nLevel = GetColumnsInfo().GetGroupColumnCount ();
 	if (nLevel > 0)
 	{
 		nLevel--;
@@ -635,6 +758,18 @@ void CBCGPReportCtrl::OnPaint()
 #endif
 
 	CBCGPGridCtrl::OnPaint();
+}
+//******************************************************************************************
+void CBCGPReportCtrl::OnScaleChanged(double dblOldScale)
+{
+	if (m_pPreviewDC != NULL)
+	{
+		delete m_pPreviewDC;
+		m_pPreviewDC = NULL;
+	}
+
+	SetRecalcPreview();
+	CBCGPGridCtrl::OnScaleChanged(dblOldScale);
 }
 
 #endif // BCGP_EXCLUDE_GRID_CTRL

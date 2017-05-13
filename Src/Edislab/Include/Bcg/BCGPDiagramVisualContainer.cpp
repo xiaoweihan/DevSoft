@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -43,6 +43,8 @@ CBCGPDiagramVisualContainer::CBCGPDiagramVisualContainer(CWnd* pWndOwner)
 	: CBCGPVisualContainer (pWndOwner)
 {
 	m_nLastID = 0;
+
+	memset (&m_ii, 0, sizeof (BCGP_DIAGRAM_ITEM_INFO));
 
 	m_bIsEditAnchorMode = FALSE;
 
@@ -117,7 +119,13 @@ void CBCGPDiagramVisualContainer::OnAdd (CBCGPBaseVisualObject* pObject)
 	CBCGPDiagramConnector* pConnector = DYNAMIC_DOWNCAST(CBCGPDiagramConnector, pObject);
 	if (pConnector != NULL)
 	{
-		CBCGPDiagramItemID id = NewId (TRUE);
+		CBCGPDiagramItemID id = pConnector->GetItemID ();
+			
+		if (id.IsNull ())
+		{
+			id = NewId (TRUE);
+		}
+
 		pConnector->SetItemID (id);
 		m_mapConnectors.SetAt (id.m_nId, pConnector);
 
@@ -201,6 +209,7 @@ BOOL CBCGPDiagramVisualContainer::Remove (CBCGPDiagramItemID id, BOOL bRebuildCo
 	{
 		delete pObject;
 	}
+	m_arObjects.RemoveAt(nIndex);
 
 	if (bRebuildContainer)
 	{
@@ -233,6 +242,7 @@ void CBCGPDiagramVisualContainer::RemoveAllConnectors (BOOL bRebuildContainer)
 		}
 
 		m_arObjects[i] = NULL;
+		m_arObjects.RemoveAt(i--);
 	}
 
 	m_mapConnectors.RemoveAll ();
@@ -352,6 +362,10 @@ CBCGPPoint CBCGPDiagramVisualContainer::CalculatePoint (const CBCGPDiagramAnchor
 	}
 
 	CBCGPBaseVisualObject* pObject = GetItem (anchor.m_idObject);
+	if (pObject == NULL)
+	{
+		return anchor.m_ptNullAnchor;
+	}
 
 	CBCGPDiagramVisualObject* pDiagramItem = DYNAMIC_DOWNCAST(CBCGPDiagramVisualObject, pObject);
 	if (pDiagramItem != NULL)
@@ -377,11 +391,11 @@ CBCGPPoint CBCGPDiagramVisualContainer::CalculatePoint (const CBCGPDiagramAnchor
 //*******************************************************************************
 CBCGPDiagramAnchorPoint CBCGPDiagramVisualContainer::NewAnchorFromPoint (CBCGPPoint pt, HitTestAnchorOptions* pOptions) const
 {
-	BOOL bIgnoreSelection = FALSE;
+	HitTestAnchorOptions options;
 
 	if (pOptions != NULL)
 	{
-		bIgnoreSelection = pOptions->bIgnoreSelection;
+		options = *pOptions;
 	}
 
 	for (int i = 0; i < m_arObjects.GetSize(); i++)
@@ -389,7 +403,12 @@ CBCGPDiagramAnchorPoint CBCGPDiagramVisualContainer::NewAnchorFromPoint (CBCGPPo
 		CBCGPDiagramVisualObject* pObject = DYNAMIC_DOWNCAST(CBCGPDiagramVisualObject, m_arObjects[i]);
 		if (pObject != NULL)
 		{
-			if (bIgnoreSelection && m_lstSel.Find (pObject) != NULL)
+			if (options.bIgnoreSelection && m_lstSel.Find (pObject) != NULL)
+			{
+				continue;
+			}
+
+			if (options.bIgnoreConnectors && pObject->IsKindOf(RUNTIME_CLASS(CBCGPDiagramConnector)))
 			{
 				continue;
 			}
@@ -491,7 +510,12 @@ BOOL CBCGPDiagramVisualContainer::OnMouseDown(int nButton, const CBCGPPoint& pt)
 			CBCGPDiagramConnector* pConnector = DYNAMIC_DOWNCAST(CBCGPDiagramConnector, pOwnerObject);
 			if (pConnector != NULL)
 			{
-				Select (pConnector);
+				if (!pConnector->IsSelected())
+				{
+					Select (pConnector);
+					FireSelectionChangedEvent();
+				}
+
 				pConnector->BeginTrackAnchorPoint (anchor);
 				pConnector->Redraw ();
 				
@@ -626,6 +650,7 @@ void CBCGPDiagramVisualContainer::MoveTrackingPoints(CBCGPPoint pt)
 
 			HitTestAnchorOptions options;
 			options.bIgnoreSelection = TRUE;
+			options.bIgnoreConnectors = TRUE;
 
 			if (pObject->SetTrackedAnchorPoint (NewAnchorFromPoint (pt + m_ptScrollOffset, &options)))
 			{
@@ -667,6 +692,13 @@ void CBCGPDiagramVisualContainer::OnMouseLeave()
 	m_bIsEditAnchorMode = FALSE;
 
 	CBCGPVisualContainer::OnMouseLeave ();
+}
+//*******************************************************************************
+BOOL CBCGPDiagramVisualContainer::OnMouseWheel(const CBCGPPoint& pt, short zDelta)
+{
+	EndEditItem (TRUE);
+
+	return CBCGPVisualContainer::OnMouseWheel (pt, zDelta);
 }
 //*******************************************************************************
 void CBCGPDiagramVisualContainer::OnCancelMode()
@@ -850,14 +882,13 @@ void CBCGPDiagramVisualContainer::OnItemChanged (CBCGPDiagramVisualObject* pItem
 		return;
 	}
 
-	BCGP_DIAGRAM_ITEM_INFO ii;
-	memset (&ii, 0, sizeof (BCGP_DIAGRAM_ITEM_INFO));
-	ii.pItem = pItem;
-	ii.idItem = pItem->GetItemID ();
-	ii.nDataIndex = nDataObject;
-	ii.dwResultCode = 0;
+	memset (&m_ii, 0, sizeof (BCGP_DIAGRAM_ITEM_INFO));
+	m_ii.pItem = pItem;
+	m_ii.idItem = pItem->GetItemID ();
+	m_ii.nDataIndex = nDataObject;
+	m_ii.dwResultCode = 0;
 
-	GetOwner ()->PostMessage (BCGM_DIAGRAM_ITEM_CHANGED, GetOwner ()->GetDlgCtrlID (), LPARAM (&ii));
+	GetOwner ()->PostMessage (BCGM_DIAGRAM_ITEM_CHANGED, GetOwner ()->GetDlgCtrlID (), LPARAM (&m_ii));
 }
 //*******************************************************************************
 void CBCGPDiagramVisualContainer::FirePosSizeChangedEvent(CBCGPBaseVisualObject* /*pObject*/, CRect /*rectOld*/)

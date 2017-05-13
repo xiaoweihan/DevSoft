@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -134,8 +134,10 @@ public:
 	BOOL GetGestureInfo(HWND hwnd, BCGP_HGESTUREINFO hGestureInfo, PBCGP_GESTUREINFO pInfo);
 	BOOL CloseGestureInfoHandle(BCGP_HGESTUREINFO hGestureInfo);
 	
-	BOOL SetGestureConfig(HWND hwnd, const CBCGPGestureConfig& config);
+	BOOL SetGestureConfig(HWND hwnd, const CBCGPGestureConfig& config, BOOL bLegacyGestures = FALSE);
 	BOOL GetGestureConfig(HWND hwnd, CBCGPGestureConfig& config);
+
+	BOOL AreLegacyGestures(HWND hWnd) const;
 	
 	// Boundary feedback wrappers:
 	BOOL BeginPanningFeedback(HWND hwnd);
@@ -173,6 +175,9 @@ protected:
 	ULONGLONG			m_ulGestureArg;
 
 	BOOL ProcessGestureEvent(CWnd* pWndThis, WPARAM wp, LPARAM lp);
+
+	virtual void OnGestureEventBegin() {}
+	virtual void OnGestureEventEnd() {}	
 
 	virtual BOOL OnGestureEventZoom(const CPoint& ptCenter, double dblZoomFactor);
 	virtual BOOL OnGestureEventPan(const CPoint& ptFrom, const CPoint& ptTo, CSize& sizeOverPan);

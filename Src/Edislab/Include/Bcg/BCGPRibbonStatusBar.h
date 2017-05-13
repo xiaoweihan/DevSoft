@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -129,6 +129,14 @@ public:
 
 	CString GetLabel (const CBCGPBaseRibbonElement* pElement) const;
 
+	void SetApplicationModes(UINT nModes, // (UINT)-1: all modes
+		BOOL /*bResetKeyboardAccelerators*/ = TRUE, 
+		BOOL bRecalc = TRUE)
+	{
+		CBCGPRibbonBar::SetApplicationModes(nModes, FALSE, bRecalc);
+		CleanUpCustomizeItems();
+	}
+
 // Overrides
 public:
 	virtual void SetInputMode(BCGP_INPUT_MODE mode);
@@ -164,8 +172,12 @@ public:
 	
 	virtual CBCGPBaseAccessibleObject* AccessibleObjectFromPoint(CPoint point);
 	virtual CBCGPBaseAccessibleObject* AccessibleObjectByIndex(long lVal);
+
+	virtual CBCGPBaseRibbonElement* GetFocused();
+
 protected:
 	virtual void OnDraw(CDC* pDC);
+	virtual BOOL IsTabStop() const;
 
 // Implementation
 public:
@@ -178,6 +190,7 @@ protected:
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	//}}AFX_MSG
 	afx_msg BCGNcHitTestType OnNcHitTest(CPoint point);
 	afx_msg LRESULT OnUpdateShadows(WPARAM,LPARAM);

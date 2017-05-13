@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 #endif // _MSC_VER > 1000
 
 #include "BCGCBPro.h"
+#include "BCGPListBox.h"
 
 #ifndef BCGP_EXCLUDE_RIBBON
 
@@ -32,7 +33,7 @@ class CBCGPRibbonSeparator;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPRibbonCommandsListBox window
 
-class BCGCBPRODLLEXPORT CBCGPRibbonCommandsListBox : public CListBox
+class BCGCBPRODLLEXPORT CBCGPRibbonCommandsListBox : public CBCGPListBox
 {
 // Construction
 public:
@@ -57,20 +58,31 @@ public:
 		return m_pRibbonBar;
 	}
 
+	void SetSimpleDraw(BOOL bSet)
+	{
+		m_bSimpleDraw = bSet;
+	}
+
+	BOOL IsSimpleDraw() const
+	{
+		return m_bSimpleDraw;
+	}
+
 protected:
 	CBCGPRibbonBar*			m_pRibbonBar;
 	int						m_nTextOffset;
 	CBCGPRibbonSeparator*	m_pSeparator;
 	BOOL					m_bDrawDefaultIcon;
 	BOOL					m_bCommandsOnly;
+	BOOL					m_bSimpleDraw;
 
 // Operations
 public:
-	void FillFromCategory (CBCGPRibbonCategory* pCategory);
-	void FillFromIDs (const CList<UINT,UINT>& lstCommands, BOOL bDeep);
+	void FillFromCategory (CBCGPRibbonCategory* pCategory, BOOL bExcludeDefaultPanelButtons = FALSE);
+	void FillFromIDs (const CList<UINT,UINT>& lstCommands, BOOL bDeep, BOOL bExcludeDefaultPanelButtons = FALSE);
 	void FillFromArray (
 		const CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arElements,
-		BOOL bDeep, BOOL bIgnoreSeparators);
+		BOOL bDeep, BOOL bIgnoreSeparators, BOOL bExcludeDefaultPanelButtons = FALSE);
 	void FillAll ();
 
 	BOOL AddCommand (CBCGPBaseRibbonElement* pCmd, BOOL bSelect = TRUE, BOOL bDeep = TRUE);
@@ -79,6 +91,8 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPRibbonCommandsListBox)
 	//}}AFX_VIRTUAL
+
+	virtual void OnDrawItemContent(CDC* pDC, CRect rect, int nIndex);
 
 // Implementation
 public:

@@ -48,9 +48,9 @@ int CCustomGrid::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	SetClearInplaceEditOnEnter(FALSE);
 	EnableInvertSelOnCtrl();
 	SetScrollBarsStyle(CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER);
-	//ShowHorzScrollBar();
-	//ShowVertScrollBar();
-	EnableRowHeader();
+	ShowHorzScrollBar(TRUE);
+	ShowVertScrollBar(TRUE);
+	EnableRowHeader(TRUE);
 	EnableLineNumbers(TRUE);
 	SetEditFirstClick(FALSE);
 	SetWholeRowSel(TRUE);
@@ -518,9 +518,14 @@ void CCustomGrid::OnSize(UINT nType, int cx, int cy)
 {
 	CBCGPGridCtrl::OnSize(nType, cx, cy);
 
-	// TODO: 在此处添加消息处理程序代码
 	if (NULL != GetSafeHwnd())
-	{	
-		AdjustLayout();	
+	{
+		int nColumnNum = m_ColumnsEx.GetColumnCount();
+
+		if (nColumnNum > 0)
+		{
+			AdjustLayout();
+			Invalidate(TRUE);	
+		}
 	}
 }

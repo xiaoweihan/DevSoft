@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -314,6 +314,17 @@ public:
 		double tmp = cx;
 		cx = cy;
 		cy = tmp;
+	}
+
+	void Scale(double dblRatio)
+	{
+		Scale(dblRatio, dblRatio);
+	}
+	
+	void Scale(double dblRatioX, double dblRatioY)
+	{
+		cx *= dblRatioX;
+		cy *= dblRatioY;
 	}
 
 // public operators
@@ -811,6 +822,11 @@ public:
 		Scale(szRatio.cx, szRatio.cy, ptOffset);
 	}
 
+	void Scale(double dblRatio, const CBCGPPoint& ptOffset = CBCGPPoint())
+	{
+		Scale(dblRatio, dblRatio, ptOffset);
+	}
+
 	void Scale(double dblRatioX, double dblRatioY, const CBCGPPoint& ptOffset = CBCGPPoint())
 	{
 		CBCGPSize size(Size());
@@ -1046,9 +1062,9 @@ public:
 		return radiusX <= 0. || radiusY <= 0.;
 	}
 
-	void Scale(const CBCGPSize& szRatio, CBCGPRect::BCGP_RECT_POINT point = CBCGPRect::BCGP_RECT_POINT_NULL)
+	void Scale(const CBCGPSize& szRatio, CBCGPRect::BCGP_RECT_POINT pointIn = CBCGPRect::BCGP_RECT_POINT_NULL)
 	{
-		Scale(szRatio.cx, szRatio.cy, ((CBCGPRect)*this).RectPoint(point));
+		Scale(szRatio.cx, szRatio.cy, ((CBCGPRect)*this).RectPoint(pointIn));
 	}
 
 	void Scale(const CBCGPSize& szRatio, const CBCGPPoint& ptOffset)
@@ -1532,11 +1548,11 @@ public:
 	void SetPoints(const CBCGPPointsArray& arPoints, BCGP_SPLINE_TYPE type, 
 		BOOL bIsClosed = TRUE, double tension = 0.0, double bias = 0.0, double continuity = 0.0);
 
-	void SetPoints(const CBCGPPointsArray& arPoints, BOOL bClosed = TRUE)
+	void SetPoints(const CBCGPPointsArray& arPoints, BOOL bIsClosed = TRUE)
 	{
 		m_arPoints.RemoveAll();
 		m_arPoints.Append(arPoints);
-		m_bIsClosed = bClosed;
+		m_bIsClosed = bIsClosed;
 	}
 
 	const CBCGPPointsArray& GetPoints() const
@@ -2229,6 +2245,16 @@ public:
 		return m_nPenStyle;
 	}
 
+	int GetBevelSize() const
+	{
+		return m_nBevelSize;
+	}
+
+	void SetBevelSize(int nBevelSize)
+	{
+		m_nBevelSize = nBevelSize;
+	}
+
 	void SetColor(const CBCGPColor& color, double opacity = 1.);
 	void SetColors(const CBCGPColor& color, const CBCGPColor& colorGradient, 
 		BCGP_GRADIENT_TYPE gradientType, double opacity = 1.);
@@ -2259,6 +2285,7 @@ protected:
 	BCGP_GRADIENT_TYPE	m_gradientType;
 	int					m_nPenWidth;
 	int					m_nPenStyle;
+	int					m_nBevelSize;
 	CBCGPToolBarImages	m_Image;
 	CBCGPImage			m_TextureImage;
 	BOOL				m_bIsWaterMarkImage;
@@ -2437,14 +2464,16 @@ public:
 		float fFontSize,
 		long lFontWeight = FW_REGULAR,
 		BCGP_FONT_STYLE fontStyle = BCGP_FONT_STYLE_NORMAL,
-		LPCTSTR lpszFontLocale = NULL);
+		LPCTSTR lpszFontLocale = NULL,
+		double dblScaleRatio = 1.0);
 
 	CBCGPTextFormat(
 		BYTE bCharSet,
 		const CString& strFontFamily,
 		float fFontSize,
 		long lFontWeight = FW_REGULAR,
-		BCGP_FONT_STYLE fontStyle = BCGP_FONT_STYLE_NORMAL);
+		BCGP_FONT_STYLE fontStyle = BCGP_FONT_STYLE_NORMAL,
+		double dblScaleRatio = 1.0);
 
 	CBCGPTextFormat(const LOGFONT& lf);
 
@@ -2460,7 +2489,8 @@ public:
 		float fFontSize,
 		long lFontWeight = FW_REGULAR,
 		BCGP_FONT_STYLE fontStyle = BCGP_FONT_STYLE_NORMAL,
-		LPCTSTR lpszFontLocale = NULL);
+		LPCTSTR lpszFontLocale = NULL,
+		double dblScaleRatio = 1.0);
 
 	BOOL CreateFromLogFont(const LOGFONT& lf);
 	void ExportToLogFont(LOGFONT& lf) const;
@@ -2478,12 +2508,12 @@ public:
 	
 	bool operator == (const CBCGPTextFormat& src) const
 	{
-		return (CompareWith(src) == TRUE);
+		return !!CompareWith(src);
 	}
 
 	bool operator != (const CBCGPTextFormat& src) const
 	{
-		return (CompareWith(src) == FALSE);
+		return !CompareWith(src);
 	}
 
 	BOOL IsEmpty() const
@@ -2506,6 +2536,11 @@ public:
 	float GetFontSize() const
 	{
 		return m_fFontSize;
+	}
+
+	float GetOriginalFontSize() const
+	{
+		return m_fFontSizeOriginal;
 	}
 
 	long GetFontWeight() const
@@ -2557,6 +2592,8 @@ public:
 
 	void SetFontSize(float fFontSize);
 
+	void SetFontWeight(long lFontWeight);
+
 	void SetFontStyle(BCGP_FONT_STYLE style);
 
 	void SetClipText(BOOL bSet = TRUE)
@@ -2602,6 +2639,13 @@ public:
 
 	void SetStrikethrough(BOOL bSet = TRUE);
 
+	BOOL IsEndEllipsis() const
+	{
+		return m_bIsEndEllipsis;
+	}
+
+	void SetEndEllipsis(BOOL bSet = TRUE);
+
 	BYTE GetCharSet() const;
 	static CString CharSetToLocale(BYTE bCharSet);
 
@@ -2614,6 +2658,7 @@ protected:
 	float				m_fFontSize;
 	BOOL				m_bIsUnderline;
 	BOOL				m_bIsStrikethrough;
+	BOOL				m_bIsEndEllipsis;
 	float				m_fFontSizeOriginal;
 	long				m_lFontWeight;
 	BCGP_FONT_STYLE		m_fontStyle;
@@ -2722,6 +2767,16 @@ public:
 	const CBCGPRect& GetGradientRectangle() const
 	{
 		return m_rectCurrGradient;
+	}
+
+	void SetCurrentOpacity(double dblOpacity)
+	{
+		m_dblCurrentOpacity = dblOpacity;
+	}
+
+	double GetCurrentOpacity() const
+	{
+		return m_dblCurrentOpacity;
 	}
 
 protected:
@@ -2963,6 +3018,8 @@ public:
 		return m_pPrintInfo;
 	}
 
+	virtual BOOL IsTransformSupported() const { return FALSE; }
+	virtual void SetRotateTransform(double /*dblAngle*/, const CBCGPPoint& /*ptCenter*/) {}
 protected:
 
 	virtual void OnFillGeometryBevel(const CBCGPBrush& brFill, const CBCGPGeometry& shape, const CBCGPGeometry& shapeInternal);
@@ -2982,6 +3039,7 @@ protected:
 	BOOL					m_bIsDrawShadowMode;
 	CBCGPPoint				m_ptShadowOffset;
 	CBCGPBrush				m_brShadow;
+	double					m_dblCurrentOpacity;	// 0 - 1, -1: default
 };
 
 #endif // !defined(AFX_BCGPGRAPHICSMANAGER_H__979A73FE_851A_4E39_B412_4F2C22047E28__INCLUDED_)

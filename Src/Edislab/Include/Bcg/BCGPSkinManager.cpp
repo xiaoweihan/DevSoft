@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGProControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -84,7 +84,7 @@ CBCGPSkinManager::CBCGPSkinManager (LPCTSTR lpszSkinsDirectory/* = BCG_DEFAULT_S
 				m_strSkinsDirectory += _T("Bcgsoft\\Skins");
 
 				//-------------------------------------------------
-				// Check for directory existance and if this folder
+				// Check for directory existence and if this folder
 				// doesn't exist, create it now:
 				//-------------------------------------------------
 				if (_taccess (m_strSkinsDirectory, 0) != 0)

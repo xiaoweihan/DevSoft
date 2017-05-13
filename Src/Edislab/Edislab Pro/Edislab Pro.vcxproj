@@ -74,28 +74,28 @@
     <OutDir>$(SolutionDir)Bin_x86\</OutDir>
     <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(SolutionDir)Include\boost\include\;$(IncludePath)</IncludePath>
     <LibraryPath>$(SolutionDir)Lib_x86\;$(SolutionDir)Include\boost\lib_x86\;$(LibraryPath)</LibraryPath>
-    <IntDir>$(SolutionDir)Bin_x86\$(Configuration)\</IntDir>
+    <IntDir>$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)Bin_x64\</OutDir>
     <LibraryPath>$(SolutionDir)Lib_x64\;$(SolutionDir)Include\boost\lib_x64\;$(LibraryPath)</LibraryPath>
     <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(SolutionDir)Include\boost\include\;$(IncludePath)</IncludePath>
-    <IntDir>$(SolutionDir)Bin_x64\$(Configuration)\</IntDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)Bin_x86\</OutDir>
     <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(SolutionDir)Include\boost\include\;$(IncludePath)</IncludePath>
     <LibraryPath>$(SolutionDir)Lib_x86\;$(SolutionDir)Include\boost\lib_x86\;$(LibraryPath)</LibraryPath>
-    <IntDir>$(SolutionDir)Bin_x86\$(Configuration)\</IntDir>
+    <IntDir>$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)Bin_x64\</OutDir>
     <LibraryPath>$(SolutionDir)Lib_x64\;$(SolutionDir)Include\boost\lib_x64\;$(LibraryPath)</LibraryPath>
     <IncludePath>$(SolutionDir)Include\Bcg\;$(SolutionDir)Include\;$(SolutionDir)Include\boost\include\;$(IncludePath)</IncludePath>
-    <IntDir>$(SolutionDir)Bin_x64\$(Configuration)\</IntDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -234,6 +234,7 @@
     <ClInclude Include="ConverEncode.h" />
     <ClInclude Include="CParagraphFormat.h" />
     <ClInclude Include="CSelection.h" />
+    <ClInclude Include="CustomGrid.h" />
     <ClInclude Include="CustomLabGridCtrl.h" />
     <ClInclude Include="DataDefine.h" />
     <ClInclude Include="DeviceView.h" />
@@ -295,6 +296,7 @@
     <ClCompile Include="ConcreteSplitAlgorithm.cpp" />
     <ClCompile Include="ConcreteTabWnd.cpp" />
     <ClCompile Include="ConverEncode.cpp" />
+    <ClCompile Include="CustomGrid.cpp" />
     <ClCompile Include="CustomLabGridCtrl.cpp" />
     <ClCompile Include="DeviceView.cpp" />
     <ClCompile Include="DiagramView.cpp" />

@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,11 +22,21 @@
 
 #include "BCGCBPro.h"
 
+#ifndef _BCGPEDIT_STANDALONE
+	#include "BCGPScrollBar.h"
+#else
+	#define CBCGPScrollBar CScrollBar
+#endif
+
 #ifndef BCGP_EXCLUDE_EDIT_CTRL
 
 class CBCGPEditCtrl;
 
+#ifndef _BCGPEDIT_STANDALONE
+class BCGCBPRODLLEXPORT CBCGPBaseIntelliSenseLB : public TBCGPInternalScrollBarWrapperWnd<CListBox>
+#else
 class BCGCBPRODLLEXPORT CBCGPBaseIntelliSenseLB : public CListBox
+#endif
 {
 	DECLARE_DYNCREATE (CBCGPBaseIntelliSenseLB)
 
@@ -46,6 +56,7 @@ public:
 
 	static int	m_nImageToFocusRectSpacing;
 	static int	m_nFocusRectToTextSpacing;
+	static int	m_nLeftSpacing;
 	static int	m_nRightSpacing;
 
 	static COLORREF m_clrSelectedItemBkColor;
@@ -71,6 +82,8 @@ public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	virtual void DeleteItem(LPDELETEITEMSTRUCT lpDeleteItemStruct);
 	//}}AFX_VIRTUAL
+
+	virtual BOOL IsInternalScrollBarThemed() const;
 
 // Implementation
 public:

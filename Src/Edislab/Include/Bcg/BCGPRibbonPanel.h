@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,7 @@
 #ifndef BCGP_EXCLUDE_RIBBON
 
 #include "bcgglobals.h"
+#include "bcgpglobalutils.h"
 #include "BCGPRibbonButton.h"
 
 class CBCGPRibbonCategory;
@@ -88,15 +89,7 @@ class BCGCBPRODLLEXPORT CBCGPRibbonDefaultPanelButton : public CBCGPRibbonButton
 
 	virtual CSize GetImageSize (RibbonImageType /*type*/) const
 	{
-		CSize sizeIcon (16, 16);
-
-		if (globalData.GetRibbonImageScale () != 1.)
-		{
-			sizeIcon.cx = (int) (.5 + globalData.GetRibbonImageScale () * sizeIcon.cx);
-			sizeIcon.cy = (int) (.5 + globalData.GetRibbonImageScale () * sizeIcon.cy);
-		}
-
-		return sizeIcon;
+		return globalUtils.ScaleByDPI(CSize(16, 16));
 	}
 
 	virtual BOOL IsDefaultPanelButton () const
@@ -105,6 +98,8 @@ class BCGCBPRODLLEXPORT CBCGPRibbonDefaultPanelButton : public CBCGPRibbonButton
 	}
 
 	virtual void DrawImage (CDC* pDC, RibbonImageType type, CRect rectImage);
+	virtual HICON CreateSimplifiedIcon();
+
 	virtual BOOL CanBeAddedToQAT () const
 	{
 		return TRUE;
@@ -150,6 +145,7 @@ class BCGCBPRODLLEXPORT CBCGPRibbonPanel :  public CBCGPBaseAccessibleObject
 	friend class CBCGPRibbonCustomPanel;
 	friend class CBCGPRibbonCustomizeRibbonPage;
 	friend class CBCGPRibbonTreeCtrl;
+	friend class CBCGPRibbonBackstageView;
 
 // Construction
 protected:
@@ -232,6 +228,16 @@ public:
 		m_dwData = dwData;
 	}
 
+	UINT GetApplicationModes() const 
+	{ 
+		return m_nApplicationModes; 
+	}
+
+	void SetApplicationModes(UINT nAppModes) 
+	{ 
+		m_nApplicationModes = nAppModes; 
+	}
+
 	CBCGPRibbonCategory* GetParentCategory () const
 	{
 		return m_pParent;
@@ -304,6 +310,31 @@ public:
 		return m_bNonCollapsible;
 	}
 
+	void SetAlwaysCollapsed(BOOL bSet = TRUE);
+	BOOL IsAlwaysCollapsed() const
+	{
+		return m_bAlwaysCollapsed;
+	}
+
+	void ForceCollapse();
+
+	void SetInvokeCommandBySpace(BOOL bSet)
+	{
+		m_bInvokeCommandBySpace = bSet;
+	}
+
+	BOOL GetInvokeCommandBySpace() const
+	{
+		return m_bInvokeCommandBySpace;
+	}
+
+	void SetAlwaysAlignByColumn(BOOL bSet = TRUE);
+
+	BOOL IsAlwaysAlignByColumn() const
+	{
+		return m_bAlwaysAlignByColumn;
+	}
+
 // Operations
 public:
 	virtual CBCGPBaseRibbonElement* HitTest (CPoint point, BOOL bCheckPanelCaption = FALSE);
@@ -360,6 +391,8 @@ public:
 	void GetElementsByName (LPCTSTR lpszName, 
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, DWORD dwFlags = 0);
 
+	BOOL QueryElements(const CStringArray& arWords, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, int nMaxResults, BOOL bDescription, BOOL bAll);
+
 	void GetVisibleElements (
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arElements);
 
@@ -372,7 +405,7 @@ public:
 
 	CBCGPRibbonPanelMenu* ShowPopup (CBCGPRibbonDefaultPanelButton* pButton = NULL);
 
-	void MakePaletteItemVisible (CBCGPBaseRibbonElement* pItem);
+	void MakePaletteItemVisible (CBCGPBaseRibbonElement* pItem, BOOL bChangeScrollBar = TRUE);
 	CRect GetPaletteRect ();
 
 	void OnChangeVisualManager();
@@ -410,6 +443,8 @@ protected:
 	virtual void RedrawElement (CBCGPBaseRibbonElement* pElem);
 	virtual void OnDrawMenuBorder (CDC* /*pDC*/, CBCGPRibbonPanelMenuBar* /*pMenuBar*/)	{}
 	virtual void OnRTLChanged (BOOL bIsRTL);
+	virtual void OnChangeRibbonFont();
+	virtual void OnUpdateToolTips();
 
 	// Accessibility:
 	virtual HRESULT get_accParent(IDispatch **ppdispParent);
@@ -427,11 +462,10 @@ protected:
 	void CenterElementsInColumn (int nFirstInColumnIndex, int nLastInColumnIndex, int nCaptionHeight);
 	void JustifyElementsInColumn (int nFirstInColumnIndex, int nLastInColumnIndex);
 
-	CSize GetCaptionSize (CDC* pDC) const;
+	virtual CSize GetCaptionSize (CDC* pDC) const;
 	int CalcTotalWidth ();
 
 	void ShowDefaultButton (CDC* pDC);
-	void ForceCollapse();
 	
 	virtual BOOL VerifyNonCollapsibleState();
 
@@ -452,6 +486,8 @@ protected:
 
 	void OnCloseCustomizePage(BOOL bIsOK);
 
+	virtual BOOL IsHiddenInAppMode() const;
+
 // Attributes
 protected:
 	int						m_nKey;
@@ -463,6 +499,7 @@ protected:
 	CRect					m_rect;				// Panel location
 	DWORD_PTR				m_dwData;			// User-defined data
 	CBCGPRibbonCategory*	m_pParent;			// Parent category
+	UINT					m_nApplicationModes;// Application modes where the panel is displayed
 	CBCGPRibbonPanelMenuBar*
 							m_pParentMenuBar;	// Parent menu bar
 	CArray<int,int>			m_arWidths;			// All possible widthds
@@ -478,10 +515,12 @@ protected:
 	BOOL					m_bShowCaption;
 	BOOL					m_bForceCollpapse;
 	BOOL					m_bNonCollapsible;
+	BOOL					m_bAlwaysCollapsed;
 	BOOL					m_bIsHighlighted;
 	BOOL					m_bIsCalcWidth;
 	CBCGPBaseRibbonElement*	m_pHighlighted;		// Highlighted 
 	BOOL					m_bAlignByColumn;
+	BOOL					m_bAlwaysAlignByColumn;
 	BOOL					m_bCenterColumnVert;
 	BOOL					m_bMenuMode;
 	BOOL					m_bIsDefaultMenuLook;
@@ -506,6 +545,7 @@ protected:
 	BOOL					m_bNavigateSearchResultsOnly;
 	BOOL					m_bMouseIsDown;
 	CSize					m_sizePadding;
+	BOOL					m_bInvokeCommandBySpace;
 
 	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>	m_arElements;
 

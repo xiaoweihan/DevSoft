@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -150,7 +150,7 @@ void CBCGPRibbonPanelMenuBar::AddButtons (CBCGPRibbonBar* pRibbonBar,
 	m_pPanel->m_pParentMenuBar = this;
 	m_pPanel->m_bFloatyMode = bFloatyMode;
 	m_pPanel->m_nXMargin = 2;
-	m_pPanel->m_nYMargin = 2;
+	m_pPanel->m_nYMargin = bFloatyMode ? globalUtils.ScaleByDPI(4) : 2;
 	m_pPanel->RemoveAll ();
 
 	for (int i = 0; i < arButtons.GetSize (); i++)
@@ -165,6 +165,8 @@ void CBCGPRibbonPanelMenuBar::AddButtons (CBCGPRibbonBar* pRibbonBar,
 		pButton->CopyFrom (*pSrcButton);
 		pButton->SetOriginal (pSrcButton);
 		pButton->m_bCompactMode = TRUE;
+
+		pButton->SetCommandSearchMenu(pSrcButton->IsCommandSearchMenu());
 
 		pButton->SetParentMenu (this);
 
@@ -313,12 +315,16 @@ void CBCGPRibbonPanelMenuBar::AdjustLocations ()
 
 	if (m_bIsCtrlMode)
 	{
-		rectClient.DeflateRect(1, 1);
+		rectClient.DeflateRect(2, 1);
 	}
 
 	CClientDC dc (this);
 
-	CFont* pOldFont = dc.SelectObject (m_pRibbonBar == NULL ? &globalData.fontRegular : m_pRibbonBar->GetFont ());
+	BOOL bIsBackStageView = m_pPanel != NULL && m_pPanel->IsBackstageView();
+
+	CFont* pOldFont = dc.SelectObject (m_pRibbonBar == NULL ? 
+		&globalData.fontRegular : 
+		bIsBackStageView ? m_pRibbonBar->GetBackstageViewItemFont() : m_pRibbonBar->GetFont());
 	ASSERT (pOldFont != NULL);
 
 	if (m_pCategory != NULL)
@@ -365,7 +371,7 @@ void CBCGPRibbonPanelMenuBar::SetPreferedSize (CSize size)
 		if (m_pPanel->m_pPaletteButton != NULL)
 		{
 			sizePalette = m_pPanel->GetPaletteMinSize ();
-			sizePalette.cx -= ::GetSystemMetrics (SM_CXVSCROLL) + 2;
+			sizePalette.cx -= ::GetSystemMetrics (SM_CXVSCROLL);
 		}
 	}
 
@@ -391,7 +397,7 @@ CSize CBCGPRibbonPanelMenuBar::CalcSize (BOOL /*bVertDock*/)
 
 	CClientDC dc (m_pRibbonBar);
 
-	CFont* pOldFont = dc.SelectObject (m_pRibbonBar->GetFont ());
+	CFont* pOldFont = dc.SelectObject (m_pPanel->IsBackstageView() ? m_pRibbonBar->GetBackstageViewItemFont() : m_pRibbonBar->GetFont());
 	ASSERT (pOldFont != NULL);
 
 	if (m_bIsMenuMode)
@@ -545,7 +551,12 @@ void CBCGPRibbonPanelMenuBar::DoPaint (CDC* pDCPaint)
 		pDC->SelectClipRgn (&rgnClip);
 	}
 	
-	CFont* pOldFont = pDC->SelectObject (m_pRibbonBar == NULL ? &globalData.fontRegular : m_pRibbonBar->GetFont ());
+	BOOL bIsBackStageView = m_pPanel != NULL && m_pPanel->IsBackstageView();
+
+	CFont* pOldFont = pDC->SelectObject (m_pRibbonBar == NULL ? 
+		&globalData.fontRegular : 
+		bIsBackStageView ? m_pRibbonBar->GetBackstageViewItemFont() : m_pRibbonBar->GetFont());
+
 	ASSERT (pOldFont != NULL);
 
 	pDC->SetBkMode (TRANSPARENT);
@@ -577,16 +588,7 @@ void CBCGPRibbonPanelMenuBar::DoPaint (CDC* pDCPaint)
 		{
 			if (m_pPanel->m_pParent != NULL)
 			{
-				CBCGPRibbonCategory* pCategory = m_pPanel->m_pParent;
-				ASSERT_VALID (pCategory);
-
-				CBCGPRibbonPanelMenuBar* pMenuBarSaved = pCategory->m_pParentMenuBar;
-				pCategory->m_pParentMenuBar = this;
-
-				CBCGPVisualManager::GetInstance ()->OnDrawRibbonCategory (
-					pDC, pCategory, rectFill);
-
-				pCategory->m_pParentMenuBar = pMenuBarSaved;
+				CBCGPVisualManager::GetInstance ()->OnDrawRibbonDropDownPanel(pDC, m_pPanel, rectFill);
 			}
 			else if (m_bIsQATPopup)
 			{
@@ -603,13 +605,17 @@ void CBCGPRibbonPanelMenuBar::DoPaint (CDC* pDCPaint)
 		m_pPanel->DoPaint (pDC);
 	}
 
-	if (m_bIsCtrlMode)
+	if (m_bIsCtrlMode && (GetStyle() & WS_BORDER) != 0)
 	{
 		CBCGPVisualManager::GetInstance()->OnDrawControlBorder(pDC, rectClient, this, FALSE);
 	}
 
 	pDC->SelectObject (pOldFont);
-	pDC->SelectClipRgn (NULL);
+
+	if (rgnClip.GetSafeHandle() != NULL)
+	{
+		pDC->SelectClipRgn (NULL);
+	}
 }
 //*****************************************************************************************
 void CBCGPRibbonPanelMenuBar::OnMouseMove(UINT nFlags, CPoint point) 
@@ -817,6 +823,12 @@ void CBCGPRibbonPanelMenuBar::OnLButtonDown(UINT nFlags, CPoint point)
 
 		int nDelay = 100;
 
+		CBCGPRibbonBar* pRibbonBar = m_pPressed->GetTopLevelRibbonBar();
+		if (pRibbonBar != NULL)
+		{
+			nDelay = pRibbonBar->GetAutoRepeatCmdDelay();
+		}
+
 		if (m_pPressed->IsAutoRepeatMode (nDelay))
 		{
 			SetTimer (IdAutoCommand, nDelay, NULL);
@@ -878,9 +890,21 @@ void CBCGPRibbonPanelMenuBar::OnClickButton (CBCGPRibbonButton* pButton, CPoint 
 
 	BOOL bInvoked = pButton->NotifyCommand (TRUE);
 
-	if (m_bIsCtrlMode)
+	if (m_bIsCtrlMode || (pButton->DontCloseParentPopupOnClick() && !pButton->IsCommandSearchMenu()))
 	{
 		return;
+	}
+
+	if (pButton->IsCommandSearchMenu())
+	{
+		if (pButton->GetTopLevelRibbonBar() != NULL)
+		{
+			if (pButton->GetTopLevelRibbonBar() != NULL && pButton->GetTopLevelRibbonBar()->GetTopLevelFrame () != NULL)
+			{
+				pButton->GetTopLevelRibbonBar()->GetTopLevelFrame ()->SetFocus ();
+				return;
+			}
+		}
 	}
 
 	if (IsFloaty ())
@@ -992,10 +1016,11 @@ void CBCGPRibbonPanelMenuBar::OnChangeHighlighted (CBCGPBaseRibbonElement* pHot)
 				m_pDelayedCloseButton = pDroppedDown;
 				m_pDelayedCloseButton->m_bToBeClosed = TRUE;
 
-				SetTimer (uiRemovePopupTimerEvent, 
-						max (0, m_uiPopupTimerDelay - 1), NULL);
+#pragma warning (disable : 4296)
+				SetTimer(uiRemovePopupTimerEvent, max (0, m_uiPopupTimerDelay - 1), NULL);
+#pragma warning (default : 4296)
 
-				pDroppedDown->Redraw ();
+				pDroppedDown->Redraw();
 			}
 		}
 
@@ -1180,9 +1205,39 @@ int CBCGPRibbonPanelMenuBar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 //*************************************************************************************
 void CBCGPRibbonPanelMenuBar::OnDestroy() 
 {
+	// Inform all elements that parent menu bar is going to be destroyed:
+	CArray<CBCGPBaseRibbonElement*,CBCGPBaseRibbonElement*> arElems;
+
+	if (m_pCategory != NULL)
+	{
+		ASSERT_VALID(m_pCategory);
+
+		m_pCategory->GetElements(arElems);
+	}
+	else if (m_pPanel != NULL)
+	{
+		ASSERT_VALID(m_pPanel);
+		m_pPanel->GetElements(arElems);
+	}
+	
+	for (int i = 0; i < arElems.GetSize(); i++)
+	{
+		CBCGPBaseRibbonElement* pElem = arElems[i];
+		ASSERT_VALID(pElem);
+
+		pElem->OnBeforeDestroyParentMenuBar(this);
+	}
+
 	if (m_pToolTip != NULL)
 	{
 		CBCGPTooltipManager::DeleteToolTip (m_pToolTip);
+	}
+
+	CBCGPRibbonBar*	pTopRibbon = GetTopLevelRibbonBar ();
+	if (pTopRibbon != NULL)
+	{
+		ASSERT_VALID(pTopRibbon);
+		pTopRibbon->SetContextHelpActiveID(NULL);
 	}
 
 	CBCGPPopupMenuBar::OnDestroy();
@@ -1192,7 +1247,7 @@ void CBCGPRibbonPanelMenuBar::OnSize(UINT nType, int cx, int cy)
 {
 	CBCGPPopupMenuBar::OnSize(nType, cx, cy);
 	
-	if (m_pToolTip->GetSafeHwnd () != NULL)
+	if (m_pToolTip->GetSafeHwnd () != NULL && cx != 0 && cy != 0)
 	{
 		m_pToolTip->SetToolRect (this, GetDlgCtrlID (), CRect (0, 0, cx, cy));
 	}
@@ -1202,16 +1257,35 @@ BOOL CBCGPRibbonPanelMenuBar::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /
 {
 	static CString strTipText;
 
-	if (m_pToolTip->GetSafeHwnd () == NULL || 
-		pNMH->hwndFrom != m_pToolTip->GetSafeHwnd ())
+	if (m_pToolTip->GetSafeHwnd () == NULL || pNMH->hwndFrom != m_pToolTip->GetSafeHwnd ())
 	{
 		return FALSE;
 	}
 
-	if (CBCGPPopupMenu::GetActiveMenu () != NULL &&
-		CBCGPPopupMenu::GetActiveMenu () != GetParent ())
+	BOOL bIsHwnd = FALSE;
+
+	LPNMTTDISPINFO pTTDispInfo = (LPNMTTDISPINFO) pNMH;
+	if ((pTTDispInfo->uFlags & TTF_IDISHWND) == TTF_IDISHWND)
 	{
-		return FALSE;
+		CWnd* pWndTT = CWnd::FromHandle((HWND)pNMH->idFrom);
+		if (pWndTT->GetSafeHwnd() != NULL)
+		{
+			bIsHwnd = TRUE;
+
+			if (!pWndTT->IsWindowEnabled())
+			{
+				return FALSE;
+			}
+		}
+	}
+	
+	CBCGPPopupMenu* pPopupMenu = CBCGPPopupMenu::GetSafeActivePopupMenu();
+	if (pPopupMenu->GetSafeHwnd() != NULL)
+	{
+		if (pPopupMenu != GetParent() && pPopupMenu->m_hwndConnectedFloaty != GetParent()->GetSafeHwnd())
+		{
+			return bIsHwnd;
+		}
 	}
 
 	CBCGPRibbonBar*	pTopRibbon = GetTopLevelRibbonBar ();
@@ -1220,15 +1294,19 @@ BOOL CBCGPRibbonPanelMenuBar::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /
 		return TRUE;
 	}
 
-	LPNMTTDISPINFO	pTTDispInfo	= (LPNMTTDISPINFO) pNMH;
-	ASSERT((pTTDispInfo->uFlags & TTF_IDISHWND) == 0);
-
 	CPoint point;
 	
 	::GetCursorPos (&point);
 	ScreenToClient (&point);
 
 	CBCGPBaseRibbonElement* pHit = HitTest (point);
+
+	if (pTopRibbon != NULL)
+	{
+		ASSERT_VALID(pTopRibbon);
+		pTopRibbon->SetContextHelpActiveID(pHit);
+	}
+
 	if (pHit == NULL)
 	{
 		return TRUE;
@@ -1241,45 +1319,34 @@ BOOL CBCGPRibbonPanelMenuBar::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /
 		return TRUE;
 	}
 
-	strTipText = pHit->GetToolTipText ();
+	if (pTopRibbon == NULL || !pTopRibbon->OnGetCustomToolTip(pHit, strTipText))
+	{
+		strTipText = pHit->GetToolTipText();
+	}
+
 	if (strTipText.IsEmpty ())
 	{
 		return TRUE;
 	}
 
-	CBCGPToolTipCtrl* pToolTip = DYNAMIC_DOWNCAST (
-		CBCGPToolTipCtrl, m_pToolTip);
-
-	if (pToolTip != NULL)
+	if (pTopRibbon != NULL)
 	{
-		ASSERT_VALID (pToolTip);
+		ASSERT_VALID(pTopRibbon);
 
-		if (pTopRibbon != NULL)
-		{
-			ASSERT_VALID (pTopRibbon);
-
-			pToolTip->SetFixedWidth (
-				pTopRibbon->GetTooltipFixedWidthRegular (),
-				pTopRibbon->GetTooltipFixedWidthLargeImage ());
-		}
-
-		if (pTopRibbon == NULL || pTopRibbon->IsToolTipDescrEnabled ())
-		{
-			pToolTip->SetDescription (pHit->GetDescription ());
-		}
-
-		pToolTip->SetHotRibbonButton (DYNAMIC_DOWNCAST (CBCGPRibbonButton, pHit));
+		CPoint ptToolTipLocation(-1, -1);
 
 		if (!m_bIsMenuMode && !IsMainPanel () && !m_bIsCtrlMode)
 		{
 			CRect rectWindow;
 			GetWindowRect (rectWindow);
-
+			
 			CRect rectElem = pHit->GetRect ();
 			ClientToScreen (&rectElem);
-
-			pToolTip->SetLocation (CPoint (rectElem.left, rectWindow.bottom));
+			
+			ptToolTipLocation = CPoint(rectElem.left, rectWindow.bottom);
 		}
+
+		pTopRibbon->SetupButtonToolTip(m_pToolTip, pHit, ptToolTipLocation);
 	}
 
 	if (m_bHasKeyTips)
@@ -1419,7 +1486,14 @@ void CBCGPRibbonPanelMenuBar::OnTimer(UINT_PTR nIDEvent)
 		if (pDelayedPopupMenuButton != NULL &&
 			pDelayedPopupMenuButton->IsHighlighted ())
 		{
-			pDelayedPopupMenuButton->OnShowPopupMenu ();
+			if (pDelayedPopupMenuButton->IsPopupDialogEnabled())
+			{
+				ASSERT(FALSE);
+			}
+			else
+			{
+				pDelayedPopupMenuButton->OnShowPopupMenu ();
+			}
 		}
 	}
 	else if (nIDEvent == uiRemovePopupTimerEvent)
@@ -1614,9 +1688,25 @@ BOOL CBCGPRibbonPanelMenuBar::OnKey (UINT nChar)
 	{
 		ASSERT_VALID (m_pCategory);
 
-		if (m_pCategory->GetDroppedDown () != NULL && nChar == VK_TAB)
+		CBCGPBaseRibbonElement* pDroppedDown = m_pCategory->GetDroppedDown();
+		if (pDroppedDown != NULL)
 		{
-			return FALSE;
+			if (nChar == VK_RIGHT)
+			{
+				return FALSE;
+			}
+
+			if (nChar == VK_TAB)
+			{
+				if (pDroppedDown->IsCloseDropDownByTabKey())
+				{
+					pDroppedDown->ClosePopupMenu();
+				}
+				else
+				{
+					return FALSE;
+				}
+			}
 		}
 
 		CBCGPDisableMenuAnimation disableMenuAnimation;
@@ -1797,6 +1887,8 @@ void CBCGPRibbonPanelMenuBar::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pSc
 	}
 
 	m_wndScrollBarVert.SetScrollPos (iOffset);
+	PopTooltip();
+
 	RedrawWindow ();
 }
 //**********************************************************************************
@@ -1957,12 +2049,15 @@ BOOL CBCGPRibbonPanelMenuBar::OnSetAccData (long lVal)
 		m_AccData.Clear ();
 
 		int nIndex = (int)lVal - 1;
+
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
 		m_pCategory->GetVisibleElements (arButtons);
+
 		if (nIndex < arButtons.GetSize () && nIndex >= 0)
 		{
 			CBCGPBaseRibbonElement* pElem = arButtons [nIndex];
 			ASSERT_VALID (pElem);
+
 			BOOL retVal = pElem->SetACCData(this, m_AccData);
 			return retVal;
 		}
@@ -1973,6 +2068,7 @@ BOOL CBCGPRibbonPanelMenuBar::OnSetAccData (long lVal)
 		m_AccData.Clear ();
 
 		int nIndex = (int)lVal - 1;
+		
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
 		m_pPanel->GetVisibleElements (arButtons);
 
@@ -1980,6 +2076,7 @@ BOOL CBCGPRibbonPanelMenuBar::OnSetAccData (long lVal)
 		{
 			CBCGPBaseRibbonElement* pElem = arButtons [nIndex];
 			ASSERT_VALID (pElem);
+
 			BOOL retVal = pElem->SetACCData(this, m_AccData);
 			return retVal;
 		}
@@ -1999,6 +2096,7 @@ HRESULT CBCGPRibbonPanelMenuBar::get_accChildCount(long *pcountChildren)
 	{
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
 		m_pCategory->GetVisibleElements(arButtons);
+
 		*pcountChildren = (int)arButtons.GetSize();
 		return S_OK;  
 	}
@@ -2007,6 +2105,7 @@ HRESULT CBCGPRibbonPanelMenuBar::get_accChildCount(long *pcountChildren)
 	{
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
 		m_pPanel->GetVisibleElements(arButtons);
+
 		*pcountChildren = (int)arButtons.GetSize();
 		return S_OK; 
 	}
@@ -2095,6 +2194,11 @@ BOOL CBCGPRibbonPanelMenuBar::PreTranslateMessage(MSG* pMsg)
 		if (pEdit != NULL)
 		{
 			ASSERT_VALID (pEdit);
+
+			if (pEdit->GetOwnerRibbonEdit().IsCommandsCombo())
+			{
+				return TRUE;
+			}
 
 			CPoint point;
 			
@@ -2239,6 +2343,7 @@ BOOL CBCGPRibbonPanelMenu::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*
 	m_bInScroll = TRUE;
 
 	const int nSteps = abs(zDelta) / WHEEL_DELTA;
+	const int nOldOffset = m_wndRibbonBar.GetOffset();
 
 	for (int i = 0; i < nSteps; i++)
 	{
@@ -2268,6 +2373,11 @@ BOOL CBCGPRibbonPanelMenu::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*
 			m_wndRibbonBar.OnVScroll (zDelta < 0 ? SB_LINEDOWN : SB_LINEUP, 0, 
 				&m_wndRibbonBar.m_wndScrollBarVert);
 		}
+	}
+
+	if (nOldOffset != m_wndRibbonBar.GetOffset())
+	{
+		m_wndRibbonBar.RedrawWindow();
 	}
 
 	m_bInScroll = FALSE;
@@ -2314,6 +2424,28 @@ BOOL CBCGPRibbonPanelMenu::IsScrollDnAvailable ()
 {
 	return m_wndRibbonBar.m_pPanel == NULL ||
 		m_wndRibbonBar.m_pPanel->m_bScrollDnAvailable;
+}
+//**************************************************************************
+BOOL CBCGPRibbonPanelMenu::IsParentEditFocused()
+{
+	CBCGPPopupMenu* pParentMenu = GetParentPopupMenu ();
+	if (pParentMenu == NULL)
+	{
+		return CBCGPPopupMenu::IsParentEditFocused();
+	}
+
+	return pParentMenu->IsParentEditFocused();
+}
+//**************************************************************************
+BOOL CBCGPRibbonPanelMenu::IsDropListMode()
+{
+	CBCGPPopupMenu* pParentMenu = GetParentPopupMenu ();
+	if (pParentMenu == NULL)
+	{
+		return CBCGPPopupMenu::IsDropListMode();
+	}
+	
+	return pParentMenu->IsDropListMode();
 }
 
 /////////////////////////////////////////////////////////////////////////////

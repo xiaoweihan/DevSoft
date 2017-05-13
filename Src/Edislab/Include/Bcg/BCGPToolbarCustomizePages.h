@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,13 +18,15 @@
 
 #include "ButtonsList.h"
 #include "ButtonsTextList.h"
+#include "BCGPPropertyPage.h"
 #include "bcgprores.h"
 
 #ifndef __AFXTEMPL_H__
 	#include "afxtempl.h"
 #endif
 
-#include "BCGPExCheckList.h"
+#include "BCGPListBox.h"
+#include "BCGPButton.h"
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPCustomizePage dialog
@@ -33,7 +35,7 @@ class CBCGPToolbarButton;
 class CBCGPToolBarImages;
 class CBCGPToolBar;
 
-class CBCGPCustomizePage : public CPropertyPage
+class CBCGPCustomizePage : public CBCGPPropertyPage
 {
 	DECLARE_DYNCREATE(CBCGPCustomizePage)
 
@@ -52,7 +54,7 @@ protected:
 // Dialog Data
 	//{{AFX_DATA(CBCGPCustomizePage)
 	enum { IDD = IDD_BCGBARRES_PROPPAGE1 };
-	CListBox	m_wndCategory;
+	CBCGPListBox		m_wndCategory;
 	CButtonsTextList	m_wndTools;
 	CString	m_strButtonDescription;
 	//}}AFX_DATA
@@ -86,7 +88,7 @@ protected:
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPToolbarsPage dialog
 
-class CBCGPToolbarsPage : public CPropertyPage
+class CBCGPToolbarsPage : public CBCGPPropertyPage
 {
 	DECLARE_DYNCREATE(CBCGPToolbarsPage)
 
@@ -98,12 +100,12 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPToolbarsPage)
 	enum { IDD = IDD_BCGBARRES_PROPPAGE2 };
-	CButton	m_wndTextLabels;
-	CButton	m_bntRenameToolbar;
-	CButton	m_btnNewToolbar;
-	CButton	m_btnDelete;
-	CButton	m_btnReset;
-	CBCGPExCheckList	m_wndToolbarList;
+	CBCGPButton	m_wndTextLabels;
+	CBCGPButton	m_bntRenameToolbar;
+	CBCGPButton	m_btnNewToolbar;
+	CBCGPButton	m_btnDelete;
+	CBCGPButton	m_btnReset;
+	CBCGPCheckListBox	m_wndToolbarList;
 	BOOL	m_bTextLabels;
 	//}}AFX_DATA
 

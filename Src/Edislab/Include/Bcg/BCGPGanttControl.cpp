@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -88,7 +88,7 @@ static CString GetSection (LPCTSTR lpszProfileName, int nIndex)
 	CWinAppEx* pApp = DYNAMIC_DOWNCAST(CWinAppEx, AfxGetApp ());
 	if (pApp == NULL || pApp->m_pszRegistryKey == NULL)
 	{
-		return FALSE;
+		return CString();
 	}
 
 	strProfileName = pApp->GetRegSectionPath (s_strProfile);
@@ -799,11 +799,6 @@ void CBCGPGanttControl::UpdateGrid ()
 		CBCGPGanttItem* pItem = pStorage->GetNext (pos);
 		ASSERT_VALID (pItem);
 
-//		if (m_pChart->IsMulipleItemsInRowEnabled() && pItem->GetRow() >= 0)
-		{
-//			continue;
-		}
-
 		BOOL bBeginGroup = FALSE;
 
 		int iItemLevel = pItem->GetHierarchyLevel ();
@@ -1005,31 +1000,28 @@ void CBCGPGanttControl::DoItemsChange (CWnd* pSender, const BCGP_GANTT_STORAGE_U
 		case BCGP_GANTT_STORAGE_INSERT_ITEM:
 			if (pItem != NULL) // inserting single item only supported
 			{
-//				if (!m_pChart->IsMulipleItemsInRowEnabled() || pItem->GetRow() < 0)
+				ASSERT_VALID (pItem);
+
+				CBCGPGanttItemStorageBase* pStorage = m_pChart->GetStorage ();
+				ASSERT_VALID (pStorage);
+
+				CBCGPGanttItem* pParentItem = pStorage->GetParentGroupItem (pItem);
+				int nParentRow = RowFromItem (pParentItem);
+
+				pRow = m_pGrid->CreateRow (m_pGrid->GetColumnCount ());
+
+				if (nParentRow >= 0)
 				{
-					ASSERT_VALID (pItem);
-
-					CBCGPGanttItemStorageBase* pStorage = m_pChart->GetStorage ();
-					ASSERT_VALID (pStorage);
-
-					CBCGPGanttItem* pParentItem = pStorage->GetParentGroupItem (pItem);
-					int nParentRow = RowFromItem (pParentItem);
-
-					pRow = m_pGrid->CreateRow (m_pGrid->GetColumnCount ());
-
-					if (nParentRow >= 0)
-					{
-						CBCGPGridRow* pParentRow = m_pGrid->GetRow (nParentRow);
-						ASSERT_VALID (pParentRow);
-						m_pGrid->InsertRowAfter (pParentRow, nRow - nParentRow - 1, pRow);
-					}
-					else
-					{
-						m_pGrid->InsertRowAfter (NULL, nRow - 1, pRow);
-					}
-
-					UpdateGridItem (pItem, pRow);
+					CBCGPGridRow* pParentRow = m_pGrid->GetRow (nParentRow);
+					ASSERT_VALID (pParentRow);
+					m_pGrid->InsertRowAfter (pParentRow, nRow - nParentRow - 1, pRow);
 				}
+				else
+				{
+					m_pGrid->InsertRowAfter (NULL, nRow - 1, pRow);
+				}
+
+				UpdateGridItem (pItem, pRow);
 			}
 			break;
 
@@ -1121,6 +1113,7 @@ int CBCGPGanttControl::CreateControls ()
 
 	m_pGrid->SetFont (NULL);
 	m_pGrid->SetRowMarker (FALSE);
+	m_pGrid->SetSelectionBorder (FALSE);
 
 	m_pChart->SetHeaderHeights (22, 20);
 

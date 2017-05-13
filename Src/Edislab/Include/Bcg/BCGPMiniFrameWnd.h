@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -25,7 +25,8 @@
 #include "BCGPDragFrameImpl.h"
 #include "BCGPShadowManager.h"
 
-#pragma warning( disable : 4100 34 )
+#pragma warning (push)
+#pragma warning (disable : 4100 34)
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMiniFrameWnd window
@@ -45,7 +46,8 @@ typedef enum BCGP_PREDOCK_STATE
 	BCGP_PDS_NOTHING,
 	BCGP_PDS_DOCK_REGULAR,
 	BCGP_PDS_DOCK_TO_TAB
-};
+}
+BCGP_PREDOCK_STATE;
 
 static const UINT BCGP_DOCK_EVENT = 4;
 static const UINT BCGP_CHECK_ROLL_STATE = 5;
@@ -65,6 +67,7 @@ class BCGCBPRODLLEXPORT CBCGPMiniFrameWnd : public CWnd
 	friend class CBCGPBaseTabWnd; 
 	friend class CBCGPPopupMenu;
 	friend class CBCGPToolBar;
+	friend class CBCGPFrameImpl;
 
 // Construction
 public:
@@ -219,6 +222,13 @@ public:
 	virtual void AdjustBarFrames () {}
 	virtual void ConvertToTabbedDocument ();
 
+	virtual BOOL HasSavedMaximizedState() const;
+
+	BOOL IsMaximized () const;
+
+	void SetMaximized();
+	void RestoreFromMaximized();
+
 // Overrides
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPMiniFrameWnd)
@@ -329,10 +339,6 @@ protected:
 
 	void ForceAdjustLayout (CBCGPDockManager* pDockManager);
 
-	void SetMaximized();
-	void RestoreFromMaximized();
-	BOOL IsMaximized () const;
-
 	BOOL CreateShadow(BOOL bRepos);
 
 protected:
@@ -385,7 +391,7 @@ protected:
 	CBCGPDockManager*		m_pDockManager; // docking manager related to embedded control bar's frame. Should be set on creation of miniframe
 
 	static CMap<UINT,UINT,HWND,HWND>	m_mapFloatingBars;
-	static CList<HWND, HWND>			CBCGPMiniFrameWnd::m_lstFrames;
+	static CList<HWND, HWND>			m_lstFrames;
 
 	static CFrameWnd*	m_pParentWndForSerialize; // should be set by caller before starting serialization
 
@@ -402,7 +408,7 @@ protected:
 #define InitUserToobars	InitUserToolbars
 #endif
 
-#pragma warning( default : 4100 34 )
+#pragma warning (pop)
 
 /////////////////////////////////////////////////////////////////////////////
 

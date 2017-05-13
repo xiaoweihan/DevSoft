@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,6 +18,7 @@
 #include "BCGPFrameWnd.h"
 #include "BCGPMenuBar.h"
 #include "BCGPPopupMenu.h"
+#include "BCGPPopupWindow.h"
 #include "BCGPMiniFrameWnd.h"
 #include "BCGPUserToolsManager.h"
 #include "BCGPPrintPreviewView.h"
@@ -28,6 +29,8 @@
 #include "BCGPGlobalUtils.h"
 #include "BCGPSlider.h"
 #include "BCGPRibbonBackstageView.h"
+#include "BCGPIntelliSenseWnd.h"
+#include "BCGPWorkspace.h"
 
 #if _MSC_VER >= 1300
 	#include <..\atlmfc\src\mfc\oleimpl2.h>
@@ -40,6 +43,9 @@
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
 #endif
+
+extern CBCGPWorkspace*	g_pWorkspace;
+extern UINT BCGM_ON_CHANGE_BACKSTAGE_PROP_HIGHLIGHTING;
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPFrameWnd
@@ -54,7 +60,8 @@ CBCGPFrameWnd::CBCGPFrameWnd() :
 	m_bWasMaximized (FALSE),
 	m_bIsMinimized (FALSE),
 	m_pPrintPreviewFrame (NULL),
-	m_bClosing (FALSE)
+	m_bClosing (FALSE),
+	m_bAutoPaneActivation(TRUE)
 {
 }
 
@@ -83,6 +90,8 @@ BEGIN_MESSAGE_MAP(CBCGPFrameWnd, CFrameWnd)
 	ON_WM_LBUTTONUP()
 	ON_WM_MOUSEMOVE()
 	ON_WM_LBUTTONDOWN()
+	ON_WM_WINDOWPOSCHANGING()
+	ON_WM_SYSCOMMAND()
 	//}}AFX_MSG_MAP
 	ON_WM_ACTIVATEAPP()
 	ON_MESSAGE(WM_IDLEUPDATECMDUI, OnIdleUpdateCmdUI)
@@ -101,6 +110,9 @@ BEGIN_MESSAGE_MAP(CBCGPFrameWnd, CFrameWnd)
 	ON_REGISTERED_MESSAGE(BCGM_POSTSETPREVIEWFRAME, OnPostPreviewFrame)
 	ON_MESSAGE(WM_DWMCOMPOSITIONCHANGED, OnDWMCompositionChanged)
 	ON_MESSAGE(WM_POWERBROADCAST, OnPowerBroadcast)
+	ON_REGISTERED_MESSAGE(BCGM_ON_CHANGE_BACKSTAGE_PROP_HIGHLIGHTING, OnChangeBackstagePropHighlighting)
+	ON_MESSAGE(WM_DPICHANGED, OnDPIChanged)
+	ON_MESSAGE(WM_THEMECHANGED, OnThemeChanged)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -137,10 +149,13 @@ BOOL CBCGPFrameWnd::OnSetMenu (HMENU hmenu)
 BOOL CBCGPFrameWnd::PreTranslateMessage(MSG* pMsg) 
 {
 	BOOL bProcessAccel = TRUE;
+	int nKey = 0;
 
 	switch (pMsg->message)
 	{
 	case WM_SYSKEYDOWN:
+		nKey = (int)pMsg->wParam;
+		
 #ifndef BCGP_EXCLUDE_RIBBON
 		if (m_Impl.m_pRibbonBar != NULL && m_Impl.m_pRibbonBar->OnSysKeyDown (this, pMsg->wParam, pMsg->lParam))
 		{
@@ -158,18 +173,23 @@ BOOL CBCGPFrameWnd::PreTranslateMessage(MSG* pMsg)
 		}
 
 	case WM_CONTEXTMENU:
+		if (pMsg->message == WM_CONTEXTMENU)
+		{
+			nKey = 0;
+		}
+		
 		if (!globalData.m_bSysUnderlineKeyboardShortcuts && !globalData.m_bUnderlineKeyboardShortcuts)
 		{
 			globalData.m_bUnderlineKeyboardShortcuts = TRUE;
 			CBCGPToolBar::RedrawUnderlines ();
 		}
 
-		if (CBCGPPopupMenu::GetSafeActivePopupMenu() != NULL && (pMsg->wParam == VK_MENU || pMsg->wParam == VK_F10))
+		if (CBCGPPopupMenu::GetSafeActivePopupMenu() != NULL && (nKey == VK_MENU || nKey == VK_F10))
 		{
 			CBCGPPopupMenu::m_pActivePopupMenu->SendMessage (WM_CLOSE);
 			return TRUE;
 		}
-		else if (m_Impl.ProcessKeyboard ((int) pMsg->wParam))
+		else if (m_Impl.ProcessKeyboard(nKey))
 		{
 			return TRUE;
 		}
@@ -362,11 +382,31 @@ BOOL CBCGPFrameWnd::OnDrawMenuImage (CDC* pDC,
 //*******************************************************************************************
 BOOL CBCGPFrameWnd::OnCommand(WPARAM wParam, LPARAM lParam) 
 {
-	if (HIWORD (wParam) == 1)
-	{
-		UINT uiCmd = LOWORD (wParam);
+	UINT uiCmd = LOWORD(wParam);
 
+	if (uiCmd == ID_HELP && m_Impl.ProcessRibbonContextHelp())
+	{
+		return TRUE;
+	}
+
+	if (HIWORD(wParam) == 1 && lParam == 0)
+	{
 		CBCGPToolBar::AddCommandUsage (uiCmd);
+
+		if (m_bAutoPaneActivation)
+		{
+			if ((uiCmd == ID_PREV_PANE || uiCmd == ID_NEXT_PANE) && ActivateNextPane(uiCmd == ID_PREV_PANE))
+			{
+				return TRUE;
+			}
+		}
+
+#ifndef BCGP_EXCLUDE_EDIT_CTRL
+		if (CBCGPIntelliSenseWnd::m_hwndActive != NULL && ::IsWindow(CBCGPIntelliSenseWnd::m_hwndActive))
+		{
+			::SendMessage(CBCGPIntelliSenseWnd::m_hwndActive, WM_CLOSE, 0, 0);
+		}
+#endif
 
 		//---------------------------
 		// Simmulate ESC keystroke...
@@ -393,15 +433,19 @@ BOOL CBCGPFrameWnd::OnCommand(WPARAM wParam, LPARAM lParam)
 //******************************************************************
 BOOL CBCGPFrameWnd::LoadFrame(UINT nIDResource, DWORD dwDefaultStyle, CWnd* pParentWnd, CCreateContext* pContext) 
 {
+	m_Impl.m_bIsLoadingFrame = TRUE;
 	m_Impl.m_nIDDefaultResource = nIDResource;
 	m_Impl.LoadLargeIconsState ();
 
 	if (!CFrameWnd::LoadFrame(nIDResource, dwDefaultStyle, pParentWnd, pContext))
 	{
+		m_Impl.m_bIsLoadingFrame = FALSE;
 		return FALSE;
 	}
 
 	m_Impl.OnLoadFrame ();
+	m_Impl.m_bIsLoadingFrame = FALSE;
+
 	return TRUE;
 }
 //***************************************************************************************
@@ -515,6 +559,14 @@ BOOL CBCGPFrameWnd::DockControlBarLeftOf (CBCGPControlBar* pBar, CBCGPControlBar
 //************************************************************************************
 void CBCGPFrameWnd::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized) 
 {
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+	CBCGPPopupWindow* pPopup = DYNAMIC_DOWNCAST(CBCGPPopupWindow, pWndOther);
+	if (pPopup != NULL && pPopup->m_bDontChangeActiveStatus)
+	{
+		return;
+	}
+#endif
+
 	CFrameWnd::OnActivate(nState, pWndOther, bMinimized);
 
 	switch (nState)
@@ -804,9 +856,9 @@ BOOL CBCGPFrameWnd::EnableAutoHideBars (DWORD dwDockStyle, BOOL bActivateOnMouse
 	return m_dockManager.EnableAutoHideBars (dwDockStyle, bActivateOnMouseClick);
 }
 //****************************************************************************************
-void CBCGPFrameWnd::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeByDblClick)
+void CBCGPFrameWnd::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeByDblClick, BOOL bRestoreMaximizeFloatingBars)
 {
-	m_dockManager.EnableMaximizeFloatingBars(bEnable, bMaximizeByDblClick);
+	m_dockManager.EnableMaximizeFloatingBars(bEnable, bMaximizeByDblClick, bRestoreMaximizeFloatingBars);
 }
 //****************************************************************************************
 BOOL CBCGPFrameWnd::AreFloatingBarsCanBeMaximized() const
@@ -993,7 +1045,19 @@ void CBCGPFrameWnd::OnSetPreviewMode(BOOL bPreview, CPrintPreviewState* pState)
 
 	m_dockManager.SetPrintPreviewMode (bPreview, pState);
 	DWORD dwSavedState = pState->dwStates;
+
+	if (m_Impl.m_pShadow != NULL)
+	{
+		m_Impl.m_pShadow->SetVisible(FALSE);
+	}
+
 	CFrameWnd::OnSetPreviewMode (bPreview, pState);
+
+	if (m_Impl.m_pShadow != NULL)
+	{
+		m_Impl.m_pShadow->SetVisible(TRUE);
+	}
+
 	pState->dwStates = dwSavedState;
 
 	AdjustDockingLayout ();
@@ -1207,12 +1271,7 @@ LRESULT CBCGPFrameWnd::OnChangeVisualManager (WPARAM wp, LPARAM lp)
 	m_dockManager.SendMessageToControlBars(BCGM_CHANGEVISUALMANAGER);
 	
 	m_Impl.OnChangeVisualManager ();
-
-	CView* pViewActive = GetActiveView();
-	if (pViewActive->GetSafeHwnd() != NULL)
-	{
-		pViewActive->SendMessage(BCGM_CHANGEVISUALMANAGER, wp, lp);
-	}
+	m_Impl.SendMessageToViews(BCGM_CHANGEVISUALMANAGER, wp, lp);
 
 	return 0;
 }
@@ -1371,4 +1430,74 @@ BOOL CBCGPFrameWnd::CloseRibbonBackstageView()
 	m_Impl.m_pBackstageView->PostMessage(WM_CLOSE);
 #endif
 	return TRUE;
+}
+//************************************************************************************
+void CBCGPFrameWnd::OnWindowPosChanging(WINDOWPOS FAR* lpwndpos) 
+{
+	CFrameWnd::OnWindowPosChanging(lpwndpos);
+	
+	if (IsZoomed())
+	{
+		m_Impl.AdjustMaximizedSize(lpwndpos->cx, lpwndpos->cy);
+	}
+}
+//************************************************************************************
+void CBCGPFrameWnd::OnSysCommand(UINT nID, LPARAM lParam)
+{
+	m_Impl.OnSysCommand(nID, lParam);
+	CFrameWnd::OnSysCommand(nID, lParam);
+}
+//*****************************************************************************************
+BOOL CBCGPFrameWnd::LoadDockingLayout(LPCTSTR lpszProfileName/* = _T("DefaultLayout")*/)
+{
+	if (g_pWorkspace == NULL)
+	{
+		return FALSE;
+	}
+	
+	if (IsFullScreen() && !IsPrintPreview())
+	{
+		m_Impl.InvokeFullScreenCommand();
+	}
+
+	return g_pWorkspace->LoadDockingLayout(lpszProfileName, &m_Impl);
+}
+//*****************************************************************************************
+BOOL CBCGPFrameWnd::SaveDockingLayout(LPCTSTR lpszProfileName/* = _T("DefaultLayout")*/)
+{
+	if (g_pWorkspace == NULL)
+	{
+		return FALSE;
+	}
+	
+	return g_pWorkspace->SaveDockingLayout(lpszProfileName, &m_Impl);
+}
+//*****************************************************************************************
+LRESULT CBCGPFrameWnd::OnChangeBackstagePropHighlighting(WPARAM, LPARAM)
+{
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_Impl.m_pBackstageView->GetSafeHwnd() != NULL)
+	{
+		m_Impl.m_pBackstageView->SendMessage(WM_CANCELMODE);
+	}
+#endif
+
+	return 0;
+}
+//*****************************************************************************************
+LRESULT CBCGPFrameWnd::OnDPIChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+
+	OnChangeVisualManager(0, 0);
+	return lRes;
+}
+//*****************************************************************************************
+LRESULT CBCGPFrameWnd::OnThemeChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+	
+	CBCGPVisualManager::GetInstance()->OnUpdateSystemColors();
+	OnChangeVisualManager(0, 0);
+	return lRes;
 }

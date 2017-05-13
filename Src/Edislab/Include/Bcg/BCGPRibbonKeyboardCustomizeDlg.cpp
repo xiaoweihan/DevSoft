@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -23,6 +23,10 @@
 #include "BCGPBaseRibbonElement.h"
 #include "BCGPRibbonBar.h"
 #include "BCGPRibbonCategory.h"
+
+#ifndef BCGP_EXCLUDE_RIBBON
+#include "BCGPMessageBox.h"
+#endif
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -121,6 +125,12 @@ BOOL CBCGPRibbonKeyboardCustomizeDlg::OnInitDialog()
 		m_pLocaRes = NULL;
 	}
 
+	m_wndCategoryList.EnableItemHighlighting(IsVisualManagerStyle());
+	m_wndCommandsList.EnableItemHighlighting(IsVisualManagerStyle());
+	m_wndCurrentKeysList.EnableItemHighlighting(IsVisualManagerStyle());
+
+	m_wndCommandsList.SetSimpleDraw(TRUE);
+
 	ASSERT (g_pKeyboardManager != NULL);
 	ASSERT_VALID (m_pRibbonBar);
 
@@ -141,7 +151,7 @@ BOOL CBCGPRibbonKeyboardCustomizeDlg::OnInitDialog()
 		CBCGPRibbonCategory* pCategory = m_pRibbonBar->GetCategory(i);
 		ASSERT_VALID(pCategory);
 
-		if (!pCategory->IsCustom())
+		if (!pCategory->IsCustom() && !pCategory->IsHiddenInAppMode())
 		{
 			CString strCategoryName;
 			if (!m_pRibbonBar->m_CustomizationData.GetTabName(pCategory, strCategoryName))
@@ -185,7 +195,7 @@ BOOL CBCGPRibbonKeyboardCustomizeDlg::OnInitDialog()
 	}
 
 	//-------------------------------------------------------------------
-	// Find all application document templates and fill menues combobox
+	// Find all application document templates and fill menus combobox
 	// by document template data:
 	//------------------------------------------------------------------
 	CDocManager* pDocManager = AfxGetApp ()->m_pDocManager;
@@ -202,7 +212,7 @@ BOOL CBCGPRibbonKeyboardCustomizeDlg::OnInitDialog()
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CBCGPMultiDocTemplate objects with
+			// We are interesting in CBCGPMultiDocTemplate objects with
 			// the shared menu only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
@@ -358,12 +368,12 @@ void CBCGPRibbonKeyboardCustomizeDlg::OnSelchangeCategory()
 		CList<UINT,UINT> lstAll;
 		m_pRibbonBar->GetItemIDsList(lstAll);
 
-		m_wndCommandsList.FillFromIDs(lstAll, TRUE);
+		m_wndCommandsList.FillFromIDs(lstAll, TRUE /* Deep */, TRUE /* Exclude default panel buttons */);
 	}
 	else
 	{
 		ASSERT_VALID(pCategory);
-		m_wndCommandsList.FillFromCategory (pCategory);
+		m_wndCommandsList.FillFromCategory(pCategory, TRUE /* Exclude default panel buttons */);
 	}
 
 	m_wndNewKey.EnableWindow (FALSE);
@@ -493,7 +503,7 @@ void CBCGPRibbonKeyboardCustomizeDlg::OnResetAll()
 		CString str;
 		str.LoadString (IDS_BCGBARRES_RESET_KEYBOARD);
 
-		if (MessageBox (str, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
+		if (BCGPShowMessageBox(IsVisualManagerStyle(), this, str, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
 		{
 			return;
 		}

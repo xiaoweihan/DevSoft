@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -110,6 +110,7 @@ void CBCGPRibbonConstructor::ConstructRibbonBar (CBCGPRibbonBar& bar) const
 	bar.EnableKeyTips      (infoBar.m_bKeyTips);
 	bar.EnablePrintPreview (infoBar.m_bPrintPreview);
 	bar.SetBackstageMode   (infoBar.m_bBackstageMode);
+	bar.EnableBackstagePageCaptions(infoBar.m_bBackstagePageCaptions);
 
 	CBCGPRibbonFontComboBox::m_bDrawUsingFont = infoBar.m_bDrawUsingFont;
 
@@ -173,6 +174,9 @@ void CBCGPRibbonConstructor::ConstructRibbonBar (CBCGPRibbonBar& bar) const
 	}
 
 	ConstructQATElements (bar, infoBar);
+
+	bar.EnableContextHelp(infoBar.m_bContextHelp, infoBar.m_strContextHelpTooltipPrompt);
+	bar.EnableCommandSearch(infoBar.m_bCommandSearch, infoBar.m_strCommandSearchPrompt, infoBar.m_nCommandSearchWidth, infoBar.m_strCommandSearchKeys, infoBar.m_strCommandSearchToolTip, infoBar.m_strCommandSearchDescription);
 }
 
 void CBCGPRibbonConstructor::ConstructStatusBar (CBCGPRibbonStatusBar& bar) const
@@ -188,9 +192,9 @@ void CBCGPRibbonConstructor::ConstructStatusBar (CBCGPRibbonStatusBar& bar) cons
 	count = (int)infoElements.m_arElements.GetSize ();
 	for (i = 0; i < count; i++)
 	{
-		CBCGPRibbonInfo::XElement& info = 
-			(CBCGPRibbonInfo::XElement&)*infoElements.m_arElements[i];
-		CBCGPBaseRibbonElement* pElement = CreateElement (info);
+		const CBCGPRibbonInfo::XElement& infoElement = (const CBCGPRibbonInfo::XElement&)*infoElements.m_arElements[i];
+
+		CBCGPBaseRibbonElement* pElement = CreateElement (infoElement);
 		if (pElement != NULL)
 		{
 			ASSERT_VALID (pElement);
@@ -199,6 +203,7 @@ void CBCGPRibbonConstructor::ConstructStatusBar (CBCGPRibbonStatusBar& bar) cons
 			if (pSeparator)
 			{
 				bar.AddSeparator ();
+				bar.GetElement(bar.GetCount() - 1)->SetApplicationModes(infoElement.m_nApplicationModes);
 				delete pSeparator;
 			}
 			else
@@ -293,7 +298,8 @@ void CBCGPRibbonConstructor::ConstructCategoryBackstage (CBCGPRibbonBar& bar, co
 	int i = 0;
 	for (i = 0; i < info.m_arElements.GetSize (); i++)
 	{
-		if (info.m_arElements[i]->GetElementName ().Compare (CBCGPRibbonInfo::s_szButton_Command) == 0)
+		if (info.m_arElements[i]->GetElementName ().Compare (CBCGPRibbonInfo::s_szButton_Command) == 0 ||
+			info.m_arElements[i]->GetElementName ().Compare (CBCGPRibbonInfo::s_szSeparator) == 0)
 		{
 			CBCGPBaseRibbonElement* pElement = 
 				CreateElement (*(const CBCGPRibbonInfo::XElement*)info.m_arElements[i]);
@@ -315,6 +321,7 @@ void CBCGPRibbonConstructor::ConstructCategory (CBCGPRibbonCategory& category, c
 	const_cast<CBCGPToolBarImages&>(info.m_LargeImages.m_Image).CopyTo (category.GetLargeImages ());
 
 	category.SetKeys (info.m_strKeys);
+	category.SetApplicationModes (info.m_nApplicationModes);
 
 	int i = 0;
 	for (i = 0; i < info.m_arPanels.GetSize (); i++)
@@ -350,15 +357,26 @@ void CBCGPRibbonConstructor::ConstructPanel (CBCGPRibbonPanel& panel, const CBCG
 	panel.SetKeys (info.m_strKeys);
 	panel.SetJustifyColumns (info.m_bJustifyColumns);
 	panel.SetCenterColumnVert (info.m_bCenterColumnVert);
+	panel.SetAlwaysAlignByColumn (info.m_bAlwaysAlignByColumn);
+	panel.SetApplicationModes (info.m_nApplicationModes);
+
+	if (info.m_CollapseMode == 1)
+	{
+		panel.SetNonCollapsible(TRUE);
+	}
+	else if (info.m_CollapseMode == 2)
+	{
+		panel.SetAlwaysCollapsed(TRUE);
+	}
 
 	ConstructElement (panel.GetLaunchButton (), info.m_btnLaunch);
 
 	int i = 0;
 	for (i = 0; i < info.m_arElements.GetSize (); i++)
 	{
-		CBCGPBaseRibbonElement* pElement = 
-			CreateElement (*(const CBCGPRibbonInfo::XElement*)info.m_arElements[i]);
+		const CBCGPRibbonInfo::XElement& infoElement = (const CBCGPRibbonInfo::XElement&)*info.m_arElements[i];
 
+		CBCGPBaseRibbonElement* pElement = CreateElement (infoElement);
 		if (pElement != NULL)
 		{
 			ASSERT_VALID (pElement);
@@ -367,6 +385,7 @@ void CBCGPRibbonConstructor::ConstructPanel (CBCGPRibbonPanel& panel, const CBCG
 			if (pSeparator)
 			{
 				panel.AddSeparator ();
+				panel.GetElement(panel.GetCount() - 1)->SetApplicationModes(infoElement.m_nApplicationModes);
 				delete pSeparator;
 			}
 			else
@@ -509,6 +528,7 @@ void CBCGPRibbonConstructor::ConstructBaseElement (CBCGPBaseRibbonElement& eleme
 	element.SetToolTipText (info.m_strToolTip);
 	element.SetDescription (info.m_strDescription);
 	element.SetKeys (info.m_strKeys, info.m_strMenuKeys);
+	element.SetApplicationModes(info.m_nApplicationModes);
 
 	SetID (element, info.m_ID);
 
@@ -526,6 +546,7 @@ void CBCGPRibbonConstructor::ConstructBaseElement (CBCGPBaseRibbonElement& eleme
 		pButton->SetAlwaysLargeImage (info.m_bIsAlwaysLarge);
 		pButton->SetDefaultCommand (infoElement.m_bIsDefaultCommand);
 		pButton->SetQATType (infoElement.m_QATType);
+		pButton->SetDontCloseParentPopupOnClick (infoElement.m_bDontCloseParentPopupOnClick);
 
 		if (bSubItems)
 		{
@@ -607,6 +628,8 @@ CBCGPBaseRibbonElement* CBCGPRibbonConstructor::CreateElement (const CBCGPRibbon
 		CBCGPRibbonLabel* pNewElement = 
 			new CBCGPRibbonLabel (infoElement.m_strText, infoElement.m_bIsAlwaysLarge);
 		pElement = pNewElement;
+
+		ConstructBaseElement(*pElement, info);
 	}
 	else if (info.GetElementName ().Compare (CBCGPRibbonInfo::s_szComboBox_Font) == 0)
 	{
@@ -800,6 +823,7 @@ CBCGPBaseRibbonElement* CBCGPRibbonConstructor::CreateElement (const CBCGPRibbon
 		pNewElement->SetButtonMode (infoElement.m_bIsButtonMode);
 		pNewElement->EnableMenuResize (infoElement.m_bEnableMenuResize, infoElement.m_bMenuResizeVertical);
 		pNewElement->SetDrawDisabledItems(infoElement.m_bDrawDisabledItems);
+		pNewElement->SetInitialColumns (infoElement.m_nInitialColumns);
 		pNewElement->SetIconsInRow (infoElement.m_nIconsInRow);
 
 		pNewElement->Clear ();
@@ -815,9 +839,15 @@ CBCGPBaseRibbonElement* CBCGPRibbonConstructor::CreateElement (const CBCGPRibbon
 			pNewElement->m_bIsOwnerDraw = bIsOwnerDraw;
 		}
 
+		pNewElement->m_arToolTips.Copy(infoElement.m_arTooltips);
+		pNewElement->m_arKeys.Copy(infoElement.m_arKeys);
+
 		const_cast<CBCGPToolBarImages&>(infoElement.m_Images.m_Image).CopyTo (pNewElement->m_imagesPalette);
 		pNewElement->m_nIcons = pNewElement->m_imagesPalette.GetCount ();
 		pNewElement->CreateIcons ();
+
+		pNewElement->EnableItemCheckBoxes(infoElement.m_bItemCheckBoxes, infoElement.m_bCheckBoxOverlapsIcon, infoElement.m_CheckBoxLocation);
+		pNewElement->EnableItemTextLabels(infoElement.m_bItemTextLabels, infoElement.m_TextLabelLocation, infoElement.m_clrTextLabel);
 	}
 	else if (info.GetElementName ().Compare (CBCGPRibbonInfo::s_szButton_Hyperlink) == 0)
 	{
@@ -953,10 +983,12 @@ CBCGPBaseRibbonElement* CBCGPRibbonConstructor::CreateElement (const CBCGPRibbon
 		const CBCGPRibbonInfo::XElementSeparator& infoElement = 
 			(const CBCGPRibbonInfo::XElementSeparator&)info;
 
-		CBCGPRibbonSeparator* pSeparator = 
+		CBCGPRibbonSeparator* pNewElement = 
 			new CBCGPRibbonSeparator (infoElement.m_bIsHoriz);
 
-		pElement = pSeparator;
+		pElement = pNewElement;
+
+		pNewElement->SetApplicationModes(infoElement.m_nApplicationModes);
 	}
 
 	return pElement;

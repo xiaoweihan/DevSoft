@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -34,6 +34,8 @@
 #if _MSC_VER > 1000
 #pragma once
 #endif // _MSC_VER > 1000
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPGridFilterListDlg dialog
@@ -190,5 +192,7 @@ protected:
 	BCGP_FILTER_COLUMN_INFO&	m_filterColumnInfo;
 	CBCGPGridCtrl*				m_pOwnerGrid;
 };
+
+#endif
 
 #endif // !defined(AFX_BCGPGRIDFILTERMENU_H__10CABCAB_AAB9_4933_906E_4097D230362A__INCLUDED_)

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,6 +18,7 @@
 #include "BCGPVisualManager.h"
 #include "BCGPStatic.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -73,7 +74,7 @@ BOOL CBCGPStatic::OnEraseBkgnd(CDC* pDC)
 //*****************************************************************************
 void CBCGPStatic::OnPaint() 
 {
-	if (!m_bVisualManagerStyle && !m_bOnGlass)
+	if (!m_bVisualManagerStyle && !m_bOnGlass && m_clrText == (COLORREF)-1)
 	{
 		Default ();
 		return;
@@ -81,8 +82,7 @@ void CBCGPStatic::OnPaint()
 
 	const DWORD dwStyle = GetStyle ();
 
-	if ((dwStyle & SS_ICON) == SS_ICON ||
-		(dwStyle & SS_BLACKRECT) == SS_BLACKRECT ||
+	if ((dwStyle & SS_BLACKRECT) == SS_BLACKRECT ||
 		(dwStyle & SS_GRAYRECT) == SS_GRAYRECT ||
 		(dwStyle & SS_WHITERECT) == SS_WHITERECT ||
 		(dwStyle & SS_BLACKFRAME) == SS_BLACKFRAME ||
@@ -107,8 +107,46 @@ void CBCGPStatic::OnPaint()
 //*******************************************************************************************************
 void CBCGPStatic::DoPaint(CDC* pDC)
 {
+	const DWORD dwStyle = GetStyle ();
+
 	CRect rectText;
 	GetClientRect (rectText);
+
+	if ((dwStyle & SS_ICON) == SS_ICON)
+	{
+		HICON hIcon = GetIcon();
+		if (hIcon != NULL)
+		{
+			CSize sizeIcon(0, 0);
+
+			if ((dwStyle & SS_REALSIZEIMAGE) == SS_REALSIZEIMAGE)
+			{
+				sizeIcon = globalUtils.GetIconSize(hIcon);
+
+				if ((dwStyle & SS_CENTERIMAGE) == SS_CENTERIMAGE)
+				{
+					rectText.left += (rectText.Width() - sizeIcon.cx) / 2;
+					rectText.top += (rectText.Height() - sizeIcon.cy) / 2;
+				}
+
+				rectText.right = rectText.left + sizeIcon.cx;
+				rectText.bottom = rectText.top + sizeIcon.cy;
+			}
+
+#ifndef _BCGSUITE_
+			if (m_bOnGlass)
+			{
+				CBCGPVisualManager::GetInstance ()->DrawIconOnGlass(pDC, hIcon, rectText);
+			}
+			else
+#endif
+			{
+				::DrawIconEx(pDC->GetSafeHdc(), rectText.left, rectText.top, hIcon, rectText.Width(), rectText.Height(), 0, NULL, DI_NORMAL);
+			}
+		}
+
+		return;
+	}
 
 	if (m_hFont != NULL && ::GetObjectType (m_hFont) != OBJ_FONT)
 	{
@@ -122,7 +160,6 @@ void CBCGPStatic::DoPaint(CDC* pDC)
 	ASSERT(pOldFont != NULL);
 
 	UINT uiDTFlags = DT_WORDBREAK;
-	const DWORD dwStyle = GetStyle ();
 
 	if (dwStyle & SS_CENTER)
 	{
@@ -143,11 +180,33 @@ void CBCGPStatic::DoPaint(CDC* pDC)
 		uiDTFlags |= DT_SINGLELINE | DT_VCENTER;
 	}
 
-#ifndef _BCGSUITE_
-	COLORREF clrText = m_clrText == (COLORREF)-1 ? (m_bBackstageMode ? 
-		CBCGPVisualManager::GetInstance ()->GetRibbonBackstageTextColor() : globalData.clrBarText) : m_clrText;
+	if ((dwStyle & SS_ELLIPSISMASK) == SS_ENDELLIPSIS)
+	{
+		uiDTFlags |= DT_END_ELLIPSIS;
+	}
+
+	if ((dwStyle & SS_ELLIPSISMASK) == SS_PATHELLIPSIS)
+	{
+		uiDTFlags |= DT_PATH_ELLIPSIS;
+	}
+
+	if ((dwStyle & SS_ELLIPSISMASK) == SS_WORDELLIPSIS)
+	{
+		uiDTFlags |= DT_WORD_ELLIPSIS;
+	}
+
+#if (!defined _BCGSUITE_)
+	COLORREF clrText = (m_clrText == (COLORREF)-1) ? CBCGPVisualManager::GetInstance()->GetDlgTextColor(GetParent()) : m_clrText;
+
+#if (!defined BCGP_EXCLUDE_RIBBON)
+	if (m_bBackstageMode && m_clrText == (COLORREF)-1)
+	{
+		clrText = CBCGPVisualManager::GetInstance ()->GetRibbonBackstageTextColor();
+	}
+#endif
+
 #else
-	COLORREF clrText = m_clrText == (COLORREF)-1 ? globalData.clrBarText : m_clrText;
+	COLORREF clrText = (m_clrText == (COLORREF)-1) ? globalData.clrBarText : m_clrText;
 #endif
 
 	if (!IsWindowEnabled ())
@@ -215,7 +274,7 @@ LRESULT CBCGPStatic::OnSetText (WPARAM, LPARAM)
 		GetWindowRect (rect);
 
 		GetParent ()->ScreenToClient (&rect);
-		GetParent ()->RedrawWindow (rect);
+		GetParent()->RedrawWindow(rect, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
 	}
 
 	return lr;

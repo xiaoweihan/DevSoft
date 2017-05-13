@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -51,6 +51,7 @@ CBCGPURLLinkButton::CBCGPURLLinkButton()
 
 CBCGPURLLinkButton::~CBCGPURLLinkButton()
 {
+	m_fntUnderline.DeleteObject();
 }
 
 BEGIN_MESSAGE_MAP(CBCGPURLLinkButton, CBCGPButton)
@@ -69,9 +70,9 @@ void CBCGPURLLinkButton::OnDraw (CDC* pDC, const CRect& rect, UINT /*uiState*/)
 	// Set font:
 	CFont* pOldFont = NULL;
 		
-	if (m_bAlwaysUnderlineText || m_bHover)
+	if (m_bAlwaysUnderlineText || m_bHover || (!m_bDrawFocus && GetFocus() == this))
 	{
-		pOldFont = pDC->SelectObject (&globalData.fontDefaultGUIUnderline);
+		pOldFont = pDC->SelectObject (m_fntUnderline.GetSafeHandle() == NULL ? &globalData.fontDefaultGUIUnderline : &m_fntUnderline);
 	}
 	else
 	{
@@ -101,7 +102,15 @@ void CBCGPURLLinkButton::OnDraw (CDC* pDC, const CRect& rect, UINT /*uiState*/)
 	}
 
 	CRect rectText = rect;
-	pDC->DrawText (strLabel, rectText, uiDTFlags);
+
+	if (m_bOnGlass)
+	{
+		CBCGPVisualManager::GetInstance ()->DrawTextOnGlass (pDC, strLabel, rectText, uiDTFlags, 6, clrText);
+	}
+	else
+	{
+		pDC->DrawText (strLabel, rectText, uiDTFlags);
+	}
 
 	pDC->SelectObject (pOldFont);
 }
@@ -175,7 +184,7 @@ CSize CBCGPURLLinkButton::SizeToContent (BOOL bVCenter, BOOL bHCenter)
 	CClientDC dc (this);
 
 	// Set font:
-	CFont* pOldFont = dc.SelectObject (&globalData.fontDefaultGUIUnderline);
+	CFont* pOldFont = dc.SelectObject (m_fntUnderline.GetSafeHandle() == NULL ? &globalData.fontDefaultGUIUnderline : &m_fntUnderline);
 	ASSERT (pOldFont != NULL);
 
 	// Obtain label:
@@ -230,26 +239,29 @@ void CBCGPURLLinkButton::OnDrawFocusRect (CDC* pDC, const CRect& rectClient)
 //****************************************************************************************
 BOOL CBCGPURLLinkButton::PreTranslateMessage(MSG* pMsg)
 {
-	switch (pMsg->message)
+	if (!m_bDefaultClickProcess)
 	{
-	case WM_KEYDOWN:
-		if (pMsg->wParam == VK_SPACE || pMsg->wParam == VK_RETURN)
+		switch (pMsg->message)
 		{
-			return TRUE;
-		}
-		break;
+		case WM_KEYDOWN:
+			if (pMsg->wParam == VK_SPACE || pMsg->wParam == VK_RETURN)
+			{
+				return TRUE;
+			}
+			break;
 
-	case WM_KEYUP:
-		if (pMsg->wParam == VK_SPACE)
-		{
-			return TRUE;
+		case WM_KEYUP:
+			if (pMsg->wParam == VK_SPACE)
+			{
+				return TRUE;
+			}
+			else if (pMsg->wParam == VK_RETURN)
+			{
+				OnClicked ();
+				return TRUE;
+			}
+			break;
 		}
-		else if (pMsg->wParam == VK_RETURN)
-		{
-			OnClicked ();
-			return TRUE;
-		}
-		break;
 	}
 
 	return CBCGPButton::PreTranslateMessage (pMsg);
@@ -259,4 +271,23 @@ void CBCGPURLLinkButton::SetCustomTextColors(COLORREF clrText, COLORREF clrHover
 {
 	m_clrTextCustom = clrText;
 	m_clrHoverTextCustom = clrHoverText;
+}
+//****************************************************************************************
+void CBCGPURLLinkButton::OnUpdateFont()
+{
+	m_fntUnderline.DeleteObject();
+
+	if (m_hFont == NULL)
+	{
+		return;
+	}
+
+	CFont* pFont = CFont::FromHandle(m_hFont);
+	ASSERT(pFont != NULL);
+	
+	LOGFONT lf;
+	pFont->GetLogFont(&lf);
+
+	lf.lfUnderline = TRUE;
+	m_fntUnderline.CreateFontIndirect(&lf);
 }

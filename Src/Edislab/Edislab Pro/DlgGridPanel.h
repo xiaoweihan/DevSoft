@@ -36,11 +36,13 @@ protected:
 	DECLARE_MESSAGE_MAP()
 public:
 	afx_msg void OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized);
-	protected:
+protected:
+#if 0
 	//创建面板
 	void CreatePanel(void);
 	//销毁面板
 	void DestroyPanel(void);
+#endif
 	//调整面板位置
 	void AdjustPanelLayout(int nWidth,int nHeight);
 public:

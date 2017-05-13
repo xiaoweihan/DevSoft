@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,6 +29,7 @@
 #include "BCGPRenameDlg.h"
 #include "BCGPRibbonItemDlg.h"
 #include "BCGPContextMenuManager.h"
+#include "BCGPMessageBox.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -148,6 +149,8 @@ CBCGPRibbonCustomizeRibbonPage::CBCGPRibbonCustomizeRibbonPage(
 	m_pSelCategoryDest = NULL;
 	m_pSelPanelDest = NULL;
 	m_pSelElemDest = NULL;
+
+	m_bCanAdd = FALSE;
 
 	if (m_pRibbonBar->m_bPrintPreviewMode)
 	{
@@ -393,6 +396,17 @@ void CBCGPRibbonCustomizeRibbonPage::OnAdd()
 {
 	ASSERT_VALID (m_pRibbonBar);
 
+	if (!m_bCanAdd)
+	{
+		CBCGPLocalResource localRes;
+
+		CString strMsg;
+		strMsg.LoadString(IDS_BCGBARRES_RIBBON_CUSTOMIZE_ADD_CONTROL_ERROR);
+		
+		BCGPShowMessageBox(IsVisualManagerStyle(), this, strMsg, NULL, MB_OK | MB_ICONWARNING);
+		return;
+	}
+
 	if (m_pSelCategorySrc != NULL)
 	{
 		ASSERT_VALID(m_pSelCategorySrc);
@@ -493,6 +507,11 @@ void CBCGPRibbonCustomizeRibbonPage::OnAdd()
 		ASSERT_VALID(pPanel);
 
 		CBCGPBaseRibbonElement* pElem = m_pSelElemSrc->CreateCustomCopy();
+		if (pElem == NULL)
+		{
+			return;
+		}
+
 		ASSERT_VALID (pElem);
 
 		pElem->SetParentCategory(pPanel->GetParentCategory());
@@ -624,7 +643,11 @@ void CBCGPRibbonCustomizeRibbonPage::OnToolbarReset()
 	ASSERT_VALID (m_pRibbonBar);
 
 	CBCGPLocalResource locaRes;
-	if (AfxMessageBox (IDS_BCGBARRES_RESET_RIBBON, MB_YESNO | MB_ICONWARNING) != IDYES)
+	
+	CString strMsg;
+	strMsg.LoadString(IDS_BCGBARRES_RESET_RIBBON);
+
+	if (BCGPShowMessageBox(IsVisualManagerStyle(), this, strMsg, NULL, MB_YESNO | MB_ICONWARNING) != IDYES)
 	{
 		return;
 	}
@@ -661,6 +684,12 @@ void CBCGPRibbonCustomizeRibbonPage::OnToolbarReset()
 
 	m_CustomizationData.ResetAll(m_pRibbonBar);
 	RebuildDestTree();
+
+	UpdateData ();
+	
+	m_pRibbonBar->OnCancelMode ();
+	m_CustomizationData.Apply(m_pRibbonBar);
+
 #endif
 }
 //**********************************************************************
@@ -723,11 +752,29 @@ void CBCGPRibbonCustomizeRibbonPage::CreateRibbonTree(CStatic& wndPlaceHolder, C
 
 	// Set grid colors
 	CBCGPGridColors colors;
-	colors.m_LeftOffsetColors.m_clrBackground = globalData.clrWindow;
-	colors.m_SelColors.m_clrBackground = ::GetSysColor(COLOR_HIGHLIGHT);
-	colors.m_SelColors.m_clrText = ::GetSysColor(COLOR_HIGHLIGHTTEXT);
-	colors.m_SelColorsInactive.m_clrBackground = ::GetSysColor(COLOR_BTNFACE);
-	colors.m_SelColorsInactive.m_clrText = ::GetSysColor(COLOR_BTNTEXT);
+
+	if (IsVisualManagerStyle() && !globalData.IsHighContastMode())
+	{
+		wndTree.SetVisualManagerColorTheme(TRUE, FALSE, FALSE);
+		wndTree.SetScrollBarsStyle(CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER);
+
+		CBCGPGridColors colorsVM = wndTree.GetColorTheme();
+		
+		colors.m_clrBackground = colorsVM.m_clrBackground;
+		colors.m_clrText = colorsVM.m_clrText;
+		colors.m_LeftOffsetColors.m_clrBackground = colorsVM.m_clrBackground == (COLORREF)-1 ? globalData.clrWindow : colorsVM.m_clrBackground;
+		
+		colors.m_SelColors.m_clrBackground = colorsVM.m_SelColors.m_clrBackground;
+		colors.m_SelColors.m_clrText = colorsVM.m_SelColors.m_clrText;
+	}
+	else
+	{
+		colors.m_LeftOffsetColors.m_clrBackground = globalData.clrWindow;
+		colors.m_SelColors.m_clrBackground = ::GetSysColor(COLOR_HIGHLIGHT);
+		colors.m_SelColors.m_clrText = ::GetSysColor(COLOR_HIGHLIGHTTEXT);
+		colors.m_SelColorsInactive.m_clrBackground = ::GetSysColor(COLOR_BTNFACE);
+		colors.m_SelColorsInactive.m_clrText = ::GetSysColor(COLOR_BTNTEXT);
+	}
 
 	wndTree.SetColorTheme (colors);
 	
@@ -759,6 +806,9 @@ BOOL CBCGPRibbonCustomizeRibbonPage::OnInitDialog()
 
 	CreateRibbonTree(m_wndRibbonSrcTreePlaceholder, m_wndRibbonTreeSrc);
 	CreateRibbonTree(m_wndRibbonTreePlaceholder, m_wndRibbonTreeDest);
+
+	m_wndRibbonTreeSrc.SetWindowText(_T("Available commands list"));
+	m_wndRibbonTreeDest.SetWindowText(_T("Ribbon"));
 
 	CBCGPStaticLayout* pLayout = (CBCGPStaticLayout*)GetLayout ();
 	if (pLayout != NULL)
@@ -795,11 +845,11 @@ BOOL CBCGPRibbonCustomizeRibbonPage::OnInitDialog()
 		m_wndKbdCustomize.ShowWindow (SW_HIDE);
 	}
 
-	m_wndUp.SetStdImage (CBCGPMenuImages::IdArowUpLarge, CBCGPMenuImages::ImageBlack2, CBCGPMenuImages::IdArowUpLarge, CBCGPMenuImages::ImageLtGray);
+	m_wndUp.SetStdImage (CBCGPMenuImages::IdArowUpLarge, CBCGPMenuImages::ImageBlack2, CBCGPMenuImages::IdArowUpLarge, (globalData.m_bIsWhiteHighContrast ? CBCGPMenuImages::ImageGray : CBCGPMenuImages::ImageLtGray));
 	m_wndUp.SetWindowText(_T("Up"));
 	m_wndUp.SetDrawText(FALSE, FALSE);
 	
-	m_wndDown.SetStdImage (CBCGPMenuImages::IdArowDownLarge, CBCGPMenuImages::ImageBlack2, CBCGPMenuImages::IdArowDownLarge, CBCGPMenuImages::ImageLtGray);
+	m_wndDown.SetStdImage (CBCGPMenuImages::IdArowDownLarge, CBCGPMenuImages::ImageBlack2, CBCGPMenuImages::IdArowDownLarge, (globalData.m_bIsWhiteHighContrast ? CBCGPMenuImages::ImageGray : CBCGPMenuImages::ImageLtGray));
 	m_wndDown.SetWindowText(_T("Down"));
 	m_wndDown.SetDrawText(FALSE, FALSE);
 
@@ -932,8 +982,14 @@ void CBCGPRibbonCustomizeRibbonPage::OnCustomizeKeyboard()
 {
 	ASSERT_VALID (m_pRibbonBar);
 
-	CBCGPRibbonKeyboardCustomizeDlg dlg (m_pRibbonBar, this);
-	dlg.DoModal ();
+	CBCGPRibbonKeyboardCustomizeDlg dlg(m_pRibbonBar, this);
+
+	if (IsVisualManagerStyle())
+	{
+		dlg.EnableVisualManagerStyle(TRUE, TRUE);
+	}
+
+	dlg.DoModal();
 }
 //**********************************************************************
 void CBCGPRibbonCustomizeRibbonPage::AddCustomCategory (LPCTSTR lpszName, const CList<UINT, UINT>& lstIDS)
@@ -967,6 +1023,7 @@ LRESULT CBCGPRibbonCustomizeRibbonPage::OnSelChangeRibbonTree(WPARAM, LPARAM lp)
 	}
 
 	m_wndAdd.EnableWindow(FALSE);
+	m_bCanAdd = FALSE;
 
 	CBCGPGridCtrl* pGrid = (CBCGPGridCtrl*)lp;
 
@@ -1049,6 +1106,9 @@ LRESULT CBCGPRibbonCustomizeRibbonPage::OnSelChangeRibbonTree(WPARAM, LPARAM lp)
 		m_pSelElemSrc = NULL;
 
 		CBCGPGridRow* pRow = m_wndRibbonTreeSrc.GetCurSel();
+		
+		m_wndAdd.EnableWindow(pRow != NULL && m_wndRibbonTreeDest.GetCurSel() != NULL);
+
 		if (pRow == NULL)
 		{
 			return 0;
@@ -1065,8 +1125,9 @@ LRESULT CBCGPRibbonCustomizeRibbonPage::OnSelChangeRibbonTree(WPARAM, LPARAM lp)
 		}
 	}
 
-	if (m_pSelCategorySrc != NULL)
+	if (m_pSelCategorySrc != NULL && m_wndRibbonTreeDest.GetCurSel() != NULL)
 	{
+		m_bCanAdd = TRUE;
 		m_wndAdd.EnableWindow();
 	}
 	else if (m_pSelPanelSrc != NULL)
@@ -1088,20 +1149,21 @@ LRESULT CBCGPRibbonCustomizeRibbonPage::OnSelChangeRibbonTree(WPARAM, LPARAM lp)
 
 		if (pCategory != NULL)
 		{
-			m_wndAdd.EnableWindow(pCategory != NULL && pCategory->FindPanelByOriginal(m_pSelPanelSrc) == NULL);
+			m_bCanAdd = pCategory != NULL && pCategory->FindPanelByOriginal(m_pSelPanelSrc) == NULL;
+			m_wndAdd.EnableWindow(m_bCanAdd);
 		}
 	}
 	else if (m_pSelElemSrc != NULL)
 	{
 		ASSERT_VALID(m_pSelElemSrc);
 
+		m_wndAdd.EnableWindow();
+
 		CBCGPRibbonPanel* pPanel = m_pSelPanelDest;
 		if (pPanel == NULL && m_pSelElemDest != NULL)
 		{
 			pPanel = m_pSelElemDest->GetParentPanel();
 		}
-
-		BOOL bCanAdd = FALSE;
 
 		if (pPanel != NULL && pPanel->IsCustom() && pPanel->m_pOriginal == NULL)
 		{
@@ -1113,12 +1175,14 @@ LRESULT CBCGPRibbonCustomizeRibbonPage::OnSelChangeRibbonTree(WPARAM, LPARAM lp)
 				if (pCustomPanel->FindByID(m_pSelElemSrc->GetID()) == NULL &&
 					m_wndRibbonTreeDest.FindElementInPanel(pPanel, m_pSelElemSrc->GetID()) == NULL)
 				{
-					bCanAdd = TRUE;
+					m_bCanAdd = TRUE;
+				}
+				else
+				{
+					m_wndAdd.EnableWindow(FALSE);
 				}
 			}
 		}
-
-		m_wndAdd.EnableWindow(bCanAdd);
 	}
 #endif
 	return 0;

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -15,10 +15,14 @@
 
 #include "stdafx.h"
 #include "bcgcbpro.h"
+
 #ifndef _BCGSUITE_
 #include "BCGPPopupMenu.h"
 #include "BCGPToolbarMenuButton.h"
+#include "BCGPTooltipManager.h"
+#include "BCGPPngImage.h"
 #endif
+
 #include "BCGPPropertySheet.h"
 #include "BCGPPropertyPage.h"
 
@@ -64,6 +68,7 @@ void CBCGPPropertyPage::CommonInit ()
 	m_pCategory = NULL;
 	m_nIcon = -1;
 	m_nSelIconNum = -1;
+	m_hIcon = NULL;
 	m_hTreeNode = NULL;
 	m_bIsAeroWizardPage = FALSE;
 	m_rectHeader.SetRectEmpty();
@@ -73,6 +78,10 @@ void CBCGPPropertyPage::CommonInit ()
 
 CBCGPPropertyPage::~CBCGPPropertyPage()
 {
+	if (m_hIcon != NULL)
+	{
+		::DestroyIcon(m_hIcon);
+	}
 }
 
 BEGIN_MESSAGE_MAP(CBCGPPropertyPage, CPropertyPage)
@@ -86,9 +95,13 @@ BEGIN_MESSAGE_MAP(CBCGPPropertyPage, CPropertyPage)
 	ON_WM_SIZE()
 	ON_WM_CREATE()
 	ON_WM_LBUTTONDOWN()
+	ON_WM_SETCURSOR()
+	ON_WM_LBUTTONUP()
 	//}}AFX_MSG_MAP
 	ON_MESSAGE(UM_REDRAWHEADER, OnRedrawHeader)
 	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
+	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
+	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnNeedTipText)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -161,6 +174,8 @@ BOOL CBCGPPropertyPage::OnInitDialog()
 	{
 		m_Impl.EnableBackstageMode();
 	}
+
+	m_Impl.CreateTooltipInfo();
 
 	CBCGPPropertySheet* pParent = DYNAMIC_DOWNCAST(CBCGPPropertySheet, GetParent ());
 	if (pParent == NULL)
@@ -263,6 +278,8 @@ BOOL CBCGPPropertyPage::OnEraseBkgnd(CDC* pDC)
 		bRes = CPropertyPage::OnEraseBkgnd(pDC);
 	}
 
+	m_Impl.DrawBackgroundImage(pDC, rectClient);
+
 	if (!m_rectHeader.IsRectEmpty () && m_rectHeader.Height() > 1)
 	{
 		CBCGPPropertySheet* pParent = DYNAMIC_DOWNCAST(CBCGPPropertySheet, GetParent ());
@@ -272,6 +289,7 @@ BOOL CBCGPPropertyPage::OnEraseBkgnd(CDC* pDC)
 		}
 	}
 
+	m_Impl.DrawControlInfoTips(pDC);
 	return bRes;
 }
 //*****************************************************************************************
@@ -342,6 +360,8 @@ void CBCGPPropertyPage::OnSize(UINT nType, int cx, int cy)
 	CRect rectHeaderOld = m_rectHeader;
 
 	SetHeaderRect();
+
+	m_Impl.UpdateToolTipsRect();
 
 	if (!m_rectHeader.IsRectEmpty() && rectHeaderOld != m_rectHeader)
 	{
@@ -419,12 +439,144 @@ void CBCGPPropertyPage::OnLButtonDown(UINT nFlags, CPoint point)
 	CBCGPPropertySheet* pParent = DYNAMIC_DOWNCAST(CBCGPPropertySheet, GetParent ());
 	if (pParent->GetSafeHwnd() != NULL && pParent->IsDragClientAreaEnabled())
 	{
-		CPoint ptScreen = point;
-		ClientToScreen(&ptScreen);
+		CString strInfo;
+		CString strDescription;
+		BOOL bIsClickable = FALSE;
 		
-		pParent->SendMessage (WM_NCLBUTTONDOWN, (WPARAM) HTCAPTION, MAKELPARAM (ptScreen.x, ptScreen.y));
-		return;
+		if (m_Impl.GetControlInfoTipFromPoint(point, strInfo, strDescription, bIsClickable) == NULL)
+		{
+			CPoint ptScreen = point;
+			ClientToScreen(&ptScreen);
+
+			pParent->SendMessage (WM_NCLBUTTONDOWN, (WPARAM) HTCAPTION, MAKELPARAM (ptScreen.x, ptScreen.y));
+			return;
+		}
 	}
 	
 	CPropertyPage::OnLButtonDown(nFlags, point);
+}
+//**************************************************************************
+void CBCGPPropertyPage::SetPageIcon(HICON hIcon)
+{
+	if (m_hIcon != NULL)
+	{
+		::DestroyIcon(m_hIcon);
+	}
+	
+	if (hIcon != NULL)
+	{
+		m_hIcon = ::CopyIcon (hIcon);
+	}
+	else
+	{
+		m_hIcon = NULL;
+	}
+}
+//*************************************************************************************
+void CBCGPPropertyPage::SetControlInfoTip(UINT nCtrlID, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	m_Impl.SetControlInfoTip(nCtrlID, lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
+}
+//*************************************************************************************
+void CBCGPPropertyPage::SetControlInfoTip(CWnd* pWndCtrl, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	m_Impl.SetControlInfoTip(pWndCtrl, lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
+}
+//*************************************************************************************
+BOOL CBCGPPropertyPage::OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult)
+{
+	return m_Impl.OnNeedTipText(id, pNMH, pResult);
+}
+//**************************************************************************
+LRESULT CBCGPPropertyPage::OnBCGUpdateToolTips (WPARAM wp, LPARAM)
+{
+	UINT nTypes = (UINT) wp;
+
+	if (nTypes & BCGP_TOOLTIP_TYPE_DEFAULT)
+	{
+		m_Impl.CreateTooltipInfo();
+	}
+
+	return 0;
+}
+//**************************************************************************
+BOOL CBCGPPropertyPage::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message) 
+{
+	if (m_Impl.OnSetCursor())
+	{
+		return TRUE;
+	}
+	
+	return CPropertyPage::OnSetCursor(pWnd, nHitTest, message);
+}
+//****************************************************************************
+void CBCGPPropertyPage::OnLButtonUp(UINT nFlags, CPoint point) 
+{
+	if (m_Impl.ProcessInfoTipClick(point))
+	{
+		return;
+	}
+	
+	CPropertyPage::OnLButtonUp(nFlags, point);
+}
+//*************************************************************************************
+void CBCGPPropertyPage::SetBackgroundImage (HBITMAP hBitmap, 
+								BackgroundLocation location,
+								BOOL bAutoDestroy,
+								BOOL bRepaint)
+{
+	m_Impl.m_Background.Clear();
+	
+	if (hBitmap != NULL)
+	{
+		m_Impl.m_Background.SetMapTo3DColors(FALSE);
+		m_Impl.m_Background.AddImage(hBitmap, TRUE);
+
+#ifndef _BCGSUITE_
+		m_Impl.m_Background.SetSingleImage(FALSE);
+#else
+		m_Impl.m_Background.SetSingleImage();
+#endif	
+		if (bAutoDestroy)
+		{
+			::DeleteObject(hBitmap);
+		}
+	}
+	
+	m_Impl.m_BkgrLocation = (int)location;
+	
+	if (bRepaint && GetSafeHwnd () != NULL)
+	{
+		RedrawWindow();
+	}
+}
+//*************************************************************************************
+BOOL CBCGPPropertyPage::SetBackgroundImage (UINT uiBmpResId,
+									BackgroundLocation location,
+									BOOL bRepaint)
+{
+	BOOL bRes = TRUE;
+	
+	m_Impl.m_Background.Clear();
+	
+	if (uiBmpResId != 0)
+	{
+		m_Impl.m_Background.SetMapTo3DColors(FALSE);
+		bRes = m_Impl.m_Background.Load(uiBmpResId);
+
+#ifndef _BCGSUITE_
+		m_Impl.m_Background.SetSingleImage(FALSE);
+#else
+		m_Impl.m_Background.SetSingleImage();
+#endif
+	}
+	
+	m_Impl.m_BkgrLocation = (int)location;
+	
+	if (bRepaint && GetSafeHwnd () != NULL)
+	{
+		RedrawWindow();
+	}
+	
+	return bRes;
 }

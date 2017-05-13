@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,9 @@
 #include "BCGPToolBox.h"
 #include "BCGGlobals.h"
 #include "BCGPVisualManager.h"
+#include "BCGPLocalResource.h"
+#include "BCGProRes.h"
+#include "BCGPGlobalUtils.h"
 
 #ifndef _BCGSUITE_
 #include "BCGPOutlookWnd.h"
@@ -35,10 +38,12 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
+#define ID_FILTER	1
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPToolBoxPage
 
-#define TOOLBOX_IMAGE_MARGIN 4
+#define TOOLBOX_IMAGE_MARGIN globalUtils.ScaleByDPI(4)
 
 IMPLEMENT_DYNCREATE(CBCGPToolBoxPage, CBCGPControlBar)
 
@@ -79,6 +84,7 @@ BEGIN_MESSAGE_MAP(CBCGPToolBoxPage, CBCGPControlBar)
 	ON_WM_DESTROY()
 	ON_WM_CONTEXTMENU()
 	ON_WM_SYSCOLORCHANGE()
+	ON_WM_MOUSEWHEEL()
 	//}}AFX_MSG_MAP
 	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnNeedTipText)
 	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
@@ -109,6 +115,15 @@ void CBCGPToolBoxPage::DoPaint(CDC* pDCPaint)
 	CBCGPVisualManager::GetInstance ()->OnFillBarBackground (pDC, this,
 		rectClient, rectClient);
 
+#ifndef _BCGSUITE_
+	if (m_Images.GetBitsPerPixel() < 32)
+	{
+		m_Images.SetTransparentColor (globalData.clrBtnFace);
+	}
+
+	CBCGPDrawState ds(CBCGPVisualManager::GetInstance()->IsAutoGrayscaleImages());
+	m_Images.PrepareDrawImage (ds);
+#else
 	m_Images.SetTransparentColor (globalData.clrBtnFace);
 
 	CSize sizeImageDest (-1, -1);
@@ -119,12 +134,9 @@ void CBCGPToolBoxPage::DoPaint(CDC* pDCPaint)
 		sizeImageDest = CSize ((int)(.5 + sizeImageDest.cx * dblImageScale), (int)(.5 + sizeImageDest.cy * dblImageScale));
 	}
 
-#ifndef _BCGSUITE_
-	CBCGPDrawState ds(CBCGPVisualManager::GetInstance()->IsAutoGrayscaleImages());
-#else
 	CBCGPDrawState ds;
-#endif
 	m_Images.PrepareDrawImage (ds, sizeImageDest);
+#endif
 
 	pDC->SetBkMode (TRANSPARENT);
 	pDC->SetTextColor (globalData.clrWindowText);
@@ -158,6 +170,7 @@ void CBCGPToolBoxPage::AdjustLayout ()
 	{
 		m_nVertScrollOffset = 0;
 	}
+
 	m_nVertScrollSize = 0;
 
 	ReposButtons ();
@@ -170,7 +183,7 @@ void CBCGPToolBoxPage::AdjustLayout ()
 		pOlWnd->EnableScrollButtons (TRUE, m_nVertScrollOffset > 0, m_nVertScrollSize > 0);
 	}
 
-	RedrawWindow ();
+	RedrawWindow (NULL, NULL, RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 //****************************************************************************************
 int CBCGPToolBoxPage::HitTest(CPoint point)
@@ -197,10 +210,15 @@ int CBCGPToolBoxPage::HitTest(CPoint point)
 	return -1;
 }
 //****************************************************************************************
-void CBCGPToolBoxPage::ReposButtons ()
+void CBCGPToolBoxPage::ReposButtons()
 {
 	CRect rectClient;
 	GetClientRect (rectClient);
+
+	if (m_Mode == ToolBoxPageMode_Images)
+	{
+		rectClient.DeflateRect(TOOLBOX_IMAGE_MARGIN, 0);
+	}
 
 	m_nVertScrollSize = 0;
 
@@ -221,12 +239,9 @@ void CBCGPToolBoxPage::ReposButtons ()
 		CBCGPToolBoxButton* pButton = m_arButtons [i];
 		ASSERT_VALID (pButton);
 
-		CRect rectButton = CRect (
-						CPoint (x, y),
-						CSize (nButtonWidth, nButtonHeight));
+		CRect rectButton = CRect(CPoint(x, y), CSize(nButtonWidth, nButtonHeight));
 
-		if ((m_nScrollValue > 0 ? rectButton.bottom : rectButton.top) >= rectClient.top
-			&& rectButton.bottom <= rectClient.bottom)
+		if ((m_nScrollValue > 0 ? rectButton.bottom : rectButton.top) >= rectClient.top && rectButton.top < rectClient.bottom && pButton->m_bInFilter)
 		{
 			pButton->SetRect (rectButton);
 
@@ -245,21 +260,44 @@ void CBCGPToolBoxPage::ReposButtons ()
 			}
 		}
 
-		x += nButtonWidth;
-
-		if (x + nButtonWidth > rectClient.right)
+		if (pButton->m_bInFilter)
 		{
-			x = rectClient.left;
-			y += nButtonHeight;
+			x += nButtonWidth;
 
-			if (y >= rectClient.bottom)
+			if (x + nButtonWidth > rectClient.right)
 			{
-				m_nVertScrollSize++;
+				x = rectClient.left;
+				y += nButtonHeight;
+
+				if (y >= rectClient.bottom)
+				{
+					m_nVertScrollSize++;
+				}
 			}
 		}
 	}
 
 	RedrawWindow ();
+}
+//***************************************************************************************
+BOOL CBCGPToolBoxPage::SetFilter(const CString& strFilter)
+{
+	ASSERT_VALID (this);
+
+	BOOL bHasVisibleItems = FALSE;
+
+	for (int i = 0; i < m_arButtons.GetSize (); i++)
+	{
+		CBCGPToolBoxButton* pButton = m_arButtons [i];
+		ASSERT_VALID (pButton);
+
+		if (pButton->SetFilter(strFilter))
+		{
+			bHasVisibleItems = TRUE;
+		}
+	}
+
+	return bHasVisibleItems;
 }
 //***************************************************************************************
 void CBCGPToolBoxPage::HighlightButton (int nButton)
@@ -341,12 +379,70 @@ CBCGPToolBoxButton* CBCGPToolBoxPage::GetButtonByID (int nID)
 	return NULL;
 }
 //***************************************************************************************
-int CBCGPToolBoxPage::GetMaxHeight () const
+BOOL CBCGPToolBoxPage::SetButtonUserData(int nItem, DWORD_PTR dwUserData)
 {
-	int nButtons = (int) m_arButtons.GetSize ();
+	ASSERT_VALID (this);
+
+	CBCGPToolBoxButton* pButton = GetButton(nItem);
+	if (pButton == NULL)
+	{
+		return FALSE;
+	}
+
+	ASSERT_VALID(pButton);
+
+	pButton->m_dwUserData = dwUserData;
+	return TRUE;
+}
+//***************************************************************************************
+DWORD_PTR CBCGPToolBoxPage::GetButtonUserData(int nItem) const
+{
+	ASSERT_VALID (this);
+	
+	CBCGPToolBoxButton* pButton = ((CBCGPToolBoxPage*)this)->GetButton(nItem);
+	if (pButton == NULL)
+	{
+		return 0;
+	}
+	
+	ASSERT_VALID(pButton);
+	return pButton->m_dwUserData;
+}
+//***************************************************************************************
+int CBCGPToolBoxPage::GetMaxHeight()
+{
+	int nButtons = (int)m_arButtons.GetSize ();
+
+#ifndef BCGP_EXCLUDE_TASK_PANE
+	if (m_pToolBoxEx->GetSafeHwnd() != NULL
+#if (!defined _BCGSUITE_)
+		&& !m_pToolBoxEx->GetFilterText().IsEmpty()
+#endif
+		)
+	{
+		nButtons = 0;
+
+		for (int i = 0; i < m_arButtons.GetSize(); i++)
+		{
+			CBCGPToolBoxButton* pButton = m_arButtons [i];
+			ASSERT_VALID (pButton);
+			
+			if (pButton->m_bInFilter)
+			{
+				nButtons++;
+			}
+		}
+	}
+#endif
+
+	if (nButtons == 0)
+	{
+		return 0;
+	}
+
 	int nRows = nButtons;
 	int nButtonHeight = 0;
-
+	
 	if (m_Mode != ToolBoxPageMode_Images)
 	{
 		nButtonHeight = max (globalData.GetTextHeight (), m_sizeImage.cy) + TOOLBOX_IMAGE_MARGIN;
@@ -355,12 +451,12 @@ int CBCGPToolBoxPage::GetMaxHeight () const
 	{
 		nButtonHeight = m_sizeImage.cy + 3 * TOOLBOX_IMAGE_MARGIN;
 		const int nButtonWidth = m_sizeImage.cx + 3 * TOOLBOX_IMAGE_MARGIN;
-
+		
 		CRect rectClient;
 		GetClientRect (rectClient);
-
+		
 		const int nButtonsInRow = rectClient.Width () / nButtonWidth;
-
+		
 		if (nButtonsInRow > 0)
 		{
 			nRows = nButtons / nButtonsInRow;
@@ -369,13 +465,13 @@ int CBCGPToolBoxPage::GetMaxHeight () const
 		{
 			nRows = 0;
 		}
-
+		
 		if (nButtonsInRow * nRows < nButtons)
 		{
 			nRows++;
 		}
 	}
-
+	
 	return nRows * nButtonHeight + 2 * TOOLBOX_IMAGE_MARGIN;
 }
 //***************************************************************************************
@@ -411,8 +507,14 @@ BOOL CBCGPToolBoxPage::InitPage (UINT uiBmpResID, int nImageWidth,
 
 	if (globalData.GetRibbonImageScale () != 1.)
 	{
+#ifdef _BCGSUITE_
 		double dblImageScale = globalData.GetRibbonImageScale ();
 		m_sizeImage = CSize ((int)(.5 + m_sizeImage.cx * dblImageScale), (int)(.5 + m_sizeImage.cy * dblImageScale));
+#else
+		m_Images.SetTransparentColor (globalData.clrBtnFace);
+		m_Images.SmoothResize(globalData.GetRibbonImageScale());
+		m_sizeImage = m_Images.GetImageSize();
+#endif
 	}
 
 	for (int i = 0; i < m_Images.GetCount (); i++)
@@ -490,29 +592,63 @@ BOOL CBCGPToolBoxPage::SetSelected (int nItem)
 	return TRUE;
 }
 //*****************************************************************************************
-void CBCGPToolBoxPage::SetMode (ToolBoxPageMode mode)
+void CBCGPToolBoxPage::SetMode (ToolBoxPageMode mode, BOOL bRecalLayout)
 {
 	ASSERT_VALID (this);
 
 	m_Mode = mode;
 
+	m_nScrollValue = 0;
+	m_nVertScrollOffset = 0;
+
 	if (GetSafeHwnd () != NULL)
 	{
 		ReposButtons ();
+
+		if (bRecalLayout)
+		{
+#ifndef BCGP_EXCLUDE_TASK_PANE
+			if (m_pToolBoxEx->GetSafeHwnd() != NULL)
+			{
+				m_pToolBoxEx->AdjustLayout();
+			}
+#endif
+		
+			if (m_pToolBox->GetSafeHwnd() != NULL)
+			{
+				m_pToolBox->RecalcLayout();
+			}
+		}
 	}
 }
 //*****************************************************************************************
-int CBCGPToolBoxPage::AddButton (LPCTSTR lpszText, HICON hIcon)
+int CBCGPToolBoxPage::AddButton(LPCTSTR lpszText, HICON hIcon, BOOL bAlphaBlend)
 {
 	ASSERT_VALID (this);
 	ASSERT (lpszText != NULL);
 	ASSERT (hIcon != NULL);
 
 	// Add icon to the image list:
-	int iIconIdx = m_Images.AddIcon (hIcon);
+	int iIconIdx = -1;
+	
+#ifndef _BCGSUITE_
+	if (m_Images.IsScaled())
+	{
+		CBCGPToolBarImages imageIcon;
+		imageIcon.SetImageSize(globalUtils.GetIconSize(hIcon));
 
-	CBCGPToolBoxButton* pButton = DYNAMIC_DOWNCAST (CBCGPToolBoxButton, 
-		m_pButtonClass->CreateObject ());
+		imageIcon.AddIcon(hIcon, bAlphaBlend || m_Images.GetBitsPerPixel() == 32);
+		iIconIdx = m_Images.AddImage(imageIcon, 0);
+	}
+	else
+	{
+		iIconIdx = m_Images.AddIcon(hIcon, bAlphaBlend || m_Images.GetBitsPerPixel() == 32);
+	}
+#else
+	iIconIdx = m_Images.AddIcon(hIcon, bAlphaBlend);
+#endif
+
+	CBCGPToolBoxButton* pButton = DYNAMIC_DOWNCAST (CBCGPToolBoxButton, m_pButtonClass->CreateObject());
 	if (pButton == NULL)
 	{
 		ASSERT (FALSE);
@@ -543,7 +679,8 @@ int CBCGPToolBoxPage::AddButton (LPCTSTR lpszText, HICON hIcon)
 	}
 	else if (m_pToolBoxEx != NULL)
 	{
-#ifndef BCGP_EXCLUDE_TASK_PANE
+#if (!defined BCGP_EXCLUDE_TASK_PANE) && (!defined _BCGSUITE_)
+		pButton->SetFilter(m_pToolBoxEx->GetFilterText());
 		m_pToolBoxEx->AdjustLayout ();
 #endif
 	}
@@ -763,11 +900,6 @@ BOOL CBCGPToolBoxPage::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResul
 {
 	static CString strTipText;
 
-	if (m_Mode != ToolBoxPageMode_Images)
-	{
-		return FALSE;
-	}
-
 	if (m_pToolTip->GetSafeHwnd () == NULL || 
 		pNMH->hwndFrom != m_pToolTip->GetSafeHwnd ())
 	{
@@ -864,6 +996,8 @@ void CBCGPToolBoxPage::OnContextMenu(CWnd* pWnd, CPoint point)
 #ifndef BCGP_EXCLUDE_TASK_PANE
 		ASSERT_VALID (m_pToolBoxEx);
 
+		m_pToolBoxEx->OnActivatePage(m_pToolBoxEx->GetPageNumber(this));
+
 		if (m_pToolBoxEx->OnShowToolboxMenu (point, this, nHit))
 		{
 			return;
@@ -877,22 +1011,34 @@ void CBCGPToolBoxPage::OnContextMenu(CWnd* pWnd, CPoint point)
 void CBCGPToolBoxPage::OnSysColorChange() 
 {
 	CBCGPControlBar::OnSysColorChange();
-
-	if (m_uiBmpResID != 0)
-	{
-		m_Images.Load (m_uiBmpResID);
-		RedrawWindow ();
-	}
+	UpdateImageList(m_uiBmpResID);
 }
 //*********************************************************************************
 BOOL CBCGPToolBoxPage::UpdateImageList(UINT nResID)
 {
 	m_uiBmpResID = nResID;
 
+#ifndef _BCGSUITE_
+	CSize sizeImageOriginal = m_Images.GetOriginalImageSize();
+	if (sizeImageOriginal != CSize(0, 0))
+	{
+		m_Images.SetImageSize(sizeImageOriginal);
+	}
+
+#endif
 	if (!m_Images.Load (m_uiBmpResID))
 	{
 		return FALSE;
 	}
+
+#ifndef _BCGSUITE_
+	if (globalData.GetRibbonImageScale () != 1.0)
+	{
+		m_Images.SetTransparentColor (globalData.clrBtnFace);
+		m_Images.SmoothResize(globalData.GetRibbonImageScale());
+		m_sizeImage = m_Images.GetImageSize();
+	}
+#endif
 
 	RedrawWindow ();
 	return TRUE;
@@ -942,6 +1088,46 @@ BOOL CBCGPToolBoxPage::OnGestureEventPan(const CPoint& ptFrom, const CPoint& ptT
 	return TRUE;
 }
 //*********************************************************************************
+BOOL CBCGPToolBoxPage::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt) 
+{
+	if (m_pToolBoxEx != NULL)
+	{
+		return CBCGPControlBar::OnMouseWheel(nFlags, zDelta, pt);
+	}
+
+	const int nButtonHeight = m_Mode == ToolBoxPageMode_Images ? 
+		m_sizeImage.cy + 3 * TOOLBOX_IMAGE_MARGIN :
+		max (globalData.GetTextHeight (), m_sizeImage.cy) + TOOLBOX_IMAGE_MARGIN;
+
+	const int nSteps = (int)(0.5 + abs(zDelta) / nButtonHeight);
+	if (nSteps == 0)
+	{
+		return FALSE;
+	}
+	
+	for (int i = 0; i < nSteps; i++)
+	{
+		if (zDelta > 0)
+		{
+			if (m_nVertScrollOffset <= 0)
+			{
+				return TRUE;
+			}
+		}
+		else
+		{
+			if (m_nVertScrollSize <= 0)
+			{
+				return TRUE;
+			}
+		}
+
+		m_pToolBox->OnScroll(zDelta < 0);
+	}
+
+	return TRUE;
+}
+//*********************************************************************************
 HRESULT CBCGPToolBoxPage::get_accParent(IDispatch **ppdispParent)
 {
 	if (ppdispParent == NULL)
@@ -951,14 +1137,16 @@ HRESULT CBCGPToolBoxPage::get_accParent(IDispatch **ppdispParent)
 
 	*ppdispParent = NULL;
 
+#ifndef BCGP_EXCLUDE_TASK_PANE
 	if (m_pToolBoxEx->GetSafeHwnd() != NULL)
 	{
-		return AccessibleObjectFromWindow(m_pToolBoxEx->GetSafeHwnd(), (DWORD)OBJID_WINDOW, IID_IAccessible, (void**)ppdispParent);
+		return AccessibleObjectFromWindow(m_pToolBoxEx->GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)ppdispParent);
 	}
+#endif
 
 	if (m_pToolBox->GetSafeHwnd() != NULL)
 	{
-		return AccessibleObjectFromWindow(m_pToolBox->GetSafeHwnd(), (DWORD)OBJID_WINDOW, IID_IAccessible, (void**)ppdispParent);
+		return AccessibleObjectFromWindow(m_pToolBox->GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)ppdispParent);
 	}
 
 	return S_FALSE;
@@ -1103,10 +1291,20 @@ HRESULT CBCGPToolBoxPage::get_accState(VARIANT varChild, VARIANT *pvarState)
 	if (varChild.vt == VT_I4)
 	{
 		CBCGPToolBoxButton* pButton = GetAccChild(varChild.lVal);
-		if (pButton != NULL && pButton->m_bIsChecked)
+		if (pButton != NULL)
 		{
-			pvarState->lVal |= STATE_SYSTEM_FOCUSED;
-			pvarState->lVal |= STATE_SYSTEM_SELECTED;
+			ASSERT_VALID(pButton);
+
+			if (pButton->m_bIsChecked)
+			{
+				pvarState->lVal |= STATE_SYSTEM_FOCUSED;
+				pvarState->lVal |= STATE_SYSTEM_SELECTED;
+			}
+
+			if (!pButton->m_bInFilter)
+			{
+				pvarState->lVal |= STATE_SYSTEM_INVISIBLE;
+			}
 		}
 	}
 
@@ -1235,6 +1433,34 @@ HRESULT CBCGPToolBoxPage::accDoDefaultAction(VARIANT varChild)
 
 	return OnClickButton((int)varChild.lVal - 1) ? S_OK : S_FALSE;
 }
+//******************************************************************************
+int CBCGPToolBoxPage::GetOptimalWidth() const
+{
+	ASSERT_VALID(this);
+
+	if (m_Mode == ToolBoxPageMode_Images)
+	{
+		return 0;
+	}
+
+	int nMaxWidth = 0;
+
+	CClientDC dc((CWnd*)this);
+
+	CFont* pOldFont = dc.SelectObject(&globalData.fontRegular);
+	ASSERT(pOldFont != NULL);
+	
+	for (int i = 0; i < m_arButtons.GetSize(); i++)
+	{
+		CBCGPToolBoxButton* pButton = m_arButtons[i];
+		ASSERT_VALID(pButton);
+
+		nMaxWidth = max(nMaxWidth, pButton->GetMaxWidth(&dc));
+	}
+
+	dc.SelectObject(pOldFont);
+	return nMaxWidth;
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPToolBox
@@ -1288,7 +1514,7 @@ void CBCGPToolBox::OnSize(UINT nType, int cx, int cy)
 {
 	CBCGPDockingControlBar::OnSize(nType, cx, cy);
 	AdjustLayout ();
-	RedrawWindow ();
+	RedrawWindow (NULL, NULL, RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 //****************************************************************************************
 BOOL CBCGPToolBox::AddToolsPage (LPCTSTR lpszPageName, UINT uiBmpResID, int nImageWidth,
@@ -1683,6 +1909,8 @@ CBCGPToolBoxButton::CBCGPToolBoxButton ()
 	m_pImages = NULL;
 	m_pPage = NULL;
 	m_nID = -1;
+	m_bInFilter = TRUE;
+	m_dwUserData = 0;
 }
 //***************************************************************************************
 void CBCGPToolBoxButton::OnFillBackground (CDC* pDC, const CRect& rectClient)
@@ -1694,6 +1922,46 @@ void CBCGPToolBoxButton::OnDrawBorder (CDC* pDC, CRect& rectClient, UINT uiState
 {
 	CBCGPVisualManager::GetInstance ()->OnDrawToolBoxButtonBorder (pDC, rectClient,
 		this, uiState);
+}
+//***************************************************************************************
+CSize CBCGPToolBoxButton::GetImageSize()
+{
+	CSize sizeImage(0, 0);
+
+	if (m_pImages != NULL && m_iImageIndex >= 0)
+	{
+		ASSERT_VALID (m_pImages);
+		
+		sizeImage = m_pImages->GetImageSize ();
+#ifdef _BCGSUITE_
+		if (globalData.GetRibbonImageScale () != 1.)
+		{
+			double dblImageScale = globalData.GetRibbonImageScale ();
+			sizeImage = CSize ((int)(.5 + sizeImage.cx * dblImageScale), (int)(.5 + sizeImage.cy * dblImageScale));
+		}
+#endif
+	}
+	
+	return sizeImage;
+}
+//***************************************************************************************
+BOOL CBCGPToolBoxButton::SetFilter(const CString& strFilter)
+{
+	ASSERT_VALID (this);
+
+	if (strFilter.IsEmpty())
+	{
+		m_bInFilter = TRUE;
+	}
+	else
+	{
+		CString strName = m_strLabel;
+		strName.MakeUpper();
+		
+		m_bInFilter = strName.Find(strFilter) >= 0;
+	}
+
+	return m_bInFilter;
 }
 //***************************************************************************************
 void CBCGPToolBoxButton::OnDraw (CDC* pDC)
@@ -1721,18 +1989,12 @@ void CBCGPToolBoxButton::OnDraw (CDC* pDC)
 	{
 		ASSERT_VALID (m_pImages);
 
-		CSize sizeImage = m_pImages->GetImageSize ();
-		if (globalData.GetRibbonImageScale () != 1.)
-		{
-			double dblImageScale = globalData.GetRibbonImageScale ();
-			sizeImage = CSize ((int)(.5 + sizeImage.cx * dblImageScale), (int)(.5 + sizeImage.cy * dblImageScale));
-		}
-
+		CSize sizeImage = GetImageSize();
 		CRect rectImage = rectText;
 
 		if (m_pPage->GetMode () != CBCGPToolBoxPage::ToolBoxPageMode_Images)
 		{
-			rectImage.right = rectImage.left + sizeImage.cx + 4;
+			rectImage.right = rectImage.left + sizeImage.cx + TOOLBOX_IMAGE_MARGIN;
 		}
 
 		m_pImages->Draw (pDC,
@@ -1748,10 +2010,36 @@ void CBCGPToolBoxButton::OnDraw (CDC* pDC)
 		return;
 	}
 
-	rectText.DeflateRect(6, 0);
+	rectText.DeflateRect(TOOLBOX_IMAGE_MARGIN, 0);
 
-	pDC->SetTextColor (CBCGPVisualManager::GetInstance ()->GetToolBoxButtonTextColor (this));
-	pDC->DrawText (m_strLabel, rectText, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+	COLORREF clrTextOld = pDC->SetTextColor (CBCGPVisualManager::GetInstance ()->GetToolBoxButtonTextColor (this));
+	pDC->DrawText (m_strLabel, rectText, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+	pDC->SetTextColor(clrTextOld);
+}
+//***************************************************************************************
+int CBCGPToolBoxButton::GetMaxWidth(CDC* pDC)
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (pDC);
+	ASSERT_VALID (m_pPage);
+	
+	if (m_pPage->GetMode () == CBCGPToolBoxPage::ToolBoxPageMode_Images)
+	{
+		return 0;
+	}
+
+	const CSize sizeImage = GetImageSize();
+	const int nButtonHeight = max (globalData.GetTextHeight (), sizeImage.cy) + TOOLBOX_IMAGE_MARGIN;
+	
+	int nWidth = nButtonHeight;
+
+	if (sizeImage != CSize(0, 0))
+	{
+		nWidth += sizeImage.cx + TOOLBOX_IMAGE_MARGIN;
+	}		
+
+	nWidth += 2 * TOOLBOX_IMAGE_MARGIN + pDC->GetTextExtent(m_strLabel).cx;
+	return nWidth;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1771,6 +2059,10 @@ CBCGPToolBoxEx::CBCGPToolBoxEx()
 
 	m_bOffsetCustomControls = FALSE;
 	m_bAnimationEnabled = TRUE;
+
+#if (!defined _BCGSUITE_)
+	m_bFilterBox = FALSE;
+#endif
 }
 
 CBCGPToolBoxEx::~CBCGPToolBoxEx()
@@ -1783,6 +2075,7 @@ BEGIN_MESSAGE_MAP(CBCGPToolBoxEx, CBCGPTasksPane)
 	ON_WM_SIZE()
 	ON_WM_CONTEXTMENU()
 	//}}AFX_MSG_MAP
+	ON_EN_CHANGE(ID_FILTER, OnFilter)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1948,24 +2241,87 @@ int CBCGPToolBoxEx::GetPageNumber (CBCGPToolBoxPage* pPage) const
 	return -1;
 }
 //****************************************************************************************
-int CBCGPToolBoxEx::GetPageCount () const
-{
-	ASSERT_VALID (this);
-	return (int) m_lstTaskGroups.GetCount ();
-}
-//****************************************************************************************
-CBCGPToolBoxPage* CBCGPToolBoxEx::GetPage (int nPage) const
+int CBCGPToolBoxEx::GetPageCount(BOOL bInFilter/* = FALSE*/) const
 {
 	ASSERT_VALID (this);
 
-	POSITION posGroup = m_lstTaskGroups.FindIndex (nPage);
-	if (posGroup == NULL)
+#if (!defined _BCGSUITE_)
+	if (!bInFilter || m_strFilter.IsEmpty())
+#else
+	UNREFERENCED_PARAMETER(bInFilter);
+#endif
+	{
+		return (int)m_lstTaskGroups.GetCount();
+	}
+
+#if (!defined _BCGSUITE_)
+	int nCount = 0;
+
+	for (POSITION pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+		ASSERT_VALID (pGroup);
+		
+		if (pGroup->m_bIsVisible)
+		{
+			nCount++;
+		}
+	}
+
+	return nCount;
+#endif
+}
+//****************************************************************************************
+CBCGPToolBoxPage* CBCGPToolBoxEx::GetPage (int nPage, BOOL bInFilter/* = FALSE*/) const
+{
+	ASSERT_VALID (this);
+
+	CBCGPTasksGroup* pGroup = NULL;
+
+#if (!defined _BCGSUITE_)
+	if (!bInFilter || m_strFilter.IsEmpty())
+#else
+	UNREFERENCED_PARAMETER(bInFilter);
+#endif
+	{
+		POSITION posGroup = m_lstTaskGroups.FindIndex (nPage);
+		if (posGroup == NULL)
+		{
+			return NULL;
+		}
+
+		pGroup = (CBCGPTasksGroup*)m_lstTaskGroups.GetAt(posGroup);
+	}
+#if (!defined _BCGSUITE_)
+	else
+	{
+		int nCurIndex = 0;
+		
+		for (POSITION pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+		{
+			CBCGPTasksGroup* pCurrGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+			ASSERT_VALID (pCurrGroup);
+			
+			if (pCurrGroup->m_bIsVisible)
+			{
+				if (nCurIndex == nPage)
+				{
+					pGroup = pCurrGroup;
+					break;
+				}
+
+				nCurIndex++;
+			}
+		}
+	}
+#endif
+
+	if (pGroup == NULL)
 	{
 		return NULL;
 	}
 
-	CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetAt (posGroup);
-	ASSERT_VALID (pGroup);
+	ASSERT_VALID(pGroup);
 
 	CBCGPTask* pTask = (CBCGPTask*) pGroup->m_lstTasks.GetHead ();
 	if (pTask == NULL || pTask->m_hwndTask == NULL)
@@ -1974,8 +2330,7 @@ CBCGPToolBoxPage* CBCGPToolBoxEx::GetPage (int nPage) const
 		return FALSE;
 	}
 
-	return DYNAMIC_DOWNCAST (CBCGPToolBoxPage,
-		CWnd::FromHandle (pTask->m_hwndTask));
+	return DYNAMIC_DOWNCAST (CBCGPToolBoxPage, CWnd::FromHandle (pTask->m_hwndTask));
 }
 //****************************************************************************************
 void CBCGPToolBoxEx::OnClickTool (int nPage, int /*nIndex*/)
@@ -1989,6 +2344,13 @@ void CBCGPToolBoxEx::OnClickTool (int nPage, int /*nIndex*/)
 								MAKEWPARAM (GetDlgCtrlID (), BN_CLICKED),
 								(LPARAM) m_hWnd);
 	}
+
+	OnActivatePage(nPage);
+}
+//*****************************************************************************************
+void CBCGPToolBoxEx::OnActivatePage (int nPage)
+{
+	ASSERT_VALID (this);
 
 	for (int i = 0; i < GetPageCount (); i++)
 	{
@@ -2012,8 +2374,41 @@ BOOL CBCGPToolBoxEx::OnShowToolboxMenu (CPoint /*point*/,
 //*********************************************************************************
 void CBCGPToolBoxEx::OnFillBackground (CDC* pDC, CRect rectFill)
 {
-	CBCGPVisualManager::GetInstance ()->OnFillBarBackground (pDC, this,
-			rectFill, rectFill);
+	CBCGPVisualManager::GetInstance ()->OnFillBarBackground (pDC, this, rectFill, rectFill);
+
+#if (!defined _BCGSUITE_)
+	BOOL bIsEmpty = TRUE;
+
+	for (POSITION pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+		ASSERT_VALID (pGroup);
+
+		if (pGroup->m_bIsVisible)
+		{
+			bIsEmpty = FALSE;
+			break;
+		}
+	}
+
+	if (bIsEmpty)
+	{
+		CRect rectText = rectFill;
+		
+		rectText.top += rectText.Height() / 3;
+		rectText.DeflateRect(10, 0);
+		
+		pDC->SetBkMode (TRANSPARENT);
+		pDC->SetTextColor (globalData.clrBarText);
+		
+		CFont* pOldFont = pDC->SelectObject (&globalData.fontRegular);
+		ASSERT(pOldFont != NULL);
+
+		pDC->DrawText(m_strOutOfFilter, rectText, DT_CENTER | DT_WORDBREAK);
+
+		pDC->SelectObject(pOldFont);
+	}
+#endif
 }
 //*********************************************************************************
 void CBCGPToolBoxEx::ScrollChild (HWND hwndChild, int nScrollValue)
@@ -2043,10 +2438,14 @@ void CBCGPToolBoxEx::AdjustLayout ()
 		ASSERT_VALID (pPage);
 
 		pTask->m_nWindowHeight = pPage->GetMaxHeight ();
+
+#if (!defined _BCGSUITE_)
+		pGroup->m_bIsVisible = pTask->m_nWindowHeight > 0;
+#endif
 	}
 
 	RecalcLayout ();
-	RedrawWindow ();
+	RedrawWindow (NULL, NULL, RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 //*********************************************************************************
 void CBCGPToolBoxEx::OnContextMenu(CWnd* pWnd, CPoint point) 
@@ -2062,7 +2461,8 @@ void CBCGPToolBoxEx::OnContextMenu(CWnd* pWnd, CPoint point)
 		CBCGPTasksPane::OnContextMenu (pWnd, point);
 	}
 }
-//****************************************************************************
+#if (!defined _BCGSUITE_)
+
 HRESULT CBCGPToolBoxEx::get_accChildCount(long *pcountChildren)
 {
 	if (!pcountChildren)
@@ -2070,7 +2470,21 @@ HRESULT CBCGPToolBoxEx::get_accChildCount(long *pcountChildren)
 		return E_INVALIDARG;
 	}
 
-	*pcountChildren = (long)GetPageCount();
+	m_nAccHeaderControlsCount = 0;
+
+	if (m_wndToolBar.IsVisible())
+	{
+		m_nAccHeaderControlsCount++;
+	}
+
+#if (!defined _BCGSUITE_)
+	if (m_bFilterBox)
+	{
+		m_nAccHeaderControlsCount++;
+	}
+#endif
+	
+	*pcountChildren = AccGetChildCount() + m_nAccHeaderControlsCount;
 	return S_OK;
 }
 //****************************************************************************
@@ -2080,55 +2494,142 @@ HRESULT CBCGPToolBoxEx::get_accChild(VARIANT varChild, IDispatch** ppdispChild)
 	{
 		return E_INVALIDARG;
 	}
-
-	if ((varChild.vt == VT_I4) && (varChild.lVal >= 1))
+	if (m_bFilterBox && varChild.lVal == m_nAccHeaderControlsCount)
 	{
-		int nPage = varChild.lVal - 1;
+		return AccessibleObjectFromWindow(m_wndFilter.GetSafeHwnd(), (DWORD) OBJID_CLIENT, IID_IAccessible, (void**) ppdispChild);
+	}
 
-		CBCGPToolBoxPage* pPage = GetPage(nPage);
-		if (pPage->GetSafeHwnd() != NULL)
+	return  CBCGPTasksPane::get_accChild(varChild, ppdispChild);
+}
+//*******************************************************************************************************************************************
+void CBCGPToolBoxEx::EnableSearchBox(BOOL bEnable, LPCTSTR lpszPrompt, LPCTSTR lpszOutOfFilter)
+{
+	ASSERT_VALID(this);
+	ASSERT(m_hWnd != NULL);	// Should be already created
+
+	m_bFilterBox = bEnable;
+
+	if (bEnable)
+	{
+		if (m_wndFilter.GetSafeHwnd() == NULL)
 		{
-			*ppdispChild = NULL;
-			AccessibleObjectFromWindow(pPage->GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)ppdispChild);
-		
-			if (*ppdispChild != NULL)
+			CEdit editDummy;
+			editDummy.Create(WS_CHILD, CRect (0, 0, 100, 20), this, (UINT)-1);
+
+			if (m_fontFilter.GetSafeHandle() == NULL)
 			{
-				return S_OK;
+				LOGFONT lf;
+				memset(&lf, 0, sizeof(LOGFONT));
+
+				globalData.fontRegular.GetLogFont(&lf);
+				m_fontFilter.CreateFontIndirect(&lf);
 			}
+			
+			editDummy.SetFont(&m_fontFilter);
+			
+			CRect rectEdit;
+			editDummy.GetWindowRect(rectEdit);
+			
+			int nFilterBoxHeight = rectEdit.Height() + globalUtils.ScaleByDPI(6);
+
+			m_wndFilter.m_bVisualManagerStyle = TRUE;
+			m_wndFilter.Create(WS_CHILD | WS_VISIBLE, CRect(0, 0, 100, nFilterBoxHeight), this, ID_FILTER);
+			m_wndFilter.ModifyStyleEx(0, WS_EX_CLIENTEDGE);
+
+			m_wndFilter.SetFont(&m_fontFilter);
+
+			editDummy.DestroyWindow ();
+		}
+
+		CString strFilterPrompt;
+
+		if (lpszPrompt == NULL)
+		{
+			CBCGPLocalResource locaRes;
+			strFilterPrompt.LoadString(IDS_BCGBARRES_SEARCH_PROMPT);
+		}
+		else
+		{
+			strFilterPrompt = lpszPrompt;
+		}
+
+		if (lpszOutOfFilter == NULL)
+		{
+			CBCGPLocalResource locaRes;
+			m_strOutOfFilter.LoadString(IDS_BCGBARRES_PROPLIST_OUT_OF_FILTER);
+		}
+		else
+		{
+			m_strOutOfFilter = lpszOutOfFilter;
+		}
+		
+		m_wndFilter.EnableSearchMode(TRUE, strFilterPrompt);
+		m_hwndHeader = m_wndFilter.GetSafeHwnd();
+	}
+	else
+	{
+		if (m_wndFilter.GetSafeHwnd() != NULL)
+		{
+			m_wndFilter.DestroyWindow();
+		}
+
+		m_hwndHeader = NULL;
+		SetToolsFilter(NULL);
+	}
+
+	AdjustLayout();
+}
+//****************************************************************************
+void CBCGPToolBoxEx::SetToolsFilter(LPCTSTR lpszFilter)
+{
+	m_strFilter = lpszFilter == NULL ? _T("") : lpszFilter;
+	m_strFilter.MakeUpper();
+	m_strFilter.TrimLeft();
+	m_strFilter.TrimRight();
+
+	for (POSITION pos = m_lstTaskGroups.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPTasksGroup* pGroup = (CBCGPTasksGroup*) m_lstTaskGroups.GetNext (pos);
+		ASSERT_VALID (pGroup);
+		
+		CBCGPTask* pTask = (CBCGPTask*) pGroup->m_lstTasks.GetHead ();
+		ASSERT_VALID (pTask);
+		
+		CBCGPToolBoxPage* pPage = (CBCGPToolBoxPage*) CWnd::FromHandle (pTask->m_hwndTask);
+		ASSERT_VALID (pPage);
+
+		if (pPage->SetFilter(m_strFilter) && !m_strFilter.IsEmpty() && pGroup->m_bIsCollapsed)
+		{
+			pGroup->m_bIsCollapsed = FALSE;
 		}
 	}
 
-	return S_FALSE;
+	AdjustLayout();
+}
+
+#endif
+
+BOOL CBCGPToolBoxEx::PreTranslateMessage(MSG* pMsg)
+{
+#if (!defined _BCGSUITE_)
+	if (m_bFilterBox && pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_ESCAPE && m_wndFilter.GetSafeHwnd() == ::GetFocus())
+	{
+		m_wndFilter.SetWindowText(_T(""));
+		SetFocus();
+		return TRUE;
+	}
+#endif
+	return CBCGPTasksPane::PreTranslateMessage(pMsg);
 }
 //****************************************************************************
-HRESULT CBCGPToolBoxEx::accHitTest(long  xLeft, long yTop, VARIANT *pvarChild)
+void CBCGPToolBoxEx::OnFilter()
 {
-	if (!pvarChild)
-	{
-		return E_INVALIDARG;
-	}
+#if (!defined _BCGSUITE_)
+	CString strFilter;
+	m_wndFilter.GetWindowText(strFilter);
 
-	CPoint pt(xLeft, yTop);
-	CWnd* pWnd = CWnd::WindowFromPoint(pt);
-
-	if (pWnd == this)
-	{
-		pvarChild->lVal = CHILDID_SELF;
-		pvarChild->vt = VT_I4;
-		return S_OK;
-	}
-
-	pvarChild->pdispVal = NULL;
-	pvarChild->vt = VT_DISPATCH;
-	
-	AccessibleObjectFromWindow(pWnd->GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)&pvarChild->pdispVal);
-	
-	if (pvarChild->pdispVal != NULL)
-	{
-		return S_OK;
-	}
-
-	return S_FALSE;
+	SetToolsFilter(strFilter);
+#endif
 }
 
 #endif // BCGP_EXCLUDE_TASK_PANE

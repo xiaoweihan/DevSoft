@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,7 +22,14 @@
 #include "BCGPIntelliSenseLB.h"
 
 #ifndef _BCGPEDIT_STANDALONE
+
+#define BCGP_SCALE_BY_DPI(x)	globalUtils.ScaleByDPI(x)
+#include "BCGPGlobalUtils.h"
 #include "bcgglobals.h"
+#include "BCGPVisualManager.h"
+
+#else
+#define BCGP_SCALE_BY_DPI(x) (x)
 #endif
 
 #ifdef _DEBUG
@@ -37,9 +44,10 @@ IMPLEMENT_DYNCREATE (CBCGPSymImagesLB, CBCGPBaseIntelliSenseLB)
 
 int CBCGPBaseIntelliSenseLB::m_nNumVisibleItems = 10;
 
-int	CBCGPBaseIntelliSenseLB::m_nImageToFocusRectSpacing = 2;
-int	CBCGPBaseIntelliSenseLB::m_nFocusRectToTextSpacing = 1;
-int	CBCGPBaseIntelliSenseLB::m_nRightSpacing = 3;
+int	CBCGPBaseIntelliSenseLB::m_nImageToFocusRectSpacing = -1;
+int	CBCGPBaseIntelliSenseLB::m_nFocusRectToTextSpacing = -1;
+int	CBCGPBaseIntelliSenseLB::m_nLeftSpacing = -1;
+int	CBCGPBaseIntelliSenseLB::m_nRightSpacing = -1;
 
 COLORREF CBCGPBaseIntelliSenseLB::m_clrSelectedItemBkColor = GetSysColor (COLOR_HIGHLIGHT);
 COLORREF CBCGPBaseIntelliSenseLB::m_clrSelectedItemTextColor = GetSysColor (COLOR_HIGHLIGHTTEXT);
@@ -69,6 +77,14 @@ CBCGPBaseIntelliSenseLB::CBCGPBaseIntelliSenseLB () : m_pImageList (NULL), m_nLB
 	m_sizeMaxItem.cx = m_sizeMaxItem.cy = 0;
 
 	UpdateColors ();
+
+	if (m_nImageToFocusRectSpacing < 0)
+	{
+		m_nImageToFocusRectSpacing = BCGP_SCALE_BY_DPI(2);
+		m_nFocusRectToTextSpacing = BCGP_SCALE_BY_DPI(2);
+		m_nLeftSpacing = BCGP_SCALE_BY_DPI(3);
+		m_nRightSpacing = BCGP_SCALE_BY_DPI(6);
+	}
 }
 //*****************************************************************************************
 CBCGPBaseIntelliSenseLB::~CBCGPBaseIntelliSenseLB()
@@ -118,6 +134,20 @@ BOOL CBCGPBaseIntelliSenseLB::PreTranslateMessage(MSG* pMsg)
 			return TRUE;
 		}
 		break;		
+
+	case WM_KEYDOWN:
+		if (GetParent()->GetSafeHwnd() != NULL)
+		{
+			const BOOL bIsCtrlPressed =  (0x8000 & GetKeyState(VK_CONTROL)) != 0;
+			const BOOL bIsShiftPressed = (0x8000 & GetKeyState(VK_SHIFT)) != 0;
+			const BOOL bIsAltPressed = (0x8000 & GetKeyState(VK_MENU)) != 0;
+
+			if (bIsCtrlPressed || bIsShiftPressed || bIsAltPressed)
+			{
+				GetParent()->PostMessage (WM_CLOSE);
+				return TRUE;
+			}
+		}
 	}
 	
 	return CListBox::PreTranslateMessage(pMsg);
@@ -136,22 +166,27 @@ void CBCGPBaseIntelliSenseLB::DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct)
 		CBCGPIntelliSenseData* pData = (CBCGPIntelliSenseData*)
 											lpDrawItemStruct->itemData;
 		ASSERT_VALID (pData);
+
+		rectItem.left += m_nLeftSpacing;
 		
 		if (m_pImageList != NULL)
 		{
-			m_pImageList->Draw (pDC, pData->m_nImageListIndex, rectItem.TopLeft (), 
-								ILD_NORMAL);
-			rectItem.left += GetImageSize (pData->m_nImageListIndex).cx + 
-							 m_nImageToFocusRectSpacing;  
+			CSize sizeImage = GetImageSize (pData->m_nImageListIndex);
+
+			CPoint ptIcon(rectItem.left, rectItem.top + max(0, (rectItem.Height() - sizeImage.cy) / 2));
+			m_pImageList->Draw (pDC, pData->m_nImageListIndex, ptIcon, ILD_NORMAL);
+
+			rectItem.left += sizeImage.cx + m_nImageToFocusRectSpacing;
 		}
 
-		if (lpDrawItemStruct->itemAction & ODA_FOCUS && 
-			lpDrawItemStruct->itemState & ODS_FOCUS)
+		rectItem.DeflateRect(1, 1);
+
+		if ((lpDrawItemStruct->itemAction & ODA_FOCUS) && (lpDrawItemStruct->itemState & ODS_FOCUS))
 		{
-			pDC->DrawFocusRect (rectItem);
+			pDC->Draw3dRect(rectItem, m_clrSelectedItemBkColor, m_clrSelectedItemBkColor);
 		}
 
-		rectItem.DeflateRect (1, 1, 1, 1);
+		rectItem.DeflateRect(1, 1);
 
 		if (lpDrawItemStruct->itemState & ODS_SELECTED)
 		{
@@ -176,18 +211,17 @@ void CBCGPBaseIntelliSenseLB::DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct)
 //*****************************************************************************************
 void CBCGPBaseIntelliSenseLB::MeasureItem(LPMEASUREITEMSTRUCT lpMeasureItemStruct) 
 {
-	CBCGPIntelliSenseData* pData = (CBCGPIntelliSenseData*)
-										lpMeasureItemStruct->itemData;
+	CBCGPIntelliSenseData* pData = (CBCGPIntelliSenseData*)lpMeasureItemStruct->itemData;
 	ASSERT_VALID (pData);
 
 	CSize sizeText = GetTextSize (pData->m_strItemName);
 	CSize sizeImage = GetImageSize (pData->m_nImageListIndex);
 
-	lpMeasureItemStruct->itemHeight = max (sizeText.cy, sizeImage.cy) + 2;
+	lpMeasureItemStruct->itemHeight = max (sizeText.cy, sizeImage.cy) + BCGP_SCALE_BY_DPI(4);
 	lpMeasureItemStruct->itemWidth  = sizeText.cx + sizeImage.cx + 
 									  m_nImageToFocusRectSpacing + 
 									  m_nFocusRectToTextSpacing + 
-									  m_nRightSpacing + 1;
+									  m_nLeftSpacing + m_nRightSpacing + BCGP_SCALE_BY_DPI(2);
 
 	m_sizeMaxItem.cx = max ((UINT) m_sizeMaxItem.cx, lpMeasureItemStruct->itemWidth);
 	m_sizeMaxItem.cy = max ((UINT) m_sizeMaxItem.cy, lpMeasureItemStruct->itemHeight);
@@ -202,12 +236,11 @@ void CBCGPBaseIntelliSenseLB::DeleteItem(LPDELETEITEMSTRUCT lpDeleteItemStruct)
 {
 	if (lpDeleteItemStruct->itemData != NULL)
 	{
-		CBCGPIntelliSenseData* pData = (CBCGPIntelliSenseData*)
-											lpDeleteItemStruct->itemData;
-		ASSERT_VALID (pData);
+		CBCGPIntelliSenseData* pData = (CBCGPIntelliSenseData*)lpDeleteItemStruct->itemData;
+		ASSERT_VALID(pData);
 		
 		delete pData;
-		SetItemDataPtr (lpDeleteItemStruct->itemID, NULL);
+		SetItemDataPtr(lpDeleteItemStruct->itemID, NULL);
 	}
 
 	CListBox::DeleteItem (lpDeleteItemStruct);
@@ -215,23 +248,27 @@ void CBCGPBaseIntelliSenseLB::DeleteItem(LPDELETEITEMSTRUCT lpDeleteItemStruct)
 //*****************************************************************************************
 void CBCGPBaseIntelliSenseLB::OnDblclk() 
 {
-	InsertDataToEditCtrl ();
+	InsertDataToEditCtrl();
 	if (!::IsWindow(m_hWnd))
 	{
 		return;
 	}
+
 	PostMessage (WM_CLOSE);
 }
 //*****************************************************************************************
 void CBCGPBaseIntelliSenseLB::OnDestroy() 
 {
-	for (int i = 0; i < GetCount (); i++)
+	for (int i = 0; i < GetCount(); i++)
 	{
-		CBCGPIntelliSenseData* pData = 
-			(CBCGPIntelliSenseData*) GetItemDataPtr (i);
+		CBCGPIntelliSenseData* pData = (CBCGPIntelliSenseData*)GetItemDataPtr(i);
+		ASSERT_VALID(pData);
+
 		delete pData;
-		SetItemDataPtr (i, NULL);
+
+		SetItemDataPtr(i, NULL);
 	}
+
 	CListBox::OnDestroy();
 }
 //*****************************************************************************************
@@ -242,12 +279,12 @@ BOOL CBCGPBaseIntelliSenseLB::OnEraseBkgnd(CDC* /*pDC*/)
 //*****************************************************************************************
 void CBCGPBaseIntelliSenseLB::OnKillfocus() 
 {
-	GetParent ()->PostMessage (WM_CLOSE);
+	GetParent()->PostMessage(WM_CLOSE);
 }
 //*****************************************************************************************
 void CBCGPBaseIntelliSenseLB::OnSysKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags) 
 {
-	if (nChar == VK_MENU)	
+	if (nChar == VK_MENU && GetParent()->GetSafeHwnd() != NULL)
 	{
 		GetParent ()->PostMessage (WM_CLOSE);
 		return;
@@ -271,16 +308,25 @@ void CBCGPBaseIntelliSenseLB::OnSysColorChange()
 void CBCGPBaseIntelliSenseLB::UpdateColors ()
 {
 #ifdef _BCGPEDIT_STANDALONE
-	CBCGPBaseIntelliSenseLB::m_clrSelectedItemBkColor = GetSysColor (COLOR_HIGHLIGHT);
-	CBCGPBaseIntelliSenseLB::m_clrSelectedItemTextColor = GetSysColor (COLOR_HIGHLIGHTTEXT);
-	CBCGPBaseIntelliSenseLB::m_clrWindow = GetSysColor (COLOR_WINDOW);
-	CBCGPBaseIntelliSenseLB::m_clrWindowText = GetSysColor (COLOR_WINDOWTEXT);
+	CBCGPBaseIntelliSenseLB::m_clrSelectedItemBkColor = GetSysColor(COLOR_HIGHLIGHT);
+	CBCGPBaseIntelliSenseLB::m_clrSelectedItemTextColor = GetSysColor(COLOR_HIGHLIGHTTEXT);
+	CBCGPBaseIntelliSenseLB::m_clrWindow = GetSysColor(COLOR_WINDOW);
+	CBCGPBaseIntelliSenseLB::m_clrWindowText = GetSysColor(COLOR_WINDOWTEXT);
 #else
-	CBCGPBaseIntelliSenseLB::m_clrSelectedItemBkColor = globalData.clrHilite;
-	CBCGPBaseIntelliSenseLB::m_clrSelectedItemTextColor = globalData.clrTextHilite;
-	CBCGPBaseIntelliSenseLB::m_clrWindow = globalData.clrWindow;
-	CBCGPBaseIntelliSenseLB::m_clrWindowText = globalData.clrWindowText;
+	CBCGPBaseIntelliSenseLB::m_clrSelectedItemBkColor = CBCGPVisualManager::GetInstance()->GetIntelliSenseFillColor(this, TRUE);
+	CBCGPBaseIntelliSenseLB::m_clrSelectedItemTextColor = CBCGPVisualManager::GetInstance()->GetIntelliSenseTextColor(this, TRUE);
+	CBCGPBaseIntelliSenseLB::m_clrWindow = CBCGPVisualManager::GetInstance()->GetIntelliSenseFillColor(this, FALSE);
+	CBCGPBaseIntelliSenseLB::m_clrWindowText = CBCGPVisualManager::GetInstance()->GetIntelliSenseTextColor(this, FALSE);
 #endif // _BCGPEDIT_STANDALONE
+}
+//************************************************************************
+BOOL CBCGPBaseIntelliSenseLB::IsInternalScrollBarThemed() const
+{
+#if (!defined _BCGPEDIT_STANDALONE) && (!defined _BCGSUITE_)
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_LISTBOX) != 0;
+#else
+	return FALSE;
+#endif
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -294,7 +340,6 @@ CBCGPIntelliSenseLB::CBCGPIntelliSenseLB()
 CBCGPIntelliSenseLB::~CBCGPIntelliSenseLB()
 {
 }
-
 
 BEGIN_MESSAGE_MAP(CBCGPIntelliSenseLB, CBCGPBaseIntelliSenseLB)
 	//{{AFX_MSG_MAP(CBCGPIntelliSenseLB)

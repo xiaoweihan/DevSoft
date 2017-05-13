@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -124,7 +124,7 @@ void CBCGPChartAxis::CommonInit()
 
 	m_strAxisName = _T("Axis Title");
 
-	m_axisNameFormat.m_textFormat.Create(BCGPChartFormatLabel::m_strDefaultFontFamily, 20);
+	m_axisNameFormat.m_textFormat.Create(BCGPChartFormatLabel::m_strDefaultFontFamily, BCGPChartFormatLabel::GetFontSize(20.0f));
 
 	m_dblMaxDisplayedValue = 0.;
 	m_dblMinDisplayedValue = 0.;
@@ -7876,12 +7876,12 @@ BOOL CBCGPChartAxisY::CalcMinMaxValues()
 
 	if (bMinMaxSet)
 	{
-		if (m_dblMaximum > 80.)
+		if (80.0 < m_dblMaximum && m_dblMaximum <= 100.0)
 		{
 			SetFixedMaximumDisplayValue(100., FALSE);
 		}
 
-		if (m_dblMinimum < -80.)
+		if (-100.0 <= m_dblMinimum && m_dblMinimum < -80.)
 		{
 			SetFixedMinimumDisplayValue(-100., FALSE);
 		}
@@ -8625,17 +8625,33 @@ void CBCGPChartAxisPolarY::CalcAxisPos(const CBCGPRect& rectDiagram, BOOL /*bSto
 	}
 
 	m_ptAxisStart = rectDiagram.CenterPoint();
+	m_ptAxisEnd = m_ptAxisStart;
+
 	if (IsVertical())
 	{
-		m_ptAxisEnd.x = m_ptAxisStart.x;
-		m_ptAxisEnd.y = m_ptAxisStart.y - min(dblHeight / 2, dblWidth / 2);
-		m_ptAxisEnd.y += dblPadding + dblDiff;
+		if (!m_bReverseOrder)
+		{
+			m_ptAxisEnd.y = m_ptAxisStart.y - min(dblHeight / 2, dblWidth / 2);
+			m_ptAxisEnd.y += dblPadding + dblDiff;
+		}
+		else
+		{
+			m_ptAxisStart.y = m_ptAxisEnd.y - min(dblHeight / 2, dblWidth / 2);
+			m_ptAxisStart.y += dblPadding + dblDiff;
+		}
 	}
 	else
 	{
-		m_ptAxisEnd.y = m_ptAxisStart.y;
-		m_ptAxisEnd.x = m_ptAxisStart.x + min(dblHeight / 2, dblWidth / 2);
-		m_ptAxisEnd.x -= (dblPadding + dblDiff);
+		if (!m_bReverseOrder)
+		{
+			m_ptAxisEnd.x = m_ptAxisStart.x + min(dblHeight / 2, dblWidth / 2);
+			m_ptAxisEnd.x -= (dblPadding + dblDiff);
+		}
+		else
+		{
+			m_ptAxisStart.x = m_ptAxisEnd.x + min(dblHeight / 2, dblWidth / 2);
+			m_ptAxisStart.x -= (dblPadding + dblDiff);
+		}
 	}
 }
 //----------------------------------------------------------------------------//
@@ -8654,10 +8670,14 @@ void CBCGPChartAxisPolarY::CalcLabelsRect(CBCGPRect& rectDiagramArea)
 	double nLabelRectSize = IsVertical() ? m_szMaxLabelSize.cx : m_szMaxLabelSize.cy; 
 	double dblDistance = GetLabelDistance();
 
-	CBCGPPoint ptAxisStart = m_ptAxisStart;
-	CBCGPPoint ptAxisEnd = m_ptAxisEnd;
-
-	m_rectAxisLabels.SetRect(m_ptAxisStart, m_ptAxisEnd);
+	if (!m_bReverseOrder)
+	{
+		m_rectAxisLabels.SetRect(m_ptAxisStart, m_ptAxisEnd);
+	}
+	else
+	{
+		m_rectAxisLabels.SetRect(m_ptAxisEnd, m_ptAxisStart);
+	}
 
 	switch (GetAxisLabelType())
 	{
@@ -8675,7 +8695,7 @@ void CBCGPChartAxisPolarY::CalcLabelsRect(CBCGPRect& rectDiagramArea)
 		}
 		break;
 		
-	case CBCGPChartAxis::ALT_HIGH:			
+	case CBCGPChartAxis::ALT_HIGH:
 		if (IsVertical())
 		{
 			m_rectAxisLabels.left = rectDiagramArea.right + dblDistance;
@@ -8725,17 +8745,19 @@ void CBCGPChartAxisPolarY::OnFillUnitIntervals(CBCGPGraphicsManager* pGM, const 
 
 	const CBCGPBrush& br = m_brInterval.IsEmpty() ? brChart : m_brInterval;
 
+	CBCGPPoint ptAxisStart(!m_bReverseOrder ? m_ptAxisStart : m_ptAxisEnd);
+
 	while (dblCurrValue <= GetMaxDisplayedValue() + GetDoubleCorrection() - m_dblMajorUnit)
 	{
-		double dblRadiusCurr = IsVertical() ? m_ptAxisStart.y - PointFromValue(dblCurrValue, TRUE) : 
-			PointFromValue(dblCurrValue, TRUE) - m_ptAxisStart.x;
-		double dblRadiusNext = IsVertical() ? m_ptAxisStart.y - PointFromValue(dblCurrValue + m_dblMajorUnit, TRUE) : 
-			PointFromValue(dblCurrValue + m_dblMajorUnit, TRUE) - m_ptAxisStart.x;
+		double dblRadiusCurr = IsVertical() ? ptAxisStart.y - PointFromValue(dblCurrValue, TRUE) : 
+			PointFromValue(dblCurrValue, TRUE) - ptAxisStart.x;
+		double dblRadiusNext = IsVertical() ? ptAxisStart.y - PointFromValue(dblCurrValue + m_dblMajorUnit, TRUE) : 
+			PointFromValue(dblCurrValue + m_dblMajorUnit, TRUE) - ptAxisStart.x;
 
 		if (m_bRadialGridLines)
 		{
-			CBCGPEllipseGeometry gCurrEllipse(CBCGPEllipse(m_ptAxisStart, dblRadiusCurr, dblRadiusCurr));
-			CBCGPEllipseGeometry gNextEllipse(CBCGPEllipse(m_ptAxisStart, dblRadiusNext, dblRadiusNext));
+			CBCGPEllipseGeometry gCurrEllipse(CBCGPEllipse(ptAxisStart, dblRadiusCurr, dblRadiusCurr));
+			CBCGPEllipseGeometry gNextEllipse(CBCGPEllipse(ptAxisStart, dblRadiusNext, dblRadiusNext));
 
 			pGM->CombineGeometry(gNextEllipse, gNextEllipse, gCurrEllipse, RGN_DIFF);
 			m_pChart->OnFillAxisUnitInterval(pGM, gNextEllipse, br);
@@ -8757,8 +8779,8 @@ void CBCGPChartAxisPolarY::OnFillUnitIntervals(CBCGPGraphicsManager* pGM, const 
 			{
 				double dblAnglePoint = bcg_deg2rad(pXAxis->GetAngleFromIndex(nIndex));
 
-				CBCGPPoint ptCurr = m_ptAxisStart;
-				CBCGPPoint ptNext = m_ptAxisStart;
+				CBCGPPoint ptCurr = ptAxisStart;
+				CBCGPPoint ptNext = ptAxisStart;
 
 				ptCurr.x += dblRadiusCurr * sin(dblAnglePoint);
 				ptCurr.y -= dblRadiusCurr * cos(dblAnglePoint);
@@ -8820,14 +8842,22 @@ void CBCGPChartAxisPolarY::DrawGridLines(CBCGPGraphicsManager* pGM, BOOL bMajor)
 	double dblRadius = 0.;
 	double dblUnitStep = CalcLog(GetMinDisplayedValue());
 
-	double dblCurrValue = IsLogScale() ? GetMinDisplayedValue() : GetMinDisplayedValue() + dblUnit;
-
-	while (dblCurrValue <= GetMaxDisplayedValue() + GetDoubleCorrection())
+	double dblCurrValue =  GetMinDisplayedValue();
+	if (!IsLogScale() && !m_bReverseOrder)
 	{
-		dblRadius = IsVertical() ? m_ptAxisStart.y - PointFromValue(dblCurrValue, TRUE) : 
-			PointFromValue(dblCurrValue, TRUE) - m_ptAxisStart.x;
+		dblCurrValue += dblUnit;
+	}
 
-		CBCGPEllipse e(m_ptAxisStart, dblRadius, dblRadius);
+	const double dblMaxValue = GetMaxDisplayedValue() + GetDoubleCorrection();
+
+	CBCGPPoint ptAxisStart(!m_bReverseOrder ? m_ptAxisStart : m_ptAxisEnd);
+
+	while (dblCurrValue <= dblMaxValue)
+	{
+		dblRadius = IsVertical() ? ptAxisStart.y - PointFromValue(dblCurrValue, TRUE) : 
+			PointFromValue(dblCurrValue, TRUE) - ptAxisStart.x;
+
+		CBCGPEllipse e(ptAxisStart, dblRadius, dblRadius);
 
 		if (bRadialLines)
 		{
@@ -8848,8 +8878,8 @@ void CBCGPChartAxisPolarY::DrawGridLines(CBCGPGraphicsManager* pGM, BOOL bMajor)
 				double dblAngleStart = bcg_deg2rad(pXAxis->GetAngleFromIndex(nIndex));
 				double dblAngleEnd = bcg_deg2rad(pXAxis->GetAngleFromIndex(nIndex + 1));
 
-				CBCGPPoint ptStart = m_ptAxisStart;
-				CBCGPPoint ptEnd = m_ptAxisStart;
+				CBCGPPoint ptStart = ptAxisStart;
+				CBCGPPoint ptEnd = ptAxisStart;
 
 				ptStart.x += dblRadius * sin(dblAngleStart);
 				ptStart.y -= dblRadius * cos(dblAngleStart);
@@ -8898,13 +8928,16 @@ double CBCGPChartAxisPolarY::ValueFromPoint(const CBCGPPoint& pt, CBCGPChartAxis
 {
 	ASSERT_VALID(this);
 
-	const double dblDistance = bcg_distance(pt, m_ptAxisStart);
-	if (dblDistance > bcg_distance(m_ptAxisEnd, m_ptAxisStart))
+	CBCGPPoint ptAxisStart(!m_bReverseOrder ? m_ptAxisStart : m_ptAxisEnd);
+	CBCGPPoint ptAxisEnd(!m_bReverseOrder ? m_ptAxisEnd : m_ptAxisStart);
+
+	const double dblDistance = bcg_distance(pt, ptAxisStart);
+	if (dblDistance > bcg_distance(ptAxisEnd, ptAxisStart))
 	{
 		return 0.;
 	}
 
-	return CBCGPChartAxisY::ValueFromPoint(CBCGPPoint(m_ptAxisStart.x, m_ptAxisStart.y - dblDistance), roundType);
+	return CBCGPChartAxisY::ValueFromPoint(CBCGPPoint(ptAxisStart.x, ptAxisStart.y - dblDistance), roundType);
 }
 
 //----------------------------------------------------------------------------//
@@ -9074,9 +9107,7 @@ void CBCGPChartAxisPolarX::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& /*
 		dblCurrValue += m_dblMajorUnit;
 	}
 
-
 	CBCGPEllipse ellipse(ptCenter, dblRadius, dblRadius);
-
 
 	if (m_bUseGridLineForAxisLine)
 	{
@@ -9188,8 +9219,8 @@ void CBCGPChartAxisPolarX::DrawGridLines(CBCGPGraphicsManager* pGM, BOOL bMajor)
 		CBCGPPoint ptGridLineEnd = ptCenter;
 		double dblAngle = bcg_deg2rad(dblCurrValue);
 
-		ptGridLineEnd.x += dblRadius * sin(dblAngle); 
-		ptGridLineEnd.y -= dblRadius * cos(dblAngle); 
+		ptGridLineEnd.x += dblRadius * sin(dblAngle);
+		ptGridLineEnd.y -= dblRadius * cos(dblAngle);
 
 		m_pChart->OnDrawGridLine(pGM, ptCenter, ptGridLineEnd, this, dblCurrValue, formatGridLine, bMajor);
 		dblCurrValue += dblAngleStep;
@@ -9275,15 +9306,15 @@ void CBCGPChartAxisPolarX::OnDrawAxisLabels(CBCGPGraphicsManager* pGM, const CBC
 	ASSERT_VALID(m_pChart);
 	double dblCurrValue = GetMinDisplayedValue();
 
-	double dblMaxValue = 360.;
-	double dblAngleStep = IsComponentXSet() ? m_dblMajorUnit : 360. / m_nMaxDataPointCount;
+	const double dblMaxValue = 360.;
+	const double dblAngleStep = IsComponentXSet() ? m_dblMajorUnit : 360. / m_nMaxDataPointCount;
 
 	CBCGPSize szContentPadding = m_axisLabelsFormat.GetContentPadding(TRUE);
 	double dblLabelDistance = GetLabelDistance();
 
 	int nCount = 0;
 
-	while (dblCurrValue < dblMaxValue)
+	while (dblCurrValue < dblMaxValue - FLT_EPSILON)
 	{
 		double dblDisplayedValue = IsComponentXSet() ? dblCurrValue : nCount + 1;
 		double dblDrawingAngle = m_axisLabelsFormat.m_textFormat.GetDrawingAngle();
@@ -9392,7 +9423,7 @@ double CBCGPChartAxisPolarX::GetRadius(CBCGPPoint& ptCenter) const
 	CBCGPPoint ptAxisEnd;
 
 	pAxisY->GetAxisPos(ptAxisStart, ptAxisEnd);
-	ptCenter = ptAxisStart;
+	ptCenter = !pAxisY->m_bReverseOrder ? ptAxisStart : ptAxisEnd;
 
 	return fabs(pAxisY->GetAxisSize());
 }

@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -65,6 +65,7 @@ public:
 	static int m_nDefaultWidth;
 	static CRuntimeClass* m_pContainerManagerRTC;
 	static CRuntimeClass* m_pSliderRTC;
+	static int m_nMinPaneSize;
 	
 // Operations
 public:

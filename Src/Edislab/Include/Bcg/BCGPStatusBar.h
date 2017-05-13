@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 
 #include "BCGCBPro.h"
 #include "BCGPControlBar.h"
+#include "bcgpaccessibility.h"
 
 /////////////////////////////////////////////////////////////////////////////
 class BCGCBPRODLLEXPORT CBCGStatusBarPaneInfo
@@ -83,6 +84,8 @@ public:
 
 class BCGCBPRODLLEXPORT CBCGPStatusBar : public CBCGPControlBar
 {
+	friend class CBCGPRibbonBackstageView;
+
 	DECLARE_DYNAMIC(CBCGPStatusBar)
 
 // Construction
@@ -161,6 +164,17 @@ public:
 	virtual CSize CalcFixedLayout(BOOL bStretch, BOOL bHorz);
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 
+	//Accessibility
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accValue(VARIANT varChild, BSTR *pszValue);
+	virtual HRESULT get_accDescription(VARIANT varChild, BSTR *pszDescription);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+	virtual HRESULT accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild);
+	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
+
 #ifdef _DEBUG
 	virtual void AssertValid() const;
 	virtual void Dump(CDumpContext& dc) const;
@@ -172,6 +186,7 @@ protected:
 	BOOL			m_bPaneDoubleClick;
 	CRect			m_rectSizeBox;
 	BOOL			m_bDrawExtendedArea;
+	BOOL			m_bTemporaryHidden;
 
 	inline CBCGStatusBarPaneInfo* _GetPanePtr(int nIndex) const;
 	void RecalcLayout ();
@@ -188,6 +203,12 @@ protected:
 
 	virtual BOOL AllowShowOnControlMenu () const			{	return FALSE;	}
 	virtual BOOL HideInPrintPreviewMode () const			{	return FALSE;	}
+	
+	virtual void OnPaneSizePosChanged(int nPaneIndex, const CRect& rectOld)
+	{
+		UNREFERENCED_PARAMETER(nPaneIndex);
+		UNREFERENCED_PARAMETER(rectOld);
+	}
 
 	//{{AFX_MSG(CBCGPStatusBar)
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);

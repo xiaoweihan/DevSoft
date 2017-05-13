@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -77,6 +77,15 @@ public:
 		ASSERT(GetManagerCtrl ().GetSafeHwnd () != NULL);
 
 		return GetManagerCtrl ().IsCompressWeekend ();
+	}
+
+	void SetWeekBarType (CBCGPPlannerView::BCGP_PLANNER_WEEKBAR type);
+
+	CBCGPPlannerView::BCGP_PLANNER_WEEKBAR GetWeekBarType () const
+	{
+		ASSERT(GetManagerCtrl ().GetSafeHwnd () != NULL);
+
+		return GetManagerCtrl ().GetWeekBarType ();
 	}
 
 	void SetDrawTimeFinish (BOOL bDraw);
@@ -210,9 +219,18 @@ protected:
 	// Return value:
 	// FALSE - cancel operation
 	// TRUE  - allow operation
-	virtual BOOL OnSelectAppointment (CBCGPAppointment* /*pApp*/, BOOL /*bSelect*/){return TRUE;}
+	virtual BOOL OnSelectAppointment (CBCGPAppointment* pApp, BOOL bSelect)
+	{
+		UNREFERENCED_PARAMETER(pApp);
+		UNREFERENCED_PARAMETER(bSelect);
+		return TRUE;
+	}
 	// on appointment selected
-	virtual void OnAppointmentSelected (CBCGPAppointment* /*pApp*/, BOOL /*bSelected*/){}
+	virtual void OnAppointmentSelected (CBCGPAppointment* pApp, BOOL bSelected)
+	{
+		UNREFERENCED_PARAMETER(pApp);
+		UNREFERENCED_PARAMETER(bSelected);
+	}
 
 	// on appointments dropped on control
 	virtual void OnAppointmentsDropped () {}

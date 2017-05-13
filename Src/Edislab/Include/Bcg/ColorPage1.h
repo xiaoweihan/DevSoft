@@ -2,7 +2,7 @@
 #define AFX_COLORPAGE1_H__9C4A9AB9_351E_4D5A_9548_7FA57A113573__INCLUDED_
 
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified

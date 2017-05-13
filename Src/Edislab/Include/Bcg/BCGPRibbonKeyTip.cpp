@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,7 @@
 #include "bcgglobals.h"
 #include "BCGPRibbonKeyTip.h"
 #include "BCGPBaseRibbonElement.h"
+#include "BCGPRibbonBar.h"
 #include "BCGPVisualManager.h"
 #include "BCGPPopupMenu.h"
 
@@ -33,8 +34,6 @@ static char THIS_FILE[] = __FILE__;
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPRibbonKeyTip
-
-CString CBCGPRibbonKeyTip::m_strClassName;
 
 CBCGPRibbonKeyTip::CBCGPRibbonKeyTip(CBCGPBaseRibbonElement* pElement, BOOL bIsMenu)
 {
@@ -73,7 +72,9 @@ void CBCGPRibbonKeyTip::OnPaint()
 	CBCGPMemDC memDC (dc, this);
 	CDC* pDC = &memDC.GetDC ();
 
-	CFont* pOldFont = pDC->SelectObject (&globalData.fontRegular);
+	CBCGPRibbonBar* pRibbonBar = m_pElement->GetTopLevelRibbonBar();
+
+	CFont* pOldFont = pDC->SelectObject(pRibbonBar->GetSafeHwnd() != NULL ? pRibbonBar->GetFont() : &globalData.fontRegular);
 	ASSERT (pOldFont != NULL);
 
 	pDC->SetBkMode (TRANSPARENT);
@@ -111,7 +112,9 @@ BOOL CBCGPRibbonKeyTip::Show (BOOL bRepos)
 
 	CClientDC dc (NULL);
 
-	CFont* pOldFont = dc.SelectObject (&globalData.fontRegular);
+	CBCGPRibbonBar* pRibbonBar = m_pElement->GetTopLevelRibbonBar();
+
+	CFont* pOldFont = dc.SelectObject(pRibbonBar->GetSafeHwnd() != NULL ? pRibbonBar->GetFont() : &globalData.fontRegular);
 	ASSERT (pOldFont != NULL);
 
 	CRect rect = m_pElement->GetKeyTipRect (&dc, m_bIsMenu);
@@ -173,13 +176,10 @@ BOOL CBCGPRibbonKeyTip::Show (BOOL bRepos)
 
 	if (GetSafeHwnd () == NULL)
 	{
-		if (m_strClassName.IsEmpty ())
-		{
-			m_strClassName = ::AfxRegisterWndClass (
+		CString strClassName = ::AfxRegisterWndClass (
 				CS_SAVEBITS,
 				::LoadCursor(NULL, IDC_ARROW),
 				(HBRUSH)(COLOR_BTNFACE + 1), NULL);
-		}
 
 		DWORD dwStyleEx = WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
 
@@ -189,7 +189,7 @@ BOOL CBCGPRibbonKeyTip::Show (BOOL bRepos)
 			dwStyleEx |= WS_EX_LAYERED;
 		}
 
-		if (!CreateEx (dwStyleEx, m_strClassName, _T(""), WS_POPUP, rect, NULL, 0))
+		if (!CreateEx (dwStyleEx, strClassName, _T(""), WS_POPUP, rect, NULL, 0))
 		{
 			return FALSE;
 		}

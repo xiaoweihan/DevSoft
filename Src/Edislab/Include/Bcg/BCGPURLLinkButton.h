@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -43,6 +43,7 @@ protected:
 	CString			m_strPrefix;
 	COLORREF		m_clrTextCustom;
 	COLORREF		m_clrHoverTextCustom;
+	CFont			m_fntUnderline;
 
 // Operations
 public:
@@ -56,6 +57,7 @@ public:
 protected:
 	virtual void OnDraw (CDC* pDC, const CRect& rect, UINT uiState);
 	virtual void OnDrawFocusRect (CDC* pDC, const CRect& rectClient);
+	virtual void OnUpdateFont();
 
 // Overrides
 	// ClassWizard generated virtual function overrides

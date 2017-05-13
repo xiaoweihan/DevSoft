@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -84,6 +84,7 @@ public:
 public:
 	static BOOL Is32BitTransparencySupported ();
 	static BOOL PreMultiplyAlpha (HBITMAP hbmp, BOOL bAutoCheckPremlt);
+	static BOOL MultiplyAlpha (HBITMAP hbmp);
 
 	BOOL IsValid () const
 	{
@@ -123,6 +124,11 @@ public:
 	SIZE GetImageSize (BOOL bDest = FALSE) const
 	{
 		return bDest ? m_sizeImageDest : m_sizeImage;
+	}
+
+	SIZE GetOriginalImageSize() const
+	{
+		return m_sizeImageOriginal;
 	}
 
 	int GetCount () const
@@ -205,7 +211,8 @@ public:
 		return m_nBitsPerPixel;
 	}
 
-	HICON ExtractIcon (int nIndex);
+	HICON ExtractIcon(int nIndex);
+	HBITMAP ExtractBitmap(int nIndex);
 
 	BOOL CreateFromImageList(const CImageList& imageList);
 	BOOL ExportToImageList(CImageList& imageList);
@@ -214,6 +221,7 @@ public:
 	BOOL CopyImageToClipboard (int iImage);
 
 	BOOL GrayImages (int nGrayPercentage);
+	BOOL Simplify();
 
 	HBITMAP GetMask (int iImage);
 
@@ -293,7 +301,11 @@ public:
 	void AddaptColors (COLORREF clrBase, COLORREF clrTone, BOOL bClampHue = TRUE);
 	void AddaptColors (COLORREF clrBase, COLORREF clrTone, double dOpacity); // dOpacity [0.0 ... 1.0]
 
-	void ConvertToGrayScale(double dblLumRatio = 1.0);
+	void InvertColors();
+
+	void ConvertToGrayScale(double dblLumRatio = 1.0, BOOL bAutoConvertAfterReLoad = FALSE);
+	void MakeLighter(double dblRatio = .25);
+	void MakeDarker(double dblRatio = .25);
 
 	void SetSingleImage (BOOL bUpdateInternalImages = TRUE);
 
@@ -419,6 +431,8 @@ protected:
 	BOOL				m_bAutoCheckPremlt;	// Auto-check for 32 bpp images
 	BOOL				m_bCreateMonoDC;	// Create mono DC in CBCGPDrawState
 	double				m_dblScale;
+	BOOL				m_bAutoGrayAfterReLoad;
+	double				m_dblGrayLumRatio;
 	static CCriticalSection g_cs;			// For multi-thread applications
 };
 

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -44,8 +44,8 @@
 	#include "BCGPVisualManager2007.h"
 	#include "BCGPVisualManager2010.h"
 	#include "BCGPLocalResource.h"
-	#include "BCGPDialogBar.h"
 	#include "bcgprores.h"
+	#include "BCGPDialogBar.h"
 #endif
 
 #ifndef SPI_GETMENUANIMATION
@@ -61,6 +61,8 @@
 #define SPI_GETMENUUNDERLINES	SPI_GETKEYBOARDCUES
 #endif
 
+UINT BCGM_ONSETRIBBONIMAGESCALE	= ::RegisterWindowMessage (_T("BCGM_ONSETRIBBONIMAGESCALE"));
+
 extern CObList	gAllToolbars;
 
 BOOL CBCGPMemDC::m_bUseMemoryDC = TRUE;
@@ -70,6 +72,8 @@ static const CString strOffice2007FontName	= _T("Segoe UI");
 static const CString strDefaultFontName		= _T("MS Sans Serif");
 static const CString strVertFontName		= _T("Arial");
 static const CString strMarlettFontName		= _T("Marlett");
+static const CString strHeaderFontName		= _T("Segoe UI Light");
+static const CString strWingdingsFontName	= _T("Wingdings");
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMemDC
@@ -94,7 +98,7 @@ CBCGPMemDC::CBCGPMemDC (CDC& dc, CWnd* pWnd, BYTE alpha, double dblScale) :
 	m_rect.right += pWnd->GetScrollPos (SB_HORZ);
 	m_rect.bottom += pWnd->GetScrollPos (SB_VERT);
 
-	if (m_dblScale == 1.0 && globalData.m_pfBeginBufferedPaint != NULL && globalData.m_pfEndBufferedPaint != NULL)
+	if (m_dblScale == 1.0 && globalData.m_pfBeginBufferedPaint != NULL && globalData.m_pfEndBufferedPaint != NULL && !dc.IsPrinting())
 	{
 		HDC hdcPaint = NULL;
 
@@ -138,7 +142,7 @@ CBCGPMemDC::CBCGPMemDC(CDC& dc, const CRect& rect, BYTE alpha, double dblScale) 
 		m_dblScale = 1.0;
 	}
 
-	if (m_dblScale == 1.0 && globalData.m_pfBeginBufferedPaint != NULL && globalData.m_pfEndBufferedPaint != NULL)
+	if (m_dblScale == 1.0 && globalData.m_pfBeginBufferedPaint != NULL && globalData.m_pfEndBufferedPaint != NULL && !dc.IsPrinting())
 	{
 		HDC hdcPaint = NULL;
 
@@ -300,6 +304,17 @@ static BOOL CALLBACK EnumLocalesProc(LPTSTR lpLocaleString)
 
 	return TRUE;
 }
+
+BOOL BCGCBProDwmExtendFrameIntoClientArea(HWND hWnd, BCGPMARGINS* pMargins)
+{
+	return globalData.DwmExtendFrameIntoClientArea(hWnd, pMargins);
+}
+
+BOOL BCGCBProDwmIsCompositionEnabled()
+{
+	return globalData.DwmIsCompositionEnabled();
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Cached system metrics, etc
 
@@ -446,7 +461,12 @@ BCGPGLOBAL_DATA::BCGPGLOBAL_DATA()
 	m_bComInitialized = FALSE;
 
 	m_bShowTooltipsOnRibbonFloaty = TRUE;
+	m_bAutoTrimRibbonLabels = TRUE;
 	m_bShowFrameLayeredShadows = !bIsWindows9x && !bIsWindowsNT4;
+
+#if (!defined _BCGPCALENDAR_STANDALONE) && !(defined _BCGPGRID_STANDALONE) && !(defined _BCGPEDIT_STANDALONE) && !(defined _BCGPCHART_STANDALONE)
+	m_nThemedScrollBars = bIsWindowsVista ? BCGP_THEMED_SCROLLBAR_ALL : BCGP_THEMED_SCROLLBAR_DISABLE;
+#endif
 }
 //*******************************************************************************************
 BCGPGLOBAL_DATA::~BCGPGLOBAL_DATA()
@@ -498,10 +518,13 @@ void BCGPGLOBAL_DATA::UpdateUser32Wrappers()
 			m_pfSetLayeredWindowAttributes = (SETLAYEATTRIB)::GetProcAddress(m_hinstUser32, "SetLayeredWindowAttributes");
 			m_pfUpdateLayeredWindow = (UPDATELAYEREDWINDOW)::GetProcAddress(m_hinstUser32, "UpdateLayeredWindow");
 		}
+
+		m_pfGetComboBoxInfo = (BCGP_GETCOMBOBOXINFO)::GetProcAddress(m_hinstUser32, "GetComboBoxInfo");
 	}
 	else
 	{
 		m_pfChangeWindowMessageFilter = NULL;
+		m_pfGetComboBoxInfo = NULL;
 	}
 }
 //************************************************************************************
@@ -515,6 +538,7 @@ void BCGPGLOBAL_DATA::UpdateDWMApiWrappers()
 		m_pfDwmDefWindowProc = (BCGP_DWMDEFWINDOWPROC) ::GetProcAddress (m_hinstDwmapiDLL, "DwmDefWindowProc");
 		m_pfDwmIsCompositionEnabled = (BCGP_DWMISCOMPOSITIONENABLED)::GetProcAddress (m_hinstDwmapiDLL, "DwmIsCompositionEnabled");
 		m_pfDwmSetIconicThumbnail = (BCGP_DWMSETICONICTHUMBNAIL) ::GetProcAddress(m_hinstDwmapiDLL, "DwmSetIconicThumbnail");
+		m_pfDwmGetWindowAttribute = (BCGP_DWMGETWINDOWATTRIBUTE) ::GetProcAddress(m_hinstDwmapiDLL, "DwmGetWindowAttribute");
 		m_pfDwmSetWindowAttribute = (BCGP_DWMSETWINDOWATTRIBUTE) ::GetProcAddress(m_hinstDwmapiDLL, "DwmSetWindowAttribute");
 		m_pfDwmSetIconicLivePreviewBitmap = (BCGP_DWMSETICONICLIVEPRBMP) ::GetProcAddress(m_hinstDwmapiDLL, "DwmSetIconicLivePreviewBitmap");
 		m_pfDwmInvalidateIconicBitmaps = (BCGP_DWMINVALIDATEICONICBITMAPS) ::GetProcAddress(m_hinstDwmapiDLL, "DwmInvalidateIconicBitmaps");
@@ -524,7 +548,8 @@ void BCGPGLOBAL_DATA::UpdateDWMApiWrappers()
 		m_pfDwmExtendFrameIntoClientArea = NULL;
 		m_pfDwmDefWindowProc = NULL;
 		m_pfDwmIsCompositionEnabled = NULL;
-		m_pfDwmSetIconicThumbnail = NULL;		
+		m_pfDwmSetIconicThumbnail = NULL;
+		m_pfDwmGetWindowAttribute = NULL;
 		m_pfDwmSetWindowAttribute = NULL;
 		m_pfDwmSetIconicLivePreviewBitmap = NULL;
 		m_pfDwmInvalidateIconicBitmaps = NULL;
@@ -539,6 +564,12 @@ void BCGPGLOBAL_DATA::UpdateFonts()
 	if (m_dblRibbonImageScale > 1. && m_dblRibbonImageScale < 1.1)
 	{
 		m_dblRibbonImageScale = 1.;
+	}
+	
+	CWnd* pWndMain = AfxGetMainWnd();
+	if (pWndMain->GetSafeHwnd() != NULL)
+	{
+		pWndMain->SendMessage(BCGM_ONSETRIBBONIMAGESCALE, 0, (LPARAM)&m_dblRibbonImageScale);
 	}
 
 	if (fontRegular.GetSafeHandle () != NULL)
@@ -585,6 +616,11 @@ void BCGPGLOBAL_DATA::UpdateFonts()
 	{
 		::DeleteObject (fontMarlett.Detach ());
 	}
+	
+	if (fontWingdings.GetSafeHandle() != NULL)
+	{
+		::DeleteObject (fontWingdings.Detach ());
+	}
 
 	if (fontSmall.GetSafeHandle () != NULL)
 	{
@@ -596,9 +632,19 @@ void BCGPGLOBAL_DATA::UpdateFonts()
 		::DeleteObject(fontCaption.Detach());
 	}
 
+	if (fontHeader.GetSafeHandle() != NULL)
+	{
+		::DeleteObject(fontHeader.Detach());
+	}
+
 	if (fontGroup.GetSafeHandle() != NULL)
 	{
 		::DeleteObject(fontGroup.Detach());
+	}
+
+	if (fontGroupBold.GetSafeHandle() != NULL)
+	{
+		::DeleteObject(fontGroupBold.Detach());
 	}
 
 	//------------------
@@ -640,7 +686,7 @@ void BCGPGLOBAL_DATA::UpdateFonts()
 	if (!fUseSystemFont)
 	{
 		//----------------------------------
-		// Check for Office font existance:
+		// Check for Office font existence:
 		//----------------------------------
 		if (::EnumFontFamilies (dc.GetSafeHdc (), NULL, FontFamalyProcFonts, 
 			(LPARAM)(LPCTSTR) strOffice2007FontName) == 0)
@@ -674,6 +720,7 @@ void BCGPGLOBAL_DATA::UpdateFonts()
 	// Create small font:
 	//-------------------
 	LONG lfHeightSaved = lf.lfHeight;
+	LONG lfWeightSaved = lf.lfWeight;
 
 	lf.lfHeight = (long) ((1. + abs (lf.lfHeight)) * 2 / 3);
 	if (lfHeightSaved < 0)
@@ -698,6 +745,27 @@ void BCGPGLOBAL_DATA::UpdateFonts()
 
 	lf.lfHeight = lfHeightSaved;
 
+	//--------------------
+	// Create header font:
+	//--------------------
+	CString strFaceNameSaved = lf.lfFaceName;
+
+	lf.lfHeight = (long) ((2. + abs (lf.lfHeight)) * 3);
+	if (lfHeightSaved < 0)
+	{
+		lf.lfHeight = -lf.lfHeight;
+	}
+
+	if (::EnumFontFamilies (dc.GetSafeHdc (), NULL, FontFamalyProcFonts, (LPARAM)(LPCTSTR)strHeaderFontName) == 0)
+	{
+		lstrcpy(lf.lfFaceName, strHeaderFontName);
+	}
+	
+	fontHeader.CreateFontIndirect (&lf);
+	
+	lf.lfHeight = lfHeightSaved;
+	lstrcpy(lf.lfFaceName, strFaceNameSaved);
+
 	//-------------------
 	// Create group font:
 	//-------------------
@@ -708,6 +776,10 @@ void BCGPGLOBAL_DATA::UpdateFonts()
 	}
 	
 	fontGroup.CreateFontIndirect (&lf);
+
+	lf.lfWeight = FW_BOLD;
+	fontGroupBold.CreateFontIndirect (&lf);
+	lf.lfWeight = lfWeightSaved;
 
 	lf.lfHeight = lfHeightSaved;
 
@@ -748,6 +820,12 @@ void BCGPGLOBAL_DATA::UpdateFonts()
 	lstrcpy (lf.lfFaceName, strMarlettFontName);
 
 	fontMarlett.CreateFontIndirect (&lf);
+
+	//-----------------------
+	// Create Wingdings font:
+	//-----------------------
+	lstrcpy (lf.lfFaceName, strWingdingsFontName);
+	fontWingdings.CreateFontIndirect (&lf);
 
 	lf.lfCharSet = bCharSet;	// Restore charset
 
@@ -1291,7 +1369,7 @@ BCGCBPRODLLEXPORT void BCGCBProCleanUp ()
 	g_menuHash.CleanUp ();
 
 	CBCGPToolBar::CleanUpImages ();
-	CBCGPMenuImages::CleanUp ();
+	CBCGPMenuImages::CleanUp (TRUE);
 
 	if (BCGPGetCmdMgr () != NULL)
 	{
@@ -1328,12 +1406,9 @@ BOOL BCGPGLOBAL_DATA::DrawParentBackground (CWnd* pWnd, CDC* pDC, LPRECT rectCli
 	CWnd* pParent = pWnd->GetParent ();
 	ASSERT_VALID (pParent);
 
-	// In Windows XP, we need to call DrawThemeParentBackground function to implement
-	// transparent controls
-	if (m_pfDrawThemeBackground != NULL)
+	if (m_pfDrawThemeBackground != NULL && DYNAMIC_DOWNCAST(CBCGPDialogBar, pParent) == NULL)
 	{
-		bRes = (*m_pfDrawThemeBackground) (pWnd->GetSafeHwnd (), 
-			pDC->GetSafeHdc (), rectClip) == S_OK;
+		bRes = (*m_pfDrawThemeBackground)(pWnd->GetSafeHwnd (), pDC->GetSafeHdc (), rectClip) == S_OK;
 	}
 
 	if (!bRes)
@@ -1347,7 +1422,10 @@ BOOL BCGPGLOBAL_DATA::DrawParentBackground (CWnd* pWnd, CDC* pDC, LPRECT rectCli
 		pDC->SetWindowOrg(pt.x, pt.y);
 	}
 
-	pDC->SelectClipRgn (NULL);
+	if (rgn.GetSafeHandle() != NULL)
+	{
+		pDC->SelectClipRgn (NULL);
+	}
 
 	return bRes;
 }
@@ -1690,6 +1768,17 @@ BOOL BCGPGLOBAL_DATA::DwmIsCompositionEnabled ()
 	return bEnabled;
 }
 //***********************************************************************************************
+BOOL BCGPGLOBAL_DATA::DwmGetWindowAttribute(HWND hwnd, DWORD dwAttribute, PVOID pvAttribute, DWORD cbAttribute)
+{
+	if (m_pfDwmGetWindowAttribute == NULL)
+	{
+		return FALSE;
+	}
+
+	HRESULT hres = (*m_pfDwmGetWindowAttribute)(hwnd, dwAttribute, pvAttribute, cbAttribute);
+	return hres == S_OK;
+}
+//***********************************************************************************************
 BOOL BCGPGLOBAL_DATA::DwmSetWindowAttribute(HWND hwnd, DWORD dwAttribute, LPCVOID pvAttribute, DWORD cbAttribute)
 {
 	if (m_pfDwmSetWindowAttribute == NULL)
@@ -2005,23 +2094,81 @@ BOOL BCGPGLOBAL_DATA::SetDPIAware ()
 		return FALSE;
 	}
 
-typedef BOOL (__stdcall * BCGPSETPROCESSDPIAWARE)();
-	
-	BCGPSETPROCESSDPIAWARE pSetDPIAware =
-		(BCGPSETPROCESSDPIAWARE)::GetProcAddress(m_hinstUser32, "SetProcessDPIAware");
+	BOOL bRes = FALSE;
 
-	if (pSetDPIAware == NULL)
+	// Windows 10
+	typedef enum _BCGPDPI_AWARENESS_CONTEXT
+	{
+		BCGPDPI_AWARENESS_CONTEXT_DEFAULT           = 0,
+		BCGPDPI_AWARENESS_CONTEXT_UNAWARE           = -1,
+		BCGPDPI_AWARENESS_CONTEXT_SYSTEM_AWARE      = -2,
+		BCGPDPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE = -3,
+	} 
+	BCGPDPI_AWARENESS_CONTEXT;
+
+	typedef BCGPDPI_AWARENESS_CONTEXT (__stdcall * BCGPSETTHREADDPIAWARENESSCONTEXT)(BCGPDPI_AWARENESS_CONTEXT dpiContext);
+
+	BCGPSETTHREADDPIAWARENESSCONTEXT pSetThreadDpiAwarenessContext = (BCGPSETTHREADDPIAWARENESSCONTEXT)::GetProcAddress(m_hinstUser32, "SetThreadDpiAwarenessContext");
+	if (pSetThreadDpiAwarenessContext != NULL)
+	{
+		BCGPDPI_AWARENESS_CONTEXT value = BCGPDPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE;
+
+		typedef BOOL (__stdcall * BCGPISVALIDDPIAWARENESSCONTEXT)(BCGPDPI_AWARENESS_CONTEXT value);
+
+		BCGPISVALIDDPIAWARENESSCONTEXT pIsValidDpiAwarenessContext = (BCGPISVALIDDPIAWARENESSCONTEXT)::GetProcAddress(m_hinstUser32, "IsValidDpiAwarenessContext");
+		if (pIsValidDpiAwarenessContext != NULL)
+		{
+			if ((*pIsValidDpiAwarenessContext)(value))
+			{
+				(*pSetThreadDpiAwarenessContext)(value);
+				bRes = TRUE;
+			}
+		}
+	}
+
+	// Windows 8.1
+	if (!bRes)
+	{
+		typedef enum _BCGPPROCESS_DPI_AWARENESS
+		{
+			BCGPPROCESS_DPI_UNAWARE           = 0,
+			BCGPPROCESS_SYSTEM_DPI_AWARE      = 1,
+			BCGPPROCESS_PER_MONITOR_DPI_AWARE = 2
+		} 
+		BCGPPROCESS_DPI_AWARENESS;
+
+		typedef HRESULT (__stdcall * BCGPSETPROCESSDPIAWARENESS)(BCGPPROCESS_DPI_AWARENESS value);
+
+		BCGPSETPROCESSDPIAWARENESS pSetProcessDpiAwareness = (BCGPSETPROCESSDPIAWARENESS)::GetProcAddress(m_hinstUser32, "SetProcessDPIAwareness");
+		if (pSetProcessDpiAwareness != NULL)
+		{
+			BCGPPROCESS_DPI_AWARENESS value = BCGPPROCESS_SYSTEM_DPI_AWARE;
+			bRes = SUCCEEDED((*pSetProcessDpiAwareness)(value));
+		}
+	}
+
+	// Windows Vista - Windows 8
+	if (!bRes)
+	{
+		typedef BOOL (__stdcall * BCGPSETPROCESSDPIAWARE)();
+
+		BCGPSETPROCESSDPIAWARE pSetProcessDPIAware = (BCGPSETPROCESSDPIAWARE)::GetProcAddress(m_hinstUser32, "SetProcessDPIAware");
+		if (pSetProcessDPIAware != NULL)
+		{
+			bRes = (*pSetProcessDPIAware)();
+		}
+	}
+
+	if (!bRes)
 	{
 		return FALSE;
 	}
-
-	BOOL bRes = (*pSetDPIAware) ();
 
 	UpdateSysColors();
 	UpdateFonts();
 	OnSettingChange ();
 
-   return bRes;
+	return bRes;
 }
 
 void BCGPGLOBAL_DATA::UpdateShellAutohideBars ()
@@ -2424,5 +2571,15 @@ BOOL BCGPGLOBAL_DATA::ChangeWindowMessageFilter(UINT message, DWORD dwFlag)
 	}
 
 	return (*m_pfChangeWindowMessageFilter)(message, dwFlag);
+}
+
+BOOL BCGPGLOBAL_DATA::GetComboBoxInfo(HWND hwndCombo, BCGP_COMBOBOXINFO* pInfo)
+{
+	if (m_pfGetComboBoxInfo == NULL)
+	{
+		return FALSE;
+	}
+	
+	return (*m_pfGetComboBoxInfo)(hwndCombo, pInfo);
 }
 

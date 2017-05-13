@@ -1,7 +1,7 @@
 // BCGPCaptionBar.h: interface for the CBCGPCaptionBar class.
 //
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -92,16 +92,23 @@ public:
 	void EnableButton	(BOOL bEnable = TRUE);
 	void SetButtonPressed (BOOL bPresed = TRUE);
 
-	void SetIcon		(HICON hIcon, BarElementAlignment iconAlignment = ALIGN_RIGHT);
-	void RemoveIcon		();
+	void SetIcon	(HICON hIcon, 
+					BarElementAlignment iconAlignment = ALIGN_RIGHT);
 
-	void SetBitmap		(HBITMAP hBitmap, COLORREF clrTransparent, 
-							BOOL bStretch = FALSE,
-							BarElementAlignment bmpAlignment = ALIGN_RIGHT);
-	void SetBitmap		(UINT uiBmpResID, COLORREF clrTransparent, 
-							BOOL bStretch = FALSE,
-							BarElementAlignment bmpAlignment = ALIGN_RIGHT);
-	void RemoveBitmap	();
+	void RemoveIcon();
+
+	void SetBitmap(	HBITMAP hBitmap, 
+					COLORREF clrTransparent, 
+					BOOL bStretch = FALSE,
+					BarElementAlignment bmpAlignment = ALIGN_RIGHT,
+					BOOL bAutoScale = FALSE);
+
+	void SetBitmap	(UINT uiBmpResID, COLORREF clrTransparent, 
+					BOOL bStretch = FALSE,
+					BarElementAlignment bmpAlignment = ALIGN_RIGHT,
+					BOOL bAutoScale = FALSE);
+
+	void RemoveBitmap();
 	void SetImageToolTip (LPCTSTR lpszToolTip, LPCTSTR lpszDescription = NULL);
 
 	CString GetText		() const
@@ -128,7 +135,15 @@ public:
 		return m_rectButton;
 	}
 
+	CString GetLinkText (int nIndex);
+
 	virtual BOOL DoesAllowDynInsertBefore () const {return FALSE;}
+
+	void SetCaptionFont(BOOL bSet = TRUE);
+	BOOL IsCaptionFont() const
+	{
+		return m_bUseCaptionFont;
+	}
 
 protected:
 // Overridables
@@ -155,6 +170,28 @@ protected:
 
 	virtual BOOL OnClickCloseButton()	{	return TRUE;	}
 
+public:
+	//Accessibility
+	virtual BOOL OnSetAccData (long lVal);
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accValue(VARIANT varChild, BSTR *pszValue);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
+	virtual HRESULT accDoDefaultAction(VARIANT varChild);	
+	int AccGetObjectByChildId(long lVal);
+	int AccGetChildIdByObjectId(int nObjectId);
+	CMap<int, int, int, int>	m_mapObjectToIndex;
+
+	enum AccBarObject
+	{
+		ACC_BUTTON = 1,
+		ACC_CLOSE_BUTTON,
+		ACC_LINK
+	};
+
 protected:
 
 	BOOL				m_bIsMessageBarMode;
@@ -174,6 +211,7 @@ protected:
 	//-----------------------
 	// Text label attributes:
 	//-----------------------
+	BOOL				m_bUseCaptionFont;
 	HFONT				m_hFont;
 	CString				m_strText;
 	CStringArray		m_arTextParts;
@@ -234,6 +272,8 @@ protected:
 	}
 
 	int HitTestHyperlink(CPoint point);
+
+	CFont* SelectFont(CDC* pDC);
 };
 
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_CLICK_CAPTIONBAR_HYPERLINK;

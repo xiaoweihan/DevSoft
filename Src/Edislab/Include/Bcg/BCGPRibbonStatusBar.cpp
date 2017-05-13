@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -183,6 +183,7 @@ BEGIN_MESSAGE_MAP(CBCGPRibbonStatusBar, CBCGPRibbonBar)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_SHOWWINDOW()
+	ON_WM_SETFOCUS()
 	//}}AFX_MSG_MAP
 	ON_WM_NCHITTEST()
 	ON_MESSAGE(UM_UPDATE_SHADOWS, OnUpdateShadows)
@@ -328,12 +329,7 @@ CSize CBCGPRibbonStatusBar::CalcFixedLayout(BOOL, BOOL /*bHorz*/)
 
 	dc.SelectObject (pOldFont);
 
-	int nMinHeight = 24;
-
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		nMinHeight = (int) (.5 + globalData.GetRibbonImageScale () * nMinHeight);
-	}
+	int nMinHeight = globalUtils.ScaleByDPI(24);
 
 	return CSize (32767, max (nMinHeight, cyMax));
 }
@@ -829,7 +825,7 @@ void CBCGPRibbonStatusBar::RecalcLayout ()
 
 		CSize sizeElem = pElem->GetSize (&dc);
 
-		if (xMax - sizeElem.cx < rect.left || !pElem->m_bIsVisible)
+		if (xMax - sizeElem.cx < rect.left || !pElem->m_bIsVisible || pElem->IsHiddenInAppMode())
 		{
 			pElem->SetRect (CRect (0, 0, 0, 0));
 		}
@@ -889,6 +885,12 @@ void CBCGPRibbonStatusBar::RecalcLayout ()
 			BOOL bIsSeparator = pElem->IsKindOf (RUNTIME_CLASS (CBCGPRibbonSeparator));
 
 			if (bIsSeparator && bIsPrevSeparator)
+			{
+				pElem->SetRect (CRect (0, 0, 0, 0));
+				continue;
+			}
+
+			if (pElem->IsHiddenInAppMode())
 			{
 				pElem->SetRect (CRect (0, 0, 0, 0));
 				continue;
@@ -963,7 +965,10 @@ void CBCGPRibbonStatusBar::OnPaint()
 
 	OnDraw(pDC);
 
-	pDC->SelectClipRgn (NULL);
+	if (rgnClip.GetSafeHandle() != NULL)
+	{
+		pDC->SelectClipRgn (NULL);
+	}
 }
 //*****************************************************************************************************
 void CBCGPRibbonStatusBar::OnDraw(CDC* pDC)
@@ -1125,6 +1130,11 @@ void CBCGPRibbonStatusBar::OnControlBarContextMenu (CWnd* /*pParentFrame*/, CPoi
 			CBCGPBaseRibbonElement* pElem = m_arElements [i];
 			ASSERT_VALID (pElem);
 
+			if (pElem->IsHiddenInAppMode())
+			{
+				continue;
+			}
+
 			if (m_lstDynElements.Find (pElem) != NULL)
 			{
 				// Dynamic element, don't add it to customization menu
@@ -1163,6 +1173,11 @@ void CBCGPRibbonStatusBar::OnControlBarContextMenu (CWnd* /*pParentFrame*/, CPoi
 		{
 			CBCGPBaseRibbonElement* pElem = m_arExElements [i];
 			ASSERT_VALID (pElem);
+
+			if (pElem->IsHiddenInAppMode())
+			{
+				continue;
+			}
 
 			if (pElem->IsKindOf (RUNTIME_CLASS (CBCGPRibbonSeparator)))
 			{
@@ -1526,7 +1541,6 @@ void CBCGPRibbonStatusBar::GetVisibleElements (CArray<CBCGPBaseRibbonElement*, C
 		}
 	}
 }
-
 //*********************************************************************
 CBCGPBaseAccessibleObject* CBCGPRibbonStatusBar::AccessibleObjectFromPoint(CPoint point)
 {
@@ -1537,11 +1551,76 @@ CBCGPBaseAccessibleObject* CBCGPRibbonStatusBar::AccessibleObjectByIndex(long lV
 {
 	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
 	GetVisibleElements(arButtons);
+
 	if (lVal > 0 && lVal <= (int)arButtons.GetSize())
 	{
 		return arButtons[lVal - 1];
 	}
+
 	return NULL;
 }
-#endif // BCGP_EXCLUDE_RIBBON
+//**********************************************************************************
+void CBCGPRibbonStatusBar::OnSetFocus(CWnd* pOldWnd) 
+{
+	CBCGPRibbonBar::OnSetFocus(pOldWnd);
+	
+	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
+	GetVisibleElements(arButtons);
 
+	for (int i = 0; i < (int)arButtons.GetSize(); i++)
+	{
+		CBCGPBaseRibbonElement* pElem = arButtons[i];
+		ASSERT_VALID(pElem);
+		
+		if (pElem->IsTabStop())
+		{
+			pElem->m_bIsFocused = TRUE;
+			pElem->OnSetFocus(TRUE);
+			
+			pElem->Redraw();
+			return;
+		}
+	}
+}
+//**********************************************************************************
+CBCGPBaseRibbonElement* CBCGPRibbonStatusBar::GetFocused()
+{
+	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
+	GetVisibleElements(arButtons);
+
+	for (int i = 0; i < (int)arButtons.GetSize(); i++)
+	{
+		CBCGPBaseRibbonElement* pElem = arButtons[i];
+		ASSERT_VALID(pElem);
+
+		if (pElem->IsFocused())
+		{
+			return pElem;
+		}
+	}
+
+	return NULL;
+}
+//**********************************************************************************
+BOOL CBCGPRibbonStatusBar::IsTabStop() const
+{
+	// Ribbon status bar can get the focus only if it has at least one clickable visible element.
+
+	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
+	((CBCGPRibbonStatusBar*)this)->GetVisibleElements(arButtons);
+	
+	for (int i = 0; i < (int)arButtons.GetSize(); i++)
+	{
+		CBCGPBaseRibbonElement* pElem = arButtons[i];
+		ASSERT_VALID(pElem);
+		
+		if (pElem->IsTabStop())
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
+#endif // BCGP_EXCLUDE_RIBBON

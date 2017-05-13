@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -75,6 +75,7 @@ protected:
 	afx_msg void OnWindowPosChanged(WINDOWPOS FAR* lpwndpos);
 	afx_msg int OnMouseActivate(CWnd* pDesktopWnd, UINT nHitTest, UINT message);
 	afx_msg BOOL OnNcActivate(BOOL bActive);
+	afx_msg void OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized);
 	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
@@ -93,6 +94,7 @@ BEGIN_MESSAGE_MAP(CBCGPShadowSideWnd, CWnd)
 	ON_WM_WINDOWPOSCHANGED()
 	ON_WM_MOUSEACTIVATE()
 	ON_WM_NCACTIVATE()
+	ON_WM_ACTIVATE()
 	ON_WM_SETCURSOR()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
@@ -103,23 +105,39 @@ BOOL CBCGPShadowSideWnd::Create ()
 
 	if (!globalData.IsWindowsLayerSupportAvailable () || globalData.m_nBitsPerPixel <= 8)
 	{
-		ASSERT (FALSE);
 		return FALSE;
 	}
 
-	CString strClassName = ::AfxRegisterWndClass (
-			CS_SAVEBITS,
-			::LoadCursor(NULL, IDC_ARROW),
-			(HBRUSH)(COLOR_BTNFACE + 1), NULL);
+	const LPCTSTR lpszName = _T("BCGPShadowSideWnd");
+	const UINT nClassStyle = CS_VREDRAW | CS_HREDRAW;
+	HINSTANCE hInst = AfxGetInstanceHandle();
+
+	WNDCLASS wndcls;
+	if (!::GetClassInfo(hInst, lpszName, &wndcls))
+	{
+		wndcls.style = nClassStyle;
+		wndcls.lpfnWndProc = ::DefWindowProc;
+		wndcls.cbClsExtra = wndcls.cbWndExtra = 0;
+		wndcls.hInstance = hInst;
+		wndcls.hIcon = NULL;
+		wndcls.hCursor = ::LoadCursor(NULL, IDC_ARROW);
+		wndcls.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+		wndcls.lpszMenuName = NULL;
+		wndcls.lpszClassName = lpszName;
+
+		if (!AfxRegisterClass(&wndcls))
+		{
+			AfxThrowResourceException();
+		}
+	}
 
 	CRect rectDummy (0, 0, 0, 0);
 
-	if (!CWnd::CreateEx (WS_EX_TOOLWINDOW | WS_EX_LAYERED, strClassName, _T(""), WS_POPUP, rectDummy, m_rManager.m_pOwner, 0))
+	if (!CWnd::CreateEx (WS_EX_TOOLWINDOW | WS_EX_LAYERED | 0x08000000L, lpszName, _T(""), WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 
+		rectDummy, m_rManager.m_pOwner, 0))
 	{
 		return FALSE;
 	}
-
-	SetOwner(m_rManager.m_pOwner);
 
 	m_Size = CSize(0, 0);
 
@@ -146,6 +164,18 @@ int CBCGPShadowSideWnd::OnMouseActivate(CWnd* /*pDesktopWnd*/, UINT /*nHitTest*/
 BOOL CBCGPShadowSideWnd::OnNcActivate(BOOL /*bActive*/)
 {
 	return (BOOL)DefWindowProc(WM_NCACTIVATE, FALSE, 0L);
+}
+
+void CBCGPShadowSideWnd::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
+{
+	CWnd::OnActivate(WA_INACTIVE, pWndOther, bMinimized);
+
+	if (nState != WA_INACTIVE && !bMinimized && 
+		m_rManager.m_pOwner->GetSafeHwnd() != NULL && !m_rManager.m_pOwner->IsIconic() &&
+		(m_rManager.m_pOwner->IsKindOf(RUNTIME_CLASS(CDialog)) || m_rManager.m_pOwner->IsKindOf(RUNTIME_CLASS(CPropertySheet))))
+	{
+		m_rManager.m_pOwner->SetActiveWindow();
+	}
 }
 
 BOOL CBCGPShadowSideWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
@@ -192,7 +222,7 @@ BOOL CBCGPShadowSideWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 
 LRESULT CBCGPShadowSideWnd::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
-	if (message == WM_LBUTTONDOWN)
+	if (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK)
 	{
 		CPoint point(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
 		ClientToScreen(&point);
@@ -200,7 +230,8 @@ LRESULT CBCGPShadowSideWnd::WindowProc(UINT message, WPARAM wParam, LPARAM lPara
 		BCG_GET_X_LPARAM(lParam) = (short)point.x;
 		BCG_GET_Y_LPARAM(lParam) = (short)point.y;
 
-		m_rManager.m_pOwner->PostMessage(WM_NCLBUTTONDOWN, (WPARAM)HitTest(point), lParam);
+		m_rManager.m_pOwner->PostMessage(message == WM_LBUTTONDOWN ? WM_NCLBUTTONDOWN : WM_NCLBUTTONDBLCLK, (WPARAM)HitTest(point), lParam);
+
 		return 0L;
 	}
 
@@ -323,7 +354,6 @@ void CBCGPShadowSideWnd::Repos(HDWP hDWP)
 	{
 		::DeferWindowPos (hDWP, GetSafeHwnd(), m_rManager.m_pOwner->GetSafeHwnd(), rectWindow.left, rectWindow.top, rectWindow.Width (), rectWindow.Height (),
 				dwFlags);
-
 	}
 }
 
@@ -522,6 +552,8 @@ void CBCGPShadowManager::Repos()
 
 	HDWP hDWP = ::BeginDeferWindowPos(4);
 
+	BOOL bShow = FALSE;
+
 	int i = 0;
 	for (i = 0; i < 4; i++)
 	{
@@ -530,10 +562,22 @@ void CBCGPShadowManager::Repos()
 			continue;
 		}
 
+		if (!m_arWnd[i]->IsWindowVisible())
+		{
+			bShow = TRUE;
+		}
+
 		m_arWnd[i]->Repos(hDWP);
 	}
 
 	::EndDeferWindowPos(hDWP);
+
+	if (bShow && (m_pOwner->IsKindOf(RUNTIME_CLASS(CDialog)) || m_pOwner->IsKindOf(RUNTIME_CLASS(CPropertySheet))))
+	{
+		m_pOwner->BringWindowToTop();
+		m_pOwner->SetForegroundWindow();
+		m_pOwner->SetActiveWindow();
+	}
 }
 
 void CBCGPShadowManager::UpdateTransparency (BYTE nTransparency)
@@ -608,7 +652,7 @@ void CBCGPShadowManager::Show(BOOL bShow)
 	{
 		if (m_arWnd[i]->GetSafeHwnd() != NULL && m_arWnd[i]->IsWindowVisible())
 		{
-			m_arWnd[i]->ShowWindow(SW_HIDE);
+			m_arWnd[i]->SetWindowPos (m_pOwner, 0, 0, 0, 0, SWP_HIDEWINDOW | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
 		}
 	}
 }

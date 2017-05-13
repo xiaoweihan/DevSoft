@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,16 +22,23 @@
 #include "BCGPShellManager.h"
 #include "BCGPTooltipManager.h"
 #include "BCGPDropDownList.h"
+#include "BCGPToolbarComboBoxButton.h"
+#include "BCGPPopupMenu.h"
+#include "BCGPPopupMenuBar.h"
 #endif
 
 #include "BCGPVisualManager.h"
+#include "BCGPDialog.h"
+#include "BCGPPopupDlg.h"
+#include "BCGPDlgImpl.h"
 #include "BCGProRes.h"
 #include "BCGPLocalResource.h"
 #include "BCGPCalculator.h"
 #include "BCGPEdit.h"
-#include "BCGPDlgImpl.h"
 #include "BCGPDrawManager.h"
 #include "BCGPGlobalUtils.h"
+#include "BCGPComboBox.h"
+#include "BCGPMessageBox.h"
 
 #ifndef _BCGSUITE_
 	#define visualManagerMFC	CBCGPVisualManager::GetInstance ()
@@ -46,71 +53,66 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
+#define UM_REDRAWFRAME	(WM_USER + 1001)
+
 #ifndef _BCGSUITE_
 UINT BCGM_EDIT_ON_FILL_AUTOCOMPLETE_LIST = ::RegisterWindowMessage (_T("BCGM_EDIT_ON_FILL_AUTOCOMPLETE_LIST"));
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPEditDropDownList
 
+IMPLEMENT_DYNAMIC(CBCGPEditDropDownList, CBCGPDropDownList)
+
 const UINT idStart = (UINT) -200;
 
-class CBCGPEditDropDownList : public CBCGPDropDownList
+CBCGPEditDropDownList::CBCGPEditDropDownList(CBCGPEdit* pEdit) :
+	CBCGPDropDownList(pEdit)
 {
-	friend class CBCGPEdit;
+	m_pEdit = pEdit;
+}
+//*****************************************************************************
+void CBCGPEditDropDownList::OnChooseItem (UINT uidCmdID)
+{
+	CBCGPDropDownList::OnChooseItem (uidCmdID);
 
-public:
-	CBCGPEditDropDownList(CBCGPEdit* pEdit) :
-		CBCGPDropDownList(pEdit)
+	if (m_pEdit->GetSafeHwnd() != NULL)
 	{
-		m_pEdit = pEdit;
+		ASSERT_VALID (m_pEdit);
+
+		int nIndex = (int)idStart - uidCmdID;
+
+		CString strItemText;
+		GetText(nIndex, strItemText);
+
+		m_pEdit->m_bInAutoComplete = TRUE;
+		m_pEdit->SetWindowText(strItemText);
+		m_pEdit->SendMessage(WM_KEYDOWN, VK_END);
+		m_pEdit->m_bInAutoComplete = FALSE;
 	}
-	  
-	virtual void OnChooseItem (UINT uidCmdID)
+}
+//*****************************************************************************
+BOOL CBCGPEditDropDownList::Compare(const CStringList& lstStrings) const
+{
+	if (GetCount() != lstStrings.GetCount())
 	{
-		CBCGPDropDownList::OnChooseItem (uidCmdID);
-
-		if (m_pEdit->GetSafeHwnd() != NULL)
-		{
-			ASSERT_VALID (m_pEdit);
-  
-			int nIndex = (int)idStart - uidCmdID;
-
-			CString strItemText;
-			GetText(nIndex, strItemText);
-
-			m_pEdit->m_bInAutoComplete = TRUE;
-			m_pEdit->SetWindowText(strItemText);
-			m_pEdit->SendMessage(WM_KEYDOWN, VK_END);
-			m_pEdit->m_bInAutoComplete = FALSE;
-		}
+		return FALSE;
 	}
 
-	BOOL Compare(const CStringList& lstStrings) const
+	int i = 0;
+
+	for (POSITION pos = lstStrings.GetHeadPosition (); pos != NULL; i++)
 	{
-		if (GetCount() != lstStrings.GetCount())
+		CString strItemText;
+		GetText(i, strItemText);
+
+		if (lstStrings.GetNext(pos) != strItemText)
 		{
 			return FALSE;
 		}
-
-		int i = 0;
-
-		for (POSITION pos = lstStrings.GetHeadPosition (); pos != NULL; i++)
-		{
-			CString strItemText;
-			GetText(i, strItemText);
-
-			if (lstStrings.GetNext(pos) != strItemText)
-			{
-				return FALSE;
-			}
-		}
-
-		return TRUE;
 	}
-	  
-protected:
-	CBCGPEdit* m_pEdit;
-};
+
+	return TRUE;
+}
 
 #endif
 
@@ -126,17 +128,15 @@ CBCGPEdit::CBCGPEdit()
 	m_bIsButtonHighlighted = FALSE;
 	m_bIsButtonCaptured = FALSE;
 	m_Mode = BrowseMode_None;
+	m_dwFileDialogFlags = OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
 	m_sizeImage = CSize (0, 0);
 	m_pCalcPopup = NULL;
 	m_pToolTip = NULL;
 	m_bShowToolTip = FALSE;
 	m_bDefaultPrintClient = FALSE;
+	m_bDisableBrowseButtonInReadOnlyMode = FALSE;
 	
-	m_nBrowseButtonWidth = 20;
-	if (globalData.GetRibbonImageScale() != 1.0)
-	{
-		m_nBrowseButtonWidth = (int) (globalData.GetRibbonImageScale () * m_nBrowseButtonWidth);
-	}
+	m_nBrowseButtonWidth = globalUtils.ScaleByDPI(20);
 
 	m_bDefaultImage = TRUE;
 	m_bVisualManagerStyle = FALSE;
@@ -151,6 +151,24 @@ CBCGPEdit::CBCGPEdit()
 	m_pDropDownPopup = NULL;
 	m_bInAutoComplete = FALSE;
 #endif
+
+	m_pRTIPopupDlg = NULL;
+	m_lpszPopupDlgTemplateName = NULL;
+	m_pPopupDlg = NULL;
+	m_bIsResizablePopup = FALSE;
+	m_bIsRightAlignedPopup = FALSE;
+	m_bComboBoxMode = FALSE;
+	m_nFolderBrowseFlags = BIF_RETURNONLYFSDIRS;
+	m_rectClick.SetRectEmpty();
+
+	m_pAutoCompleteCombo = NULL;
+	m_bIsLastPrintableCharacter = FALSE;
+	m_bIsDelayedLayout = FALSE;
+
+	m_bHasSpinButton = FALSE;
+	
+	m_bAllowEditingInPasswordPreview = FALSE;
+	m_cPassword = _T('*');
 }
 
 CBCGPEdit::~CBCGPEdit()
@@ -172,14 +190,18 @@ BEGIN_MESSAGE_MAP(CBCGPEdit, CEdit)
 	ON_WM_CTLCOLOR_REFLECT()
 	ON_WM_DESTROY()
 	ON_WM_KILLFOCUS()
-	ON_WM_NCHITTEST()
 	ON_WM_KEYDOWN()
+	ON_WM_SETCURSOR()
+	ON_WM_SETFOCUS()
+	ON_WM_NCHITTEST()
+	ON_WM_CREATE()
 	//}}AFX_MSG_MAP
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLAERO, OnBCGSetControlAero)
 	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnNeedTipText)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
 	ON_MESSAGE(WM_PRINT, OnPrint)
+	ON_MESSAGE(UM_REDRAWFRAME, OnRedrawFrame)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -195,9 +217,21 @@ void CBCGPEdit::OnLButtonUp(UINT nFlags, CPoint point)
 		m_bIsButtonCaptured = FALSE;
 		m_bIsButtonHighlighted = FALSE;
 
+		if (m_Mode == BrowseMode_PasswordPreview)
+		{
+			if (m_bAllowEditingInPasswordPreview)
+			{
+				SetPasswordChar(m_cPassword);
+			}
+			else
+			{
+				ShowCaret();
+			}
+		}
+
 		RedrawWindow (NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 
-		if (m_rectBtn.PtInRect (point))
+		if (m_rectClick.PtInRect (point))
 		{
 			OnBrowse ();
 		}
@@ -212,7 +246,7 @@ void CBCGPEdit::OnMouseMove(UINT nFlags, CPoint point)
 {
 	if (m_bIsButtonCaptured)
 	{
-		BOOL bIsButtonPressed = m_rectBtn.PtInRect (point);
+		BOOL bIsButtonPressed = m_rectClick.PtInRect (point);
 		if (bIsButtonPressed != m_bIsButtonPressed)
 		{
 			m_bIsButtonPressed = bIsButtonPressed;
@@ -224,10 +258,20 @@ void CBCGPEdit::OnMouseMove(UINT nFlags, CPoint point)
 	
 	if (m_bIsButtonHighlighted)
 	{
-		if (!m_rectBtn.PtInRect (point))
+		if (!m_rectClick.PtInRect (point))
 		{
 			m_bIsButtonHighlighted = FALSE;
 			ReleaseCapture ();
+
+			RedrawWindow (NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+		}
+	}
+	else if (m_bComboBoxMode)
+	{
+		if (m_rectClick.PtInRect(point) && IsBrowseButtonEnabled())
+		{
+			m_bIsButtonHighlighted = TRUE;
+			SetCapture();
 
 			RedrawWindow (NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 		}
@@ -242,7 +286,11 @@ void CBCGPEdit::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR* lpncsp
 
 	if (m_Mode != BrowseMode_None)
 	{
-		lpncsp->rgrc [0].right -= m_nBrowseButtonWidth;
+		lpncsp->rgrc[0].right -= m_nBrowseButtonWidth;
+	}
+	else if (m_bHasSpinButton)
+	{
+		lpncsp->rgrc[0].right -= 2;
 	}
 }
 //*************************************************************************************
@@ -251,15 +299,48 @@ void CBCGPEdit::OnNcPaint()
 	const BOOL bHasScrollBars = ((GetStyle () & WS_VSCROLL) == WS_VSCROLL) || ((GetStyle () & WS_HSCROLL) == WS_HSCROLL);
 	const BOOL bHasBorder = (GetExStyle () & WS_EX_CLIENTEDGE) || (GetStyle () & WS_BORDER);
 
-	if (bHasScrollBars || (!m_bVisualManagerStyle && !m_bOnGlass))
+	const COLORREF clrBorderCustom = (GetFocus() == this && m_ColorTheme.m_clrBorderFocused != (COLORREF)-1) ? 
+		m_ColorTheme.m_clrBorderFocused : m_ColorTheme.m_clrBorder;
+
+	if (bHasScrollBars || (!m_bVisualManagerStyle && !m_bOnGlass && clrBorderCustom == (COLORREF)-1))
 	{
 		CEdit::OnNcPaint ();
 	}
 
 	if (bHasBorder && (m_bVisualManagerStyle || m_bOnGlass))
 	{
-		CBCGPDrawOnGlass dog (m_bOnGlass);
-		visualManagerMFC->OnDrawControlBorder (this);
+		BOOL bIsRTL = (GetExStyle () & WS_EX_RTLREADING);
+
+		CWindowDC dc(this);
+
+		CRect rect;
+		GetWindowRect(rect);
+
+		rect.OffsetRect(-rect.TopLeft());
+
+		if (m_bHasSpinButton && !bIsRTL)
+		{
+			rect.right -= 2;
+		}
+
+		if (clrBorderCustom != (COLORREF)-1)
+		{
+			CBCGPDrawManager dm(dc);
+			dm.DrawRect(rect, (COLORREF)-1, clrBorderCustom);
+			
+			rect.DeflateRect (1, 1);
+			
+			COLORREF clrInner = m_ColorTheme.m_clrBackground == (COLORREF)-1 ? globalData.clrWindow : m_ColorTheme.m_clrBackground;
+			dm.DrawRect(rect, (COLORREF)-1, clrInner);
+		}
+		else
+		{
+#ifndef _BCGSUITE_
+			visualManagerMFC->OnDrawControlBorder(&dc, rect, this, m_bOnGlass);
+#else
+			visualManagerMFC->OnDrawControlBorder(this);
+#endif
+		}
 	}
 
 	if (m_Mode == BrowseMode_None)
@@ -284,8 +365,19 @@ void CBCGPEdit::DoNcPaint(CDC* pDC, BOOL bIsPrint)
 	ClientToScreen (&rectClient);
 
 	m_rectBtn.OffsetRect (rectClient.right + m_nBrowseButtonWidth - rectWindow.right, 0);
+	
 	m_rectBtn.top += rectClient.top - rectWindow.top;
 	m_rectBtn.bottom -= rectWindow.bottom - rectClient.bottom;
+
+	if ((GetStyle() & ES_MULTILINE) != 0)
+	{
+		m_rectBtn.bottom = min(m_rectBtn.bottom, m_rectBtn.top + m_nBrowseButtonWidth);
+
+		if ((GetStyle() & WS_VSCROLL) != 0 && (!IsInternalScrollBarThemed() || !CBCGPVisualManager::GetInstance()->IsOwnerDrawScrollBar()))
+		{
+			m_rectBtn.OffsetRect(GetSystemMetrics(SM_CXVSCROLL), 0);
+		}
+	}
 
 	CRect rect = m_rectBtn;
 	rect.OffsetRect (-rectWindow.left, -rectWindow.top);
@@ -298,7 +390,7 @@ void CBCGPEdit::DoNcPaint(CDC* pDC, BOOL bIsPrint)
 		pDC->SelectClipRgn (&rgnClip);
 	}
 
-	OnDrawBrowseButton(pDC, rect, m_bIsButtonPressed, m_bIsButtonHighlighted);
+	OnDrawBrowseButton(pDC, rect, m_bIsButtonPressed || m_pPopupDlg != NULL, m_bIsButtonHighlighted);
 
 	if (!bIsPrint)
 	{
@@ -306,6 +398,14 @@ void CBCGPEdit::DoNcPaint(CDC* pDC, BOOL bIsPrint)
 	}
 
 	ScreenToClient (&m_rectBtn);
+
+	m_rectClick = m_rectBtn;
+	
+	if (m_bComboBoxMode)
+	{
+		GetWindowRect(m_rectClick);
+		ScreenToClient(m_rectClick);
+	}
 }
 //********************************************************************************
 BCGNcHitTestType CBCGPEdit::OnNcHitTest(CPoint point) 
@@ -321,28 +421,41 @@ BCGNcHitTestType CBCGPEdit::OnNcHitTest(CPoint point)
 	return CEdit::OnNcHitTest(point);
 }
 //********************************************************************************
+void CBCGPEdit::DoEraseBrowseButton(CDC* pDC, CRect rect)
+{
+	BOOL bEnabled = IsBrowseButtonEnabled();
+
+	if (m_bOnGlass)
+	{
+		CBCGPDrawManager dm(*pDC);
+		dm.DrawRect(rect, bEnabled ? globalData.clrWindow : globalData.clrBtnFace, (COLORREF)-1);
+	}
+	else if (m_brBackground.GetSafeHandle() != NULL)
+	{
+		pDC->FillRect(rect, &m_brBackground);
+	}
+	else if (m_bVisualManagerStyle)
+	{
+		pDC->FillRect(rect, &CBCGPVisualManager::GetInstance ()->GetEditCtrlBackgroundBrush(this));
+	}
+	else
+	{
+		pDC->FillRect(rect, bEnabled ? &globalData.brWindow : &globalData.brBtnFace);
+	}
+}
+//********************************************************************************
 void CBCGPEdit::OnDrawBrowseButton (CDC* pDC, CRect rect, BOOL bIsButtonPressed, BOOL bHighlight)
 {
 	ASSERT (m_Mode != BrowseMode_None);
 	ASSERT_VALID (pDC);
 
+	BOOL bEnabled = IsBrowseButtonEnabled();
+
 	if (m_bSearchMode && m_ImageSearch.IsValid() && m_bTextIsEmpty)
 	{
-		if (m_bOnGlass)
-		{
-			CBCGPDrawManager dm(*pDC);
-			dm.DrawRect(rect, IsWindowEnabled() ? globalData.clrWindow : globalData.clrBtnFace, (COLORREF)-1);
-		}
-		else if (m_bVisualManagerStyle)
-		{
-			pDC->FillRect(rect, &CBCGPVisualManager::GetInstance ()->GetEditCtrlBackgroundBrush(this));
-		}
-		else
-		{
-			pDC->FillRect(rect, IsWindowEnabled() ? &globalData.brWindow : &globalData.brBtnFace);
-		}
+		DoEraseBrowseButton(pDC, rect);
 
-		if (IsWindowEnabled())
+		if (bEnabled)
 		{
 			m_ImageSearch.DrawEx(pDC, rect, 0, CBCGPToolBarImages::ImageAlignHorzCenter, CBCGPToolBarImages::ImageAlignVertCenter);
 		}
@@ -376,14 +489,22 @@ void CBCGPEdit::OnDrawBrowseButton (CDC* pDC, CRect rect, BOOL bIsButtonPressed,
 	}
 
 	COLORREF clrText = m_bVisualManagerStyle ? globalData.clrBarText : globalData.clrBtnText;
-	if (!IsWindowEnabled() && !globalData.IsHighContastMode())
+
+	if (!bEnabled && !globalData.IsHighContastMode())
 	{
 		clrText = globalData.clrGrayedText;
 	}
 
-	if (!CBCGPVisualManager::GetInstance ()->OnDrawBrowseButton (pDC, rect, this, state, clrText))
+	if (m_Mode != BrowseMode_PasswordPreview)
 	{
-		return;
+		if (!CBCGPVisualManager::GetInstance ()->OnDrawBrowseButton (pDC, rect, this, state, clrText))
+		{
+			return;
+		}
+	}
+	else
+	{
+		DoEraseBrowseButton(pDC, rect);
 	}
 
 	if (m_bSearchMode && m_ImageClear.IsValid() && !m_bTextIsEmpty)
@@ -398,7 +519,14 @@ void CBCGPEdit::OnDrawBrowseButton (CDC* pDC, CRect rect, BOOL bIsButtonPressed,
 
 		m_ImageClear.DrawEx(pDC, rectImage, 0, CBCGPToolBarImages::ImageAlignHorzCenter, CBCGPToolBarImages::ImageAlignVertCenter);
 		return;
-		
+	}
+
+	if (m_Mode == BrowseMode_PopupDialog)
+	{
+		CBCGPToolbarComboBoxButton dummy;
+
+		visualManagerMFC->OnDrawComboDropButton(pDC, rect, !bEnabled, bIsButtonPressed, bHighlight, &dummy);
+		return;
 	}
 
 	int iImage = 0;
@@ -420,6 +548,10 @@ void CBCGPEdit::OnDrawBrowseButton (CDC* pDC, CRect rect, BOOL bIsButtonPressed,
 			case BrowseMode_Calculator:
 				iImage = 2;
 				break;
+
+			case BrowseMode_PasswordPreview:
+				iImage = 3;
+				break;
 			}
 		}
 
@@ -437,7 +569,7 @@ void CBCGPEdit::OnDrawBrowseButton (CDC* pDC, CRect rect, BOOL bIsButtonPressed,
 			m_ImageBrowse.ConvertTo32Bits();
 		}
 #endif
-		if (IsWindowEnabled())
+		if (bEnabled)
 		{
 			m_ImageBrowse.DrawEx (pDC, rectImage, iImage, CBCGPToolBarImages::ImageAlignHorzCenter, CBCGPToolBarImages::ImageAlignVertCenter);
 		}
@@ -511,17 +643,14 @@ void CBCGPEdit::OnChangeLayout ()
 
 	if (GetSafeHwnd () == NULL)
 	{
+		m_bIsDelayedLayout = TRUE;
 		return;
 	}
 
-	m_nBrowseButtonWidth = 20;
-	int nImageMargin = 8;
+	m_bIsDelayedLayout = FALSE;
 
-	if (globalData.GetRibbonImageScale() != 1.0)
-	{
-		m_nBrowseButtonWidth = (int) (globalData.GetRibbonImageScale () * m_nBrowseButtonWidth);
-		nImageMargin = (int) (globalData.GetRibbonImageScale () * nImageMargin);
-	}
+	m_nBrowseButtonWidth = globalUtils.ScaleByDPI(20);
+	int nImageMargin = globalUtils.ScaleByDPI(8);
 
 	m_nBrowseButtonWidth = max(m_nBrowseButtonWidth, m_sizeImage.cx + nImageMargin);
 
@@ -549,6 +678,46 @@ void CBCGPEdit::OnBrowse ()
 {
 	ASSERT_VALID (this);
 	ASSERT (GetSafeHwnd () != NULL);
+
+	CRect rectWindow;
+	GetWindowRect(rectWindow);
+
+	if (m_Mode == BrowseMode_PopupDialog)
+	{
+		if (m_pPopupDlg->GetSafeHwnd() != NULL)
+		{
+			ClosePopupDlg(FALSE);
+		}
+		else
+		{
+			ASSERT(m_lpszPopupDlgTemplateName != NULL);
+			ASSERT(m_pRTIPopupDlg != NULL);
+
+			CBCGPDlgPopupMenu* pPopupMenu = new CBCGPDlgPopupMenu(this, m_pRTIPopupDlg, m_lpszPopupDlgTemplateName);
+			if (pPopupMenu != NULL)
+			{
+				pPopupMenu->m_bIsResizable = m_bIsResizablePopup;
+				pPopupMenu->SetRightAlign(m_bIsRightAlignedPopup);
+
+				m_pPopupDlg = pPopupMenu->m_pDlg;
+				if (m_pPopupDlg != NULL)
+				{
+					m_pPopupDlg->m_pParentEdit = new CBCGPParentEditPtr (this);
+				}
+				
+				CBCGPPopupMenu* pMenuActive = CBCGPPopupMenu::GetActiveMenu ();
+				if (pMenuActive->GetSafeHwnd() != NULL)
+				{
+					pMenuActive->SendMessage(WM_CLOSE);
+				}
+				
+				OnBeforeShowPopupDlg(m_pPopupDlg);
+
+				pPopupMenu->Create(this, m_bIsRightAlignedPopup ? rectWindow.right : rectWindow.left - 1, rectWindow.bottom, NULL, FALSE, FALSE);
+			}
+		}
+		return;
+	}
 
 	if (m_bSearchMode && !m_bTextIsEmpty)
 	{
@@ -579,7 +748,7 @@ void CBCGPEdit::OnBrowse ()
 				GetWindowText (strFolder);
 
 				CString strResult;
-				if (pShellManager->BrowseForFolder (strResult, this, strFolder, m_strFolderBrowseTitle.IsEmpty() ? NULL : (LPCTSTR)m_strFolderBrowseTitle) &&
+				if (pShellManager->BrowseForFolder (strResult, this, strFolder, m_strFolderBrowseTitle.IsEmpty() ? NULL : (LPCTSTR)m_strFolderBrowseTitle, m_nFolderBrowseFlags) &&
 					(strResult != strFolder))
 				{
 					SetWindowText (strResult);
@@ -635,7 +804,12 @@ void CBCGPEdit::OnBrowse ()
 				}
 			}
 
-			CFileDialog dlg (TRUE, m_strDefFileExt, strFileName, 0, m_strFileFilter, GetParent ());
+			CFileDialog dlg (TRUE, m_strDefFileExt, strFileName, m_dwFileDialogFlags, m_strFileFilter, GetParent());
+
+			if (strInitialDir.IsEmpty() && !m_strInitialFolder.IsEmpty())
+			{
+				strInitialDir = m_strInitialFolder;
+			}
 			
 			// Setup initial directory if possible
 			if (!strInitialDir.IsEmpty())
@@ -704,10 +878,9 @@ void CBCGPEdit::OnBrowse ()
 				}
 			}
 
-			CRect rectWindow;
-			GetWindowRect (rectWindow);
+			BOOL bIsRTL = (GetExStyle () & WS_EX_RTLREADING);
 
-			if (!m_pCalcPopup->Create (this, rectWindow.left, rectWindow.bottom, NULL, TRUE))
+			if (!m_pCalcPopup->Create (this, bIsRTL ? rectWindow.right : rectWindow.left, rectWindow.bottom, NULL, TRUE))
 			{
 				ASSERT (FALSE);
 				m_pCalcPopup = NULL;
@@ -754,7 +927,8 @@ BOOL CBCGPEdit::OnIllegalFileName (CString& strFileName)
 	{
 		CString strMessage;
 		strMessage.Format (_T("%s\r\n%s"), strFileName, strError);
-		MessageBox (strMessage, NULL, MB_OK | MB_ICONEXCLAMATION);
+
+		BCGPShowMessageBox(m_bVisualManagerStyle, this, strMessage, NULL, MB_OK | MB_ICONEXCLAMATION);
 	}
 
 	::SysFreeString (bsFileName);
@@ -775,30 +949,13 @@ void CBCGPEdit::SetBrowseButtonImage (HICON hIcon, BOOL bAutoDestroy, BOOL bAlph
 		return;
 	}
 
-	ICONINFO info;
-	::GetIconInfo (hIcon, &info);
-
-	BITMAP bmp;
-	::GetObject (info.hbmColor, sizeof (BITMAP), (LPVOID) &bmp);
-
-	m_sizeImage.cx = bmp.bmWidth;
-	m_sizeImage.cy = bmp.bmHeight;
-
-	::DeleteObject (info.hbmColor);
-	::DeleteObject (info.hbmMask);
+	m_sizeImage = globalUtils.GetIconSize(hIcon);
 
 	m_ImageBrowse.SetImageSize(m_sizeImage);
 	m_ImageBrowse.AddIcon(hIcon, bAlphaBlend);
 
-#ifndef _BCGSUITE_
-	if (globalData.GetRibbonImageScale() != 1.0 && !m_ImageBrowse.IsScaled())
-	{
-		m_ImageBrowse.SmoothResize(globalData.GetRibbonImageScale());
+	m_sizeImage = globalUtils.ScaleByDPI(m_ImageBrowse);
 
-		m_sizeImage.cx = (int) (globalData.GetRibbonImageScale () * m_sizeImage.cx);
-		m_sizeImage.cy = (int) (globalData.GetRibbonImageScale () * m_sizeImage.cy);
-	}
-#endif
 	m_bDefaultImage = FALSE;
 
 	if (bAutoDestroy)
@@ -829,15 +986,8 @@ void CBCGPEdit::SetBrowseButtonImage (HBITMAP hBitmap, BOOL bAutoDestroy)
 	m_ImageBrowse.SetImageSize(m_sizeImage);
 	m_ImageBrowse.AddImage(hBitmap, TRUE);
 
-#ifndef _BCGSUITE_
-	if (globalData.GetRibbonImageScale() != 1.0 && !m_ImageBrowse.IsScaled())
-	{
-		m_ImageBrowse.SmoothResize(globalData.GetRibbonImageScale());
-		
-		m_sizeImage.cx = (int) (globalData.GetRibbonImageScale () * m_sizeImage.cx);
-		m_sizeImage.cy = (int) (globalData.GetRibbonImageScale () * m_sizeImage.cy);
-	}
-#endif
+	m_sizeImage = globalUtils.ScaleByDPI(m_ImageBrowse);
+
 	m_bDefaultImage = FALSE;
 
 	if (bAutoDestroy)
@@ -867,16 +1017,22 @@ void CBCGPEdit::SetBrowseButtonImage (UINT uiBmpResId)
 		return;
 	}
 
+#ifndef _BCGSUITE_
+	m_ImageBrowse.SetSingleImage(FALSE);
+#else
 	m_ImageBrowse.SetSingleImage();
+#endif
 	m_bDefaultImage = FALSE;
 }
 //*********************************************************************************
-void CBCGPEdit::EnableFileBrowseButton (LPCTSTR lpszDefExt/* = NULL*/, LPCTSTR lpszFilter/* = NULL*/)
+void CBCGPEdit::EnableFileBrowseButton (LPCTSTR lpszDefExt/* = NULL*/, LPCTSTR lpszFilter/* = NULL*/, LPCTSTR lpszInitialFolder/* = NULL*/, DWORD dwFlags/* = OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT*/)
 {
 	ASSERT_VALID (this);
 
 	m_strDefFileExt = lpszDefExt == NULL ? _T("") : lpszDefExt;
 	m_strFileFilter = lpszFilter == NULL ? _T("") : lpszFilter;
+	m_strInitialFolder = lpszInitialFolder == NULL ? _T("") : lpszInitialFolder;
+	m_dwFileDialogFlags = dwFlags;
 
 	m_Mode = BrowseMode_File;
 	SetIntenalImage ();
@@ -886,7 +1042,7 @@ void CBCGPEdit::EnableFileBrowseButton (LPCTSTR lpszDefExt/* = NULL*/, LPCTSTR l
 	OnChangeLayout ();
 }
 //*********************************************************************************
-void CBCGPEdit::EnableFolderBrowseButton (LPCTSTR lpszTitle)
+void CBCGPEdit::EnableFolderBrowseButton (LPCTSTR lpszTitle, UINT ulFlags)
 {
 #ifdef BCGP_EXCLUDE_SHELL
 	ASSERT (FALSE);
@@ -897,6 +1053,7 @@ void CBCGPEdit::EnableFolderBrowseButton (LPCTSTR lpszTitle)
 #endif
 
 	m_strFolderBrowseTitle = lpszTitle == NULL ? _T("") : lpszTitle;
+	m_nFolderBrowseFlags = ulFlags;
 
 	m_Mode = BrowseMode_Folder;
 	SetIntenalImage ();
@@ -930,11 +1087,48 @@ void CBCGPEdit::EnableCalculatorButton (const CStringList* plstAdditionalCommand
 		m_strCalcDisplayFormat = lpszDisplayFormat;
 	}
 
-#ifdef _BCGSUITE_
-	m_strLabel = _T("c");
-#else
 	SetIntenalImage ();
-#endif
+	OnChangeLayout ();
+}
+//********************************************************************************
+void CBCGPEdit::EnablePasswordPreview(BOOL bEnable, BOOL bAllowEditingInPreview)
+{
+	m_Mode = bEnable ? BrowseMode_PasswordPreview : BrowseMode_None;
+
+	m_bAllowEditingInPasswordPreview = bAllowEditingInPreview;
+
+	SetupPasswordChar();
+	SetIntenalImage();
+	OnChangeLayout();
+}
+//********************************************************************************
+void CBCGPEdit::EnablePopupDialog(CRuntimeClass* pRTI, UINT nIDTemplate, BOOL bIsResizable, BOOL bComboBoxMode, BOOL bIsRightAligned)
+{
+	EnablePopupDialog(pRTI, MAKEINTRESOURCE(nIDTemplate), bIsResizable, bComboBoxMode, bIsRightAligned);
+}
+//********************************************************************************
+void CBCGPEdit::EnablePopupDialog(CRuntimeClass* pRTI, LPCTSTR lpszTemplateName, BOOL bIsResizable, BOOL bComboBoxMode, BOOL bIsRightAligned)
+{
+	if (pRTI != NULL && pRTI->m_pfnCreateObject == NULL)
+	{
+		TRACE(_T("CBCGPEdit::EnablePopupDialog: you've to add DECLARE_DYNCREATE to your popup dialog class\n"));
+		ASSERT(FALSE);
+		
+		pRTI = NULL;
+	}
+
+	m_Mode = BrowseMode_PopupDialog;
+	m_pRTIPopupDlg = pRTI;
+	m_lpszPopupDlgTemplateName = lpszTemplateName;
+	m_bIsResizablePopup = bIsResizable;
+	m_bComboBoxMode = bComboBoxMode;
+	m_bIsRightAlignedPopup = bIsRightAligned;
+
+	if (GetSafeHwnd() != NULL)
+	{
+		SendMessage(EM_SETREADONLY, (WPARAM)m_bComboBoxMode);
+	}
+
 	OnChangeLayout ();
 }
 //********************************************************************************
@@ -954,18 +1148,31 @@ void CBCGPEdit::SetIntenalImage ()
 	m_ImageBrowse.SetTransparentColor(RGB (255, 0, 255));
 	m_ImageBrowse.Load(uiImageListResID);
 
+	m_sizeImage = globalUtils.ScaleByDPI(m_ImageBrowse);
+
 	m_bDefaultImage = TRUE;
+}
+//********************************************************************************
+void CBCGPEdit::SetupPasswordChar()
+{
+#ifndef _UNICODE
+	if (m_Mode == BrowseMode_PasswordPreview && m_bAllowEditingInPasswordPreview && GetSafeHwnd() != NULL)
+	{
+		SetPasswordChar(_T('*'));
+		RedrawWindow();
+	}
+#endif
 }
 //********************************************************************************
 void CBCGPEdit::OnAfterUpdate ()
 {
-	if (GetOwner () == NULL)
+	if (GetOwner()->GetSafeHwnd() == NULL)
 	{
 		return;
 	}
 
-	GetOwner ()->PostMessage (EN_CHANGE, GetDlgCtrlID (), (LPARAM) GetSafeHwnd ());
-	GetOwner ()->PostMessage (EN_UPDATE, GetDlgCtrlID (), (LPARAM) GetSafeHwnd ());
+	GetOwner()->PostMessage (EN_CHANGE, GetDlgCtrlID (), (LPARAM) GetSafeHwnd ());
+	GetOwner()->PostMessage (EN_UPDATE, GetDlgCtrlID (), (LPARAM) GetSafeHwnd ());
 }
 //**********************************************************************************
 void CBCGPEdit::OnNcMouseMove(UINT nHitTest, CPoint point) 
@@ -975,9 +1182,10 @@ void CBCGPEdit::OnNcMouseMove(UINT nHitTest, CPoint point)
 		CPoint ptClient = point;
 		ScreenToClient (&ptClient);
 
-		if (m_rectBtn.PtInRect (ptClient))
+		if (m_rectClick.PtInRect (ptClient) && IsBrowseButtonEnabled())
 		{
 			SetCapture ();
+
 			m_bIsButtonHighlighted = TRUE;
 
 			RedrawWindow (NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
@@ -993,7 +1201,7 @@ void CBCGPEdit::OnCancelMode()
 	
 	CloseAutocompleteList();
 
-	if (IsWindowEnabled ())
+	if (IsBrowseButtonEnabled() && GetCapture()->GetSafeHwnd() == GetSafeHwnd())
 	{
 		ReleaseCapture ();
 	}
@@ -1002,24 +1210,49 @@ void CBCGPEdit::OnCancelMode()
 	m_bIsButtonCaptured = FALSE;
 	m_bIsButtonHighlighted = FALSE;
 
+	if (m_Mode == BrowseMode_PasswordPreview)
+	{
+		if (m_bAllowEditingInPasswordPreview)
+		{
+			SetPasswordChar(m_cPassword);
+		}
+		else
+		{
+			ShowCaret();
+		}
+	}
+
 	RedrawWindow (NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 }
 //********************************************************************************
 void CBCGPEdit::OnLButtonDown(UINT nFlags, CPoint point) 
 {
-	if (m_Mode != BrowseMode_None && m_rectBtn.PtInRect (point))
+	if (m_Mode != BrowseMode_None && m_rectClick.PtInRect(point) && IsBrowseButtonEnabled())
 	{
 		SetFocus ();
 
 		m_bIsButtonPressed = TRUE;
 		m_bIsButtonCaptured = TRUE;
 
+		if (m_Mode == BrowseMode_PasswordPreview)
+		{
+			if (m_bAllowEditingInPasswordPreview)
+			{
+				m_cPassword = GetPasswordChar();
+				SetPasswordChar(0);
+			}
+			else
+			{
+				HideCaret();
+			}
+		}
+
 		SetCapture ();
 
 		RedrawWindow (NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 		return;
 	}
-	
+
 	CEdit::OnLButtonDown(nFlags, point);
 }
 //********************************************************************************
@@ -1028,7 +1261,7 @@ BOOL CBCGPEdit::PreTranslateMessage(MSG* pMsg)
 	switch (pMsg->message)
 	{
 	case WM_SYSKEYDOWN:
-		if (m_Mode != BrowseMode_None && 
+		if (m_Mode != BrowseMode_None && m_Mode != BrowseMode_PasswordPreview &&
 			(pMsg->wParam == VK_DOWN || pMsg->wParam == VK_RIGHT))
 		{
 			OnBrowse ();
@@ -1061,7 +1294,7 @@ BOOL CBCGPEdit::PreTranslateMessage(MSG* pMsg)
 		}
 		break;
 	}
-	
+
 	return CEdit::PreTranslateMessage(pMsg);
 }
 //*********************************************************************************
@@ -1081,6 +1314,11 @@ BOOL CBCGPEdit::FilterCalcKey (int nChar)
 		{
 			int nStartPos, nEndPos;
 			GetSel (nStartPos, nEndPos);
+
+			if (nStartPos == 0 && nEndPos == str.GetLength())
+			{
+				return TRUE;
+			}
 
 			return str.Find (_T('-')) == -1 && nStartPos == 0;
 		}
@@ -1122,8 +1360,9 @@ void CBCGPEdit::OnPaint()
 	m_bShowToolTip = FALSE;
 
 	BOOL bDrawPrompt = IsDrawPrompt();
+	BOOL bDrawPassword = (m_Mode == BrowseMode_PasswordPreview && m_bIsButtonPressed && m_bIsButtonCaptured && !m_bAllowEditingInPasswordPreview);
 
-	if (!m_bOnGlass && !bDrawPrompt)
+	if (!m_bOnGlass && !bDrawPrompt && !bDrawPassword)
 	{
 		Default ();
 		return;
@@ -1142,15 +1381,23 @@ void CBCGPEdit::DoPaint(CDC* pDC, BOOL bDrawPrompt, BOOL /*bIsPrint*/)
 	ASSERT_VALID(this);
 	ASSERT_VALID(pDC);
 
-	if (bDrawPrompt)
+	BOOL bDrawPassword = (m_Mode == BrowseMode_PasswordPreview && m_bIsButtonPressed && m_bIsButtonCaptured && !m_bAllowEditingInPasswordPreview);
+
+	if (bDrawPrompt || bDrawPassword)
 	{
+		BOOL bIsMultiLine = (GetStyle() & ES_MULTILINE) != 0;
+
 		// Fill control background:
 		if (GetWindowTextLength() > 0)
 		{
 			CRect rectClient;
 			GetClientRect(rectClient);
 
-			if (m_bVisualManagerStyle && IsWindowEnabled())
+			if (m_brBackground.GetSafeHandle() != NULL)
+			{
+				pDC->FillRect(rectClient, &m_brBackground);
+			}
+			else if (m_bVisualManagerStyle && IsWindowEnabled())
 			{
 				if ((GetStyle() & ES_READONLY) == ES_READONLY)
 				{
@@ -1178,7 +1425,13 @@ void CBCGPEdit::DoPaint(CDC* pDC, BOOL bDrawPrompt, BOOL /*bIsPrint*/)
 		else
 		{
 			m_bDefaultPrintClient = TRUE;
-			SendMessage (WM_PRINTCLIENT, (WPARAM) pDC->GetSafeHdc (), (LPARAM) PRF_CLIENT);
+
+			if (bIsMultiLine)
+			{
+				SendMessage (WM_PRINT, (WPARAM) pDC->GetSafeHdc (), (LPARAM)(PRF_CLIENT | PRF_ERASEBKGND));
+			}
+
+			SendMessage (WM_PRINTCLIENT, (WPARAM) pDC->GetSafeHdc (), (LPARAM)PRF_CLIENT);
 			m_bDefaultPrintClient = FALSE;
 		}
 
@@ -1186,11 +1439,18 @@ void CBCGPEdit::DoPaint(CDC* pDC, BOOL bDrawPrompt, BOOL /*bIsPrint*/)
 
 		if (clrText == (COLORREF)-1)
 		{
+			if (m_ColorTheme.m_clrPrompt != (COLORREF)-1)
+			{
+				clrText = m_ColorTheme.m_clrPrompt;
+			}
+			else
+			{
 #ifndef _BCGSUITE_
-			clrText = m_bVisualManagerStyle ? CBCGPVisualManager::GetInstance ()->GetToolbarEditPromptColor() : globalData.clrPrompt;
+				clrText = m_bVisualManagerStyle ? CBCGPVisualManager::GetInstance ()->GetToolbarEditPromptColor() : globalData.clrPrompt;
 #else
-			clrText = globalData.clrGrayedText;
+				clrText = globalData.clrGrayedText;
 #endif
+			}
 		}
 
 		pDC->SetTextColor(clrText);
@@ -1209,8 +1469,30 @@ void CBCGPEdit::DoPaint(CDC* pDC, BOOL bDrawPrompt, BOOL /*bIsPrint*/)
 			rectText.DeflateRect (1, 1);
 		}
 
-		UINT nFormat = DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX;
-		const CString& str = m_strErrorMessage.IsEmpty() ? m_strSearchPrompt : m_strErrorMessage;
+		rectText.left += globalUtils.ScaleByDPI(2);
+
+		UINT nFormat = bIsMultiLine ? (DT_WORDBREAK | DT_NOPREFIX) : (DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+		if (GetExStyle() & WS_EX_RIGHT)
+		{
+			nFormat |= DT_RIGHT;
+		}
+		else
+		{
+			nFormat |= DT_LEFT;
+		}
+
+		CString str = m_strErrorMessage.IsEmpty() ? m_strSearchPrompt : m_strErrorMessage;
+		if (bDrawPassword)
+		{
+			if (m_bVisualManagerStyle || m_ColorTheme.m_clrText != (COLORREF)-1)
+			{
+				pDC->SetTextColor(
+					m_ColorTheme.m_clrText != (COLORREF)-1 ?
+					m_ColorTheme.m_clrText : CBCGPVisualManager::GetInstance ()->GetEditCtrlTextColor(this));
+			}
+
+			GetWindowText(str);
+		}
 
 		if (pDC->GetTextExtent(str).cx > rectText.Width())
 		{
@@ -1253,6 +1535,21 @@ BOOL CBCGPEdit::OnChange()
 		InvalidateRect (NULL, FALSE);
 		UpdateWindow ();
 	}
+
+	if (m_pAutoCompleteCombo->GetSafeHwnd() != NULL && m_bIsLastPrintableCharacter)
+	{
+		CString strText;
+		GetWindowText(strText);
+
+		CString strOut;
+		if (m_pAutoCompleteCombo->OnAutoComplete(strText, strOut) >= 0)
+		{
+			SetWindowText(strOut);
+			SetSel(strText.GetLength(), -1, TRUE);
+		}
+	}
+
+	m_bIsLastPrintableCharacter = FALSE;
 
 #ifndef _BCGSUITE_
 	BOOL bIsAutocompleteAvailable = (m_Mode == BrowseMode_None || m_Mode == BrowseMode_Default);
@@ -1327,7 +1624,7 @@ LRESULT CBCGPEdit::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
 		}
 	}
 
-	LRESULT lres = CEdit::WindowProc(message, wParam, lParam);
+	LRESULT lres = TBCGPInternalScrollBarWrapperWnd<CEdit>::WindowProc(message, wParam, lParam);
 
 	if (bCheckSel)
 	{
@@ -1344,14 +1641,24 @@ LRESULT CBCGPEdit::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
 		UpdateWindow ();
 	}
 
+	if (message == WM_SETTEXT)
+	{
+		if ((GetStyle() & ES_MULTILINE) != 0 && GetOwner()->GetSafeHwnd() != NULL && (m_bSearchMode || m_bHasPrompt))
+		{
+			// The EN_CHANGE notification code is not sent when the ES_MULTILINE style is used and the text is sent through WM_SETTEXT
+			GetOwner ()->PostMessage(WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(), EN_CHANGE), (LPARAM)GetSafeHwnd());
+		}
+	}
+
 	return lres;
 }
 //**********************************************************************************************************
 HBRUSH CBCGPEdit::CtlColor(CDC* pDC, UINT /*nCtlColor*/) 
 {
-	if (m_bVisualManagerStyle)
+	if (m_bVisualManagerStyle || m_ColorTheme.m_clrText != (COLORREF)-1 || m_brBackground.GetSafeHandle() != NULL)
 	{
-		CBrush& br = CBCGPVisualManager::GetInstance ()->GetEditCtrlBackgroundBrush(this);
+		CBrush& br = m_brBackground.GetSafeHandle() != NULL ?
+			m_brBackground : CBCGPVisualManager::GetInstance ()->GetEditCtrlBackgroundBrush(this);
 
 		if ((GetStyle() & ES_READONLY) == ES_READONLY || !IsWindowEnabled())
 		{
@@ -1377,7 +1684,10 @@ HBRUSH CBCGPEdit::CtlColor(CDC* pDC, UINT /*nCtlColor*/)
 			br.GetLogBrush(&lbr);
 			
 			pDC->SetBkColor(lbr.lbColor);
-			pDC->SetTextColor (CBCGPVisualManager::GetInstance ()->GetEditCtrlTextColor(this));
+
+			pDC->SetTextColor(
+				m_ColorTheme.m_clrText != (COLORREF)-1 ?
+				m_ColorTheme.m_clrText : CBCGPVisualManager::GetInstance ()->GetEditCtrlTextColor(this));
 
 			return (HBRUSH)br.GetSafeHandle();
 		}
@@ -1456,8 +1766,15 @@ void CBCGPEdit::EnableSearchMode(BOOL bEnable, LPCTSTR lpszPrompt, COLORREF clrT
 			CBCGPLocalResource locaRes;
 			m_ImageSearch.Load(globalData.Is32BitIcons () ?
 				IDB_BCGBARRES_SEARCH32 : IDB_BCGBARRES_SEARCH);
+
+#ifndef _BCGSUITE_
+			m_ImageSearch.SetSingleImage(FALSE);
+#else
 			m_ImageSearch.SetSingleImage();
+#endif
 			m_ImageSearch.SetTransparentColor(globalData.clrBtnFace);
+
+			globalUtils.ScaleByDPI(m_ImageSearch);
 		}
 
 		if (!m_ImageClear.IsValid())
@@ -1465,8 +1782,15 @@ void CBCGPEdit::EnableSearchMode(BOOL bEnable, LPCTSTR lpszPrompt, COLORREF clrT
 			CBCGPLocalResource locaRes;
 			m_ImageClear.Load(globalData.Is32BitIcons () ?
 				IDB_BCGBARRES_CLEAR32 : IDB_BCGBARRES_CLEAR);
+
+#ifndef _BCGSUITE_
+			m_ImageClear.SetSingleImage(FALSE);
+#else
 			m_ImageClear.SetSingleImage();
+#endif
 			m_ImageClear.SetTransparentColor(globalData.clrBtnFace);
+
+			globalUtils.ScaleByDPI(m_ImageClear);
 		}
 	}
 	else
@@ -1549,9 +1873,12 @@ LRESULT CBCGPEdit::OnPrint(WPARAM wp, LPARAM lp)
 		CDC* pDC = CDC::FromHandle((HDC) wp);
 		ASSERT_VALID(pDC);
 
+		const COLORREF clrBorderCustom = (GetFocus() == this && m_ColorTheme.m_clrBorderFocused != (COLORREF)-1) ? 
+			m_ColorTheme.m_clrBorderFocused : m_ColorTheme.m_clrBorder;
+
 		const BOOL bHasBorder = (GetExStyle () & WS_EX_CLIENTEDGE) || (GetStyle () & WS_BORDER);
 		
-		if (bHasBorder && (m_bVisualManagerStyle || m_bOnGlass))
+		if (bHasBorder && (m_bVisualManagerStyle || m_bOnGlass || clrBorderCustom != (COLORREF)-1))
 		{
 			CRect rect;
 			GetWindowRect(rect);
@@ -1560,11 +1887,24 @@ LRESULT CBCGPEdit::OnPrint(WPARAM wp, LPARAM lp)
 			rect.right -= rect.left;
 			rect.left = rect.top = 0;
 
+			if (clrBorderCustom != (COLORREF)-1)
+			{
+				CBCGPDrawManager dm(*pDC);
+				dm.DrawRect(rect, (COLORREF)-1, clrBorderCustom);
+				
+				rect.DeflateRect (1, 1);
+				
+				COLORREF clrInner = m_ColorTheme.m_clrBackground == (COLORREF)-1 ? globalData.clrWindow : m_ColorTheme.m_clrBackground;
+				dm.DrawRect(rect, (COLORREF)-1, clrInner);
+			}
+			else
+			{
 #ifndef _BCGSUITE_
-			visualManagerMFC->OnDrawControlBorder(pDC, rect, this, m_bOnGlass);
+				visualManagerMFC->OnDrawControlBorder(pDC, rect, this, m_bOnGlass);
 #else
-			visualManagerMFC->OnDrawControlBorder(this);
+				visualManagerMFC->OnDrawControlBorder(this);
 #endif
+			}
 		}
 		
 		if (m_Mode != BrowseMode_None)
@@ -1578,8 +1918,10 @@ LRESULT CBCGPEdit::OnPrint(WPARAM wp, LPARAM lp)
 //*****************************************************************************
 void CBCGPEdit::OnKillFocus(CWnd* pNewWnd) 
 {
+	HWND hwndThis = GetSafeHwnd();
+
 #ifndef _BCGSUITE_
-	if (::IsWindow(m_pDropDownPopup->GetSafeHwnd()))
+	if (::IsWindow(m_pDropDownPopup->GetSafeHwnd()) && DYNAMIC_DOWNCAST(CBCGPEditDropDownList, m_pDropDownPopup) != NULL)
 	{
 		int nIndex = m_pDropDownPopup->GetCurSel();
 		if (nIndex >= 0)
@@ -1593,11 +1935,17 @@ void CBCGPEdit::OnKillFocus(CWnd* pNewWnd)
 		}
 
 		m_pDropDownPopup->DestroyWindow();
-		m_pDropDownPopup = NULL;
 	}
+
+	m_pDropDownPopup = NULL;
 #endif
 
 	CEdit::OnKillFocus(pNewWnd);
+
+	if (m_bVisualManagerStyle && ::IsWindow(hwndThis))
+	{
+		SetWindowPos(NULL, -1, -1, -1, -1, SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+	}
 }
 
 #ifndef _BCGSUITE_
@@ -1631,7 +1979,7 @@ void CBCGPEdit::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 	{
 		CString strText;
 		GetWindowText(strText);
-		
+
 		CStringList	lstAutocomplete;
 		if (OnGetAutoCompleteList(strText, lstAutocomplete) && !lstAutocomplete.IsEmpty())
 		{
@@ -1642,6 +1990,13 @@ void CBCGPEdit::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 #endif
 	
 	CEdit::OnKeyDown(nChar, nRepCnt, nFlags);
+
+#ifdef _UNICODE
+    m_bIsLastPrintableCharacter =  (nChar != VK_TAB && iswprint ((wint_t) nChar));
+#else
+	m_bIsLastPrintableCharacter = (isprint (nChar) || nChar > 127);
+#endif
+	
 }
 //*****************************************************************************
 void CBCGPEdit::CreateAutocompleteList(const CStringList& lstAutocomplete)
@@ -1681,7 +2036,139 @@ void CBCGPEdit::CloseAutocompleteList()
 	if (::IsWindow(m_pDropDownPopup->GetSafeHwnd()))
 	{
 		m_pDropDownPopup->DestroyWindow();
-		m_pDropDownPopup = NULL;
 	}
+
+	m_pDropDownPopup = NULL;
 #endif
+}
+//*****************************************************************************
+void CBCGPEdit::SetColorTheme(const CBCGPEditColors& colors, BOOL bRedraw)
+{
+	m_ColorTheme = colors;
+
+	m_brBackground.DeleteObject();
+	if (m_ColorTheme.m_clrBackground != (COLORREF)-1)
+	{
+		m_brBackground.CreateSolidBrush(m_ColorTheme.m_clrBackground);
+	}
+
+	if (bRedraw && GetSafeHwnd() != NULL)
+	{
+		RedrawWindow(NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+	}
+}
+//*****************************************************************************
+void CBCGPEdit::SetDisableBrowseButtonInReadOnlyMode(BOOL bDisable)
+{
+	m_bDisableBrowseButtonInReadOnlyMode = bDisable;
+
+	if (GetSafeHwnd() != NULL)
+	{
+		RedrawWindow(NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+	}
+}
+//*****************************************************************************
+void CBCGPEdit::ClosePopupDlg(BOOL /*bOK*/, DWORD_PTR /*dwUserData*/)
+{
+	if (m_pPopupDlg->GetSafeHwnd() != NULL)
+	{
+		m_pPopupDlg->GetParent()->PostMessage(WM_CLOSE);
+		m_pPopupDlg = NULL;
+	}
+
+	RedrawWindow(NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+}
+//*****************************************************************************
+BOOL CBCGPEdit::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message) 
+{
+	if (m_bComboBoxMode)
+	{
+		SetCursor(::LoadCursor(NULL, IDC_ARROW));
+		return TRUE;
+	}
+	
+	return CEdit::OnSetCursor(pWnd, nHitTest, message);
+}
+//************************************************************************
+BOOL CBCGPEdit::IsInternalScrollBarThemed() const
+{
+	if (GetSafeHwnd() != NULL && (GetStyle() & ES_MULTILINE) == 0)
+	{
+		return FALSE;
+	}
+
+#ifndef _BCGSUITE_
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_EDITBOX) != 0 && m_bVisualManagerStyle;
+#else
+	return FALSE;
+#endif
+}
+//************************************************************************
+void CBCGPEdit::OnSetFocus(CWnd* pOldWnd) 
+{
+	CEdit::OnSetFocus(pOldWnd);
+	
+	if (m_bComboBoxMode)
+	{
+		::DestroyCaret();
+	}
+
+	if (m_bVisualManagerStyle)
+	{
+		SetWindowPos(NULL, -1, -1, -1, -1, SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+	}
+}
+//************************************************************************
+BOOL CBCGPEdit::IsBrowseButtonEnabled() const
+{
+	if (GetSafeHwnd() == NULL)
+	{
+		return TRUE;
+	}
+
+	if (!IsWindowEnabled())
+	{
+		return FALSE;
+	}
+
+	if ((GetStyle() & ES_READONLY) == ES_READONLY && m_bDisableBrowseButtonInReadOnlyMode)
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+//************************************************************************
+int CBCGPEdit::OnCreate(LPCREATESTRUCT lpCreateStruct) 
+{
+	if (CEdit::OnCreate(lpCreateStruct) == -1)
+		return -1;
+	
+	if (m_bIsDelayedLayout)
+	{
+		OnChangeLayout();
+		PostMessage(UM_REDRAWFRAME);
+	}
+	
+	SetupPasswordChar();
+	return 0;
+}
+//************************************************************************
+void CBCGPEdit::PreSubclassWindow() 
+{
+	CEdit::PreSubclassWindow();
+
+	if (m_bIsDelayedLayout)
+	{
+		OnChangeLayout();
+		PostMessage(UM_REDRAWFRAME);
+	}
+
+	SetupPasswordChar();
+}
+//**************************************************************************
+LRESULT CBCGPEdit::OnRedrawFrame(WPARAM, LPARAM)
+{
+	SetWindowPos(NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOSIZE | SWP_NOZORDER | SWP_NOMOVE);
+	return 0;
 }

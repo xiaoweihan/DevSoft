@@ -1,6 +1,6 @@
 // BCGPCalculator.cpp : implementation file
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,6 +18,7 @@
 #include "BCGPLocalResource.h"
 #include "BCGProRes.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPGlobalUtils.h"
 
 #ifndef _BCGSUITE_
 #include "BCGPPopupMenu.h"
@@ -548,9 +549,7 @@ int CBCGPCalculator::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_CalcImages.SetImageSize (CSize(25, 20));
 	m_CalcImages.Load(IDB_BCGBARRES_CALCBUTTONS);
 
-#if (!defined _BCGSUITE_) || (_MSC_VER >= 1600)
-	m_CalcImages.SmoothResize(globalData.GetRibbonImageScale ());
-#endif
+	globalUtils.ScaleByDPI(m_CalcImages);
 
 	OnChangeVisualManager(0, 0);
 	
@@ -1268,18 +1267,18 @@ void CBCGPCalculator::UpdateBuffer ()
 	else
 	{
 		m_strBuffer.Format(m_strDisplayFormat, m_dblValue);
-
-		while (m_strBuffer [m_strBuffer.GetLength () - 1] == _T('0'))
+		
+		while (!m_strBuffer.IsEmpty() && m_strBuffer [m_strBuffer.GetLength () - 1] == _T('0'))
 		{
 			m_strBuffer = m_strBuffer.Left (m_strBuffer.GetLength () - 1);
 		}
-
-		if (m_strBuffer [m_strBuffer.GetLength () - 1] == _T('.'))
+		
+		if (!m_strBuffer.IsEmpty() && m_strBuffer [m_strBuffer.GetLength () - 1] == _T('.'))
 		{
 			m_strBuffer = m_strBuffer.Left (m_strBuffer.GetLength () - 1);
 		}
 	}
-
+	
 	if (m_strBuffer.Find (_T("#INF")) >= 0 ||
 		m_strBuffer.Find (_T("#IND")) >= 0 ||
 		m_strBuffer.Find (_T("#NAN")) >= 0)
@@ -1502,7 +1501,7 @@ void CBCGPCalculator::DoPaint (CDC* pDC)
 		GetClientRect(rect);
 
 #ifndef _BCGSUITE_
-		if (m_bIsDlgControl)
+		if (m_bIsDlgControl && !m_bVisualManagerStyle)
 		{
 			CBCGPVisualManager::GetInstance ()->OnDrawControlBorderNoTheme(pDC, rect, this, FALSE);
 		}
@@ -1580,7 +1579,7 @@ int CBCGPCalculatorPopup::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	}
 
 	DWORD toolbarStyle = dwDefaultToolbarStyle;
-	if (m_AnimationType != NO_ANIMATION && !CBCGPToolBar::IsCustomizeMode ())
+	if (GetAnimationType () != NO_ANIMATION && !CBCGPToolBar::IsCustomizeMode ())
 	{
 		toolbarStyle &= ~WS_VISIBLE;
 	}

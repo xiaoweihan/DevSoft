@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -36,10 +36,10 @@ static char THIS_FILE[] = __FILE__;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPOptionsPage property page
 
-IMPLEMENT_DYNCREATE(CBCGPOptionsPage, CPropertyPage)
+IMPLEMENT_DYNCREATE(CBCGPOptionsPage, CBCGPPropertyPage)
 
 CBCGPOptionsPage::CBCGPOptionsPage(BOOL bIsMenuBarExist) : 
-	CPropertyPage(CBCGPOptionsPage::IDD),
+	CBCGPPropertyPage(CBCGPOptionsPage::IDD),
 	m_bIsMenuBarExist (bIsMenuBarExist)
 {
 	//{{AFX_DATA_INIT(CBCGPOptionsPage)
@@ -59,7 +59,7 @@ CBCGPOptionsPage::~CBCGPOptionsPage()
 
 void CBCGPOptionsPage::DoDataExchange(CDataExchange* pDX)
 {
-	CPropertyPage::DoDataExchange(pDX);
+	CBCGPPropertyPage::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPOptionsPage)
 	DDX_Control(pDX, IDC_BCGBARRES_SKINS, m_wndSkinsBtn);
 	DDX_Control(pDX, IDC_BCGBARRES_LOOK2000, m_wndLook2000);
@@ -80,7 +80,7 @@ void CBCGPOptionsPage::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CBCGPOptionsPage, CPropertyPage)
+BEGIN_MESSAGE_MAP(CBCGPOptionsPage, CBCGPPropertyPage)
 	//{{AFX_MSG_MAP(CBCGPOptionsPage)
 	ON_BN_CLICKED(IDC_BCGBARRES_SHOW_TOOLTIPS_WITH_KEYS, OShowTooltipsWithKeys)
 	ON_BN_CLICKED(IDC_BCGBARRES_SHOW_TOOLTIPS, OnShowTooltips)
@@ -98,7 +98,7 @@ END_MESSAGE_MAP()
 
 BOOL CBCGPOptionsPage::OnInitDialog() 
 {
-	CPropertyPage::OnInitDialog();
+	CBCGPPropertyPage::OnInitDialog();
 	
 	m_wndShowShortcutKeys.EnableWindow (m_bShowTooltips);
 	m_wndShowAllMenusDelay.EnableWindow (m_bRecentlyUsedMenus);

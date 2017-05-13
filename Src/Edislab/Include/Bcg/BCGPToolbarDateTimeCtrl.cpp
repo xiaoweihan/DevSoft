@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,7 @@
 #include "BCGPToolbarMenuButton.h"
 #include "MenuImages.h"
 #include "BCGPToolbarDateTimeCtrl.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -80,13 +81,7 @@ void CBCGPDateTimeCtrlWin::OnDateTimeCloseUp (NMHDR* pNotifyStruct, LRESULT* pRe
 CBCGPToolbarDateTimeCtrl::CBCGPToolbarDateTimeCtrl()
 {
 	m_dwStyle = WS_CHILD | WS_VISIBLE;
-
-	m_iWidth = iDefaultSize;
-
-	if (globalData.GetRibbonImageScale() != 1.0)
-	{
-		m_iWidth = (int) (globalData.GetRibbonImageScale () * m_iWidth);
-	}
+	m_iWidth = globalUtils.ScaleByDPI(iDefaultSize);
 
 	Initialize ();
 }
@@ -98,12 +93,7 @@ CBCGPToolbarDateTimeCtrl::CBCGPToolbarDateTimeCtrl (UINT uiId,
 			CBCGPToolbarButton (uiId, iImage)
 {
 	m_dwStyle = dwStyle | WS_CHILD | WS_VISIBLE;
-	m_iWidth = (iWidth == 0) ? iDefaultSize : iWidth;
-
-	if (iWidth == 0 && globalData.GetRibbonImageScale() != 1.0)
-	{
-		m_iWidth = (int) (globalData.GetRibbonImageScale () * m_iWidth);
-	}
+	m_iWidth = (iWidth == 0) ? globalUtils.ScaleByDPI(iDefaultSize) : iWidth;
 
 	Initialize ();
 }

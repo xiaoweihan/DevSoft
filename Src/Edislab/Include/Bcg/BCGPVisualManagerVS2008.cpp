@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,6 +27,7 @@
 #include "BCGPReBar.h"
 #include "bcgpstyle.h"
 #include "BCGPGridCtrl.h"
+#include "BCGPPopupWindow.h"
 
 #define WINXPBLUE_GRADIENT_LIGHT	RGB(239, 243, 250)
 #define WINXPBLUE_GRADIENT_DARK		RGB(193, 210, 238)
@@ -260,7 +261,7 @@ void CBCGPVisualManagerVS2008::OnEraseTabsArea (CDC* pDC, CRect rect,
 
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
 		!pTabWnd->IsVS2005Style () ||
-		pTabWnd->IsDialogControl ())
+		pTabWnd->IsDialogControl (TRUE))
 	{
 		CBCGPVisualManagerVS2005::OnEraseTabsArea (pDC, rect, pTabWnd);
 		return;
@@ -292,7 +293,7 @@ void CBCGPVisualManagerVS2008::OnEraseTabsButton (CDC* pDC, CRect rect,
 
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
 		!pBaseTab->IsVS2005Style () ||
-		pBaseTab->IsDialogControl () ||
+		pBaseTab->IsDialogControl (TRUE) ||
 		pButton->IsPressed () || pButton->IsHighlighted ())
 	{
 		CBCGPVisualManagerVS2005::OnEraseTabsButton (pDC, rect, pButton, pBaseTab);
@@ -355,7 +356,7 @@ void CBCGPVisualManagerVS2008::OnDrawTab (CDC* pDC, CRect rectTab,
 	const BOOL bIsHighlight = (iTab == pTabWnd->GetHighlightedTab ());
 
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
-		pTabWnd->IsDialogControl () ||
+		pTabWnd->IsDialogControl (TRUE) ||
 		pTabWnd->IsFlatTab () || pTabWnd->IsPointerStyle() ||
 		clrTab != (COLORREF)-1)
 	{
@@ -777,3 +778,36 @@ BOOL CBCGPVisualManagerVS2008::OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_G
 }
 
 #endif
+
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+
+COLORREF CBCGPVisualManagerVS2008::OnDrawPopupWindowCaption (CDC* pDC, CRect rectCaption, CBCGPPopupWindow* pPopupWnd)
+{
+	ASSERT_VALID(pDC);
+	ASSERT_VALID(pPopupWnd);
+
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || pPopupWnd->HasSmallCaption())
+	{
+		return CBCGPVisualManagerVS2005::OnDrawPopupWindowCaption (pDC, rectCaption, pPopupWnd);
+	}
+
+	switch (pPopupWnd->GetStemLocation())
+	{
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopCenter:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopLeft:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopRight:
+		rectCaption.top -= pPopupWnd->GetStemSize();
+		break;
+
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_Left:
+		rectCaption.left -= pPopupWnd->GetStemSize();
+		break;
+	}
+
+	CBCGPDrawManager dm (*pDC);
+	dm.FillGradient (rectCaption, m_clrHighlightDnGradientDark, m_clrHighlightDnGradientLight, TRUE);
+
+	return globalData.clrBarText;
+}
+
+#endif	// BCGP_EXCLUDE_POPUP_WINDOW

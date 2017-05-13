@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,8 @@
 #define AFX_BCGPGRIDFILTER_H__10CABCAB_AAB9_4933_906E_4097D230362A__INCLUDED_
 
 #include "BCGCBPro.h"
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
 
 /////////////////////////////////////////////////////////////////////////////
 // BCGP_FILTER_COLUMN_INFO
@@ -110,5 +112,7 @@ public:
 public:
 	static LRESULT CALLBACK pfnFilterCallback (WPARAM wParam, LPARAM lParam);
 };
+
+#endif
 
 #endif // !defined(AFX_BCGPGRIDFILTER_H__10CABCAB_AAB9_4933_906E_4097D230362A__INCLUDED_)

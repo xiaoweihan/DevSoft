@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -131,6 +131,16 @@ public:
 
 	virtual void OnInitPrintControls();
 
+	void SetMaxZoomLevel(int nMaxZoomLevel)
+	{
+		m_nMaxZoomLevel = nMaxZoomLevel;
+	}
+
+	int GetMaxZoomLevel() const
+	{
+		return m_nMaxZoomLevel;
+	}
+
 // Overrides
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPRibbonBackstagePagePrint)
@@ -165,7 +175,7 @@ protected:
 protected:
 	void LoadPrinterImages();
 	void UpdatePrinters ();
-	void UpdateLabels();
+	virtual void UpdateLabels();
 	void UpdatePapers (short nPaper = 0);
 	int GetPrinterSelection () const;
 	int GetPaperSelection () const;
@@ -233,6 +243,8 @@ protected:
 	XPapers				m_Papers;
 	
 	CView*				m_pPrintView;
+
+	int					m_nMaxZoomLevel;
 };
 
 #endif // BCGP_EXCLUDE_RIBBON

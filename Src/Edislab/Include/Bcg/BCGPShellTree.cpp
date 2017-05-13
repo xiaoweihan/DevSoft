@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -36,6 +36,7 @@ IContextMenu2* CBCGPShellTree::m_pContextMenu2 = NULL;
 
 CBCGPShellTree::CBCGPShellTree()
 {
+	m_bSystemUserInput = FALSE;
 	m_bContextMenu = TRUE;
 	m_hwndRelatedList = NULL;
 	m_bNoNotify = FALSE;
@@ -266,7 +267,7 @@ HRESULT CBCGPShellTree::EnumObjects (HTREEITEM		hParentItem,
 
 	LPENUMIDLIST pEnum;
 	
-	HRESULT hr = pParentFolder->EnumObjects (NULL, m_dwFlags, &pEnum);
+	HRESULT hr = pParentFolder->EnumObjects (m_bSystemUserInput ? GetSafeHwnd() : NULL, m_dwFlags, &pEnum);
 	if (FAILED (hr))
 	{
 		return hr;

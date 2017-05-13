@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -35,6 +35,8 @@ static char THIS_FILE[]=__FILE__;
 #ifndef GF_INERTIA
 #define GF_INERTIA	0x00000002
 #endif
+
+#define BCGP_WND_PROP_LEGACY	_T("BCBPGestureLegacy")
 
 BCGCBPRODLLEXPORT CBCGPGestureManager bcgpGestureManager;
 
@@ -195,7 +197,7 @@ BOOL CBCGPGestureManager::CloseGestureInfoHandle(BCGP_HGESTUREINFO hGestureInfo)
 	return (*m_pfCloseGestureInfoHandle)(hGestureInfo);
 }
 //************************************************************************************
-BOOL CBCGPGestureManager::SetGestureConfig(HWND hwnd, const CBCGPGestureConfig& config)
+BOOL CBCGPGestureManager::SetGestureConfig(HWND hwnd, const CBCGPGestureConfig& config, BOOL bLegacyGestures)
 {
 	if (m_pfSetGestureConfig == NULL)
 	{
@@ -204,8 +206,19 @@ BOOL CBCGPGestureManager::SetGestureConfig(HWND hwnd, const CBCGPGestureConfig& 
 	
 	BCGP_GESTURECONFIG* pConfigs = config.m_pConfigs;
 	UINT cIDs = (UINT)config.m_nConfigs;
-	
-	return (*m_pfSetGestureConfig)(hwnd, 0, cIDs, pConfigs, sizeof(BCGP_GESTURECONFIG));
+
+	if ((*m_pfSetGestureConfig)(hwnd, 0, cIDs, pConfigs, sizeof(BCGP_GESTURECONFIG)))
+	{
+		SetProp(hwnd, BCGP_WND_PROP_LEGACY, (HANDLE)bLegacyGestures);
+		return TRUE;
+	}
+
+	return FALSE;
+}
+//************************************************************************************
+BOOL CBCGPGestureManager::AreLegacyGestures(HWND hWnd) const
+{
+	return (BOOL)GetProp(hWnd, BCGP_WND_PROP_LEGACY);
 }
 //************************************************************************************
 BOOL CBCGPGestureManager::GetGestureConfig(HWND hwnd, CBCGPGestureConfig& options)
@@ -309,6 +322,11 @@ CBCGPGestureBase::~CBCGPGestureBase()
 //************************************************************************************
 BOOL CBCGPGestureBase::ProcessGestureEvent(CWnd* pWndThis, WPARAM /*wp*/, LPARAM lp)
 {
+	if (bcgpGestureManager.AreLegacyGestures(pWndThis->GetSafeHwnd()))
+	{
+		return TRUE;
+	}
+
 	if (m_pCurrentGestureInfo == NULL)
 	{
 		m_pCurrentGestureInfo = new BCGP_GESTUREINFO;
@@ -324,6 +342,7 @@ BOOL CBCGPGestureBase::ProcessGestureEvent(CWnd* pWndThis, WPARAM /*wp*/, LPARAM
 	}
 	
 	CPoint pt(m_pCurrentGestureInfo->ptsLocation.x, m_pCurrentGestureInfo->ptsLocation.y);
+	
 	pWndThis->ScreenToClient(&pt);
 	
 	BOOL bDefaultProcessing = TRUE;
@@ -334,12 +353,16 @@ BOOL CBCGPGestureBase::ProcessGestureEvent(CWnd* pWndThis, WPARAM /*wp*/, LPARAM
 		m_ptGestureFrom = pt;
 		m_ulGestureArg = m_pCurrentGestureInfo->ullArguments;
 		bcgpGestureManager.CloseGestureInfoHandle((BCGP_HGESTUREINFO)lp);
+
+		OnGestureEventBegin();
 		return TRUE;
 		
 	case BCGP_GID_END:
 		m_ptGestureFrom = CPoint(-1, -1);
 		m_ulGestureArg = 0;
 		ZeroMemory(m_pCurrentGestureInfo, sizeof(BCGP_GESTUREINFO));
+
+		OnGestureEventEnd();
 		return TRUE;
 		
 	case BCGP_GID_ZOOM:

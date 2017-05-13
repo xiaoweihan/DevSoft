@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -48,7 +48,7 @@ CBCGPMaskEdit::CBCGPMaskEdit()
 {
 	m_bGetMaskedCharsOnly = TRUE;
 	m_bSetMaskedCharsOnly = FALSE;
-	m_bSelectByGroup = TRUE;
+	m_bSelectByGroup = FALSE;
 	m_bMaskKeyInProgress = FALSE;
 	m_bPasteProcessing = FALSE;
 	m_bSetTextProcessing = FALSE;
@@ -78,6 +78,8 @@ void CBCGPMaskEdit::EnableMask(LPCTSTR lpszMask, LPCTSTR lpszInputTemplate,
 	{
 		m_strValid.Empty();
 	}
+
+	m_bSelectByGroup = !m_strMask.IsEmpty();
 }
 
 void CBCGPMaskEdit::DisableMask()
@@ -274,7 +276,7 @@ BOOL CBCGPMaskEdit::SetValue(LPCTSTR lpszString, BOOL bWithDelimiters)
 				iDstChar++;
 			}
 			
-			// iDstChar - delimeter
+			// iDstChar - delimiter
 			else 
 			{
 				if (bWithDelimiters)
@@ -958,7 +960,7 @@ void CBCGPMaskEdit::OnCharPrintchar(UINT nChar, UINT nRepCnt, UINT nFlags)
 		if (!m_strMask.IsEmpty())
 		{
 			// ----------------------------------------------
-			// Automaticaly move the cursor to the next group
+			// Automatically move the cursor to the next group
 			// ----------------------------------------------
 			if (nEndPos==nGroupEnd || // at the end of group
 				nStartPos < nGroupStart || nStartPos > nGroupEnd) // not in the middle of a group
@@ -1010,7 +1012,7 @@ void CBCGPMaskEdit::OnCharPrintchar(UINT nChar, UINT nRepCnt, UINT nFlags)
 			CBCGPEdit::SetSel(nEndPos+1, nEndPos+1);
 
 			// ----------------------------------------------
-			// Automaticaly move the cursor to the next group
+			// Automatically move the cursor to the next group
 			// ----------------------------------------------
 			CBCGPEdit::GetSel(nStartPos, nEndPos);
 			if (nEndPos==nGroupEnd) // at the end of group
@@ -1204,7 +1206,7 @@ void CBCGPMaskEdit::OnCharBackspace(UINT nChar, UINT nRepCnt, UINT nFlags)
 		if (!m_strMask.IsEmpty())
 		{
 			// --------------------------------------------------
-			// Automaticaly move the cursor to the previous group
+			// Automatically move the cursor to the previous group
 			// --------------------------------------------------
 			if (nEndPos==nGroupStart) // at the start of group
 			{
@@ -1777,6 +1779,7 @@ LRESULT CBCGPMaskEdit::OnPaste (WPARAM, LPARAM)
 
 	int nBeginOld, nEndOld;
 	CBCGPEdit::GetSel(nBeginOld, nEndOld);
+	nEndOld = max (nBeginOld, nEndOld);
 
 	Default ();
 
@@ -1815,24 +1818,34 @@ LRESULT CBCGPMaskEdit::OnPaste (WPARAM, LPARAM)
 
 	CString strNew = strOld.Left (nLeft) + strPaste;
 	BOOL bOverwrite = !m_strMask.IsEmpty ();
-	int nRight = nLeft + (bOverwrite ? strPaste.GetLength () : 0);
+	int nSelRight = nLeft + (!bOverwrite ? strPaste.GetLength () : 0);
+	int nRight = nLeft + (bOverwrite ? strPaste.GetLength () : nEndOld - nBeginOld);
 	if (nRight < strOld.GetLength ())
 	{
 		strNew += strOld.Mid (nRight);
 	}
 
-	if (!SetValue(strNew, !m_bSetMaskedCharsOnly))
+	BOOL bChanged = SetValue(strNew, !m_bSetMaskedCharsOnly);
+	if (!bChanged)
 	{
 		MessageBeep((UINT)-1);
 	}
 
 	CWnd::SetWindowText(m_str);
 
-	if (m_bSelectByGroup)
+	if (!bChanged)
 	{
-		GetGroupBounds(nBeginOld, nEndOld, nBeginOld, TRUE);
+		CBCGPEdit::SetSel(nBeginOld, nEndOld);
 	}
-	CBCGPEdit::SetSel(nBeginOld, nBeginOld);
+	else if (m_bSelectByGroup)
+	{
+		GetGroupBounds(nBeginOld, nEndOld, nSelRight, TRUE);
+		CBCGPEdit::SetSel(nBeginOld, nBeginOld);
+	}
+	else
+	{
+		CBCGPEdit::SetSel(nSelRight, nSelRight);
+	}
 
 	m_bPasteProcessing = FALSE;
 
@@ -1909,4 +1922,14 @@ BOOL CBCGPMaskEdit::IsDrawPrompt()
 	}
 
 	return GetMaskedValue(FALSE).IsEmpty();
+}
+
+void CBCGPMaskEdit::GetEditText(CString& strString)
+{
+	BOOL bSave = m_bPasteProcessing;
+	m_bPasteProcessing = TRUE;
+
+	GetWindowText(strString);
+
+	m_bPasteProcessing = bSave;
 }

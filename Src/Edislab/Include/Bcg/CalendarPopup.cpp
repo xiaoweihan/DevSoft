@@ -1,7 +1,7 @@
 // CalendarPopup.cpp : implementation file
 //
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -52,7 +52,7 @@ int CCalendarPopup::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
 	if (CBCGPToolBar::IsCustomizeMode () && !m_bEnabledInCustomizeMode)
 	{
-		// Don't show calendar popup in cistomization mode
+		// Don't show calendar popup in customization mode
 		return -1;
 	}
 

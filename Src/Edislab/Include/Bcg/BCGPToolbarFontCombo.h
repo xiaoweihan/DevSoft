@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -102,10 +102,9 @@ public:
 
 };
 
-#pragma warning( disable : 4312)
-
 //////////////////////////////////////////
-//
+// CBCGPToolbarFontCombo
+
 class BCGCBPRODLLEXPORT CBCGPToolbarFontCombo : public CBCGPToolbarComboBoxButton  
 {
 	friend class CBCGPRibbonFontComboBox;
@@ -173,11 +172,9 @@ protected:
 	CObList*		m_pLstFontsExternal;
 };
 
-#pragma warning( default : 4312)
-
-
 ////////////////////////////////////////
-// 
+// CBCGPToolbarFontSizeCombo
+
 class BCGCBPRODLLEXPORT CBCGPToolbarFontSizeCombo : public CBCGPToolbarComboBoxButton  
 {
 	DECLARE_SERIAL(CBCGPToolbarFontSizeCombo)

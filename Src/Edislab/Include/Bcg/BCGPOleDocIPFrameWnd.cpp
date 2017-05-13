@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,7 @@
 #include "BCGPUserToolsManager.h"
 #include "BCGPPrintPreviewView.h"
 #include "BCGPOleCntrFrameWnd.h"
+#include "BCGPIntelliSenseWnd.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -201,11 +202,18 @@ void CBCGPOleDocIPFrameWnd::OnClosePopupMenu (CBCGPPopupMenu* pMenuPopup)
 //*******************************************************************************************
 BOOL CBCGPOleDocIPFrameWnd::OnCommand(WPARAM wParam, LPARAM lParam) 
 {
-	if (HIWORD (wParam) == 1)
+	if (HIWORD (wParam) == 1 && lParam == 0)
 	{
 		UINT uiCmd = LOWORD (wParam);
 
 		CBCGPToolBar::AddCommandUsage (uiCmd);
+
+#ifndef BCGP_EXCLUDE_EDIT_CTRL
+		if (CBCGPIntelliSenseWnd::m_hwndActive != NULL && ::IsWindow(CBCGPIntelliSenseWnd::m_hwndActive))
+		{
+			::SendMessage(CBCGPIntelliSenseWnd::m_hwndActive, WM_CLOSE, 0, 0);
+		}
+#endif
 
 		//---------------------------
 		// Simmulate ESC keystroke...

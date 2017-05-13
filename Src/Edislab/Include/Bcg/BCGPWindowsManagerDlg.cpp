@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -30,7 +30,7 @@ static char THIS_FILE[] = __FILE__;
 
 UINT WM_BCGWINDOW_HELP = ::RegisterWindowMessage(_T("WINDOW_HELP"));
 
-CBCGPWindowsManagerDlg::CBCGPWindowsManagerDlg(CBCGPMDIFrameWnd* pMDIFrame, BOOL bHelpButton)
+CBCGPWindowsManagerDlg::CBCGPWindowsManagerDlg(CBCGPMDIFrameWnd* pMDIFrame, BOOL bHelpButton, BOOL bResizable)
 	: CBCGPDialog(CBCGPWindowsManagerDlg::IDD, pMDIFrame),
 	m_pMDIFrame (pMDIFrame),
 	m_bHelpButton (bHelpButton)
@@ -42,6 +42,11 @@ CBCGPWindowsManagerDlg::CBCGPWindowsManagerDlg(CBCGPMDIFrameWnd* pMDIFrame, BOOL
 	m_bMDIActions = TRUE;
 
 	EnableVisualManagerStyle (globalData.m_bUseVisualManagerInBuiltInDialogs, TRUE);
+
+	if (bResizable)
+	{
+		EnableLayout();
+	}
 }
 
 
@@ -127,7 +132,27 @@ void CBCGPWindowsManagerDlg::OnActivate()
 					::ShowWindow((HWND) dw,SW_RESTORE);
 				}
 
-				::SendMessage(m_pMDIFrame->m_hWndMDIClient,WM_MDIACTIVATE,(WPARAM) dw,0);
+				CBCGPMDIFrameWnd* pMDIFrame = m_pMDIFrame;
+				
+				CBCGPMDIChildWnd* pMDIChild = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, CWnd::FromHandlePermanent((HWND)dw));
+				if (pMDIChild != NULL)
+				{
+					ASSERT_VALID(pMDIChild);
+
+					if (pMDIChild->m_pMDIFrame != NULL && pMDIChild->m_pMDIFrame != pMDIFrame)
+					{
+						pMDIFrame = pMDIChild->m_pMDIFrame;
+
+						if (pMDIFrame->IsIconic())
+						{
+							pMDIFrame->ShowWindow(SW_RESTORE);
+						}
+
+						pMDIFrame->SetActiveWindow();
+					}
+				}
+
+				::SendMessage(pMDIFrame->m_hWndMDIClient,WM_MDIACTIVATE,(WPARAM) dw,0);
 				EndDialog(IDOK);
 			}
 		}
@@ -177,11 +202,11 @@ void CBCGPWindowsManagerDlg::OnSave()
 //**************************************************************************************
 void CBCGPWindowsManagerDlg::OnClose() 
 {
+	BOOL bIsTearOffFrame = m_pMDIFrame->IsTearOff();
+
 	int nItems = m_wndList.GetCount();
 	if (nItems > 0)
 	{
-		HWND hMDIClient = m_pMDIFrame->m_hWndMDIClient;
-		
 		m_wndList.SetRedraw (FALSE);
 
 		for (int i = nItems - 1; i>=0; i--)
@@ -189,7 +214,19 @@ void CBCGPWindowsManagerDlg::OnClose()
 			if (m_wndList.GetSel(i) > 0)
 			{					   
 				HWND hWnd=(HWND) m_wndList.GetItemData (i);
+				HWND hMDIClient = m_pMDIFrame->m_hWndMDIClient;
 				
+				CBCGPMDIChildWnd* pMDIChild = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, CWnd::FromHandlePermanent(hWnd));
+				if (pMDIChild != NULL)
+				{
+					ASSERT_VALID(pMDIChild);
+					
+					if (pMDIChild->m_pMDIFrame != NULL && pMDIChild->m_pMDIFrame != m_pMDIFrame)
+					{
+						hMDIClient = pMDIChild->m_pMDIFrame->m_hWndMDIClient;
+					}
+				}
+
 				::SendMessage(hWnd,WM_CLOSE,(WPARAM) 0, (LPARAM) 0);
 
 				if (::GetParent(hWnd) == hMDIClient)
@@ -205,6 +242,11 @@ void CBCGPWindowsManagerDlg::OnClose()
 	FillWindowList ();
 	SelActive ();
 	UpdateButtons ();
+
+	if (m_wndList.GetCount() == 0 && bIsTearOffFrame)
+	{
+		EndDialog(IDCANCEL);
+	}
 }
 //**************************************************************************************
 void CBCGPWindowsManagerDlg::OnCascade() 
@@ -250,13 +292,29 @@ BOOL CBCGPWindowsManagerDlg::OnInitDialog()
 {
 	CBCGPDialog::OnInitDialog();
 	
-	if (AfxGetMainWnd () != NULL && 
-		(AfxGetMainWnd ()->GetExStyle () & WS_EX_LAYOUTRTL))
+	if (AfxGetMainWnd () != NULL && (AfxGetMainWnd ()->GetExStyle () & WS_EX_LAYOUTRTL))
 	{
 		ModifyStyleEx (0, WS_EX_LAYOUTRTL);
 	}
 
+	ModifyStyle(0, WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
+
 	FillWindowList();
+
+	CBCGPStaticLayout* pLayout = (CBCGPStaticLayout*)GetLayout ();
+	if (pLayout != NULL)
+	{
+		pLayout->AddAnchor(IDC_BCGBARRES_LIST, CBCGPStaticLayout::e_MoveTypeNone, CBCGPStaticLayout::e_SizeTypeBoth);
+		pLayout->AddAnchor(IDC_BCGBARRES_ACTIVATE, CBCGPStaticLayout::e_MoveTypeHorz, CBCGPStaticLayout::e_SizeTypeNone);
+		pLayout->AddAnchor(IDOK, CBCGPStaticLayout::e_MoveTypeHorz, CBCGPStaticLayout::e_SizeTypeNone);
+		pLayout->AddAnchor(IDC_BCGBARRES_SAVE, CBCGPStaticLayout::e_MoveTypeHorz, CBCGPStaticLayout::e_SizeTypeNone);
+		pLayout->AddAnchor(IDC_BCGBARRES_CLOSE, CBCGPStaticLayout::e_MoveTypeHorz, CBCGPStaticLayout::e_SizeTypeNone);
+		pLayout->AddAnchor(IDC_BCGBARRES_CASCADE, CBCGPStaticLayout::e_MoveTypeHorz, CBCGPStaticLayout::e_SizeTypeNone);
+		pLayout->AddAnchor(IDC_BCGBARRES_TILEHORZ, CBCGPStaticLayout::e_MoveTypeHorz, CBCGPStaticLayout::e_SizeTypeNone);
+		pLayout->AddAnchor(IDC_BCGBARRES_TILEVERT, CBCGPStaticLayout::e_MoveTypeHorz, CBCGPStaticLayout::e_SizeTypeNone);
+		pLayout->AddAnchor(IDC_BCGBARRES_MINIMIZE, CBCGPStaticLayout::e_MoveTypeHorz, CBCGPStaticLayout::e_SizeTypeNone);
+		pLayout->AddAnchor(ID_HELP, CBCGPStaticLayout::e_MoveTypeBoth, CBCGPStaticLayout::e_SizeTypeNone);
+	}
 
 	// If no MDI actions are availible, hide all MDI-related buttons:
 
@@ -326,24 +384,113 @@ void CBCGPWindowsManagerDlg::UpdateButtons()
 // Selects currently active window in listbox
 void CBCGPWindowsManagerDlg::SelActive()
 {
+	ASSERT_VALID(m_pMDIFrame);
+
 	int nItems = m_wndList.GetCount();
 	if (nItems > 0)
 	{
 		m_wndList.SetRedraw(FALSE);
 		m_wndList.SelItemRange (FALSE, 0, nItems - 1);
-		
-		HWND hwndActive = (HWND) ::SendMessage(m_pMDIFrame->m_hWndMDIClient,WM_MDIGETACTIVE,0,0);
-	
-		for (int i = 0; i <nItems; i++)
+
+		CList<HWND, HWND> lstSelected;
+		m_pMDIFrame->GetSelectedMDIChildren(lstSelected);
+
+		if (lstSelected.IsEmpty())
 		{
-			if ((HWND) m_wndList.GetItemData(i)==hwndActive)  
+			return;
+		}
+
+		for (int i = 0; i < nItems; i++)
+		{
+			HWND hWnd = (HWND)m_wndList.GetItemData(i);
+
+			if (lstSelected.Find(hWnd) != NULL)
 			{
-				m_wndList.SetSel (i);
-				break;
+				m_wndList.SetSel(i);
+
+				if (m_wndList.GetSelCount() == (int)lstSelected.GetCount())
+				{
+					break;
+				}
 			}
 		}
 
 		m_wndList.SetRedraw (TRUE);
+	}
+}
+
+void CBCGPWindowsManagerDlg::AddMDIChildren(CBCGPMDIFrameWnd* pMDIFrame, CDC& dcList, int& cxExtent)
+{
+	ASSERT_VALID(pMDIFrame);
+	ASSERT(pMDIFrame->GetSafeHwnd() != NULL);
+
+	HWND hwndT = ::GetWindow(pMDIFrame->m_hWndMDIClient, GW_CHILD);
+	while (hwndT != NULL)
+	{
+		CBCGPMDIChildWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPMDIChildWnd, 
+			CWnd::FromHandle (hwndT));
+		if (pFrame == NULL)
+		{
+			hwndT = ::GetWindow(hwndT,GW_HWNDNEXT);
+			continue;
+		}
+		
+		if (!pFrame->IsWindowVisible())
+		{
+			hwndT = ::GetWindow(hwndT,GW_HWNDNEXT);
+			continue;
+		}
+		
+		if (!pFrame->CanShowOnWindowsList ())
+		{
+			hwndT = ::GetWindow(hwndT,GW_HWNDNEXT);
+			continue;
+		}
+		
+		TCHAR	szWndTitle[256];
+		::GetWindowText(hwndT,szWndTitle,sizeof(szWndTitle)/sizeof(szWndTitle[0]));
+		
+		int index = m_wndList.AddString(szWndTitle);
+		
+		int cxCurr = dcList.GetTextExtent (szWndTitle).cx; 
+		cxExtent = max (cxExtent, cxCurr);
+		
+		m_wndList.SetItemData(index,(DWORD_PTR) hwndT);
+		
+		if (pFrame != NULL && pFrame->IsReadOnly ())
+		{
+			m_lstSaveDisabled.AddTail (hwndT);
+		}
+		
+		DWORD dwStyle = ::GetWindowLong (hwndT, GWL_STYLE);
+		if ((dwStyle & WS_SYSMENU) == 0)
+		{
+			m_bMDIActions = FALSE;
+		}
+		else
+		{
+			HMENU hSysMenu = ::GetSystemMenu (hwndT, FALSE);
+			if (hSysMenu == NULL)
+			{
+				m_bMDIActions = FALSE;
+			}
+			else
+			{
+				MENUITEMINFO menuInfo;
+				ZeroMemory(&menuInfo,sizeof(MENUITEMINFO));
+				menuInfo.cbSize = sizeof(MENUITEMINFO);
+				menuInfo.fMask = MIIM_STATE;
+				
+				if (!::GetMenuItemInfo(hSysMenu, SC_CLOSE, FALSE, &menuInfo) ||
+					(menuInfo.fState & MFS_GRAYED) || 
+					(menuInfo.fState & MFS_DISABLED))
+				{
+					m_lstCloseDisabled.AddTail (hwndT);
+				}
+			}
+		}
+		
+		hwndT = ::GetWindow(hwndT,GW_HWNDNEXT);
 	}
 }
 
@@ -363,70 +510,23 @@ void CBCGPWindowsManagerDlg::FillWindowList(void)
 	m_lstCloseDisabled.RemoveAll ();
 	m_lstSaveDisabled.RemoveAll ();
 
-	HWND hwndT = ::GetWindow(m_pMDIFrame->m_hWndMDIClient, GW_CHILD);
-	while (hwndT != NULL)
+	AddMDIChildren(m_pMDIFrame, dcList, cxExtent);
+
+	if (m_pMDIFrame->AreMDIChildrenTearOff() && !m_pMDIFrame->IsTearOff())
 	{
-		CBCGPMDIChildWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPMDIChildWnd, 
-			CWnd::FromHandle (hwndT));
-		if (pFrame == NULL)
+		const CList<CFrameWnd*, CFrameWnd*>& lstFrames = CBCGPFrameImpl::GetFrameList();
+		for (POSITION pos = lstFrames.GetHeadPosition(); pos != NULL;)
 		{
-			hwndT = ::GetWindow(hwndT,GW_HWNDNEXT);
-			continue;
-		}
-
-		if (!pFrame->CanShowOnWindowsList ())
-		{
-			hwndT = ::GetWindow(hwndT,GW_HWNDNEXT);
-			continue;
-		}
-
-		TCHAR	szWndTitle[256];
-		::GetWindowText(hwndT,szWndTitle,sizeof(szWndTitle)/sizeof(szWndTitle[0]));
-
-		int index = m_wndList.AddString(szWndTitle);
-
-		int cxCurr = dcList.GetTextExtent (szWndTitle).cx; 
-		cxExtent = max (cxExtent, cxCurr);
-
-		m_wndList.SetItemData(index,(DWORD_PTR) hwndT);
-
-		if (pFrame != NULL && pFrame->IsReadOnly ())
-		{
-			m_lstSaveDisabled.AddTail (hwndT);
-		}
-
-		DWORD dwStyle = ::GetWindowLong (hwndT, GWL_STYLE);
-		if ((dwStyle & WS_SYSMENU) == 0)
-		{
-			m_bMDIActions = FALSE;
-		}
-		else
-		{
-			HMENU hSysMenu = ::GetSystemMenu (hwndT, FALSE);
-			if (hSysMenu == NULL)
+			CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, lstFrames.GetNext(pos));
+			
+			if (pMDIFrame->GetSafeHwnd() != NULL && pMDIFrame != m_pMDIFrame && pMDIFrame->IsTearOff())
 			{
-				m_bMDIActions = FALSE;
-			}
-			else
-			{
-				MENUITEMINFO menuInfo;
-				ZeroMemory(&menuInfo,sizeof(MENUITEMINFO));
-				menuInfo.cbSize = sizeof(MENUITEMINFO);
-				menuInfo.fMask = MIIM_STATE;
-
-				if (!::GetMenuItemInfo(hSysMenu, SC_CLOSE, FALSE, &menuInfo) ||
-					(menuInfo.fState & MFS_GRAYED) || 
-					(menuInfo.fState & MFS_DISABLED))
-				{
-					m_lstCloseDisabled.AddTail (hwndT);
-				}
+				AddMDIChildren(pMDIFrame, dcList, cxExtent);
 			}
 		}
-
-		hwndT = ::GetWindow(hwndT,GW_HWNDNEXT);
 	}
 
-	m_wndList.SetHorizontalExtent (cxExtent + ::GetSystemMetrics (SM_CXHSCROLL) + 30);
+	m_wndList.SetHorizontalExtent (cxExtent + ::GetSystemMetrics (SM_CXHSCROLL) + globalUtils.ScaleByDPI(30));
 	dcList.SelectObject (pOldFont);
 
 	m_Icons.DeleteImageList();
@@ -437,9 +537,17 @@ void CBCGPWindowsManagerDlg::FillWindowList(void)
 		HWND hwnd = (HWND)m_wndList.GetItemData(i);
 		HICON hIcon = NULL;
 
-		if ((hIcon = (HICON)::SendMessage(hwnd, WM_GETICON, FALSE, 0)) == NULL)
+		CBCGPMDIChildWnd* pMDIChild = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, CWnd::FromHandlePermanent(hwnd));
+		if (pMDIChild->GetSafeHwnd() != NULL)
 		{
-			hIcon = (HICON)(LONG_PTR)GetClassLongPtr(hwnd, GCLP_HICONSM);
+			hIcon = pMDIChild->GetFrameIcon();
+		}
+		else
+		{
+			if ((hIcon = (HICON)::SendMessage(hwnd, WM_GETICON, FALSE, 0)) == NULL)
+			{
+				hIcon = (HICON)(LONG_PTR)GetClassLongPtr(hwnd, GCLP_HICONSM);
+			}
 		}
 
 		if (hIcon != NULL)

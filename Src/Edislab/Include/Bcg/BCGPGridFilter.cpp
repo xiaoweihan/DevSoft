@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -16,6 +16,8 @@
 #include "stdafx.h"
 #include "BCGPGridCtrl.h"
 #include "BCGPGridFilter.h"
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
 
 /////////////////////////////////////////////////////////////////////////////
 // BCGP_FILTER_COLUMN_INFO
@@ -208,3 +210,5 @@ LRESULT CALLBACK CBCGPGridFilter::pfnFilterCallback (WPARAM wParam, LPARAM lPara
 
 	return FALSE; // do not hide
 }
+
+#endif

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -14,6 +14,8 @@
 //
 
 #include "stdafx.h"
+
+#include "BCGCBPro.h"
 #include "BCGPExplorerToolBar.h"
 
 #ifndef _BCGSUITE_
@@ -23,6 +25,7 @@
 #include "BCGPToolbarMenuButton.h"
 #include "BCGPContextMenuManager.h"
 #include "CustomizeButton.h"
+#include "MenuImages.h"
 #else
 #include "afxcustomizebutton.h"
 #endif
@@ -30,6 +33,8 @@
 #include "BCGPLocalResource.h"
 #include "BCGPVisualManager.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPGlobalUtils.h"
+#include "BCGPDrawManager.h"
 #include "BCGProRes.h"
 
 #ifdef _DEBUG
@@ -40,6 +45,15 @@ static char THIS_FILE[] = __FILE__;
 
 static const int nHorzMargin = 2;
 
+#ifndef _BCGSUITE_
+#define visualManager			CBCGPVisualManager
+#define visualManagerInstance	CBCGPVisualManager::GetInstance ()
+#else
+#define visualManager			CMFCVisualManager
+#define visualManagerInstance	CMFCVisualManager::GetInstance ()
+#endif
+
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPExplorerNavigationButton
 
@@ -47,7 +61,8 @@ enum BCGPNavButtonType
 {
 	BCGPNav_Back,
 	BCGPNav_Forward,
-	BCGPNav_Margin
+	BCGPNav_Up,
+	BCGPNav_Margin,
 };
 
 class CBCGPExplorerNavigationButton : public CBCGPToolbarButton
@@ -76,6 +91,11 @@ public:
 						BOOL bDrawBorder = TRUE,
 						BOOL bGrayDisabledButtons = TRUE);
 	virtual SIZE OnCalculateSize (CDC* pDC, const CSize& sizeDefault, BOOL bHorz);
+	
+	virtual BOOL IsExplorerNavigationButton() const
+	{
+		return TRUE;
+	}
 
 protected:
 	BCGPNavButtonType	m_Type;
@@ -93,6 +113,26 @@ void CBCGPExplorerNavigationButton::CopyFrom (const CBCGPToolbarButton& s)
 	m_Type = src.m_Type;
 	m_xPreferredWidth = src.m_xPreferredWidth;
 }
+
+#ifndef _BCGSUITE_
+
+static CBCGPMenuImages::IMAGE_STATE GetNavImageState(BOOL bIsDisabled, BOOL bIsHighlighted)
+{
+	CBCGPMenuImages::IMAGE_STATE stateImage = CBCGPMenuImages::ImageBlack;
+	
+	if (bIsDisabled)
+	{
+		stateImage = CBCGPVisualManager::GetInstance()->IsDarkTheme() ? CBCGPMenuImages::ImageDkGray : CBCGPMenuImages::ImageLtGray;
+	}
+	else if (bIsHighlighted)
+	{
+		stateImage = CBCGPMenuImages::ImageBlack2;
+	}
+
+	return stateImage;
+}
+
+#endif
 
 void CBCGPExplorerNavigationButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages* /*pImages*/,
 						BOOL /*bHorz*/, BOOL /*bCustomizeMode*/,
@@ -114,16 +154,63 @@ void CBCGPExplorerNavigationButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPTo
 		return;
 	}
 
-	pToolBar->OnDrawNavButton (pDC, this, m_Type == BCGPNav_Forward, rect, bHighlight);
+	BOOL bIsForward = m_Type == BCGPNav_Forward;
+	BOOL bIsUp = m_Type == BCGPNav_Up;
+
+	if (!pToolBar->m_bSimplifiedNavigationButtons && !bIsUp)
+	{
+		pToolBar->OnDrawNavButton (pDC, this, bIsForward, rect, bHighlight);
+		return;
+	}
+
+	FillInterior (pDC, rect, bHighlight);
+
+#ifndef _BCGSUITE_
+	visualManager::BCGBUTTON_STATE state = visualManager::ButtonsIsRegular;
+#else
+	visualManager::AFX_BUTTON_STATE state = visualManager::ButtonsIsRegular;
+#endif
+	
+	if (bHighlight)
+	{
+		if (m_nStyle & (TBBS_PRESSED | TBBS_CHECKED))
+		{
+			//-----------------------
+			// Pressed in or checked:
+			//-----------------------
+			state = visualManager::ButtonsIsPressed;
+		}
+		else
+		{
+			state = visualManager::ButtonsIsHighlighted;
+		}
+	}
+
+	CRect rectText = rect;
+
+#ifndef _BCGSUITE_
+	CBCGPMenuImages::IMAGE_STATE stateImage = GetNavImageState(m_nStyle & TBBS_DISABLED, bHighlight);
+	CBCGPMenuImages::Draw(pDC, bIsUp ? CBCGPMenuImages::IdExplorerUp : bIsForward ? CBCGPMenuImages::IdExplorerForward : CBCGPMenuImages::IdExplorerBack, rectText, stateImage);
+#else
+	const CString strOut(bIsUp ? _T("^") : bIsForward ? _T(">") : _T("<"));
+
+	pDC->SetTextColor(visualManagerInstance->GetToolbarButtonTextColor(this, state));
+	pDC->DrawText(strOut, rectText, DT_VCENTER | DT_SINGLELINE | DT_CENTER);
+#endif
+
+	//--------------------
+	// Draw button border:
+	//--------------------
+	visualManagerInstance->OnDrawButtonBorder (pDC, this, rect, state);
 }
 
-SIZE CBCGPExplorerNavigationButton::OnCalculateSize (CDC* /*pDC*/, const CSize& /*sizeDefault*/, BOOL /*bHorz*/)
+SIZE CBCGPExplorerNavigationButton::OnCalculateSize (CDC* /*pDC*/, const CSize& sizeDefault, BOOL /*bHorz*/)
 {
 	ASSERT_VALID (this);
 
 	if (m_Type == BCGPNav_Margin)
 	{
-		return CSize (m_xPreferredWidth, 1);
+		return CSize (m_xPreferredWidth, 4);
 	}
 
 	if (m_nID == 0)
@@ -138,6 +225,14 @@ SIZE CBCGPExplorerNavigationButton::OnCalculateSize (CDC* /*pDC*/, const CSize& 
 	}
 
 	ASSERT_VALID (pToolBar);
+
+	BOOL bIsUp = m_Type == BCGPNav_Up;
+
+	if (pToolBar->m_bSimplifiedNavigationButtons || bIsUp)
+	{
+		int nCheckSize = ::GetSystemMetrics (SM_CYMENUCHECK);
+		return CSize(max(sizeDefault.cx, nCheckSize + nHorzMargin), max(sizeDefault.cy, nCheckSize));
+	}
 
 	const CSize sizeImage = pToolBar->GetNavImageSize ();
 
@@ -185,19 +280,78 @@ public:
 
 		return rect;
 	}
+
+	virtual BOOL IsExplorerNavigationButton() const
+	{
+		return TRUE;
+	}
 };
 
 IMPLEMENT_DYNCREATE(CBCGPExplorerNavigationHistoryButton, CBCGPToolbarMenuButton)
 
-void CBCGPExplorerNavigationHistoryButton::OnDraw (CDC* /*pDC*/, const CRect& /*rect*/, CBCGPToolBarImages* /*pImages*/,
+void CBCGPExplorerNavigationHistoryButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages* /*pImages*/,
 						BOOL /*bHorz*/, BOOL /*bCustomizeMode*/,
-						BOOL /*bHighlight*/,
+						BOOL bHighlight,
 						BOOL /*bDrawBorder*/,
 						BOOL /*bGrayDisabledButtons*/)
 {
+	ASSERT_VALID (this);
+
+	CBCGPExplorerToolBar* pToolBar = DYNAMIC_DOWNCAST(CBCGPExplorerToolBar, m_pWndParent);
+	if (pToolBar == NULL)
+	{
+		return;
+	}
+
+	if (!pToolBar->m_bSimplifiedNavigationButtons)
+	{
+		return;
+	}
+
+	FillInterior (pDC, rect, bHighlight);
+	
+#ifndef _BCGSUITE_
+	visualManager::BCGBUTTON_STATE state = visualManager::ButtonsIsRegular;
+#else
+	visualManager::AFX_BUTTON_STATE state = visualManager::ButtonsIsRegular;
+#endif
+	
+	if (bHighlight || pToolBar->m_bIsHistoryDroppedDown)
+	{
+		if (m_nStyle & (TBBS_PRESSED | TBBS_CHECKED))
+		{
+			//-----------------------
+			// Pressed in or checked:
+			//-----------------------
+			state = visualManager::ButtonsIsPressed;
+		}
+		else
+		{
+			state = visualManager::ButtonsIsHighlighted;
+		}
+	}
+	
+	CRect rectText = rect;
+	
+#ifndef _BCGSUITE_
+	CBCGPMenuImages::IMAGE_STATE stateImage = GetNavImageState(m_nStyle & TBBS_DISABLED, bHighlight);
+	CBCGPMenuImages::Draw(pDC, CBCGPMenuImages::IdArowDownLarge, rectText, stateImage);
+#else
+	CBCGPFontSelector fs(*pDC, &globalData.fontMarlett);
+
+	pDC->SetTextColor(visualManagerInstance->GetToolbarButtonTextColor(this, state));
+
+	CString strOut = _T("u");
+	pDC->DrawText(strOut, rectText, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+#endif
+	
+	//--------------------
+	// Draw button border:
+	//--------------------
+	visualManagerInstance->OnDrawButtonBorder (pDC, this, rect, state);
 }
 
-SIZE CBCGPExplorerNavigationHistoryButton::OnCalculateSize (CDC* /*pDC*/, const CSize& /*sizeDefault*/, BOOL /*bHorz*/)
+SIZE CBCGPExplorerNavigationHistoryButton::OnCalculateSize (CDC* /*pDC*/, const CSize& sizeDefault, BOOL /*bHorz*/)
 {
 	ASSERT_VALID (this);
 
@@ -213,6 +367,12 @@ SIZE CBCGPExplorerNavigationHistoryButton::OnCalculateSize (CDC* /*pDC*/, const 
 	}
 
 	ASSERT_VALID (pToolBar);
+
+	if (pToolBar->m_bSimplifiedNavigationButtons)
+	{
+		int nCheckSize = ::GetSystemMetrics (SM_CYMENUCHECK);
+		return CSize(nCheckSize + 2 * nHorzMargin, max(sizeDefault.cy, nCheckSize));
+	}
 
 	const CSize sizeImage = pToolBar->GetNavImageSize ();
 	const CSize sizeFrame = pToolBar->GetNavFrameSize ();
@@ -435,9 +595,11 @@ CBCGPExplorerToolBar::CBCGPExplorerToolBar()
 {
 	m_nBackID = 0;
 	m_nForwardID = 0;
+	m_nUpID = 0;
 	m_nHistoryID = 0;
 	m_nHistoryItemID = 0;
 	m_xRightMargin = 15;
+	m_bSimplifiedNavigationButtons = FALSE;
 	m_rectNavButtons.SetRectEmpty ();
 	m_rectHistoryButton.SetRectEmpty ();
 	m_bIsHistoryDroppedDown = FALSE;
@@ -554,7 +716,7 @@ BOOL CBCGPExplorerToolBar::CreateEx (CWnd* pParentWnd, DWORD /*dwCtrlStyle*/, DW
 //********************************************************************************
 void CBCGPExplorerToolBar::EnableNavigationButtons (UINT nBackID, UINT nForwardID, 
 												 UINT nHistoryID, UINT nHistoryItemID,
-												 int xRightMargin)
+												 int xRightMargin, UINT nUpID, BOOL bSimplifiedNavigationButtons)
 {
 	ASSERT_VALID (this);
 
@@ -563,11 +725,46 @@ void CBCGPExplorerToolBar::EnableNavigationButtons (UINT nBackID, UINT nForwardI
 	m_nHistoryID = nHistoryID;
 	m_nHistoryItemID = nHistoryItemID;
 	m_xRightMargin = xRightMargin;
+	m_nUpID = nUpID;
+	m_bSimplifiedNavigationButtons = bSimplifiedNavigationButtons;
+
+	while (!m_Buttons.IsEmpty())
+	{
+		CBCGPToolbarButton* pButton = DYNAMIC_DOWNCAST(CBCGPToolbarButton, m_Buttons.GetHead());
+		if (pButton == NULL)
+		{
+			break;
+		}
+
+#ifndef _BCGSUITE_
+		if (!pButton->IsExplorerNavigationButton())
+		{
+			break;
+		}
+#else
+		if (DYNAMIC_DOWNCAST(CBCGPExplorerNavigationButton, pButton) == NULL && DYNAMIC_DOWNCAST(CBCGPExplorerNavigationHistoryButton, pButton) == NULL)
+		{
+			break;
+		}
+#endif
+		delete m_Buttons.RemoveHead();
+	}
 }
 //********************************************************************************
 void CBCGPExplorerToolBar::EnableAddressBar(UINT nID, HWND hwndAddressBar, BOOL bStretch, int nAddressBarMinWidth)
 {
 	ASSERT_VALID (this);
+	
+	if (m_hWndAddressBar != NULL && hwndAddressBar == NULL)
+	{
+		// Hide previously enabled address bar:
+		int nIndex = CommandToIndex(m_nAddressBarID);
+		if (nIndex >= 0)
+		{
+			::ShowWindow(m_hWndAddressBar, SW_HIDE);
+			RemoveButton(nIndex);
+		}
+	}
 
 	m_nStretchID = (hwndAddressBar != NULL && bStretch) ? nID : 0;
 	m_nAddressBarID = hwndAddressBar != NULL ? nID : 0;
@@ -594,17 +791,25 @@ void CBCGPExplorerToolBar::OnLoadNavImages ()
 	m_NavFrames16.SetTransparentColor (globalData.clrBtnFace);
 	m_NavFrames16.Load (IDB_BCGBARRES_NAV_FRAMES_16);
 
+	m_NavImages.Clear();
 	m_NavImages.SetImageSize (sizeImage);
 	m_NavImages.Load (CBCGPVisualManager::GetInstance()->GetNavButtonsID(FALSE));
+	globalUtils.ScaleByDPI(m_NavImages);
 	
+	m_NavFrames.Clear();
 	m_NavFrames.SetImageSize (sizeFrame);
 	m_NavFrames.Load (CBCGPVisualManager::GetInstance()->GetNavFrameID(FALSE));
+	globalUtils.ScaleByDPI(m_NavFrames);
 
+	m_NavImagesLarge.Clear();
 	m_NavImagesLarge.SetImageSize (sizeImageLarge);
 	m_NavImagesLarge.Load (CBCGPVisualManager::GetInstance()->GetNavButtonsID(TRUE));
+	globalUtils.ScaleByDPI(m_NavImagesLarge);
 	
+	m_NavFramesLarge.Clear();
 	m_NavFramesLarge.SetImageSize (sizeFrameLarge);
 	m_NavFramesLarge.Load (CBCGPVisualManager::GetInstance()->GetNavFrameID(TRUE));
+	globalUtils.ScaleByDPI(m_NavFramesLarge);
 }
 //**********************************************************************************
 void CBCGPExplorerToolBar::AdjustLocations ()
@@ -713,7 +918,7 @@ void CBCGPExplorerToolBar::AdjustLocations ()
 				CSize sizeButton = pButton->OnCalculateSize (&dc, sizeGrid, TRUE);
 				if (pButton->m_bTextBelow)
 				{
-					sizeButton.cy =  sizeGrid.cy;
+					sizeButton.cy = sizeGrid.cy;
 				}
 
 				if (nIndex == nStretchButtonIndex)
@@ -741,20 +946,24 @@ void CBCGPExplorerToolBar::AdjustLocations ()
 		}
 	}
 
-	if (m_nBackID != 0 && m_nForwardID != 0)
+	if (m_nBackID != 0)
 	{
 		CRect rectBack (0, 0, 0, 0);
 		GetItemRect(CommandToIndex (m_nBackID), rectBack);
 
-		CRect rectForward (0, 0, 0, 0);
-		GetItemRect(CommandToIndex (m_nForwardID), rectForward);
-
 		m_rectNavButtons = rectBack;
-		m_rectNavButtons.right = rectForward.right + nHorzMargin;
 
-		if (m_nHistoryID != 0)
+		if (m_nForwardID != 0)
 		{
-			GetItemRect(CommandToIndex (m_nHistoryID), m_rectHistoryButton);
+			CRect rectForward (0, 0, 0, 0);
+			GetItemRect(CommandToIndex (m_nForwardID), rectForward);
+
+			m_rectNavButtons.right = rectForward.right + nHorzMargin;
+
+			if (m_nHistoryID != 0)
+			{
+				GetItemRect(CommandToIndex (m_nHistoryID), m_rectHistoryButton);
+			}
 		}
 
 		UpdateTooltips ();
@@ -776,7 +985,7 @@ void CBCGPExplorerToolBar::OnFillBackground (CDC* pDC)
 	
 	CBCGPToolBar::OnFillBackground (pDC);
 
-	if (!m_rectNavButtons.IsRectEmpty ())
+	if (!m_rectNavButtons.IsRectEmpty () && !m_bSimplifiedNavigationButtons)
 	{
 		OnDrawNavButtonsFrame (pDC);
 	}
@@ -864,14 +1073,26 @@ int CBCGPExplorerToolBar::CalcMaxButtonHeight ()
 {
 	int nNextIndex = 0;
 
-	if (m_nBackID != 0 && m_nForwardID != 0 && CommandToIndex (m_nBackID) < 0)
+	if (m_nBackID != 0 && CommandToIndex (m_nBackID) < 0)
 	{
-		InsertButton (CBCGPExplorerNavigationButton (m_nBackID, BCGPNav_Back), 0);
-		InsertButton (CBCGPExplorerNavigationButton (m_nForwardID, BCGPNav_Forward), 1);
-		InsertButton (CBCGPExplorerNavigationHistoryButton (m_nHistoryID, m_nHistoryItemID), 2);
-		InsertButton (CBCGPExplorerNavigationButton (m_nBackID == 0 ? 0 : m_xRightMargin), 3);
+		InsertButton (CBCGPExplorerNavigationButton (m_nBackID, BCGPNav_Back), nNextIndex++);
 
-		nNextIndex = 4;
+		if (m_nForwardID != 0)
+		{
+			InsertButton (CBCGPExplorerNavigationButton (m_nForwardID, BCGPNav_Forward), nNextIndex++);
+
+			if (m_nHistoryID != 0)
+			{
+				InsertButton (CBCGPExplorerNavigationHistoryButton (m_nHistoryID, m_nHistoryItemID), nNextIndex++);
+			}
+		}
+
+		if (m_nUpID != 0)
+		{
+			InsertButton (CBCGPExplorerNavigationButton (m_nUpID, BCGPNav_Up), nNextIndex++);
+		}
+
+		InsertButton (CBCGPExplorerNavigationButton(globalUtils.ScaleByDPI(m_xRightMargin)), nNextIndex++);
 	}
 
 	if (m_nAddressBarID != 0 && CommandToIndex(m_nAddressBarID) < 0)
@@ -935,11 +1156,7 @@ void CBCGPExplorerToolBar::OnShowWindow(BOOL bShow, UINT nStatus)
 		margins.cyTopHeight = 0;
 		margins.cyBottomHeight = 0;
 
-#if _MSC_VER < 1700 || !defined(_BCGSUITE_)
-		globalData.DwmExtendFrameIntoClientArea (GetParent ()->GetSafeHwnd (), &margins);
-#else
-		DwmExtendFrameIntoClientArea (GetParent ()->GetSafeHwnd (), &margins);
-#endif
+		BCGCBProDwmExtendFrameIntoClientArea(GetParent()->GetSafeHwnd(), &margins);
 	}
 }
 //**********************************************************************************
@@ -970,7 +1187,7 @@ CSize CBCGPExplorerToolBar::CalcLayout (DWORD dwMode, int nLength)
 {
 	CSize size = CBCGPToolBar::CalcLayout (dwMode, nLength);
 
-	if (m_nBackID != 0 && m_nForwardID != 0)
+	if (m_nBackID != 0 && !m_bSimplifiedNavigationButtons)
 	{
 		size.cy = max (size.cy, GetNavFrameSize ().cy + 2);
 	}
@@ -980,7 +1197,7 @@ CSize CBCGPExplorerToolBar::CalcLayout (DWORD dwMode, int nLength)
 //**********************************************************************************
 void CBCGPExplorerToolBar::OnLButtonDown(UINT nFlags, CPoint point) 
 {
-#if (!defined _BCGSUITE_)
+#if (!defined _BCGSUITE_) && (!defined BCGP_EXCLUDE_RIBBON)
 	if ((m_bOnGlass || CBCGPVisualManager::GetInstance()->DoesRibbonExtendCaptionToTabsArea()) && HitTest(point) < 0)
 	{
 		CPoint ptScreen = point;
@@ -997,7 +1214,7 @@ void CBCGPExplorerToolBar::OnLButtonDown(UINT nFlags, CPoint point)
 //**********************************************************************************
 void CBCGPExplorerToolBar::OnLButtonDblClk(UINT nFlags, CPoint point) 
 {
-#if (!defined _BCGSUITE_)
+#if (!defined _BCGSUITE_) && (!defined BCGP_EXCLUDE_RIBBON)
 	if ((m_bOnGlass || CBCGPVisualManager::GetInstance()->DoesRibbonExtendCaptionToTabsArea()) && HitTest(point) < 0)
 	{
 		CPoint ptScreen = point;

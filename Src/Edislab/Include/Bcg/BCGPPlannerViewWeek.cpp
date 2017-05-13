@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -69,7 +69,7 @@ void CBCGPPlannerViewWeek::GetCaptionFormatStrings (CStringArray& sa)
 {
 	sa.RemoveAll ();
 
-	BOOL bCompact = (GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
+	BOOL bCompact = (GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
 			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT;
 
 	if (!bCompact)
@@ -207,11 +207,12 @@ void CBCGPPlannerViewWeek::AdjustAppointments ()
 	}
 
 	COleDateTimeSpan spanDay (1, 0, 0, 0);
+	const int nCaptionHeight = GetCaptionHeight ();
 
 	for (int nDay = 0; nDay < nDays; nDay ++)
 	{
 		CRect rect (m_ViewRects [nDay]);
-		rect.top += m_nRowHeight + 1;
+		rect.top += nCaptionHeight + 1;
 		rect.DeflateRect (1, 0);
 
 		int nItem = 0;
@@ -318,33 +319,40 @@ void CBCGPPlannerViewWeek::OnDrawClient (CDC* pDC, const CRect& rect)
 
 	pDC->SelectObject (pOldPen);
 
-	DWORD dwFlags = GetPlanner ()->GetDrawFlags ();
-	BOOL bBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD) ==
+	const DWORD dwFlags = GetDrawFlags ();
+	const BOOL bBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD) ==
 			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD;
-	BOOL bCompact = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
+	const BOOL bBoldFC = !bBold && (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD_FC) ==
+			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD_FC;
+	const BOOL bCompact = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
 		BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT;
+	const BOOL bExtended = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED) ==
+			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED;
+	const int nCaptionHeight = GetCaptionHeight();
 
-	HFONT hOldFont = NULL;
-	if (bBold)
-	{
-		hOldFont = SetCurrFont (pDC, bBold);
-	}
+	HFONT hOldFont = SetCurrFont (pDC, bBold, bExtended);
 
 	for (nDay = 0; nDay < nDays; nDay++)
 	{
 		CRect rectDayCaption (m_ViewRects [nDay]);
 	
 		BOOL bToday = day == dayCurrent;
-		BOOL bSelected = IsDateInSelection (day);		
+		BOOL bSelected = IsDateInSelection (day);
 
 		visualManager->PreparePlannerBackItem (bToday, bSelected);
 		OnFillPlanner (pDC, rectDayCaption, TRUE);
 
-		rectDayCaption.bottom = rectDayCaption.top + m_nRowHeight;
+		rectDayCaption.bottom = rectDayCaption.top + nCaptionHeight;
 
 		visualManager->PreparePlannerCaptionBackItem (FALSE);
 		COLORREF clrText = OnFillPlannerCaption (
 			pDC, rectDayCaption, bToday, bSelected, FALSE);
+
+		HFONT hOldFontFC = NULL;
+		if (bBoldFC && (bToday || day.GetDay() == 1))
+		{
+			hOldFontFC = SetCurrFont (pDC, TRUE, bExtended);
+		}
 
 		if (!bCompact)
 		{
@@ -360,19 +368,46 @@ void CBCGPPlannerViewWeek::OnDrawClient (CDC* pDC, const CRect& rect)
 			{
 				CString strDate;
 
-				AfxExtractSubString (strDate, strText, 0, TCHAR('\n'));
-				DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_LEFT,
-					bToday && bSelected);
+				if (bBoldFC)
+				{
+					AfxExtractSubString (strDate, strText, 0, TCHAR('\n'));
+					DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_LEFT);
 
-				AfxExtractSubString (strDate, strText, 1, TCHAR('\n'));
-				DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_CENTER,
-					bToday && bSelected);
+					HFONT hOldFontPart = NULL;
+					if (bBoldFC && (day != dayCurrent && day.GetDay() == 1))
+					{
+						hOldFontPart = SetCurrFont (pDC, FALSE, bExtended);
+					}
+
+					AfxExtractSubString (strDate, strText, 1, TCHAR('\n'));
+					DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_CENTER);
+
+					if (hOldFontPart != NULL)
+					{
+						::SelectObject (pDC->GetSafeHdc (), hOldFontPart);
+					}
+				}
+				else
+				{
+					AfxExtractSubString (strDate, strText, 0, TCHAR('\n'));
+					DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_LEFT,
+						bToday && bSelected);
+
+					AfxExtractSubString (strDate, strText, 1, TCHAR('\n'));
+					DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_CENTER,
+						bToday && bSelected);
+				}
 			}
 			else
 			{
 				DrawCaptionText (pDC, rectDayCaption, strText, clrText, DT_LEFT,
 					bToday && bSelected);
 			}
+		}
+
+		if (hOldFontFC != NULL)
+		{
+			::SelectObject (pDC->GetSafeHdc (), hOldFontFC);
 		}
 
 		day += COleDateTimeSpan (1, 0, 0, 0);
@@ -702,6 +737,7 @@ CBCGPPlannerViewWeek::HitTestArea (const CPoint& point) const
 	if (hit == BCGP_PLANNER_HITTEST_CLIENT)
 	{
 		const int nDuration = GetViewDuration ();
+		const int nCaptionHeight = GetCaptionHeight ();
 
 		for (int i = 0; i < nDuration; i++)
 		{
@@ -711,7 +747,7 @@ CBCGPPlannerViewWeek::HitTestArea (const CPoint& point) const
 
 			if (rt.PtInRect (point))
 			{
-				rt.bottom = rt.top + min(rt.Height (), m_nRowHeight);
+				rt.bottom = rt.top + min(rt.Height (), nCaptionHeight);
 
 				if (rt.PtInRect (point))
 				{

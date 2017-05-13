@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,7 @@
 #include "BCGPRibbonToolsPage.h"
 #include "BCGPUserToolsManager.h"
 #include "BCGPRibbonBar.h"
+#include "BCGPMessageBox.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -240,6 +241,7 @@ void CRibbonToolsList::OnSelectionChanged ()
 	m_pParent->UpdateData (FALSE);
 
 	m_pParent->EnableControls ();
+	m_pParent->OnSelectionChanged();
 }
 //**************************************************************************
 void CBCGPRibbonToolsPage::OnBcgbarresBrowseCommand() 
@@ -293,7 +295,7 @@ CBCGPUserTool* CBCGPRibbonToolsPage::CreateNewTool ()
 		CString strError;
 		strError.Format (IDS_BCGBARRES_TOO_MANY_TOOLS_FMT, nMaxTools);
 
-		MessageBox (strError);
+		BCGPShowMessageBox(IsVisualManagerStyle(), this, strError);
 		return NULL;
 	}
 

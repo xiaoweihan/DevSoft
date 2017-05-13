@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -112,6 +112,20 @@ public:
 		return m_RecentChangeEvt;
 	}
 
+	void SetMaxWidth(int nMaxWidth);
+
+	int GetMaxWidth() const
+	{
+		return m_nMaxWidth;
+	}
+
+	void SetLimitText(int nChars);
+	
+	int GetLimitText() const
+	{
+		return m_nLimitText;
+	}
+
 // Overrides
 public:
 	virtual BOOL HasLargeMode () const
@@ -173,7 +187,8 @@ public:
 
 	virtual void OnRTLChanged (BOOL bIsRTL);
 
-	virtual void DestroyCtrl ();
+	virtual void DestroyCtrl();
+	virtual void OnChangeRibbonFont();
 
 	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
 
@@ -182,6 +197,11 @@ public:
 		return FALSE;
 	}
 
+	virtual BOOL IsCommandsCombo() const 
+	{ 
+		return FALSE; 
+	
+	}
 	virtual BOOL CanBeSeparated() const			{	return FALSE;	}
 	virtual BOOL IsCustomIconAllowed() const	{	return FALSE;	}
 
@@ -195,11 +215,32 @@ public:
 		return FALSE;
 	}
 
+	virtual void OnGetPopupDlgText(CString& strOut) 
+	{
+		strOut = GetEditText();
+	}
+
+	virtual void OnSetPopupDlgText(const CString& strResult)
+	{
+		SetEditText(strResult);
+	}
+
+	virtual CWnd* GetEmbeddedWnd() { return (CWnd*)m_pWndEdit; }
+	
+	virtual void OnUpdateToolTips();
+
+	virtual BOOL QueryElements(const CStringArray& /*arWords*/, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& /*arButtons*/, int /*nMaxResults*/, BOOL /*bDescription*/, BOOL /*bAll*/) { return FALSE; }
+	
+	virtual void OnDeltaPos(LPNMUPDOWN pUpDown);
+
 // Operations:
 protected:
 	BOOL CreateSpinButton (CBCGPRibbonEditCtrl* pWndEdit, CWnd* pWndParent);
 	void CommonInit ();
 	void ReposEditCtrl ();
+
+	void AddTooltip(CBCGPRibbonEditCtrl* pWndEdit);
+	void DelTooltip();
 
 // Attributes:
 protected:
@@ -220,11 +261,49 @@ protected:
 	BOOL						m_bSearchMode;
 	CString						m_strSearchPrompt;
 	CBCGPToolBarImages			m_ImageSearch;
+	CBCGPToolBarImages			m_ImageLight;
+	COLORREF					m_clrLight;
 	BOOL						m_bDontScaleInHighDPI;
 	BOOL						m_bIsAutoComplete;
 	COLORREF					m_clrCustomText;
+	int							m_nMaxWidth;
+	int							m_nLimitText;
 
 	BCGPRIBBON_EDIT_RECENT_CHANGE_EVENT	m_RecentChangeEvt;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPRibbonCommandsComboBox
+
+class BCGCBPRODLLEXPORT CBCGPRibbonCommandsComboBox : public CBCGPRibbonEdit
+{
+	DECLARE_DYNCREATE(CBCGPRibbonCommandsComboBox)
+		
+// Construction:
+public:
+	CBCGPRibbonCommandsComboBox(
+		UINT nID, LPCTSTR lpszPrompt = _T("Tell me what you want to do..."), int nWidth = -1);
+	
+	virtual ~CBCGPRibbonCommandsComboBox();
+	
+protected:
+	CBCGPRibbonCommandsComboBox();
+	
+// Operations:
+public:
+	void CleanUp();
+	
+// Overrides
+protected:
+	virtual BOOL OnEditChange();
+	virtual BOOL OnProcessKey(UINT nChar);
+	virtual BOOL IsCommandsCombo() const { return TRUE; }
+	virtual BOOL NotifyCommand (BOOL /*bWithDelay*/ = FALSE)	{ return FALSE; }
+	
+// Attributes:
+protected:
+	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> m_arSearchResultsFiltered;
+	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> m_arSearchResultsRecent;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -265,6 +344,13 @@ public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	//}}AFX_VIRTUAL
 
+    //Accessibility
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accValue(VARIANT varChild, BSTR *pszValue);
+	virtual HRESULT get_accKeyboardShortcut(VARIANT varChild, BSTR* pszKeyboardShortcut);
+	virtual HRESULT get_accDescription(VARIANT varChild, BSTR FAR* pszDescription);
+
 // Implementation
 public:
 	virtual ~CBCGPRibbonEditCtrl();
@@ -278,11 +364,21 @@ protected:
 	afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
 	afx_msg BOOL OnChange();
 	afx_msg void OnEnable(BOOL bEnable);
+	afx_msg void OnDestroy();
 	//}}AFX_MSG
 	afx_msg LRESULT OnMouseLeave(WPARAM,LPARAM);
 	DECLARE_MESSAGE_MAP()
 
 	BOOL ProcessClipboardAccelerators (UINT nChar);
+};
+
+//////////////////////////////////////
+// CBCGPRibbonCommandsMenuCustomItems
+
+struct BCGCBPRODLLEXPORT CBCGPRibbonCommandsMenuCustomItems
+{
+	CString m_strInput;
+	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> m_arCustomItems;
 };
 
 #endif // BCGP_EXCLUDE_RIBBON

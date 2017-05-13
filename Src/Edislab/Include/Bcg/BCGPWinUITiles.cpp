@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -32,6 +32,7 @@
 #include "BCGPVisualCollector.h"
 #include "BCGPVisualConstructor.h"
 #include "BCGPTagManager.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -52,9 +53,6 @@ UINT BCGM_ON_CLICK_WINUI_NAV_BACK_BUTTON = ::RegisterWindowMessage (_T("BCGM_ON_
 UINT BCGM_ON_CREATE_WINUI_VIEW = ::RegisterWindowMessage (_T("BCGM_ON_CREATE_WINUI_VIEW"));
 UINT BCGM_ON_CLOSE_WINUI_VIEW = ::RegisterWindowMessage (_T("BCGM_ON_CLOSE_WINUI_VIEW"));
 
-CMap<UINT,UINT,CBCGPWinUITile*,CBCGPWinUITile*> CBCGPWinUITile::m_mapAnimations;
-CCriticalSection CBCGPWinUITile::g_cs;
-
 #define BADGE_GLYPH_SIZE	15
 #define ANIMATION_STEP_TIME	50
 
@@ -63,6 +61,32 @@ IMPLEMENT_DYNCREATE(CBCGPWinUITile, CBCGPWinUIBaseObject)
 IMPLEMENT_DYNCREATE(CBCGPWinUITilesGroupCaption, CBCGPWinUIBaseObject)
 IMPLEMENT_DYNCREATE(CBCGPWinUITilesCaptionButton, CBCGPWinUIBaseObject)
 IMPLEMENT_DYNCREATE(CBCGPWinUITilesNavigationButton, CBCGPWinUITilesCaptionButton)
+
+static CBCGPSize _GetScaledByDPIImageSize(const CBCGPWinUITiles* pOwner, CBCGPGraphicsManager* pGM, CBCGPImage& image, BOOL& bScaled)
+{
+	ASSERT_VALID(pGM);
+
+	bScaled = FALSE;
+
+	CBCGPSize size = pGM->GetImageSize(image);
+	
+	if (!size.IsEmpty() && pOwner != NULL)
+	{
+		ASSERT_VALID(pOwner);
+		
+		if (pOwner->IsIconsScaleByDPIEnabled())
+		{
+			double dblScale = globalData.GetRibbonImageScale();
+			if (dblScale > 1.0)
+			{
+				size.Scale(dblScale);
+				bScaled = TRUE;
+			}
+		}
+	}
+	
+	return size;
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPWinUIBaseObject
@@ -281,10 +305,10 @@ CBCGPWinUITile::CBCGPWinUITile(const CString& strName,
 //*****************************************************************************************
 void CBCGPWinUITile::CommonInit()
 {
-	m_nAnimationID = 0;
 	m_sizePadding = CBCGPSize(15.0, 5.0);
 	m_nBadgeNumber = -1;
 	m_BadgeGlyph = BCGP_NONE;
+	m_ImageVertAlign = BCGP_WINUI_IMAGE_ALIGNMENT_CENTER;
 	m_nCustomBadgeIndex = -1;
 	m_nImportance = 0;
 	m_nGroup = 0;
@@ -298,10 +322,6 @@ void CBCGPWinUITile::CommonInit()
 //*****************************************************************************************
 CBCGPWinUITile::~CBCGPWinUITile()
 {
-	if (m_nAnimationID != 0)
-	{
-		StopAnimation();
-	}
 }
 //*****************************************************************************************
 void CBCGPWinUITile::SetBorderColor(const CBCGPColor& color) 
@@ -408,18 +428,18 @@ void CBCGPWinUITile::DoDraw(CBCGPWinUITiles* pWinUITiles, CBCGPGraphicsManager* 
 	CBCGPRect rectName = rect;
 	rectName.top = rectName.bottom - sizeName.cy;
 
-	double dblBorderWidth = m_dblBorderWidth;
-	double dblScale = globalData.GetRibbonImageScale();
-	if (dblScale != 1.0)
-	{
-		dblBorderWidth *= dblScale;
-	}
+	double dblBorderWidth = globalUtils.ScaleByDPI(m_dblBorderWidth);
 
 	CBCGPRect rectBadge = rect;
 	rectBadge.DeflateRect(0.5 * dblBorderWidth, 0.5 * dblBorderWidth);
 
 	rectBadge.top = rectBadge.bottom - sizeBadge.cy;
 	rectBadge.left = rectBadge.right - sizeBadge.cx;
+
+	if (!sizeBadge.IsEmpty())
+	{
+		rectName.right = rectBadge.left - 5.0;
+	}
 
 	rect.bottom = min(rectBadge.top, rectName.top);
 
@@ -503,33 +523,39 @@ void CBCGPWinUITile::DoDraw(CBCGPWinUITiles* pWinUITiles, CBCGPGraphicsManager* 
 
 	OnDrawBadge(pGM, rectBadge, pWinUITiles->m_textFormatBadge, clrText);
 
-	if (!m_colorBorder.IsNull() && dblBorderWidth > 0.0)
+	const CBCGPColor& clrBorder = bIsHighlighted && m_colorBorder.IsNull() && !pWinUITiles->GetHighlightedTileBorderColor().IsNull() ? 
+			pWinUITiles->GetHighlightedTileBorderColor() :
+			m_colorBorder.IsNull() ? pWinUITiles->GetTileBorderColor() : m_colorBorder;
+
+	if (!clrBorder.IsNull() && dblBorderWidth > 0.0)
 	{
 		if (!bIsFullSizeImage)
 		{
 			if (pWinUITiles->IsRoundedShapes())
 			{
 				roundedRect.rect.DeflateRect(dblBorderWidth / 2, dblBorderWidth / 2);
-				pGM->DrawRoundedRectangle(roundedRect, CBCGPBrush(m_colorBorder), dblBorderWidth);
+				pGM->DrawRoundedRectangle(roundedRect, CBCGPBrush(clrBorder), dblBorderWidth);
 			}
 			else
 			{
 				rectShape.DeflateRect(dblBorderWidth / 2, dblBorderWidth / 2);
-				pGM->DrawRectangle(rectShape, CBCGPBrush(m_colorBorder), dblBorderWidth);
+				pGM->DrawRectangle(rectShape, CBCGPBrush(clrBorder), dblBorderWidth);
 			}
 		}
 
 		if (bIsSelected)
 		{
+			const CBCGPColor& clrBorderSel = m_colorBorderSel.IsNull() ? pWinUITiles->GetSelectedTileBorderColor() : m_colorBorderSel;
+
 			if (pWinUITiles->IsRoundedShapes())
 			{
 				roundedRect.rect.DeflateRect(dblBorderWidth / 2, dblBorderWidth / 2);
-				pGM->DrawRoundedRectangle(roundedRect, CBCGPBrush(m_colorBorderSel), dblBorderWidth);
+				pGM->DrawRoundedRectangle(roundedRect, CBCGPBrush(clrBorderSel), dblBorderWidth);
 			}
 			else
 			{
 				rectShape.DeflateRect(dblBorderWidth / 2, dblBorderWidth / 2);
-				pGM->DrawRectangle(rectShape, CBCGPBrush(m_colorBorderSel), dblBorderWidth);
+				pGM->DrawRectangle(rectShape, CBCGPBrush(clrBorderSel), dblBorderWidth);
 			}
 		}
 	}
@@ -613,16 +639,7 @@ CBCGPSize CBCGPWinUITile::GetBadgeSize(CBCGPGraphicsManager* pGM, const CBCGPTex
 		return CBCGPSize(0, 0);
 	}
 	
-	CBCGPSize sizeBadge(BADGE_GLYPH_SIZE, BADGE_GLYPH_SIZE);
-	
-	double dblScale = globalData.GetRibbonImageScale();
-	if (dblScale != 1.0)
-	{
-		sizeBadge.cx *= dblScale;
-		sizeBadge.cy *= dblScale;
-	}
-
-	return sizeBadge;
+	return globalUtils.ScaleByDPI(CBCGPSize(BADGE_GLYPH_SIZE, BADGE_GLYPH_SIZE));
 }
 //*****************************************************************************************
 void CBCGPWinUITile::OnDrawBadge(CBCGPGraphicsManager* pGM, const CBCGPRect& rectBadge, const CBCGPTextFormat& tf, const CBCGPColor& clrText)
@@ -646,14 +663,7 @@ void CBCGPWinUITile::OnDrawBadge(CBCGPGraphicsManager* pGM, const CBCGPRect& rec
 	}
 
 	CBCGPSize sizeIconSrc(BADGE_GLYPH_SIZE, BADGE_GLYPH_SIZE);
-	CBCGPSize sizeIcon = sizeIconSrc;
-	
-	double dblScale = globalData.GetRibbonImageScale();
-	if (dblScale != 1.0)
-	{
-		sizeIcon.cx *= dblScale;
-		sizeIcon.cy *= dblScale;
-	}
+	CBCGPSize sizeIcon = globalUtils.ScaleByDPI(sizeIconSrc);
 	
 	int nImageIndex = m_nCustomBadgeIndex >= 0 ? m_nCustomBadgeIndex : (int)m_BadgeGlyph;
 	const CBCGPImage& imageList = m_nCustomBadgeIndex >= 0 ? m_pOwner->m_CustomBadgeGlyphs : m_pOwner->m_BadgeGlyphs;
@@ -677,7 +687,8 @@ CBCGPSize CBCGPWinUITile::GetImageSize(CBCGPGraphicsManager* pGM)
 		}
 	}
 
-	return pGM->GetImageSize(m_Image);
+	BOOL bScaled = FALSE;
+	return _GetScaledByDPIImageSize(m_pOwner, pGM, m_Image, bScaled);
 }
 //*****************************************************************************************
 void CBCGPWinUITile::OnDrawImage(CBCGPGraphicsManager* pGM, const CBCGPRect& rectImage)
@@ -689,9 +700,36 @@ void CBCGPWinUITile::OnDrawImage(CBCGPGraphicsManager* pGM, const CBCGPRect& rec
 	if (!sizeImage.IsEmpty())
 	{
 		double xOffset = max(0, 0.5 * (rectImage.Width() - sizeImage.cx));
-		double yOffset = max(0, 0.5 * (rectImage.Height() - sizeImage.cy));
+		double yOffset = 0;
+
+		switch (GetImageVertAlign())
+		{
+		case BCGP_WINUI_IMAGE_ALIGNMENT_LEADING:
+			break;
+
+		case BCGP_WINUI_IMAGE_ALIGNMENT_CENTER:
+			yOffset = max(0, 0.5 * (rectImage.Height() - sizeImage.cy));
+			break;
+
+		case BCGP_WINUI_IMAGE_ALIGNMENT_TRAILING:
+			yOffset = max(0, rectImage.Height() - sizeImage.cy);
+			break;
+		}
+
+		CBCGPSize sizeImageDest;
 		
-		pGM->DrawImage(m_Image, rectImage.TopLeft() + CBCGPPoint(xOffset, yOffset), CBCGPSize(), m_dblImageOpacity);
+		if (!m_bStretchImage)
+		{
+			BOOL bScaled = FALSE;
+			_GetScaledByDPIImageSize(m_pOwner, pGM, m_Image, bScaled);
+
+			if (bScaled)
+			{
+				sizeImageDest = sizeImage;
+			}
+		}
+
+		pGM->DrawImage(m_Image, rectImage.TopLeft() + CBCGPPoint(xOffset, yOffset), sizeImageDest, m_dblImageOpacity);
 	}
 }
 //*****************************************************************************************
@@ -777,7 +815,7 @@ void CBCGPWinUITile::SetImage(const CBCGPImage& image, BCGP_WINUI_IMAGE_EFFECT e
 { 
 	ASSERT_VALID(this);
 
-	if (m_nAnimationID != 0)
+	if (IsAnimated())
 	{
 		StopAnimation();
 		Redraw();
@@ -794,66 +832,16 @@ void CBCGPWinUITile::SetImage(const CBCGPImage& image, BCGP_WINUI_IMAGE_EFFECT e
 	}
 
 	m_dblImageOpacity = 0.0;
-	m_dblImageOpacityDelta = 1.0 / ((double) nAnimationTime / ANIMATION_STEP_TIME);
 
-	m_nAnimationID = ((UINT) ::SetTimer (NULL, 0, ANIMATION_STEP_TIME, AnimTimerProc));
-	
-	g_cs.Lock ();
-	m_mapAnimations.SetAt(m_nAnimationID, this);
-	g_cs.Unlock ();
+	StartAnimation(m_dblImageOpacity, 1.0, 0.001 * nAnimationTime, CBCGPAnimationManager::BCGPANIMATION_SmoothStop);
 }
 //*******************************************************************************
-BOOL CBCGPWinUITile::OnAnimation()
+void CBCGPWinUITile::OnAnimationValueChanged(double /*dblOldValue*/, double dblNewValue)
 {
 	ASSERT_VALID(this);
 
-	m_dblImageOpacity += m_dblImageOpacityDelta;
-
-	if (m_dblImageOpacity >= 1.0)
-	{
-		m_dblImageOpacity = 1.0;
-		return TRUE;
-	}
-
-	return FALSE;
-}
-//*******************************************************************************
-void CBCGPWinUITile::StopAnimation()
-{
-	ASSERT_VALID(this);
-
-	::KillTimer (NULL, m_nAnimationID);
-	
-	g_cs.Lock ();
-	m_mapAnimations.RemoveKey(m_nAnimationID);
-	g_cs.Unlock ();
-
-	m_nAnimationID = 0;
-	m_dblImageOpacity = 1.0;
-}
-//*******************************************************************************
-VOID CALLBACK CBCGPWinUITile::AnimTimerProc (HWND /*hwnd*/, UINT /*uMsg*/,
-													   UINT_PTR idEvent, DWORD /*dwTime*/)
-{
-	CBCGPWinUITile* pTile = NULL;
-
-	g_cs.Lock ();
-	BOOL bFound = m_mapAnimations.Lookup ((UINT) idEvent, pTile);
-	g_cs.Unlock ();
-
-	if (!bFound)
-	{
-		return;
-	}
-
-	ASSERT_VALID(pTile);
-
-	if (pTile->OnAnimation())
-	{
-		pTile->StopAnimation();
-	}
-
-	pTile->Redraw();
+	m_dblImageOpacity = bcg_clamp(dblNewValue, 0.0, 1.0);
+	Redraw();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -878,6 +866,8 @@ CBCGPWinUITiles::CBCGPWinUITiles()
 
 	m_bIsHorizontalLayout = TRUE;
 	m_bRoundedShapes = FALSE;
+	m_bIconsScaleByDPI = FALSE;
+	m_bVisualManagerTheme = FALSE;
 
 	m_bTilesDragAndDrop = FALSE;
 	m_ptDragTile = CBCGPPoint(-1., -1.);
@@ -1074,6 +1064,17 @@ void CBCGPWinUITiles::SetHorizontalLayout(BOOL bIsHorizontalLayout)
 	SetDirty();
 }
 //*****************************************************************************************
+void CBCGPWinUITiles::SetVisualManagerTheme(BOOL bSet)
+{
+	m_bVisualManagerTheme = bSet;
+	m_ScrollBar.SetStyle(bSet ? CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_VISUAL_MANAGER : CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_FLAT);
+}
+//*****************************************************************************************
+void CBCGPWinUITiles::EnableIconsScaleByDPI(BOOL bEnable)
+{
+	m_bIconsScaleByDPI = bEnable;
+}
+//*****************************************************************************************
 void CBCGPWinUITiles::SetRoundedShapes(BOOL bSet)
 {
 	m_bRoundedShapes = bSet;
@@ -1118,6 +1119,12 @@ void CBCGPWinUITiles::Add(CBCGPWinUITile* pTile, int nGroup)
 void CBCGPWinUITiles::AddCaptionButton(CBCGPWinUITilesCaptionButton* pButton)
 {
 	ASSERT_VALID(pButton);
+
+	CBCGPWinUITilesCtrl* pWndOwner = DYNAMIC_DOWNCAST(CBCGPWinUITilesCtrl, GetParentWnd());
+	if (pWndOwner != NULL)
+	{
+		pWndOwner->m_nDlgCode = DLGC_WANTALLKEYS;
+	}
 
 	pButton->m_pOwner = this;
 
@@ -1260,6 +1267,12 @@ void CBCGPWinUITiles::RemoveTiles()
 //*****************************************************************************************
 void CBCGPWinUITiles::RemoveCaptionButtons()
 {
+	CBCGPWinUITilesCtrl* pWndOwner = DYNAMIC_DOWNCAST(CBCGPWinUITilesCtrl, GetParentWnd());
+	if (pWndOwner != NULL)
+	{
+		pWndOwner->m_nDlgCode = DLGC_WANTARROWS;
+	}
+
 	CBCGPWinUITilesCaptionButton* pSelButton = DYNAMIC_DOWNCAST(CBCGPWinUITilesCaptionButton, m_pLastClicked);
 	if (pSelButton != NULL && m_lstCaptionButtons.Find(pSelButton) != NULL)
 	{
@@ -1306,6 +1319,8 @@ void CBCGPWinUITiles::RemoveAll()
 	}
 
 	m_pLastClicked = m_pHighlighted = m_pPressed = m_pSelected = NULL;
+	m_lstVisibleObjects.RemoveAll();
+
 	SetDirty();
 }
 //*****************************************************************************************
@@ -1843,6 +1858,26 @@ void CBCGPWinUITiles::OnScroll(CBCGPVisualScrollBar* /*pScrollBar*/, double dblD
 	}
 		
 	Redraw();
+}
+//*****************************************************************************************
+void CBCGPWinUITiles::OnNcDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectIn)
+{
+	ASSERT_VALID(pGM);
+
+	CRect rect = rectIn;
+
+	if (pGM->GetType() != CBCGPGraphicsManager::BCGP_GRAPHICS_MANAGER_GDI)
+	{
+		rect.right -= 1;
+		rect.bottom -= 1;
+	}
+
+	pGM->FillRectangle(rect, m_brFill);
+
+	if (!m_brBorder.IsEmpty())
+	{
+		pGM->DrawRectangle(rect,  m_brBorder);
+	}
 }
 //*****************************************************************************************
 void CBCGPWinUITiles::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip, DWORD dwFlags)
@@ -2680,6 +2715,32 @@ BOOL CBCGPWinUITiles::OnGetToolTip(const CBCGPPoint& pt, CString& strToolTip, CS
 	return CBCGPBaseVisualObject::OnGetToolTip(pt, strToolTip, strDescr);
 }
 //*****************************************************************************************
+void CBCGPWinUITiles::OnChangeVisualManager()
+{
+	ASSERT_VALID(this);
+
+	if (!IsVisualManagerTheme())
+	{
+		return;
+	}
+
+	CBCGPWinUITilesColors colors;
+	CBCGPVisualManager::GetInstance()->GetWinUITilesColors(colors);
+
+	SetFillBrush(colors.m_brFill, FALSE);
+
+	m_brBorder = colors.m_brBorder;
+	m_brTileFill = colors.m_brTileFill;
+	m_brTileFillDark = colors.m_brTileFillHighlighted;
+	m_colorTileBorder = colors.m_colorTileBorder;
+	m_colorSelectedTileBorder = colors.m_colorSelectedTileBorder;
+	m_colorTileBorderDark = colors.m_colorTileBorderHighlighted;
+	m_brCaptionForeground = colors.m_colorCaptionText;
+	m_colorTileText = colors.m_colorTileText;
+
+	Redraw();
+}
+//*****************************************************************************************
 void CBCGPWinUITiles::SetCurSel(CBCGPWinUITile* pSelTile)
 {
 	SetCurSelObject(pSelTile);
@@ -2839,6 +2900,16 @@ void CBCGPWinUITiles::SetFillBrush(const CBCGPBrush& brFill, BOOL bRedraw)
 	COLORREF clrFocus = CBCGPDrawManager::HSVtoRGB(Hc, Sc, Vc);
 
 	m_brFocus = CBCGPBrush(CBCGPColor(clrFocus));
+
+	if (bRedraw)
+	{
+		Redraw();
+	}
+}
+//*****************************************************************************************
+void CBCGPWinUITiles::SetBorderBrush(const CBCGPBrush& brBorder, BOOL bRedraw)
+{
+	m_brBorder = brBorder;
 
 	if (bRedraw)
 	{
@@ -3080,6 +3151,11 @@ BOOL CBCGPWinUITiles::OnGestureEventPan(const CBCGPPoint& ptFrom, const CBCGPPoi
 void CBCGPWinUITiles::SetScrollBarColorTheme(CBCGPVisualScrollBarColorTheme& theme)
 {
 	m_ScrollBar.SetColorTheme(theme);
+}
+//******************************************************************************************
+void CBCGPWinUITiles::SetScrollBarStyle(CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE style)
+{
+	m_ScrollBar.SetStyle(style);
 }
 //******************************************************************************************
 void CBCGPWinUITiles::OnCreateView(CBCGPWinUIBaseObject* pParentObject)
@@ -3760,9 +3836,12 @@ BOOL CBCGPWinUITiles::LoadState(LPCTSTR lpszProfileName/* = NULL*/, int nIndex/*
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPWinUITilesCtrl
 
+IMPLEMENT_DYNAMIC(CBCGPWinUITilesCtrl, CBCGPVisualCtrl)
+
 CBCGPWinUITilesCtrl::CBCGPWinUITilesCtrl()
 {
 	m_pWinUITiles = NULL;
+	m_nDlgCode = DLGC_WANTARROWS;
 
 #if _MSC_VER >= 1300
 	EnableActiveAccessibility();
@@ -3827,10 +3906,19 @@ void CBCGPWinUITilesCaptionButton::DoDraw(CBCGPWinUITiles* pOwner, CBCGPGraphics
 
 	CBCGPRect rectBounds = rect;
 	
-	CBCGPSize sizeImage = pGM->GetImageSize(m_Image);
+	BOOL bScaled = FALSE;
+	CBCGPSize sizeImage = _GetScaledByDPIImageSize(m_pOwner, pGM, m_Image, bScaled);
+
 	if (!sizeImage.IsEmpty())
 	{
-		pGM->DrawImage(m_Image, CBCGPPoint(rect.left + 0.5 * pOwner->GetHorzMargin(), rect.top + 0.5 * pOwner->GetVertMargin()));
+		CBCGPSize sizeImageDest;
+		
+		if (bScaled)
+		{
+			sizeImageDest = sizeImage;
+		}
+
+		pGM->DrawImage(m_Image, CBCGPPoint(rect.left + 0.5 * pOwner->GetHorzMargin(), rect.top + 0.5 * pOwner->GetVertMargin()), sizeImageDest);
 		rect.left += sizeImage.cx + pOwner->GetHorzMargin();
 	}
 
@@ -3881,9 +3969,14 @@ CBCGPSize CBCGPWinUITilesCaptionButton::GetSize(CBCGPGraphicsManager* pGM)
 	ASSERT_VALID(pGM);
 	ASSERT_VALID(m_pOwner);
 
-	CBCGPSize sizeImage = pGM->GetImageSize(m_Image);
-	CBCGPSize sizeText = pGM->GetTextSize(m_strName, m_pOwner->GetCaptionButtonTextFormat());
-	CBCGPSize sizeDescription = pGM->GetTextSize(m_strDescription, m_pOwner->GetNameTextFormat());
+	BOOL bScaled = FALSE;
+	CBCGPSize sizeImage = _GetScaledByDPIImageSize(m_pOwner, pGM, m_Image, bScaled);
+
+	CBCGPSize sizeText = pGM->GetTextSize(m_strName, m_pOwner->GetCaptionButtonTextFormat(),
+		m_pOwner->GetCaptionButtonTextFormat().IsWordWrap() ? 32676.0 : 0.0);
+
+	CBCGPSize sizeDescription = pGM->GetTextSize(m_strDescription, m_pOwner->GetNameTextFormat(),
+		m_pOwner->GetNameTextFormat().IsWordWrap() ? 32676.0 : 0.0);
 
 	if (!sizeDescription.IsEmpty() && !sizeText.IsEmpty())
 	{

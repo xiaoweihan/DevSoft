@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -245,6 +245,34 @@ static BOOL ResizeImage(CBCGPToolBarImages* pImages, const CBCGPSize& sizeDest)
 	return TRUE;
 }
 
+class CBCGBKMode
+{
+public:
+	CBCGBKMode(CDC*	pDC, const CBCGPStrokeStyle* pStrokeStyle)
+	{
+		m_pDC = pDC;
+		m_nOldBkMode = -1;
+
+		if (pStrokeStyle != NULL && pStrokeStyle->GetDashStyle() != CBCGPStrokeStyle::BCGP_DASH_STYLE_SOLID)
+		{
+			m_nOldBkMode = m_pDC->SetBkMode(TRANSPARENT);
+		}
+	}
+
+	~CBCGBKMode()
+	{
+		if (m_nOldBkMode != -1)
+		{
+			ASSERT_VALID(m_pDC);
+			m_pDC->SetBkMode(m_nOldBkMode);
+		}
+	}
+
+protected:
+	CDC*	m_pDC;
+	int		m_nOldBkMode;
+};
+
 IMPLEMENT_DYNCREATE(CBCGPGraphicsManagerGDI, CBCGPGraphicsManager)
 
 //////////////////////////////////////////////////////////////////////
@@ -253,6 +281,7 @@ IMPLEMENT_DYNCREATE(CBCGPGraphicsManagerGDI, CBCGPGraphicsManager)
 
 BOOL CBCGPGraphicsManagerGDI::m_bTransparency = FALSE;
 BOOL CBCGPGraphicsManagerGDI::m_bCheckForAttribDC = FALSE;
+BOOL CBCGPGraphicsManagerGDI::m_bExtendedMappingMode = FALSE;
 
 CBCGPGraphicsManagerGDI::CBCGPGraphicsManagerGDI(CDC* pDC, BOOL bDoubleBuffering, CBCGPGraphicsManagerParams*)
 {
@@ -482,7 +511,9 @@ void CBCGPGraphicsManagerGDI::DrawLine(
 	{
 		HPEN hPen = CreateGDIPen(brush, pStrokeStyle, lineWidth);
 		HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
-		
+
+		CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
+
 		m_pDCPaint->MoveTo(ptFrom);
 		m_pDCPaint->LineTo(ptTo);
 
@@ -510,6 +541,8 @@ void CBCGPGraphicsManagerGDI::DrawLines(
 
 	HPEN hPen = CreateGDIPen(brush, pStrokeStyle, lineWidth);
 	HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
+
+	CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
 
 	m_pDCPaint->MoveTo(arPoints[0]);
 
@@ -565,6 +598,8 @@ void CBCGPGraphicsManagerGDI::DrawRectangle(
 
 	HPEN hPen = CreateGDIPen(brush, pStrokeStyle, lineWidth);
 	HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
+
+	CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
 		
 	m_pDCPaint->Rectangle((CRect)rect);
 
@@ -576,7 +611,7 @@ void CBCGPGraphicsManagerGDI::FillRectangle(const CBCGPRect& rect, const CBCGPBr
 {
 	if (brush.GetGradientType() == CBCGPBrush::BCGP_GRADIENT_BEVEL)
 	{
-		DrawBeveledRectangle(rect, brush);
+		DrawBeveledRectangle(rect, brush, brush.GetBevelSize());
 	}
 	else
 	{
@@ -595,6 +630,8 @@ void CBCGPGraphicsManagerGDI::DrawRoundedRectangle(
 
 	HPEN hPen = CreateGDIPen(brush, pStrokeStyle, lineWidth);
 	HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
+
+	CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
 
 	CBrush* pOldBrush = (CBrush*)m_pDCPaint->SelectStockObject(NULL_BRUSH);
 
@@ -659,6 +696,8 @@ void CBCGPGraphicsManagerGDI::DrawEllipse(
 		HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
 		
 		CBrush* pOldBrush = (CBrush*)m_pDCPaint->SelectStockObject(NULL_BRUSH);
+
+		CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
 
 		m_pDCPaint->Ellipse(rect);
 
@@ -766,6 +805,8 @@ void CBCGPGraphicsManagerGDI::DrawArc(
 
 		HPEN hPen = CreateGDIPen(brush, pStrokeStyle, lineWidth);
 		HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
+
+		CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
 		
 		m_pDCPaint->SetArcDirection(bIsClockwise ? AD_CLOCKWISE : AD_COUNTERCLOCKWISE);
 
@@ -857,6 +898,8 @@ void CBCGPGraphicsManagerGDI::DrawGeometry(
 			HPEN hPen = CreateGDIPen(brush, pStrokeStyle, lineWidth);
 			HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
 
+			CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
+
 			if (polygonGeometry.GetCurveType() == CBCGPPolygonGeometry::BCGP_CURVE_TYPE_BEZIER)
 			{
 				::PolyBezier(m_pDCPaint->GetSafeHdc(), (LPPOINT)arPointsGDI, nCount);
@@ -907,6 +950,8 @@ void CBCGPGraphicsManagerGDI::DrawGeometry(
 
 		HPEN hPen = CreateGDIPen(brush, pStrokeStyle, lineWidth);
 		HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
+
+		CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
 
 		::PolyBezier(m_pDCPaint->GetSafeHdc(), (LPPOINT)arPointsGDI, nCount);
 
@@ -960,6 +1005,8 @@ void CBCGPGraphicsManagerGDI::DrawGeometry(
 					HPEN hPen = CreateGDIPen(brush, pStrokeStyle, lineWidth);
 					HPEN hOldPen = (HPEN)bcg_SelectObject(m_pDCPaint, hPen);
 
+					CBCGBKMode bkMode(m_pDCPaint, pStrokeStyle);
+
 					::PolyBezier(m_pDCPaint->GetSafeHdc(), arPointsGDI, c_Points);
 
 					bcg_SelectObject(m_pDCPaint, hOldPen);
@@ -1004,7 +1051,21 @@ void CBCGPGraphicsManagerGDI::DrawGeometry(
 		return;
 	}
 
+	int nSaveDC = 0;
+	
+	if (m_bExtendedMappingMode)
+	{
+		m_pDCPaint->SaveDC();
+		m_pDCPaint->SetMapMode(MM_TEXT);
+	}
+
 	HRGN hrgn = (HRGN)CreateGeometry((CBCGPGeometry&)geometry);
+
+	if (m_bExtendedMappingMode)
+	{
+		m_pDCPaint->RestoreDC(nSaveDC);
+	}
+
 	if (hrgn == NULL)
 	{
 		return;
@@ -1040,6 +1101,11 @@ void CBCGPGraphicsManagerGDI::FillGeometry(
 
 	CRect rect;
 	::GetRgnBox(hrgn, rect);
+
+	if (m_bExtendedMappingMode)
+	{
+		m_pDCPaint->DPtoLP(&rect);
+	}
 
 	int nSaved = m_pDCPaint->SaveDC();
 	SetClipArea(geometry, RGN_AND);
@@ -1128,6 +1194,11 @@ static UINT GetDrawTextFlags(const CBCGPTextFormat& textFormat, const CString& s
 	if (!textFormat.IsClipText())
 	{
 		uiFlags |= DT_NOCLIP;
+	}
+
+	if (textFormat.IsEndEllipsis())
+	{
+		uiFlags |= DT_END_ELLIPSIS;
 	}
 
 	return uiFlags;
@@ -1329,13 +1400,26 @@ LPVOID CBCGPGraphicsManagerGDI::CreateGeometry(CBCGPGeometry& geometry)
 		CBCGPRectangleGeometry& rectGeometry = (CBCGPRectangleGeometry&)geometry;
 
 		const CBCGPRect& rect = rectGeometry.GetRectangle();
+		CRect rectGDI(bcg_round(rect.left), bcg_round(rect.top), bcg_round(rect.right), bcg_round(rect.bottom));
 
-		hrgn = ::CreateRectRgnIndirect(CRect(bcg_round(rect.left), bcg_round(rect.top), bcg_round(rect.right), bcg_round(rect.bottom)));
+		if (m_bExtendedMappingMode && m_pDCPaint != NULL)
+		{
+			m_pDCPaint->LPtoDP(&rectGDI);
+		}
+
+		hrgn = ::CreateRectRgnIndirect(rectGDI);
 	}
 	else if (geometry.IsKindOf(RUNTIME_CLASS(CBCGPEllipseGeometry)))
 	{
 		CBCGPEllipseGeometry& ellipseGeometry = (CBCGPEllipseGeometry&)geometry;
-		hrgn = ::CreateEllipticRgnIndirect((const CRect&)(const CBCGPRect&)ellipseGeometry.GetEllipse());
+		CRect rect((const CRect&)(const CBCGPRect&)ellipseGeometry.GetEllipse());
+
+		if (m_bExtendedMappingMode && m_pDCPaint != NULL)
+		{
+			m_pDCPaint->LPtoDP(&rect);
+		}
+
+		hrgn = ::CreateEllipticRgnIndirect(rect);
 	}
 	else if (geometry.IsKindOf(RUNTIME_CLASS(CBCGPRoundedRectangleGeometry)))
 	{
@@ -1343,9 +1427,18 @@ LPVOID CBCGPGraphicsManagerGDI::CreateGeometry(CBCGPGeometry& geometry)
 
 		CBCGPRoundedRect rect = roundedRectGeometry.GetRoundedRect();
 
-		hrgn = ::CreateRoundRectRgn(bcg_round(rect.rect.left), bcg_round(rect.rect.top), 
-			bcg_round(rect.rect.right), bcg_round(rect.rect.bottom), 
-			bcg_round(2. * rect.radiusX), bcg_round(2. * rect.radiusY));
+		CPoint pt1(bcg_round(rect.rect.left), bcg_round(rect.rect.top));
+		CPoint pt2(bcg_round(rect.rect.right), bcg_round(rect.rect.bottom));
+		CPoint ptCorners(bcg_round(2. * rect.radiusX), bcg_round(2. * rect.radiusY));
+
+		if (m_bExtendedMappingMode && m_pDCPaint != NULL)
+		{
+			m_pDCPaint->LPtoDP(&pt1);
+			m_pDCPaint->LPtoDP(&pt2);
+			m_pDCPaint->LPtoDP(&ptCorners);
+		}
+
+		hrgn = ::CreateRoundRectRgn(pt1.x, pt1.y, pt2.x, pt2.y, ptCorners.x, ptCorners.y);
 	}
 	else if (geometry.IsKindOf(RUNTIME_CLASS(CBCGPPolygonGeometry)))
 	{
@@ -1360,6 +1453,11 @@ LPVOID CBCGPGraphicsManagerGDI::CreateGeometry(CBCGPGeometry& geometry)
 			for (int i = 0; i < nCount; i++)
 			{
 				arPointsGDI[i] = CPoint(bcg_round(arPoints[i].x), bcg_round(arPoints[i].y));
+			}
+
+			if (m_bExtendedMappingMode && m_pDCPaint != NULL)
+			{
+				m_pDCPaint->LPtoDP(arPointsGDI, nCount);
 			}
 
 			hrgn = ::CreatePolygonRgn(arPointsGDI, nCount, 
@@ -1392,6 +1490,11 @@ LPVOID CBCGPGraphicsManagerGDI::CreateGeometry(CBCGPGeometry& geometry)
 				arPointsGDI.Append (bezier);
 
 				index += 3;
+			}
+
+			if (m_bExtendedMappingMode && m_pDCPaint != NULL)
+			{
+				m_pDCPaint->LPtoDP(arPointsGDI.GetData(), (int)arPointsGDI.GetSize());
 			}
 
 			hrgn = ::CreatePolygonRgn(arPointsGDI.GetData(), (int)arPointsGDI.GetSize(), 
@@ -1455,21 +1558,16 @@ LPVOID CBCGPGraphicsManagerGDI::CreateGeometry(CBCGPGeometry& geometry)
 				double dblAngle1 = bcg_normalize_rad(bcg_angle((ptCurr.x - ptCenter.x), (ptCenter.y - ptCurr.y)));
 				double dblAngle2 = bcg_normalize_rad(bcg_angle((pArcSegment->m_Point.x - ptCenter.x), (ptCenter.y - pArcSegment->m_Point.y)));
 
-// 				if (bIsLargeArc && fabs(dblAngle2 - dblAngle1) == M_PI)
-// 				{
-// 					bIsLargeArc = FALSE;
-// 				}
-
 				if (pArcSegment->m_bIsClockwise)
 				{
-					if (dblAngle1 < dblAngle2/* || bIsLargeArc*/)
+					if (dblAngle1 < dblAngle2)
 					{
 						dblAngle1 += 2.0 * M_PI;
 					}
 				}
 				else
 				{
-					if (dblAngle2 < dblAngle1/* || bIsLargeArc*/)
+					if (dblAngle2 < dblAngle1)
 					{
 						dblAngle2 += 2.0 * M_PI;
 					}
@@ -1504,6 +1602,11 @@ LPVOID CBCGPGraphicsManagerGDI::CreateGeometry(CBCGPGeometry& geometry)
 
 				ptCurr = pArcSegment->m_Point;
 			}
+		}
+
+		if (m_bExtendedMappingMode && m_pDCPaint != NULL)
+		{
+			m_pDCPaint->LPtoDP((LPPOINT)arPoints.GetData(), (int)arPoints.GetSize());
 		}
 
 		hrgn = ::CreatePolygonRgn((LPPOINT)arPoints.GetData(), (int)arPoints.GetSize(), 
@@ -1639,6 +1742,11 @@ void CBCGPGraphicsManagerGDI::GetGeometryBoundingRect(const CBCGPGeometry& geome
 
 	CRect rect;
 	::GetRgnBox(hrgn, rect);
+
+	if (m_bExtendedMappingMode && m_pDCPaint != NULL)
+	{
+		m_pDCPaint->DPtoLP(rect);
+	}
 
 	rectOut = rect;
 }

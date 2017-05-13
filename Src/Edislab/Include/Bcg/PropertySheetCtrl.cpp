@@ -1,7 +1,7 @@
 // PropertySheetCtrl.cpp : implementation file
 //
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -11,6 +11,7 @@
 #include "stdafx.h"
 #include "BCGCBPro.h"
 #include "PropertySheetCtrl.h"
+#include "BCGPPropertyPage.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -130,7 +131,17 @@ void CBCGPPropertySheetCtrl::OnSize(UINT nType, int cx, int cy)
 
 	if (m_wndTab.GetSafeHwnd() != NULL)
 	{
-		SetActivePage(GetActivePage());
+		CPropertyPage* pPage = GetActivePage();
+		if (pPage != NULL)
+		{
+			OnActivatePage(pPage);
+		}
+	}
+
+	CBCGPPropertyPage* pPage = DYNAMIC_DOWNCAST(CBCGPPropertyPage, GetActivePage());
+	if (pPage != NULL)
+	{
+		pPage->AdjustControlsLayout();
 	}
 
 	SetRedraw(TRUE);
@@ -160,9 +171,6 @@ void CBCGPPropertySheetCtrl::ResizeControl()
 
 	int nPageCount = CBCGPPropertySheet::GetPageCount();
 
-	int nXBorder = ::GetSystemMetrics(SM_CXEDGE);
-	int nYBorder = ::GetSystemMetrics(SM_CYEDGE);
-	
 	for (int nPage = 0; nPage <= nPageCount - 1; nPage++)
 	{
 		CPropertyPage* pPage = GetPage(nPage);
@@ -175,8 +183,8 @@ void CBCGPPropertySheetCtrl::ResizeControl()
 
 			pPage->SetWindowPos(NULL, 
 				rectPage.left, rectPage.top, 
-				rectClient.Width() - nXBorder * 3, 
-				rectClient.Height() - rectPage.top - nYBorder,
+				rectClient.Width(), 
+				rectClient.Height() - rectPage.top,
 				SWP_NOZORDER | SWP_NOACTIVATE);
 		}
 	}

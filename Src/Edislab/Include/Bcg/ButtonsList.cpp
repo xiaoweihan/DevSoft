@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -23,7 +23,7 @@
 #include "BCGPToolBarImages.h"
 #include "BCGGlobals.h"
 #include "BCGPVisualManager.h"
-#include "BCGPToolbarComboBoxButton.h"
+#include "trackmouse.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -31,16 +31,15 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
-static const int iXOffset = 4;
-static const int iYOffset = 5;
-
 /////////////////////////////////////////////////////////////////////////////
 // CButtonsList
 
 CButtonsList::CButtonsList()
 {
 	m_pSelButton = NULL;
+	m_pHighlightedButton = NULL;
 	m_pImages = NULL;
+	m_nButtonsInRow = 0;
 
 	m_iScrollOffset = 0;
 	m_iScrollTotal = 0;
@@ -49,6 +48,7 @@ CButtonsList::CButtonsList()
 	m_bEnableDragFromList = FALSE;
 
 	m_bInited = FALSE;
+	m_bTrack = FALSE;
 }
 //**************************************************************************************
 CButtonsList::~CButtonsList()
@@ -66,7 +66,11 @@ BEGIN_MESSAGE_MAP(CButtonsList, CButton)
 	ON_WM_CTLCOLOR()
 	ON_WM_KEYDOWN()
 	ON_WM_GETDLGCODE()
+	ON_WM_MOUSEWHEEL()
+	ON_WM_MOUSEMOVE()
+	ON_WM_CANCELMODE()
 	//}}AFX_MSG_MAP
+	ON_MESSAGE(WM_MOUSELEAVE, OnMouseLeave)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -77,8 +81,15 @@ BOOL CButtonsList::OnEraseBkgnd(CDC* pDC)
 	CRect rectClient;	// Client area rectangle
 	GetClientRect (&rectClient);
 
-	pDC->FillSolidRect (&rectClient, 
-		IsWindowEnabled () ? globalData.clrWindow : globalData.clrBtnFace);
+	if (globalData.m_bUseVisualManagerInBuiltInDialogs)
+	{
+		pDC->FillRect(&rectClient, &CBCGPVisualManager::GetInstance()->GetDlgBackBrush(this));
+	}
+	else
+	{
+		pDC->FillSolidRect (&rectClient,  IsWindowEnabled () ? globalData.clrWindow : globalData.clrBtnFace);
+	}
+
 	return TRUE;
 }
 //*********************************************************************************************
@@ -104,8 +115,8 @@ void CButtonsList::DrawItem (LPDRAWITEMSTRUCT lpDIS)
 
 		for (POSITION pos = m_Buttons.GetHeadPosition (); pos != NULL;)
 		{
-			CBCGPToolbarButton* pButton = (CBCGPToolbarButton*) m_Buttons.GetNext (pos);
-			ASSERT (pButton != NULL);
+			CBCGPToolbarButton* pButton = m_Buttons.GetNext (pos);
+			ASSERT_VALID(pButton);
 
 			CRect rect = pButton->Rect ();
 			rect.OffsetRect (0, -m_iScrollOffset);
@@ -125,33 +136,26 @@ void CButtonsList::DrawItem (LPDRAWITEMSTRUCT lpDIS)
 				{
 					pButton->m_nStyle |= TBBS_DISABLED;
 				}
-				else if (pButton == m_pSelButton)
+				else if (pButton == m_pHighlightedButton)
 				{
 					bIsHighlight = TRUE;
+				}
+				else if (pButton == m_pSelButton)
+				{
+					pButton->m_nStyle |= TBBS_CHECKED;
 				}
 
 				pButton->m_bLocked = TRUE;
 				pButton->OnDraw (pDC, rect, m_pImages, TRUE, FALSE, bIsHighlight);
 				pButton->m_nStyle = nSaveStyle;
 				pButton->m_bLocked = bLocked;
-
-				if (bIsHighlight)
-				{
-					pDC->DrawFocusRect(rect);
-				}
 			}
 		}
 
 		m_pImages->EndDrawImage (ds);
 	}
 
-	CBCGPToolbarComboBoxButton btnDummy;
-	rectClient.InflateRect (1, 1);
-	CBCGPVisualManager::GetInstance ()->OnDrawComboBorder (pDC, rectClient,
-										!IsWindowEnabled (),
-										FALSE,
-										TRUE,
-										&btnDummy);
+	CBCGPVisualManager::GetInstance()->OnDrawControlBorder(pDC, rectClient, this, FALSE);
 }
 //*********************************************************************************************
 void CButtonsList::OnLButtonDown(UINT /*nFlags*/, CPoint point) 
@@ -184,8 +188,8 @@ void CButtonsList::SetImages (CBCGPToolBarImages* pImages)
 	ASSERT_VALID (pImages);
 	m_pImages = pImages;
 
-	m_sizeButton.cx = m_pImages->GetImageSize ().cx + 6;
-	m_sizeButton.cy = m_pImages->GetImageSize ().cy + 7;
+	m_sizeButton.cx = m_pImages->GetImageSize ().cx + globalUtils.ScaleByDPI(8);
+	m_sizeButton.cy = m_pImages->GetImageSize ().cy + globalUtils.ScaleByDPI(8);
 	
 	RemoveButtons ();
 }
@@ -213,9 +217,8 @@ void CButtonsList::RemoveButtons ()
 
 	while (!m_Buttons.IsEmpty ())
 	{
-		CBCGPToolbarButton* pButton = 
-			(CBCGPToolbarButton*) m_Buttons.RemoveHead ();
-		ASSERT_VALID (pButton);
+		CBCGPToolbarButton* pButton = m_Buttons.RemoveHead();
+		ASSERT_VALID(pButton);
 
 		pButton->OnChangeParentWnd (NULL);
 	}
@@ -235,8 +238,8 @@ CBCGPToolbarButton* CButtonsList::HitTest (POINT point) const
 
 	for (POSITION pos = m_Buttons.GetHeadPosition (); pos != NULL;)
 	{
-		CBCGPToolbarButton* pButton = (CBCGPToolbarButton*) m_Buttons.GetNext (pos);
-		ASSERT (pButton != NULL);
+		CBCGPToolbarButton* pButton = m_Buttons.GetNext (pos);
+		ASSERT_VALID(pButton);
 
 		CRect rect = pButton->Rect ();
 		rect.OffsetRect (0, -m_iScrollOffset);
@@ -258,64 +261,59 @@ void CButtonsList::SelectButton (CBCGPToolbarButton* pButton)
 		return;
 	}
 
-	CBCGPToolbarButton* pOldSel = m_pSelButton;
-	m_pSelButton = pButton;
-
 	CRect rectClient;
 	GetClientRect (&rectClient);
 
-	CRect rectSelected;
-	rectSelected.SetRectEmpty ();
+	CBCGPToolbarButton* pOldSel = m_pSelButton;
+	m_pSelButton = pButton;
 
-	for (POSITION pos = m_Buttons.GetHeadPosition (); pos != NULL;)
+	if (m_pSelButton != NULL && m_pSelButton->Rect().top - m_iScrollOffset < rectClient.top)
 	{
-		CBCGPToolbarButton* pListButton = (CBCGPToolbarButton*) m_Buttons.GetNext (pos);
-		ASSERT (pListButton != NULL);
-
-		CRect rect = pListButton->Rect ();
-		rect.OffsetRect (0, -m_iScrollOffset);
-
-		if (pListButton == m_pSelButton)
+		while (m_iScrollOffset > 0 && m_pSelButton->Rect().top - m_iScrollOffset < rectClient.top)
 		{
-			rectSelected = rect;
+			OnVScroll(SB_LINEUP, 0, &m_wndScrollBar);
 		}
 
-		if (pListButton == m_pSelButton ||
-			pListButton == pOldSel)
+		RedrawWindow();
+	}
+	else if (m_pSelButton != NULL && m_pSelButton->Rect().bottom - m_iScrollOffset > rectClient.bottom)
+	{
+		while (m_iScrollOffset < m_iScrollTotal && m_pSelButton->Rect().bottom - m_iScrollOffset > rectClient.bottom)
 		{
+			OnVScroll(SB_LINEDOWN, 0, &m_wndScrollBar);
+		}
+
+		RedrawWindow();
+	}
+	else
+	{
+		if (pOldSel != NULL)
+		{
+			CRect rect = pOldSel->Rect ();
+			rect.OffsetRect (0, -m_iScrollOffset);
+			
 			rect.InflateRect (2, 2);
-
-			CRect rectInter;
-			if (rectInter.IntersectRect (rectClient, rect))
-			{
-				InvalidateRect (&rectInter);
-			}
+			InvalidateRect (rect);
 		}
-	}
 
-	if (!rectSelected.IsRectEmpty ())
-	{
-		if (rectSelected.top >= rectClient.bottom || 
-			rectSelected.bottom <= rectClient.top)
+		if (m_pSelButton != NULL)
 		{
-			int iNewOffset = 
-				max (0,
-					min (rectSelected.bottom - m_iScrollOffset - rectClient.Height (), 
-						m_iScrollTotal));
-			SetScrollPos (SB_VERT, iNewOffset);
-
-			m_iScrollOffset = iNewOffset;
-			Invalidate ();
+			CRect rect = m_pSelButton->Rect ();
+			rect.OffsetRect (0, -m_iScrollOffset);
+			
+			rect.InflateRect (2, 2);
+			
+			InvalidateRect (rect);
 		}
+		
+		UpdateWindow ();
 	}
-
-	UpdateWindow ();
 
 	//-------------------------------------------------------
 	// Trigger mouse up event (to button click notification):
 	//-------------------------------------------------------
 	CWnd* pParent = GetParent ();
-	if (pParent != NULL)
+	if (pParent->GetSafeHwnd() != NULL)
 	{
 		pParent->SendMessage (	WM_COMMAND,
 								MAKEWPARAM (GetDlgCtrlID (), BN_CLICKED), 
@@ -333,8 +331,8 @@ BOOL CButtonsList::SelectButton (int iImage)
 
 	for (POSITION pos = m_Buttons.GetHeadPosition (); pos != NULL;)
 	{
-		CBCGPToolbarButton* pListButton = (CBCGPToolbarButton*) m_Buttons.GetNext (pos);
-		ASSERT (pListButton != NULL);
+		CBCGPToolbarButton* pListButton = m_Buttons.GetNext (pos);
+		ASSERT_VALID(pListButton);
 
 		if (pListButton->GetImage () == iImage)
 		{
@@ -361,24 +359,24 @@ void CButtonsList::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* /*pScrollBar*/
 		break;
 
 	case SB_LINEUP:
-		iScrollOffset -= m_sizeButton.cy + iYOffset;
+		iScrollOffset -= m_sizeButton.cy;
 		break;
 
 	case SB_LINEDOWN:
-		iScrollOffset += m_sizeButton.cy + iYOffset;
+		iScrollOffset += m_sizeButton.cy;
 		break;
 
 	case SB_PAGEUP:
-		iScrollOffset -= m_iScrollPage * (m_sizeButton.cy + iYOffset);
+		iScrollOffset -= m_iScrollPage * (m_sizeButton.cy);
 		break;
 
 	case SB_PAGEDOWN:
-		iScrollOffset += m_iScrollPage * (m_sizeButton.cy + iYOffset);
+		iScrollOffset += m_iScrollPage * (m_sizeButton.cy);
 		break;
 
 	case SB_THUMBPOSITION:
-		iScrollOffset = ((m_sizeButton.cy + iYOffset) / 2 + nPos) / 
-			(m_sizeButton.cy + iYOffset) * (m_sizeButton.cy + iYOffset);
+		iScrollOffset = ((m_sizeButton.cy) / 2 + nPos) / 
+			(m_sizeButton.cy) * (m_sizeButton.cy);
 		break;
 
 	default:
@@ -392,13 +390,13 @@ void CButtonsList::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* /*pScrollBar*/
 		m_iScrollOffset = iScrollOffset;
 		SetScrollPos (SB_VERT, m_iScrollOffset);
 
-		CRect rectClient;	// Client area rectangle
+		CRect rectClient;
 		GetClientRect (&rectClient);
 
 		rectClient.right -= ::GetSystemMetrics (SM_CXVSCROLL) + 2;
-		rectClient.InflateRect (-1, -1);
+		rectClient.DeflateRect(1, 1);
 
-		InvalidateRect (rectClient);
+		RedrawWindow(rectClient);
 	}
 }
 //********************************************************************************
@@ -415,7 +413,6 @@ CScrollBar* CButtonsList::GetScrollBarCtrl(int nBar) const
 void CButtonsList::OnEnable(BOOL bEnable) 
 {
 	CButton::OnEnable(bEnable);
-	
 	RedrawWindow ();
 }
 //********************************************************************************
@@ -434,6 +431,7 @@ void CButtonsList::RebuildLocations ()
 {
 	if (GetSafeHwnd () == NULL || m_Buttons.IsEmpty ())
 	{
+		m_nButtonsInRow = 0;
 		return;
 	}
 
@@ -443,17 +441,20 @@ void CButtonsList::RebuildLocations ()
 	CRect rectButtons = rectClient;
 
 	rectButtons.right -= ::GetSystemMetrics (SM_CXVSCROLL) + 1;
-	rectButtons.InflateRect (-iXOffset, -iYOffset);
+	rectButtons.DeflateRect(1, 1);
 
 	int x = rectButtons.left;
 	int y = rectButtons.top - m_iScrollOffset;
+
+	m_nButtonsInRow = 0;
+	int nButtonsInCurRow = 0;
 
 	CClientDC dc (this);
 
 	for (POSITION pos = m_Buttons.GetHeadPosition (); pos != NULL;)
 	{
-		CBCGPToolbarButton* pButton = (CBCGPToolbarButton*) m_Buttons.GetNext (pos);
-		ASSERT (pButton != NULL);
+		CBCGPToolbarButton* pButton = m_Buttons.GetNext(pos);
+		ASSERT_VALID(pButton);
 
 		CSize sizeButton = pButton->OnCalculateSize (&dc, m_sizeButton, TRUE);
 
@@ -466,37 +467,42 @@ void CButtonsList::RebuildLocations ()
 			else
 			{
 				x = rectButtons.left;
-				y += sizeButton.cy + iYOffset;
+				y += sizeButton.cy;
+
+				nButtonsInCurRow = 0;
 			}
 		}
 
-		pButton->SetRect (CRect (CPoint (x, y), 
-			CSize (sizeButton.cx, m_sizeButton.cy)));
+		pButton->SetRect(CRect (CPoint (x, y), CSize (sizeButton.cx, m_sizeButton.cy)));
 
-		x += sizeButton.cx + iXOffset;
+		x += sizeButton.cx;
+		nButtonsInCurRow++;
+
+		m_nButtonsInRow = max(m_nButtonsInRow, nButtonsInCurRow);
 	}
 
-	CBCGPToolbarButton* pLastButton = (CBCGPToolbarButton*) m_Buttons.GetTail ();
-	ASSERT (pLastButton != NULL);
+	CBCGPToolbarButton* pLastButton = m_Buttons.GetTail();
+	ASSERT_VALID(pLastButton);
 
-	int iVisibleRows = rectButtons.Height () / (m_sizeButton.cy + iYOffset);
-	int iTotalRows = pLastButton->Rect ().bottom / (m_sizeButton.cy + iYOffset);
+	int iVisibleRows = rectButtons.Height () / (m_sizeButton.cy);
+	int iTotalRows = pLastButton->Rect ().bottom / (m_sizeButton.cy);
 
 	CRect rectSB;
 	GetClientRect (&rectSB);
 
-	rectSB.InflateRect (-1, -1);
+	rectSB.DeflateRect(1, 1);
 	rectSB.left = rectSB.right - ::GetSystemMetrics (SM_CXVSCROLL) - 1;
 
 	int iNonVisibleRows = iTotalRows - iVisibleRows;
-	if (iNonVisibleRows > 0)	// Not enouth space.
+	if (iNonVisibleRows > 0)	// Not enough space.
 	{
 		if (m_wndScrollBar.GetSafeHwnd () == NULL)
 		{
 			m_wndScrollBar.Create (WS_CHILD | WS_VISIBLE | SBS_VERT, rectSB, this, 1);
+			m_wndScrollBar.SetVisualStyle(CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER, FALSE);
 		}
 		
-		m_iScrollTotal = iNonVisibleRows * (m_sizeButton.cy + iYOffset);
+		m_iScrollTotal = iNonVisibleRows * (m_sizeButton.cy);
 		m_iScrollPage = iVisibleRows;
 	}
 	else
@@ -534,8 +540,8 @@ HBRUSH CButtonsList::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 
 	for (POSITION pos = m_Buttons.GetHeadPosition (); pos != NULL;)
 	{
-		CBCGPToolbarButton* pButton = (CBCGPToolbarButton*) m_Buttons.GetNext (pos);
-		ASSERT_VALID (pButton);
+		CBCGPToolbarButton* pButton = m_Buttons.GetNext(pos);
+		ASSERT_VALID(pButton);
 
 		HWND hwdList = pButton->GetHwnd ();
 		if (hwdList == NULL)	// No control
@@ -561,79 +567,172 @@ UINT CButtonsList::OnGetDlgCode()
 //*********************************************************************************
 void CButtonsList::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags) 
 {
+	int nSteps = 1;
+
 	switch (nChar)
 	{
-	case VK_LEFT:
 	case VK_UP:
+		nSteps = m_nButtonsInRow;
+
+	case VK_LEFT:
 		if (m_pSelButton != NULL)
 		{
 			POSITION pos = m_Buttons.Find (m_pSelButton);
 			if (pos != NULL)
 			{
-				m_Buttons.GetPrev (pos);
+				for (int i = 0; pos != NULL && i < nSteps; i++)
+				{
+					m_Buttons.GetPrev(pos);
+				}
+
 				if (pos != NULL)
 				{
-					SelectButton ((CBCGPToolbarButton*) m_Buttons.GetAt (pos));
+					SelectButton(m_Buttons.GetAt(pos));
+					return;
 				}
 			}
 		}
-		else if (!m_Buttons.IsEmpty ())
-		{
-			SelectButton ((CBCGPToolbarButton*) m_Buttons.GetHead ());
-		}
+		break;
 
-		return;
+	case VK_DOWN:
+		nSteps = m_nButtonsInRow;
 
 	case VK_RIGHT:
-	case VK_DOWN:
 		if (m_pSelButton != NULL)
 		{
 			POSITION pos = m_Buttons.Find (m_pSelButton);
 			if (pos != NULL)
 			{
-				m_Buttons.GetNext (pos);
+				for (int i = 0; pos != NULL && i < nSteps; i++)
+				{
+					m_Buttons.GetNext (pos);
+				}
+
 				if (pos != NULL)
 				{
-					SelectButton ((CBCGPToolbarButton*) m_Buttons.GetAt (pos));
+					SelectButton(m_Buttons.GetAt(pos));
+					return;
 				}
 			}
 		}
-		else if (!m_Buttons.IsEmpty ())
-		{
-			SelectButton ((CBCGPToolbarButton*) m_Buttons.GetHead ());
-		}
-		return;
+		break;
 
 	case VK_HOME:
 		if (!m_Buttons.IsEmpty ())
 		{
-			SelectButton ((CBCGPToolbarButton*) m_Buttons.GetHead ());
+			SelectButton(m_Buttons.GetHead ());
 		}
 		return;
 
 	case VK_END:
-		if (m_Buttons.IsEmpty ())
+		if (!m_Buttons.IsEmpty ())
 		{
-			SelectButton ((CBCGPToolbarButton*) m_Buttons.GetTail ());
+			SelectButton(m_Buttons.GetTail ());
 		}
+		return;
+
+	default:
+		CButton::OnKeyDown(nChar, nRepCnt, nFlags);
 		return;
 	}			
 	
-	CButton::OnKeyDown(nChar, nRepCnt, nFlags);
+	if (m_pSelButton == NULL && !m_Buttons.IsEmpty())
+	{
+		SelectButton(m_Buttons.GetHead ());
+	}
 }
 //*********************************************************************************
-void CButtonsList::RedrawSelection ()
+void CButtonsList::RedrawButton(CBCGPToolbarButton* pButton)
 {
-	if (m_pSelButton == NULL)
+	if (pButton == NULL)
 	{
 		return;
 	}
-
-	CRect rect = m_pSelButton->Rect ();
+	
+	CRect rect = pButton->Rect ();
 	rect.OffsetRect (0, -m_iScrollOffset);
-
+	
 	rect.InflateRect (2, 2);
+	
+	RedrawWindow(rect);
+}
+//*********************************************************************************
+void CButtonsList::RedrawSelection()
+{
+	RedrawButton(m_pSelButton);
+}
+//*********************************************************************************
+BOOL CButtonsList::OnMouseWheel(UINT nFlags, short zDelta, CPoint /*pt*/) 
+{
+	if (nFlags & (MK_SHIFT | MK_CONTROL))
+	{
+		return FALSE;
+	}
 
-	InvalidateRect (rect);
-	UpdateWindow ();
+	if (m_wndScrollBar.GetSafeHwnd () == NULL)
+	{
+		return NULL;
+	}
+	
+	const int nSteps = abs(zDelta) / WHEEL_DELTA;
+	const UINT nSBCode = zDelta < 0 ? SB_LINEDOWN : SB_LINEUP;
+	
+	for (int i = 0; i < nSteps; i++)
+	{
+		OnVScroll(nSBCode, 0, &m_wndScrollBar);
+	}
+	
+	return TRUE;
+}
+//*********************************************************************************
+void CButtonsList::OnMouseMove(UINT nFlags, CPoint point) 
+{
+	if (!m_bTrack)
+	{
+		m_bTrack = TRUE;
+		
+		TRACKMOUSEEVENT trackmouseevent;
+		trackmouseevent.cbSize = sizeof(trackmouseevent);
+		trackmouseevent.dwFlags = TME_LEAVE;
+		trackmouseevent.hwndTrack = GetSafeHwnd();
+		trackmouseevent.dwHoverTime = HOVER_DEFAULT;
+		::BCGPTrackMouse (&trackmouseevent);	
+	}
+
+	CBCGPToolbarButton* pButton = HitTest(point);
+	if (pButton != m_pHighlightedButton)
+	{
+		CBCGPToolbarButton* pButtonPrev = m_pHighlightedButton;
+		m_pHighlightedButton = pButton;
+
+		RedrawButton(m_pHighlightedButton);
+		RedrawButton(pButtonPrev);
+	}
+	
+	CButton::OnMouseMove(nFlags, point);
+}
+//*****************************************************************************************
+LRESULT CButtonsList::OnMouseLeave(WPARAM,LPARAM)
+{
+	m_bTrack = FALSE;
+
+	if (m_pHighlightedButton != NULL)
+	{
+		CBCGPToolbarButton* pButtonPrev = m_pHighlightedButton;
+		m_pHighlightedButton = NULL;
+		
+		RedrawButton(pButtonPrev);
+	}
+
+	return 0;
+}
+
+void CButtonsList::OnCancelMode() 
+{
+	CButton::OnCancelMode();
+	
+	if (m_bTrack)
+	{
+		OnMouseLeave(0, 0);
+	}
 }

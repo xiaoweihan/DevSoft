@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -14,6 +14,7 @@
 //
 
 #include "stdafx.h"
+#include "math.h"
 #include "BCGCBPro.h"
 #include "BCGPLocalResource.h"
 #include "bcgprores.h"
@@ -28,6 +29,7 @@
 #include "BCGPVisualManager.h"
 #include "BCGPDrawManager.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -43,6 +45,7 @@ static const UINT IdAutoCommand = 1;
 BOOL CBCGPButton::m_bWinXPTheme = FALSE;
 BOOL CBCGPButton::m_bWinXPThemeWasChecked = FALSE;
 BOOL CBCGPButton::m_bDontSkin = FALSE;
+BOOL CBCGPButton::m_bDontScaleCheckRadio = FALSE;
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPButton
@@ -58,6 +61,7 @@ CBCGPButton::CBCGPButton()
 	m_nFlatStyle		= BUTTONSTYLE_3D;
 	m_nAlignStyle		= ALIGN_CENTER;
 	m_sizeImage			= CSize (0, 0);
+	m_bImageAutoScale	= FALSE;
 	m_nStdImageId		= (CBCGPMenuImages::IMAGES_IDS) -1;
 	m_nStdImageDisabledId = (CBCGPMenuImages::IMAGES_IDS) -1;
 	m_StdImageState		= CBCGPMenuImages::ImageBlack;
@@ -72,6 +76,7 @@ CBCGPButton::CBCGPButton()
 	m_clrHover			= clrDefault;
 	m_clrText			= clrDefault;
 	m_clrFace			= (COLORREF)-1;
+	m_bMixFaceColorWithTheme = TRUE;
 	m_bDrawFocus		= TRUE;
 	m_bTransparent		= FALSE;
 	m_hFont				= NULL;
@@ -91,11 +96,17 @@ CBCGPButton::CBCGPButton()
 	m_bResponseOnButtonDown = FALSE;
 	m_bDontUseWinXPTheme = FALSE;
 	m_bWasDblClk		= FALSE;
+	m_bNotifyCommandOnDblClick = TRUE;
 	m_pToolTip			= NULL;
 	m_bVisualManagerStyle = FALSE;
 	m_bOnGlass			= FALSE;
 	m_bBackstageMode	= FALSE;
 	m_bDontAutoGrayImage = FALSE;
+	m_bCheckBoxExpandCollapseMode = FALSE;
+
+#if _MSC_VER > 1300
+	 EnableActiveAccessibility ();
+#endif
 }
 //****************************************************************************
 CBCGPButton::~CBCGPButton()
@@ -114,10 +125,12 @@ void CBCGPButton::CleanUp ()
 	m_Image.Clear ();
 	m_ImageHot.Clear ();
 	m_ImageDisabled.Clear ();
+	m_ImagePressed.Clear();
 
 	m_ImageChecked.Clear ();
 	m_ImageCheckedHot.Clear ();
 	m_ImageCheckedDisabled.Clear ();
+	m_ImageCheckedPressed.Clear();
 }
 
 
@@ -137,6 +150,7 @@ BEGIN_MESSAGE_MAP(CBCGPButton, CButton)
 	ON_WM_DESTROY()
 	ON_WM_GETDLGCODE()
 	ON_WM_PAINT()
+	ON_WM_SETFOCUS()
 	//}}AFX_MSG_MAP
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
 	ON_MESSAGE(WM_SETFONT, OnSetFont)
@@ -174,6 +188,7 @@ void CBCGPButton::DoDrawItem (CDC* pDCPaint, CRect rectClient, UINT itemState)
 
 	BOOL bDefaultDraw = TRUE;
 	BOOL bDefaultCheckRadio = (m_bCheckButton || m_bRadioButton) && (GetStyle () & BS_PUSHLIKE) == 0;
+	double dblScaleRatio = 1.0;
 
 	if (((m_bVisualManagerStyle && !m_bDontSkin) || bDefaultCheckRadio) && !m_bTransparent)
 	{
@@ -185,7 +200,47 @@ void CBCGPButton::DoDrawItem (CDC* pDCPaint, CRect rectClient, UINT itemState)
 			// Draw check box:
 			//----------------
 			CRect rectCheck = rectClient;
-			const CSize sizeCheck = CBCGPVisualManager::GetInstance ()->GetCheckRadioDefaultSize ();
+			
+			CSize sizeCheck = m_bCheckBoxExpandCollapseMode ? 
+				CBCGPVisualManager::GetInstance ()->GetExpandButtonDefaultSize () : 
+				CBCGPVisualManager::GetInstance ()->GetCheckRadioDefaultSize ();
+
+			BOOL bIsScaledCheckRadio = FALSE;
+
+			if (!m_bVisualManagerStyle || m_bDontSkin)
+			{
+				sizeCheck = m_bCheckBoxExpandCollapseMode ? 
+					CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::GetExpandButtonDefaultSize () : 
+					CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::GetCheckRadioDefaultSize();
+			}
+
+			int nMargin = globalUtils.ScaleByDPI(m_bCheckBoxExpandCollapseMode ? 4 : 2);
+
+			if (!m_bDontScaleCheckRadio && m_hFont != NULL && !m_bCheckBoxExpandCollapseMode)
+			{
+				CFont* pDefaultFont = CFont::FromHandle((HFONT)GetStockObject(DEFAULT_GUI_FONT));
+				ASSERT(pDefaultFont != NULL);
+
+				CFont* pFont = CFont::FromHandle(m_hFont);
+				ASSERT(pFont != NULL);
+
+				LOGFONT lfDefault;
+				pDefaultFont->GetLogFont(&lfDefault);
+
+				LOGFONT lf;
+				pFont->GetLogFont(&lf);
+
+				dblScaleRatio = fabs((double)lf.lfHeight / lfDefault.lfHeight);
+				if (dblScaleRatio > 1.5)
+				{
+					sizeCheck.cx = (int)(dblScaleRatio * sizeCheck.cx) - 2;
+					sizeCheck.cy = (int)(dblScaleRatio * sizeCheck.cy) - 2;
+
+					nMargin = (int)(0.5 + dblScaleRatio * nMargin);
+
+					bIsScaledCheckRadio = TRUE;
+				}
+			}
 
 			if (m_bIsLeftText)
 			{
@@ -226,57 +281,67 @@ void CBCGPButton::DoDrawItem (CDC* pDCPaint, CRect rectClient, UINT itemState)
 			const BOOL bIsHighlighted = IsHighlighted () && IsWindowEnabled ();
 			BOOL bDrawThemed = TRUE;
 
-			if (m_bCheckButton)
 			{
-				int nCheck = IsChecked () ? 1 : 0;
+				CBCGPDrawOnGlass dog(m_bOnGlass);
+				CBCGPVisualManager::GetInstance()->SetScaleCheckRadio(bIsScaledCheckRadio, dblScaleRatio);
 
-				if (m_b3State && m_bIndeterminate)
+				if (m_bCheckButton)
 				{
-					nCheck = 2;
-				}
+					if (m_bCheckBoxExpandCollapseMode)
+					{
+						CBCGPVisualManager::GetInstance ()->OnDrawGroupExpandCollapse(pDC, rectCheck, IsChecked(), bIsHighlighted, IsPressed(), IsWindowEnabled());
+					}
+					else
+					{
+						int nCheck = IsChecked () ? 1 : 0;
 
-				if (m_bVisualManagerStyle && !m_bDontSkin)
-				{
-					bDrawThemed = FALSE;
+						if (m_b3State && m_bIndeterminate)
+						{
+							nCheck = 2;
+						}
+
+						if (m_bVisualManagerStyle && !m_bDontSkin)
+						{
+							bDrawThemed = FALSE;
+						}
+						else
+						{
+							bDrawThemed = CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::DrawCheckBox(pDC,
+								rectCheck, bIsHighlighted, nCheck,
+								IsWindowEnabled (), IsPressed () && bIsHighlighted);
+						}
+
+						if (!bDrawThemed)
+						{
+							CBCGPVisualManager::GetInstance ()->OnDrawCheckBoxEx (pDC,
+								rectCheck, nCheck,
+								bIsHighlighted, IsPressed () && bIsHighlighted, IsWindowEnabled ());
+						}
+					}
 				}
 				else
 				{
-					bDrawThemed = CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::DrawCheckBox(pDC,
-						rectCheck, bIsHighlighted, nCheck,
-						IsWindowEnabled (), IsPressed () && bIsHighlighted);
+					if (m_bVisualManagerStyle && !m_bDontSkin)
+					{
+						bDrawThemed = FALSE;
+					}
+					else
+					{
+						bDrawThemed = CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::DrawRadioButton(pDC,
+							rectCheck, bIsHighlighted, IsChecked () || (IsPressed () && bIsHighlighted),
+							IsWindowEnabled (), IsPressed () && bIsHighlighted);
+					}
+
+					if (!bDrawThemed)
+					{
+						CBCGPVisualManager::GetInstance ()->OnDrawRadioButton (pDC,
+							rectCheck, IsChecked () || (IsPressed () && bIsHighlighted),
+							bIsHighlighted, IsPressed () && bIsHighlighted, IsWindowEnabled ());
+					}
 				}
 
-				if (!bDrawThemed)
-				{
-					CBCGPVisualManager::GetInstance ()->OnDrawCheckBoxEx (pDC,
-						rectCheck, nCheck,
-						bIsHighlighted, IsPressed () && bIsHighlighted, IsWindowEnabled ());
-				}
+				CBCGPVisualManager::GetInstance()->SetScaleCheckRadio(FALSE, 1.0);
 			}
-			else
-			{
-				if (m_bVisualManagerStyle && !m_bDontSkin)
-				{
-					bDrawThemed = FALSE;
-				}
-				else
-				{
-					bDrawThemed = CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::DrawRadioButton(pDC,
-						rectCheck, bIsHighlighted, IsChecked () || (IsPressed () && bIsHighlighted),
-						IsWindowEnabled (), IsPressed () && bIsHighlighted);
-				}
-
-				if (!bDrawThemed)
-				{
-					CBCGPVisualManager::GetInstance ()->OnDrawRadioButton (pDC,
-						rectCheck, IsChecked () || (IsPressed () && bIsHighlighted),
-						bIsHighlighted, IsPressed () && bIsHighlighted, IsWindowEnabled ());
-				}
-			}
-
-			double dblScale = pDCPaint->GetDeviceCaps(LOGPIXELSX) / 96.0f;
-
-			int nMargin = dblScale <= 1.1 ? 2 : 2 + (int)dblScale;
 
 			if (m_bIsLeftText)
 			{
@@ -296,23 +361,41 @@ void CBCGPButton::DoDrawItem (CDC* pDCPaint, CRect rectClient, UINT itemState)
 			{
 				if (m_clrFace != -1 && globalData.m_nBitsPerPixel > 8)
 				{
+					BOOL bIsFocused = (itemState & ODS_FOCUS);
+					BOOL bIsHighlighted = IsHighlighted() || IsPressed() || IsChecked() || bIsFocused;
+
 					CBCGPDrawManager dm(*pDC);
 
 					CRect rectHighlight = rectClient;
-					int nPercentage = 50;
-					BOOL bIsFocused = (itemState & ODS_FOCUS);
 
-					if (IsHighlighted() || IsPressed() || IsChecked() || bIsFocused)
+					if (m_bMixFaceColorWithTheme)
 					{
-						rectHighlight.DeflateRect(2, 2);
-						nPercentage = 20;
+						int nPercentage = 50;
+
+						if (bIsHighlighted)
+						{
+							rectHighlight.DeflateRect(2, 2);
+							nPercentage = 20;
+						}
+						else if (m_bOnGlass)
+						{
+							rectHighlight.DeflateRect(1, 1);
+						}
+
+						dm.HighlightRect(rectHighlight, nPercentage, (COLORREF)-1, 0, m_clrFace);
 					}
-					else if (m_bOnGlass)
+					else
 					{
+						COLORREF clrFill = m_clrFace;
+
+						if (bIsHighlighted && !IsPressed())
+						{
+							clrFill = CBCGPDrawManager::IsPaleColor(m_clrFace) ? CBCGPDrawManager::ColorMakeDarker(m_clrFace, .1) : CBCGPDrawManager::ColorMakeLighter(m_clrFace, .3);
+						}
+						
 						rectHighlight.DeflateRect(1, 1);
+						dm.DrawRect(rectHighlight, clrFill, (COLORREF)-1);
 					}
-
-					dm.HighlightRect(rectHighlight, nPercentage, (COLORREF)-1, 0, m_clrFace);
 				}
 
 				rectClient.DeflateRect (2, 2);
@@ -517,12 +600,16 @@ void CBCGPButton::OnDraw (CDC* pDC, const CRect& rect, UINT uiState)
 	BOOL bDefaultCheckRadio = (m_bCheckButton || m_bRadioButton) && (GetStyle () & BS_PUSHLIKE) == 0;
 	BOOL bMultiLine = (GetStyle () & BS_MULTILINE) != 0 && m_strDescription.IsEmpty();
 
-	COLORREF clrTextDefault = (bDefaultCheckRadio && m_bVisualManagerStyle) ? globalData.clrBarText : globalData.clrBtnText;
+	COLORREF clrTextDefault = (bDefaultCheckRadio && m_bVisualManagerStyle) ? CBCGPVisualManager::GetInstance()->GetDlgTextColor(GetParent()) : globalData.clrBtnText;
 	COLORREF clrText = m_clrRegular == clrDefault ? clrTextDefault : m_clrRegular;
 	
 	if (m_bHighlighted && m_clrHover != clrDefault)
 	{
 		clrText = m_clrHover;
+	}
+	else if (!m_bHighlighted && m_clrRegular != clrDefault)
+	{
+		m_clrText = m_clrRegular;
 	}
 
 	if (bDefaultCheckRadio && !bMultiLine)
@@ -636,7 +723,7 @@ void CBCGPButton::OnDraw (CDC* pDC, const CRect& rect, UINT uiState)
 		}
 
 #ifndef _BCGSUITE_
-		pDC->SetTextColor (CBCGPVisualManager::GetInstance ()->GetToolbarDisabledTextColor ());
+		pDC->SetTextColor (m_bVisualManagerStyle ? CBCGPVisualManager::GetInstance ()->GetToolbarDisabledTextColor ()  : ::GetSysColor (COLOR_GRAYTEXT));
 #else
 		pDC->SetTextColor (globalData.clrGrayedText);
 #endif
@@ -694,12 +781,16 @@ void CBCGPButton::OnDraw (CDC* pDC, const CRect& rect, UINT uiState)
 			CBCGPToolBarImages& imageChecked = 
 				(bIsDisabled && m_ImageCheckedDisabled.GetCount () != 0) ?
 				m_ImageCheckedDisabled :
+				(m_bPushed && m_ImageCheckedPressed.GetCount () != 0) ?
+				m_ImageCheckedPressed :
 				(m_bHighlighted && m_ImageCheckedHot.GetCount () != 0) ?
 				m_ImageCheckedHot : m_ImageChecked;
 
 			CBCGPToolBarImages& image = 
 				(bIsDisabled && m_ImageDisabled.GetCount () != 0) ?
 				m_ImageDisabled :
+				(m_bPushed && m_ImagePressed.GetCount () != 0) ?
+				m_ImagePressed :
 				(m_bHighlighted && m_ImageHot.GetCount () != 0) ?
 				m_ImageHot : m_Image;
 
@@ -796,41 +887,41 @@ void CBCGPButton::OnDrawText (CDC* pDC, const CRect& rect, const CString& strTex
 }
 //****************************************************************************
 void CBCGPButton::SetImage (HICON hIconCold, BOOL bAutoDestroy, HICON hIconHot, HICON hIconDisabled,
-							BOOL bAlphaBlend)
+							BOOL bAlphaBlend, HICON hIconPressed)
 {
-	SetImageInternal (hIconCold, bAutoDestroy, hIconHot, FALSE /* Not checked */, hIconDisabled, bAlphaBlend);
+	SetImageInternal (hIconCold, bAutoDestroy, hIconHot, FALSE /* Not checked */, hIconDisabled, bAlphaBlend, hIconPressed);
 }
 //****************************************************************************
 void CBCGPButton::SetImage (HBITMAP hBitmapCold, BOOL bAutoDestroy, HBITMAP hBitmapHot, BOOL bMap3dColors,
-							HBITMAP hBitmapDisabled)
+							HBITMAP hBitmapDisabled, HBITMAP hBitmapPressed)
 {
 	SetImageInternal (hBitmapCold, bAutoDestroy, hBitmapHot, bMap3dColors, FALSE /* Not checked */,
-		hBitmapDisabled);
+		hBitmapDisabled, hBitmapPressed);
 }
 //****************************************************************************
-void CBCGPButton::SetImage (UINT uiBmpResId, UINT uiBmpHotResId, UINT uiBmpDsblResID)
+void CBCGPButton::SetImage (UINT uiBmpResId, UINT uiBmpHotResId, UINT uiBmpDsblResID, UINT uiBmpPressedResId)
 {
-	SetImageInternal (uiBmpResId, uiBmpHotResId, FALSE /* Not checked */, uiBmpDsblResID);
+	SetImageInternal (uiBmpResId, uiBmpHotResId, FALSE /* Not checked */, uiBmpDsblResID, uiBmpPressedResId);
 }
 //****************************************************************************
 void CBCGPButton::SetCheckedImage (HICON hIconCold, BOOL bAutoDestroy, HICON hIconHot, HICON hIconDisabled,
-								   BOOL bAlphaBlend)
+								   BOOL bAlphaBlend, HICON hIconPressed)
 {
-	SetImageInternal (hIconCold, bAutoDestroy, hIconHot, TRUE /* Checked */, hIconDisabled, bAlphaBlend);
+	SetImageInternal (hIconCold, bAutoDestroy, hIconHot, TRUE /* Checked */, hIconDisabled, bAlphaBlend, hIconPressed);
 }
 //****************************************************************************
-void CBCGPButton::SetCheckedImage (HBITMAP hBitmapCold, BOOL bAutoDestroy, HBITMAP hBitmapHot, BOOL bMap3dColors, HBITMAP hBitmapDisabled)
+void CBCGPButton::SetCheckedImage (HBITMAP hBitmapCold, BOOL bAutoDestroy, HBITMAP hBitmapHot, BOOL bMap3dColors, HBITMAP hBitmapDisabled, HBITMAP hBitmapPressed)
 {
-	SetImageInternal (hBitmapCold, bAutoDestroy, hBitmapHot, bMap3dColors, TRUE /* Checked */, hBitmapDisabled);
+	SetImageInternal (hBitmapCold, bAutoDestroy, hBitmapHot, bMap3dColors, TRUE /* Checked */, hBitmapDisabled, hBitmapPressed);
 }
 //****************************************************************************
-void CBCGPButton::SetCheckedImage (UINT uiBmpResId, UINT uiBmpHotResId, UINT uiBmpDsblResID)
+void CBCGPButton::SetCheckedImage (UINT uiBmpResId, UINT uiBmpHotResId, UINT uiBmpDsblResID, UINT uiBmpPressedResId)
 {
-	SetImageInternal (uiBmpResId, uiBmpHotResId, TRUE /* Checked */, uiBmpDsblResID);
+	SetImageInternal (uiBmpResId, uiBmpHotResId, TRUE /* Checked */, uiBmpDsblResID, uiBmpPressedResId);
 }
 //****************************************************************************
 void CBCGPButton::SetImageInternal (HICON hIconCold, BOOL bAutoDestroy, HICON hIconHot, BOOL bChecked, HICON hIconDisabled,
-									BOOL bAlphaBlend)
+									BOOL bAlphaBlend, HICON hIconPressed)
 {
 	ClearImages (bChecked);
 
@@ -839,14 +930,16 @@ void CBCGPButton::SetImageInternal (HICON hIconCold, BOOL bAutoDestroy, HICON hI
 		return;
 	}
 
-	const int nCount = hIconDisabled == NULL ? 2 : 3;
+#ifndef _BCGSUITE_
+	const double dblScaleRatio = globalData.GetRibbonImageScale();
+#endif
 
-	for (int i = 0; i < nCount; i++)
+	for (int i = 0; i < 4; i++)
 	{
-		HICON hIcon = (i == 0) ? hIconCold : (i == 1) ? hIconHot : hIconDisabled;
+		HICON hIcon = (i == 0) ? hIconCold : (i == 1) ? hIconHot : (i == 2) ? hIconDisabled : hIconPressed;
 		CBCGPToolBarImages& image = bChecked ? ((i == 0) ? 
-			m_ImageChecked : (i == 1) ? m_ImageCheckedHot : m_ImageCheckedDisabled) : 
-			((i == 0) ? m_Image : (i == 1) ? m_ImageHot : m_ImageDisabled);
+			m_ImageChecked : (i == 1) ? m_ImageCheckedHot : (i == 2) ? m_ImageCheckedDisabled : m_ImageCheckedPressed) : 
+			((i == 0) ? m_Image : (i == 1) ? m_ImageHot : (i == 2) ? m_ImageDisabled : m_ImagePressed);
 
 		if (hIcon == NULL)
 		{
@@ -901,8 +994,15 @@ void CBCGPButton::SetImageInternal (HICON hIconCold, BOOL bAutoDestroy, HICON hI
 		}
 
 		image.AddIcon (hIcon, bAlphaBlend);
-	}
 
+#ifndef _BCGSUITE_
+		if (m_bImageAutoScale && dblScaleRatio != 1.0)
+		{
+			image.SmoothResize(dblScaleRatio);
+			m_sizeImage = image.GetImageSize();
+		}
+#endif
+	}
 	if (bAutoDestroy)
 	{
 		if (hIconCold != NULL)
@@ -923,7 +1023,7 @@ void CBCGPButton::SetImageInternal (HICON hIconCold, BOOL bAutoDestroy, HICON hI
 }
 //****************************************************************************
 void CBCGPButton::SetImageInternal (HBITMAP hBitmapCold, BOOL bAutoDestroy, HBITMAP hBitmapHot, BOOL bMap3dColors, BOOL bChecked,
-									HBITMAP hBitmapDisabled)
+									HBITMAP hBitmapDisabled, HBITMAP hBitmapPressed)
 {
 	ClearImages (bChecked);
 
@@ -932,18 +1032,20 @@ void CBCGPButton::SetImageInternal (HBITMAP hBitmapCold, BOOL bAutoDestroy, HBIT
 		return;
 	}
 
-	const int nCount = hBitmapDisabled == NULL ? 2 : 3;
+#ifndef _BCGSUITE_
+	const double dblScaleRatio = globalData.GetRibbonImageScale();
+#endif
 
-	for (int i = 0; i < nCount; i++)
+	for (int i = 0; i < 4; i++)
 	{
-		HBITMAP hBitmap = (i == 0) ? hBitmapCold : (i == 1) ? hBitmapHot : hBitmapDisabled;
+		HBITMAP hBitmap = (i == 0) ? hBitmapCold : (i == 1) ? hBitmapHot : (i == 2) ? hBitmapDisabled : hBitmapPressed;
 		CBCGPToolBarImages& image = bChecked ? ((i == 0) ? 
-			m_ImageChecked : (i == 1) ? m_ImageCheckedHot : m_ImageCheckedDisabled) : 
-			((i == 0) ? m_Image : (i == 1) ? m_ImageHot : m_ImageDisabled);
+			m_ImageChecked : (i == 1) ? m_ImageCheckedHot : (i == 2) ? m_ImageCheckedDisabled : m_ImageCheckedPressed) : 
+			((i == 0) ? m_Image : (i == 1) ? m_ImageHot : (i == 2) ? m_ImageDisabled : m_ImagePressed);
 
 		if (hBitmap == NULL)
 		{
-			break;
+			continue;
 		}
 
 		BITMAP bmp;
@@ -958,7 +1060,10 @@ void CBCGPButton::SetImageInternal (HBITMAP hBitmapCold, BOOL bAutoDestroy, HBIT
 			m_sizeImage.cx = bmp.bmWidth;
 			m_sizeImage.cy = bmp.bmHeight;
 		}
-		else
+		else 
+#ifndef _BCGSUITE_
+		if (!m_bImageAutoScale || dblScaleRatio == 1.0)
+#endif
 		{
 			// Hot and cold bitmaps should have the same size!
 			ASSERT (m_sizeImage.cx == bmp.bmWidth);
@@ -977,6 +1082,14 @@ void CBCGPButton::SetImageInternal (HBITMAP hBitmapCold, BOOL bAutoDestroy, HBIT
 										? (COLORREF) -1
 										: globalData.clrBtnFace);
 		image.AddImage (hBitmap, TRUE);
+
+#ifndef _BCGSUITE_
+		if (m_bImageAutoScale && dblScaleRatio != 1.0)
+		{
+			image.SmoothResize(dblScaleRatio);
+			m_sizeImage = image.GetImageSize();
+		}
+#endif
 	}
 
 	if (bAutoDestroy)
@@ -994,6 +1107,11 @@ void CBCGPButton::SetImageInternal (HBITMAP hBitmapCold, BOOL bAutoDestroy, HBIT
 		if (hBitmapDisabled != NULL)
 		{
 			::DeleteObject (hBitmapDisabled);
+		}
+
+		if (hBitmapPressed != NULL)
+		{
+			::DeleteObject (hBitmapPressed);
 		}
 	}
 }
@@ -1040,7 +1158,7 @@ static HBITMAP ButtonLoadBitmap (UINT uiBmpResId)
 	return hbmp;
 }
 //********************************************************************************
-void CBCGPButton::SetImageInternal (UINT uiBmpResId, UINT uiBmpHotResId, BOOL bChecked, UINT uiBmpDsblResID)
+void CBCGPButton::SetImageInternal (UINT uiBmpResId, UINT uiBmpHotResId, BOOL bChecked, UINT uiBmpDsblResID, UINT uiBmpPressedResId)
 {
 	ClearImages (bChecked);
 
@@ -1052,8 +1170,9 @@ void CBCGPButton::SetImageInternal (UINT uiBmpResId, UINT uiBmpHotResId, BOOL bC
 	HBITMAP hbmp = ButtonLoadBitmap (uiBmpResId);
 	HBITMAP hbmpHot = ButtonLoadBitmap (uiBmpHotResId);
 	HBITMAP hbmpDisabled = ButtonLoadBitmap (uiBmpDsblResID);
+	HBITMAP hbmpPressed = ButtonLoadBitmap (uiBmpPressedResId);
 
-	SetImageInternal (hbmp, TRUE /* AutoDestroy */, hbmpHot, FALSE, bChecked, hbmpDisabled);
+	SetImageInternal (hbmp, TRUE /* AutoDestroy */, hbmpHot, FALSE, bChecked, hbmpDisabled, hbmpPressed);
 }
 //****************************************************************************
 void CBCGPButton::SetStdImage (CBCGPMenuImages::IMAGES_IDS id, CBCGPMenuImages::IMAGE_STATE state,
@@ -1167,6 +1286,8 @@ void CBCGPButton::OnMouseMove(UINT nFlags, CPoint point)
 //****************************************************************************
 void CBCGPButton::OnLButtonDown(UINT nFlags, CPoint point) 
 {
+	SetFocus();
+
 	if (m_bResponseOnButtonDown)
 	{
 		CWnd* pParent = GetParent ();
@@ -1373,6 +1494,24 @@ CSize CBCGPButton::SizeToContent (BOOL bCalcOnly)
 		cy = max (sizeText.cy, m_sizeImage.cy) + GetVertMargin () * 2;
 	}
 
+	BOOL bDefaultCheckRadio = (m_bCheckButton || m_bRadioButton) && (GetStyle () & BS_PUSHLIKE) == 0;
+	if (bDefaultCheckRadio)
+	{
+		CSize sizeCheck = m_bCheckBoxExpandCollapseMode ? 
+			CBCGPVisualManager::GetInstance ()->GetExpandButtonDefaultSize () : 
+			CBCGPVisualManager::GetInstance ()->GetCheckRadioDefaultSize ();
+		
+		if (!m_bVisualManagerStyle || m_bDontSkin)
+		{
+			sizeCheck = m_bCheckBoxExpandCollapseMode ? 
+				CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::GetExpandButtonDefaultSize () : 
+				CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::GetCheckRadioDefaultSize();
+		}
+
+		cx += sizeCheck.cx + GetImageHorzMargin();
+		cy = max(cy, sizeCheck.cy);
+	}
+
 	if (!bCalcOnly)
 	{
 		SetWindowPos (NULL, -1, -1, cx, cy,
@@ -1396,14 +1535,9 @@ BOOL CBCGPButton::PreTranslateMessage(MSG* pMsg)
 		}
 	}
 
-	if (pMsg->message == WM_LBUTTONDOWN)
-	{
-		SetFocus();
-	}
-
 	if (pMsg->message == WM_KEYDOWN &&
 		pMsg->wParam == VK_RETURN &&
-		CBCGPPopupMenu::GetActiveMenu () == NULL && !m_bCheckButton && !m_bRadioButton)
+		!IsNonParentPopupMenu() && !m_bCheckButton && !m_bRadioButton)
 	{
 		CWnd* pParent = GetParent ();
 		if (pParent != NULL)
@@ -1655,22 +1789,8 @@ void CBCGPButton::OnDrawFocusRect (CDC* pDC, const CRect& rectClient)
 		rectFocus.top = max (rectFocus.top, rectClient.top);
 		rectFocus.bottom = min (rectFocus.bottom, rectClient.bottom);
 
-		COLORREF clrBk = pDC->SetBkColor(m_bVisualManagerStyle && !m_bDontSkin ? globalData.clrBarFace : globalData.clrBtnFace);
-
-		if (m_bOnGlass)
-		{
-			CBCGPDrawManager dm (*pDC);
-			dm.DrawFocusRect(rectFocus);
-		}
-		else
-		{
-			pDC->DrawFocusRect (rectFocus);
-		}
-
-		if (clrBk != (COLORREF)-1)
-		{
-			pDC->SetBkColor(clrBk);
-		}
+		CBCGPDrawManager dm (*pDC);
+		dm.DrawFocusRect(rectFocus, m_bVisualManagerStyle && !m_bDontSkin ? globalData.clrBarText : globalData.clrBtnText);
 
 		pDC->SelectObject (pOldFont);
 		return;
@@ -1730,9 +1850,10 @@ void CBCGPButton::OnEnable(BOOL bEnable)
 	CButton::OnEnable(bEnable);
 }
 //******************************************************************************
-void CBCGPButton::SetFaceColor (COLORREF crFace, BOOL bRedraw)
+void CBCGPButton::SetFaceColor (COLORREF crFace, BOOL bRedraw, BOOL bMixFaceColorWithTheme)
 {
 	m_clrFace = crFace;
+	m_bMixFaceColorWithTheme = bMixFaceColorWithTheme;
 
 	if (bRedraw && GetSafeHwnd () != NULL)
 	{
@@ -1768,12 +1889,46 @@ CFont* CBCGPButton::SelectFont (CDC* pDC)
 	ASSERT(pOldFont != NULL);
 	return pOldFont;
 }
-//*****************************************************************************
-afx_msg LRESULT CBCGPButton::OnSetFont (WPARAM wParam, LPARAM lParam)
+
+#ifndef _BCGSUITE_
+
+void CBCGPButton::SetImageAutoScale()
+{
+	if (m_bImageAutoScale)
+	{
+		return;
+	}
+
+	m_bImageAutoScale = TRUE;
+
+	double dblScaleRatio = globalData.GetRibbonImageScale();
+
+	if (dblScaleRatio == 1.0 || m_Image.GetImageWell() == NULL)
+	{
+		return;
+	}
+
+	m_Image.SmoothResize(dblScaleRatio);
+	m_ImageHot.SmoothResize(dblScaleRatio);
+	m_ImageDisabled.SmoothResize(dblScaleRatio);
+	m_ImagePressed.SmoothResize(dblScaleRatio);
+	m_ImageChecked.SmoothResize(dblScaleRatio);
+	m_ImageCheckedHot.SmoothResize(dblScaleRatio);
+	m_ImageCheckedDisabled.SmoothResize(dblScaleRatio);
+	m_ImageCheckedPressed.SmoothResize(dblScaleRatio);
+	
+	m_sizeImage = m_Image.GetImageSize();
+}
+
+#endif
+
+LRESULT CBCGPButton::OnSetFont (WPARAM wParam, LPARAM lParam)
 {
 	BOOL bRedraw = (BOOL) LOWORD (lParam);
 
 	m_hFont = (HFONT) wParam;
+
+	OnUpdateFont();
 
 	if (bRedraw)
 	{
@@ -1784,7 +1939,7 @@ afx_msg LRESULT CBCGPButton::OnSetFont (WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 //*****************************************************************************
-afx_msg LRESULT CBCGPButton::OnGetFont (WPARAM, LPARAM)
+LRESULT CBCGPButton::OnGetFont (WPARAM, LPARAM)
 {
 	return (LRESULT) m_hFont;
 }
@@ -1834,6 +1989,38 @@ void CBCGPButton::OnKillFocus(CWnd* pNewWnd)
 
 	Invalidate ();
 	UpdateWindow ();
+
+	if (!m_bDefaultButton && !m_bCheckButton && !m_bRadioButton)
+	{
+		BOOL bRedrawParent = FALSE;
+
+		CBCGPButton* pFocusedButton = DYNAMIC_DOWNCAST(CBCGPButton, pNewWnd);
+		if (pFocusedButton->GetSafeHwnd() == NULL)
+		{
+			bRedrawParent = TRUE;
+		}
+		else
+		{
+			ASSERT_VALID(pFocusedButton);
+			bRedrawParent = !pFocusedButton->m_bCheckButton && !pFocusedButton->m_bRadioButton && !pFocusedButton->m_bDefaultButton;
+		}
+
+		if (bRedrawParent && GetParent()->GetSafeHwnd() != NULL)
+		{
+			CWnd* pWndChild = GetParent()->GetWindow(GW_CHILD);
+			while (pWndChild->GetSafeHwnd() != NULL)
+			{
+				CBCGPButton* pButton = DYNAMIC_DOWNCAST(CBCGPButton, pWndChild);
+				if (pButton != NULL && pButton->m_bDefaultButton)
+				{
+					pButton->RedrawWindow();
+					break;
+				}
+
+				pWndChild = pWndChild->GetNextWindow ();
+			}
+		}
+	}
 }
 //*****************************************************************************************
 void CBCGPButton::OnLButtonDblClk(UINT nFlags, CPoint point) 
@@ -1846,7 +2033,11 @@ void CBCGPButton::OnLButtonDblClk(UINT nFlags, CPoint point)
 	UpdateWindow ();
 
 	CButton::OnLButtonDblClk(nFlags, point);
-	m_bWasDblClk = TRUE;
+
+	if (m_bNotifyCommandOnDblClick)
+	{
+		m_bWasDblClk = TRUE;
+	}
 }
 //***************************************************************************************
 void CBCGPButton::EnableWinXPTheme (BOOL bEnable/* = TRUE*/)
@@ -1925,12 +2116,14 @@ void CBCGPButton::ClearImages (BOOL bChecked)
 		m_ImageChecked.Clear ();
 		m_ImageCheckedHot.Clear ();
 		m_ImageCheckedDisabled.Clear ();
+		m_ImageCheckedPressed.Clear ();
 	}
 	else
 	{
 		m_Image.Clear ();
 		m_ImageHot.Clear ();
 		m_ImageDisabled.Clear ();
+		m_ImagePressed.Clear ();
 	}
 }
 //****************************************************************************************
@@ -1943,7 +2136,7 @@ BOOL CBCGPButton::CheckNextPrevRadioButton (BOOL bNext)
 		return FALSE;
 	}
 
-	if (CBCGPPopupMenu::GetActiveMenu() != NULL)
+	if (IsNonParentPopupMenu())
 	{
 		return FALSE;
 	}
@@ -2162,12 +2355,12 @@ LRESULT CBCGPButton::OnGetImage (WPARAM wParam, LPARAM)
 //************************************************************************************
 int CBCGPButton::GetImageHorzMargin () const
 { 
-	return nImageHorzMargin; 
+	return globalUtils.ScaleByDPI(nImageHorzMargin); 
 }
 //************************************************************************************
 int CBCGPButton::GetVertMargin () const
 { 
-	return nVertMargin; 
+	return globalUtils.ScaleByDPI(nVertMargin);
 }
 //*************************************************************************************
 void CBCGPButton::OnDestroy() 
@@ -2277,3 +2470,101 @@ LRESULT CBCGPButton::OnPrintClient(WPARAM wp, LPARAM lp)
 	return Default();
 }
 
+#if _MSC_VER > 1300
+
+HRESULT CBCGPButton::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	HRESULT hr = CButton::get_accRole(varChild, pvarRole);
+
+	if (SUCCEEDED(hr))
+	{
+		if (IsRadioButton())
+		{
+			pvarRole->lVal = ROLE_SYSTEM_RADIOBUTTON;
+		}
+		else if (IsCheckBox())
+		{
+			pvarRole->lVal = ROLE_SYSTEM_CHECKBUTTON;
+		}
+	}
+		
+	return hr;
+}
+//**************************************************************************
+HRESULT CBCGPButton::get_accState(VARIANT varChild, VARIANT *pvarState)
+{
+	HRESULT hr = CButton::get_accState(varChild, pvarState);
+
+	if (SUCCEEDED(hr))
+	{		
+		if (IsChecked())
+		{
+			pvarState->lVal |= STATE_SYSTEM_CHECKED; 
+
+		}
+		else
+		{
+			pvarState->lVal &= ~STATE_SYSTEM_CHECKED;
+		}
+		
+		if (m_b3State)
+		{
+			if (m_bIndeterminate)
+			{
+				   pvarState->lVal &= ~STATE_SYSTEM_CHECKED;
+				   pvarState->lVal |= STATE_SYSTEM_MIXED;
+
+			}
+			else
+			{
+				   pvarState->lVal &= ~STATE_SYSTEM_MIXED;
+			}
+		}
+	}
+
+	return hr;
+}
+
+#endif
+
+BOOL CBCGPButton::IsNonParentPopupMenu()
+{
+	BOOL bRes = FALSE;
+
+	if (CBCGPPopupMenu::GetActiveMenu() != NULL)
+	{
+		bRes = TRUE;
+		
+		CWnd* pWnd = GetParent();
+		if (pWnd->GetSafeHwnd() != NULL)
+		{
+			if (pWnd->GetParent()->GetSafeHwnd() == CBCGPPopupMenu::GetActiveMenu()->GetSafeHwnd())
+			{
+				bRes = FALSE;
+			}
+		}
+	}
+
+	return bRes;
+}
+//**************************************************************************
+BOOL CBCGPButton::IsDefaultButton(BOOL bCheckForOtherButtonFocus) const
+{
+	BOOL bDefault = m_bDefaultButton;
+	if (bDefault && bCheckForOtherButtonFocus && GetSafeHwnd() != NULL)
+	{
+		CBCGPButton* pFocusedButton = DYNAMIC_DOWNCAST(CBCGPButton, CWnd::GetFocus());
+		if (pFocusedButton != NULL && pFocusedButton->GetSafeHwnd() != GetSafeHwnd() && !pFocusedButton->IsRadioButton() && !pFocusedButton->IsCheckBox())
+		{
+			bDefault = FALSE;
+		}
+	}
+
+	return bDefault;
+}
+//**************************************************************************
+void CBCGPButton::OnSetFocus(CWnd* pOldWnd) 
+{
+	CButton::OnSetFocus(pOldWnd);
+	RedrawWindow();
+}

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 #include "BCGPPopupWindow.h"
 #include "BCGProRes.h"
 #include "BCGPLocalResource.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -46,6 +47,7 @@ CBCGPPopupDlg::CBCGPPopupDlg()
 	m_sizeDlg = CSize (0, 0);
 	m_bDontSetFocus = FALSE;
 	m_bMenuIsActive = FALSE;
+	m_lCustomParam = 0;
 }
 
 CBCGPPopupDlg::~CBCGPPopupDlg()
@@ -81,7 +83,7 @@ HBRUSH CBCGPPopupDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		}
 		else
 		{
-			COLORREF clrText = globalData.clrBarText;
+			COLORREF clrText = CBCGPVisualManager::GetInstance ()->GetPopupWindowTextColor(m_pParentPopup);
 
 			if (m_pParentPopup != NULL)
 			{
@@ -105,6 +107,7 @@ HBRUSH CBCGPPopupDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 
 BOOL CBCGPPopupDlg::OnEraseBkgnd(CDC* pDC)
 {
+#ifndef _BCGSUITE_
 	if (!globalData.IsWinXPDrawParentBackground())
 	{
 		CRect rectClient;
@@ -112,7 +115,9 @@ BOOL CBCGPPopupDlg::OnEraseBkgnd(CDC* pDC)
 		
 		CBCGPVisualManager::GetInstance ()->OnFillPopupWindowBackground(pDC, rectClient);
 	}
-
+#else
+	UNREFERENCED_PARAMETER(pDC);
+#endif
 	return TRUE;
 }
 
@@ -218,6 +223,7 @@ BOOL CBCGPPopupDlg::OnInitDialog()
 		{
 			pButton->m_bDrawFocus = FALSE;
 
+#ifndef _BCGSUITE_
 			if (m_pParentPopup != NULL)
 			{
 				CBCGPURLLinkButton* pLink = DYNAMIC_DOWNCAST(CBCGPURLLinkButton, pWndChild);
@@ -226,6 +232,7 @@ BOOL CBCGPPopupDlg::OnInitDialog()
 					pLink->SetCustomTextColors(m_pParentPopup->GetLinkTextColor(this, FALSE), m_pParentPopup->GetLinkTextColor(this, TRUE));
 				}
 			}
+#endif
 		}
 		else
 		{
@@ -343,8 +350,8 @@ CSize CBCGPPopupDlg::GetOptimalTextSize (CString str)
 			rectText.Width () > rectScreen.Width () ||
 			rectText.Height () > rectScreen.Height ())
 		{
-			rectText.bottom = rectText.top + nHeight + 5;
-			rectText.right = rectText.left + nWidth + 5;
+			rectText.bottom = rectText.top + nHeight + m_Params.m_nXPadding / 2;
+			rectText.right = rectText.left + nWidth + m_Params.m_nYPadding / 2;
 			break;
 		}
 
@@ -367,104 +374,7 @@ BOOL CBCGPPopupDlg::CreateFromParams (CBCGPPopupWndParams& params, CBCGPPopupWin
 
 	m_Params = params;
 
-	int xMargin = 10;
-	int yMargin = 10;
-
-	double dblScale = globalData.GetRibbonImageScale ();
-	if (dblScale != 1.)
-	{
-		xMargin = (int) (.5 + dblScale * xMargin);
-		yMargin = (int) (.5 + dblScale * yMargin);
-	}
-
-	int x = xMargin;
-	int y = yMargin;
-
-	int cxIcon = 0;
-	int cyIcon = 0;
-
-	CString strText = m_Params.m_strText;
-	if (strText.GetLength () > MAX_TEXT_LEN)
-	{
-		strText = strText.Left (MAX_TEXT_LEN - 1);
-		strText += _T("...");
-	}
-
-	CString strURL = m_Params.m_strURL;
-	if (strURL.GetLength () > MAX_TEXT_LEN)
-	{
-		strURL = strURL.Left (MAX_TEXT_LEN - 1);
-		strURL += _T("...");
-	}
-
-	CSize sizeText = GetOptimalTextSize (strText);
-	CSize sizeURL = GetOptimalTextSize (strURL);
-
-	int cx = max (sizeText.cx, sizeURL.cx);
-
-	if (m_Params.m_hIcon != NULL)
-	{
-		ICONINFO iconInfo;
-		::GetIconInfo (m_Params.m_hIcon, &iconInfo);
-
-		BITMAP bitmap;
-		::GetObject (iconInfo.hbmColor, sizeof (BITMAP), &bitmap);
-
-		::DeleteObject (iconInfo.hbmColor);
-		::DeleteObject (iconInfo.hbmMask);
-
-		cxIcon = bitmap.bmWidth;
-		cyIcon = bitmap.bmHeight;
-
-		if (dblScale != 1.)
-		{
-			cxIcon = (int) (.5 + dblScale * cxIcon);
-			cyIcon = (int) (.5 + dblScale * cyIcon);
-		}
-
-		CRect rectIcon = CRect (xMargin, yMargin, 
-								cxIcon + xMargin, cyIcon + yMargin);
-
-		m_wndIcon.Create (_T(""), WS_CHILD | SS_ICON | SS_NOPREFIX, rectIcon, this);
-		m_wndIcon.SetIcon (m_Params.m_hIcon);
-
-		cxIcon += xMargin;
-		cyIcon += 2 * yMargin;
-
-		x += cxIcon;
-	}
-
-	if (!strText.IsEmpty ())
-	{
-		CRect rectText (CPoint (x, y), CSize (cx, sizeText.cy));
-
-		m_wndText.Create (strText, WS_CHILD | WS_VISIBLE, rectText, this);
-		m_wndText.SetFont (&globalData.fontRegular);
-
-		y = rectText.bottom + yMargin;
-	}
-
-	if (!strURL.IsEmpty ())
-	{
-		CRect rectURL (CPoint (x, y), CSize (cx, sizeURL.cy));
-
-		m_btnURL.Create (strURL, WS_VISIBLE | WS_CHILD, rectURL, this, m_Params.m_nURLCmdID);
-
-		m_btnURL.m_bVisualManagerStyle = TRUE;
-		m_btnURL.m_bMultilineText = TRUE;
-		m_btnURL.m_bAlwaysUnderlineText = FALSE;
-		m_btnURL.m_bDefaultClickProcess = !params.m_bOpenURLOnClick;
-		m_btnURL.m_bDrawFocus = FALSE;
-
-		if (m_pParentPopup != NULL)
-		{
-			m_btnURL.SetCustomTextColors(m_pParentPopup->GetLinkTextColor(this, FALSE), m_pParentPopup->GetLinkTextColor(this, TRUE));
-		}
-
-		y = rectURL.bottom + yMargin;
-	}
-
-	m_sizeDlg = CSize (cxIcon + cx + 2 * xMargin, max(y, cyIcon));
+	UpdateLayout();
 	return TRUE;
 }
 
@@ -512,4 +422,361 @@ BOOL CBCGPPopupDlg::PreTranslateMessage(MSG* pMsg)
 	return CBCGPDialog::PreTranslateMessage(pMsg);
 }
 
+CSize CBCGPPopupDlg::UpdateContent(CString str)
+{
+	if (!m_bDefault || m_wndText.GetSafeHwnd() == NULL)
+	{
+		return CSize(0, 0);
+	}
+
+	m_Params.m_strText = str;
+	UpdateLayout();
+
+	return m_sizeDlg;
+}
+
+void CBCGPPopupDlg::UpdateLayout()
+{
+	int xMargin = globalUtils.ScaleByDPI(m_Params.m_nXPadding);
+	int yMargin = globalUtils.ScaleByDPI(m_Params.m_nYPadding);
+	
+	int x = xMargin;
+	int y = yMargin;
+	
+	int cxIcon = 0;
+	int cyIcon = 0;
+	
+	CString strText = m_Params.m_strText;
+	if (strText.GetLength () > MAX_TEXT_LEN)
+	{
+		strText = strText.Left (MAX_TEXT_LEN - 1);
+		strText += _T("...");
+	}
+	
+	CString strURL = m_Params.m_strURL;
+	if (strURL.GetLength () > MAX_TEXT_LEN)
+	{
+		strURL = strURL.Left (MAX_TEXT_LEN - 1);
+		strURL += _T("...");
+	}
+
+	CSize sizeText = GetOptimalTextSize(strText);
+	CSize sizeURL = GetOptimalTextSize(strURL);
+	
+	int cx = max (sizeText.cx, sizeURL.cx);
+	
+	if (m_Params.m_hIcon != NULL)
+	{
+		CSize sizeIcon = globalUtils.GetIconSize(m_Params.m_hIcon);
+		
+		cxIcon = sizeIcon.cx;
+		cyIcon = sizeIcon.cy;
+		
+		CRect rectIcon = CRect (xMargin, yMargin, cxIcon + xMargin, cyIcon + yMargin);
+		
+		if (m_wndIcon.GetSafeHwnd() == NULL)
+		{
+			m_wndIcon.Create (_T(""), WS_CHILD | SS_ICON | SS_NOPREFIX, rectIcon, this);
+		}
+		else
+		{
+			m_wndIcon.SetWindowPos(NULL, rectIcon.left, rectIcon.top, rectIcon.Width(), rectIcon.Height(),
+				SWP_NOACTIVATE | SWP_NOZORDER);
+		}
+
+		m_wndIcon.SetIcon (m_Params.m_hIcon);
+		
+		cxIcon += globalUtils.ScaleByDPI(10);
+		cyIcon += 2 * yMargin;
+		
+		x += cxIcon;
+	}
+	
+	if (!strText.IsEmpty ())
+	{
+		CRect rectText (CPoint (x, y), CSize (cx, sizeText.cy));
+		
+		if (m_wndText.GetSafeHwnd() == NULL)
+		{
+			m_wndText.Create (strText, WS_CHILD | WS_VISIBLE | SS_NOPREFIX, rectText, this);
+		}
+		else
+		{
+			m_wndText.SetWindowText(strText);
+
+			m_wndText.SetWindowPos(NULL, rectText.left, rectText.top, rectText.Width(), rectText.Height(),
+				SWP_NOACTIVATE | SWP_NOZORDER);
+		}
+
+		m_wndText.SetFont (&globalData.fontRegular);
+		
+		y = rectText.bottom + yMargin;
+	}
+	
+	if (!strURL.IsEmpty ())
+	{
+		CRect rectURL (CPoint (x, y), CSize (cx, sizeURL.cy));
+
+		if (m_btnURL.GetSafeHwnd() == NULL)
+		{
+			m_btnURL.Create (strURL, WS_VISIBLE | WS_CHILD, rectURL, this, m_Params.m_nURLCmdID);
+		}
+		else
+		{
+			m_btnURL.SetWindowText(strURL);
+
+			m_btnURL.SetWindowPos(NULL, rectURL.left, rectURL.top, rectURL.Width(), rectURL.Height(),
+				SWP_NOACTIVATE | SWP_NOZORDER);
+		}
+		
+#ifndef _BCGSUITE_
+		m_btnURL.m_bVisualManagerStyle = TRUE;
+#endif
+		m_btnURL.m_bMultilineText = TRUE;
+		m_btnURL.m_bAlwaysUnderlineText = FALSE;
+		m_btnURL.m_bDefaultClickProcess = !m_Params.m_bOpenURLOnClick;
+		m_btnURL.m_bDrawFocus = FALSE;
+		
+#ifndef _BCGSUITE_
+		if (m_pParentPopup != NULL)
+		{
+			m_btnURL.SetCustomTextColors(m_pParentPopup->GetLinkTextColor(this, FALSE), m_pParentPopup->GetLinkTextColor(this, TRUE));
+		}
+#endif		
+		y = rectURL.bottom + yMargin;
+	}
+	
+	m_sizeDlg = CSize (cxIcon + cx + 2 * xMargin, max(y, cyIcon));
+}
+
 #endif	// BCGP_EXCLUDE_POPUP_WINDOW
+
+//////////////////////////////////////////////////////////////////////////
+// CBCGPDlgPopupMenu
+
+IMPLEMENT_DYNAMIC(CBCGPDlgPopupMenu, CBCGPPopupMenu)
+
+CBCGPDlgPopupMenu::CBCGPDlgPopupMenu(CBCGPEdit* pParentEdit, CRuntimeClass* pRTI, LPCTSTR lpszTemplateName)
+{
+	m_pParentEdit = new CBCGPParentEditPtr (pParentEdit);
+	Initialize (pRTI, lpszTemplateName);
+}
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
+CBCGPDlgPopupMenu::CBCGPDlgPopupMenu(CBCGPGridPopupDlgItem* pParentItem, CRuntimeClass* pRTI, LPCTSTR lpszTemplateName)
+{
+	m_pParentEdit = new CBCGPParentGridItemPtr (pParentItem);
+	Initialize (pRTI, lpszTemplateName);
+}
+
+#endif
+
+CBCGPDlgPopupMenu::CBCGPDlgPopupMenu(CBCGPMenuButton* pParentButton, CRuntimeClass* pRTI, LPCTSTR lpszTemplateName)
+{
+	m_pParentEdit = new CBCGPParentMenuButtonPtr(pParentButton);
+	Initialize (pRTI, lpszTemplateName);
+}
+
+#if (!defined _BCGSUITE_) && (!defined BCGP_EXCLUDE_RIBBON)
+
+CBCGPDlgPopupMenu::CBCGPDlgPopupMenu(CBCGPRibbonButton* pParentRibbonButton, CRuntimeClass* pRTI, LPCTSTR lpszTemplateName)
+{
+	m_pParentEdit = new CBCGPParentRibbonButtonPtr(pParentRibbonButton);
+	Initialize (pRTI, lpszTemplateName);
+}
+
+#endif
+
+void CBCGPDlgPopupMenu::Initialize (CRuntimeClass* pRTI, LPCTSTR lpszTemplateName)
+{
+	m_bDisableAnimation = TRUE;
+
+	m_lpszTemplateName = lpszTemplateName;
+
+	if (pRTI != NULL)
+	{
+		m_pDlg = DYNAMIC_DOWNCAST(CBCGPDialog, pRTI->CreateObject());
+		ASSERT_VALID(m_pDlg);
+	}
+	else
+	{
+		m_pDlg = NULL;
+	}
+	
+	EnableMenuLogo(0, MENU_LOGO_BOTTOM);
+}
+//*********************************************************************************************************
+CBCGPDlgPopupMenu::~CBCGPDlgPopupMenu()
+{
+	if (m_pDlg != NULL)
+	{
+		delete m_pDlg;
+	}
+}
+
+BEGIN_MESSAGE_MAP(CBCGPDlgPopupMenu, CBCGPPopupMenu)
+	//{{AFX_MSG_MAP(CBCGPDlgPopupMenu)
+	ON_WM_CREATE()
+	ON_WM_DESTROY()
+	ON_WM_WINDOWPOSCHANGING()
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+int CBCGPDlgPopupMenu::OnCreate(LPCREATESTRUCT lpCreateStruct)
+{
+	const int iResizeBarBarHeight = m_bIsResizable ? globalUtils.ScaleByDPI(9) : 0;
+
+	if (CBCGPPopupMenu::OnCreate(lpCreateStruct) == -1)
+		return -1;
+
+	if (m_pDlg == NULL)
+	{
+		ASSERT(FALSE);
+		return -1;
+	}
+
+	if (!m_pDlg->Create(m_lpszTemplateName, this))
+	{
+		ASSERT(FALSE);
+		return -1;
+	}
+
+	m_pDlg->ShowWindow(SW_SHOWNOACTIVATE);
+
+	m_pDlg->SetFont(&globalData.fontRegular);
+	m_pDlg->SetOwner(GetTopLevelFrame ());
+
+	CRect rectList;
+	m_pDlg->GetWindowRect(rectList);
+
+	m_wndMenuBar.m_nDlgWidth = rectList.Width();
+
+	m_iLogoWidth = rectList.Height();
+
+	CSize sizeMenu = m_FinalSize;
+	
+	sizeMenu.cx = max(rectList.Width(), sizeMenu.cx);
+	sizeMenu.cy += m_iLogoWidth - 2 * iResizeBarBarHeight;
+
+	if (m_bIsResizable)
+	{
+		EnableResize(sizeMenu);
+	}
+
+	return 0;
+}
+//*********************************************************************************************************
+void CBCGPDlgPopupMenu::RecalcLayout(BOOL bNotify /* = TRUE */)
+{
+	CBCGPPopupMenu::RecalcLayout(bNotify);
+
+	if (GetMenuBar()->GetSafeHwnd() != NULL)
+	{
+		GetMenuBar()->ShowWindow(SW_HIDE);
+	}
+
+	if (m_pDlg->GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	const int nShadowSize = CBCGPToolBar::IsCustomizeMode () ? 0 : m_iShadowSize;
+	const int nBorderSize = GetBorderSize();
+
+	CRect rectClient;
+	GetClientRect(rectClient);
+
+	rectClient.DeflateRect (nBorderSize, nBorderSize);
+
+	if (GetExStyle() & WS_EX_LAYOUTRTL)
+	{
+		rectClient.left += nShadowSize;
+	}
+	else
+	{
+		rectClient.right -= nShadowSize;
+	}
+	
+	rectClient.bottom -= nShadowSize;
+
+	if (!m_rectResize.IsRectEmpty())
+	{
+		if (m_bIsResizeBarOnTop)
+		{
+			rectClient.top += m_rectResize.Height();
+		}
+		else
+		{
+			rectClient.bottom -= m_rectResize.Height();
+		}
+	}
+
+	m_pDlg->SetWindowPos(NULL, rectClient.left, rectClient.top, rectClient.Width(), rectClient.Height(), SWP_NOZORDER | SWP_NOACTIVATE);
+}
+//*****************************************************************************************
+CWnd* CBCGPDlgPopupMenu::GetParentArea(CRect& rectParentBtn)
+{
+	if (m_pParentEdit == NULL)
+	{
+		return CBCGPPopupMenu::GetParentArea(rectParentBtn);
+	}
+
+	return m_pParentEdit->GetParentArea(rectParentBtn);
+}
+//*****************************************************************************************
+void CBCGPDlgPopupMenu::OnDestroy()
+{
+	if (m_pParentEdit != NULL)
+	{
+		m_pParentEdit->OnDestroyPopupDlg();
+
+		delete m_pParentEdit;
+		m_pParentEdit = NULL;
+	}
+
+	if (m_pDlg->GetSafeHwnd () != NULL)
+	{
+		m_pDlg->DestroyWindow();
+	}
+
+	CBCGPPopupMenu::OnDestroy();
+}
+//*****************************************************************************************
+void CBCGPDlgPopupMenu::OnWindowPosChanging(WINDOWPOS FAR* lpwndpos)
+{
+	if (m_bResizeTracking)
+	{
+		CRect rectWnd;
+		GetWindowRect(&rectWnd);
+
+		m_iLogoWidth += lpwndpos->cy - rectWnd.Height();
+		m_wndMenuBar.m_nDlgWidth += lpwndpos->cx - rectWnd.Width();
+	}
+
+	CBCGPPopupMenu::OnWindowPosChanging(lpwndpos);
+}
+//*****************************************************************************************
+BOOL CBCGPDlgPopupMenu::HasDroppedDown() const
+{
+	ASSERT_VALID(this);
+
+	if (m_pDlg->GetSafeHwnd () == NULL)
+	{
+		return FALSE;
+	}
+
+	CWnd* pWndFocus = CWnd::GetFocus();
+	if (!m_pDlg->IsChild(pWndFocus))
+	{
+		return FALSE;
+	}
+
+	CComboBox* pCombo = DYNAMIC_DOWNCAST(CComboBox, pWndFocus);
+	if (pCombo->GetSafeHwnd() != NULL && pCombo->GetDroppedState())
+	{
+		return TRUE;
+	}
+
+	return FALSE;
+}

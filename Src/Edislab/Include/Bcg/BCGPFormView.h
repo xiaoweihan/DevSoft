@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,8 +29,36 @@
 
 #include "bcgcbpro.h"
 #include "bcgpdlgimpl.h"
+#include "BCGPScrollBar.h"
 
-class BCGCBPRODLLEXPORT CBCGPFormView : public CFormView
+#pragma warning (push) 
+#pragma warning (disable : 4355)
+
+template<>
+inline TBCGPInternalScrollBarWrapperWnd<CFormView>::TBCGPInternalScrollBarWrapperWnd()
+    : CFormView((LPCTSTR)NULL)
+    , CBCGPInternalScrollBarWrapper(this)
+{
+    ASSERT(FALSE);
+}
+
+template<>
+inline TBCGPInternalScrollBarWrapperWnd<CFormView>::TBCGPInternalScrollBarWrapperWnd(LPCTSTR lpszParam)
+    : CFormView(lpszParam)
+    , CBCGPInternalScrollBarWrapper(this)
+{
+}
+
+template<>
+inline TBCGPInternalScrollBarWrapperWnd<CFormView>::TBCGPInternalScrollBarWrapperWnd(UINT nIDParam)
+    : CFormView(nIDParam)
+    , CBCGPInternalScrollBarWrapper(this)
+{
+}
+
+#pragma warning (pop)
+
+class BCGCBPRODLLEXPORT CBCGPFormView : public TBCGPInternalScrollBarWrapperWnd<CFormView>
 {
 protected:
 	DECLARE_DYNAMIC(CBCGPFormView)
@@ -82,6 +110,14 @@ public:
 		return m_bInitDlgCompleted;
 	}
 
+	void SetControlInfoTip(UINT nCtrlID, LPCTSTR lpszInfoTip, DWORD dwVertAlign = DT_TOP, BOOL bRedrawInfoTip = FALSE, CBCGPControlInfoTip::BCGPControlInfoTipStyle style = CBCGPControlInfoTip::BCGPINFOTIP_Info, BOOL bIsClickable = FALSE, const CPoint& ptOffset = CPoint(0, 0));
+	void SetControlInfoTip(CWnd* pWndCtrl, LPCTSTR lpszInfoTip, DWORD dwVertAlign = DT_TOP, BOOL bRedrawInfoTip = FALSE, CBCGPControlInfoTip::BCGPControlInfoTipStyle style = CBCGPControlInfoTip::BCGPINFOTIP_Info, BOOL bIsClickable = FALSE, const CPoint& ptOffset = CPoint(0, 0));
+
+	CWnd* GetInfoTipControl() const
+	{
+		return CWnd::FromHandle(m_Impl.m_hwndInfoTipCurr);
+	}
+
 // Operations
 public:
 
@@ -90,7 +126,10 @@ public:
 	//{{AFX_VIRTUAL(CBCGPFormView)
 	public:
 	virtual void OnInitialUpdate();
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	//}}AFX_VIRTUAL
+
+	virtual BOOL IsInternalScrollBarThemed() const;
 
 // Implementation
 protected:
@@ -107,12 +146,36 @@ protected:
 	afx_msg void OnDestroy();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
+	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	//}}AFX_MSG
 	afx_msg LRESULT OnChangeVisualManager (WPARAM, LPARAM);
+	afx_msg LRESULT OnBCGUpdateToolTips (WPARAM, LPARAM);
+	afx_msg BOOL OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult);
 	DECLARE_MESSAGE_MAP()
 
 	CBCGPDlgImpl	m_Impl;
 	BOOL			m_bInitDlgCompleted;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPScrollView view
+
+class BCGCBPRODLLEXPORT CBCGPScrollView : public TBCGPInternalScrollBarWrapperWnd<CScrollView>
+{
+	DECLARE_DYNAMIC(CBCGPScrollView)
+
+// Constructors
+protected:
+	CBCGPScrollView()
+	{
+	}
+
+
+// Overrides
+public:
+	virtual BOOL IsInternalScrollBarThemed() const;
 };
 
 /////////////////////////////////////////////////////////////////////////////

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -445,7 +445,7 @@ int CBCGPHeaderCtrl::GetSortColumn () const
 
 	if (m_bMultipleSort)
 	{
-		TRACE0("Call CBCGPHeaderCtrl::GetColumnState for muliple sort\n");
+		TRACE0("Call CBCGPHeaderCtrl::GetColumnState for multiple sort\n");
 		ASSERT (FALSE);
 		return -1;
 	}
@@ -470,7 +470,7 @@ BOOL CBCGPHeaderCtrl::IsAscending () const
 
 	if (m_bMultipleSort)
 	{
-		TRACE0("Call CBCGPHeaderCtrl::GetColumnState for muliple sort\n");
+		TRACE0("Call CBCGPHeaderCtrl::GetColumnState for multiple sort\n");
 		ASSERT (FALSE);
 		return -1;
 	}
