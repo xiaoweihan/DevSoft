@@ -529,3 +529,5 @@ void CCustomGrid::OnSize(UINT nType, int cx, int cy)
 		}
 	}
 }
+
+
