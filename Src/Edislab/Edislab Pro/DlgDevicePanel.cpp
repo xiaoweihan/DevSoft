@@ -92,7 +92,6 @@ void CDlgDevicePanel::addPanel()
 		m_dataManager.addGaugeDlg(pDevicePanel);
 	}
 #endif
-
 	GaugeDlg* pDevicePanel = new GaugeDlg;
 	if (NULL != pDevicePanel)
 	{

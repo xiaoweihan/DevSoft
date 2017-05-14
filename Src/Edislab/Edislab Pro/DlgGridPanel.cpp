@@ -5,7 +5,8 @@
 #include "Edislab Pro.h"
 #include "DlgGridPanel.h"
 //#include "GridControlFactory.h"
-#include "CustomGrid.h"
+#include "DlgGridContainer.h"
+#include "Log.h"
 // CDlgGridPanel 对话框
 
 IMPLEMENT_DYNAMIC(CDlgGridPanel, CBaseDialog)
@@ -92,22 +93,14 @@ void CDlgGridPanel::addPanel()
 	CWnd* pWnd = m_Grid.AddGridCtrl(this);
 	m_vecPanel.push_back(pWnd);
 #endif
-	CCustomGrid* pGrid = new CCustomGrid;
-	if (nullptr == pGrid)
+	CDlgGridContainer* pWnd = new CDlgGridContainer(this);
+	if (nullptr == pWnd)
 	{
 		return;
 	}
-	std::vector<HEADRER_INFO> HeaderInfoArray;
-
-	HEADRER_INFO TempInfo;
-	TempInfo.strHeadName = _T("当前");
-	TempInfo.ContainColumnIndexArray.push_back(_T("X"));
-	TempInfo.ContainColumnIndexArray.push_back(_T("Y"));
-	HeaderInfoArray.push_back(TempInfo);
-	pGrid->SetHeaderInfoArray(HeaderInfoArray);
-	pGrid->Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
-	pGrid->FillData();
-	m_WidgetLayout.AddWidget(pGrid);
+	pWnd->Create(CDlgGridContainer::IDD,this);
+	pWnd->ShowWindow(SW_SHOW);
+	m_WidgetLayout.AddWidget(pWnd);
 	CRect rc;
 	GetClientRect(&rc);
 	m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());

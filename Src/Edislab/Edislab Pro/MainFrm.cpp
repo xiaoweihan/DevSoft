@@ -1845,8 +1845,8 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
 		m_wndStatusBar.SetPaneText(nIndex,strTime,TRUE);
 
 		//Ë¢ÐÂGrid
-		GLOBAL_DATA.SetChanged();
-		GLOBAL_DATA.Notify();
+		//GLOBAL_DATA.SetChanged();
+		//GLOBAL_DATA.Notify();
 	}
 
 	CBCGPFrameWnd::OnTimer(nIDEvent);

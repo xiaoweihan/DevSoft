@@ -101,4 +101,6 @@ public:
 	afx_msg void OnBnClickedCheckLimitTime();
 	virtual BOOL OnInitDialog();
 	afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+	afx_msg void OnBnClickedBtnOk();
+	afx_msg void OnBnClickedBtnCancel();
 };

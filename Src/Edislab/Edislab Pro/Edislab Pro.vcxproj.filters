@@ -309,6 +309,18 @@
     <ClInclude Include="CustomGrid.h">
       <Filter>UIExtend</Filter>
     </ClInclude>
+    <ClInclude Include="GridDisplayColumnInfo.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SensorData.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SensorDataManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgGridContainer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -469,6 +481,18 @@
     </ClCompile>
     <ClCompile Include="CustomGrid.cpp">
       <Filter>UIExtend</Filter>
+    </ClCompile>
+    <ClCompile Include="GridDisplayColumnInfo.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorData.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorDataManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgGridContainer.cpp">
+      <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

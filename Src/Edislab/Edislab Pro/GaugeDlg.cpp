@@ -436,7 +436,7 @@ void GaugeDlg::OnLButtonDown(UINT nFlags, CPoint point)
 BOOL GaugeDlg::PreTranslateMessage(MSG* pMsg)
 {
 	// TODO: Add your specialized code here and/or call the base class
-	if (WM_LBUTTONDOWN == pMsg->message||WM_RBUTTONDOWN==pMsg->message)
+	if (WM_LBUTTONDOWN == pMsg->message|| WM_RBUTTONDOWN == pMsg->message)
 	{
 		CWnd* pWnd = AfxGetMainWnd();
 		if (NULL != pWnd)

@@ -119,8 +119,6 @@ int CDlgTabPanel::GetDeviceNum( void ) const
 void CDlgTabPanel::SetDeviceNum( int nDeviceNum )
 {
 	m_nDeviceNum = nDeviceNum;
-
-
 }
 
 int CDlgTabPanel::GetDiagramNum( void ) const
@@ -137,8 +135,6 @@ int CDlgTabPanel::GetDiagramNum( void ) const
 void CDlgTabPanel::SetDiagramNum( int DiagramNum )
 {
 	m_nDiagramNum = DiagramNum;
-
-
 }
 
 BOOL CDlgTabPanel::OnInitDialog()

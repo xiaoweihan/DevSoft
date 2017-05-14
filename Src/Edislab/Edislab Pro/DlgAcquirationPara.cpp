@@ -46,6 +46,8 @@ BEGIN_MESSAGE_MAP(CDlgAcquirationPara, CBaseDialog)
 	ON_BN_CLICKED(IDC_CHECK_MULTI_SAMPLE, &CDlgAcquirationPara::OnBnClickedCheckMultiSample)
 	ON_BN_CLICKED(IDC_CHECK_LIMIT_TIME, &CDlgAcquirationPara::OnBnClickedCheckLimitTime)
 	ON_WM_HSCROLL()
+	ON_BN_CLICKED(ID_BTN_OK, &CDlgAcquirationPara::OnBnClickedBtnOk)
+	ON_BN_CLICKED(ID_BTN_CANCEL, &CDlgAcquirationPara::OnBnClickedBtnCancel)
 END_MESSAGE_MAP()
 
 
@@ -438,4 +440,18 @@ void CDlgAcquirationPara::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScroll
 	m_staticLimitTime.SetWindowText(strStatic);
 	RefreshCtrl();
 	CBaseDialog::OnHScroll(nSBCode, nPos, pScrollBar);
+}
+
+
+void CDlgAcquirationPara::OnBnClickedBtnOk()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	OnOK();
+}
+
+
+void CDlgAcquirationPara::OnBnClickedBtnCancel()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	OnCancel();
 }

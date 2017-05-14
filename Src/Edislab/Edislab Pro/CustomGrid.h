@@ -103,6 +103,7 @@ protected:
 	std::vector<HEADRER_INFO> m_HeaderInfoArray;
 public:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 };
 
 #endif

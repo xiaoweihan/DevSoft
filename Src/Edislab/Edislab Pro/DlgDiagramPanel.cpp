@@ -87,6 +87,7 @@ void CDlgDiagramPanel::addPanel()
 		return;
 	}
 #endif
+
 	ChartFigureDlg* pDiagramPanel = new ChartFigureDlg;
 	if (NULL != pDiagramPanel)
 	{

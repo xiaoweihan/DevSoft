@@ -10,7 +10,7 @@
 #include "DlgTabPanel.h"
 #include "Msg.h"
 // ChartFigureDlg 对话框
-IMPLEMENT_DYNAMIC(ChartFigureDlg, CDialog)
+IMPLEMENT_DYNAMIC(ChartFigureDlg, CBaseDialog)
 
 ChartFigureDlg::ChartFigureDlg(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(ChartFigureDlg::IDD, pParent)
@@ -29,7 +29,7 @@ ChartFigureDlg::~ChartFigureDlg()
 
 void ChartFigureDlg::DoDataExchange(CDataExchange* pDX)
 {
-	CDialog::DoDataExchange(pDX);
+	CBaseDialog::DoDataExchange(pDX);
 }
 
 
@@ -52,7 +52,7 @@ END_MESSAGE_MAP()
 
 BOOL ChartFigureDlg::OnInitDialog()
 {
-	CDialog::OnInitDialog();
+	CBaseDialog::OnInitDialog();
 
 	// TODO:  在此添加额外的初始化
 	CDC* pDC = GetDC();

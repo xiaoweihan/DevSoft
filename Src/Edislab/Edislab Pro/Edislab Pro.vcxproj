@@ -245,6 +245,7 @@
     <ClInclude Include="DlgDevicePanel.h" />
     <ClInclude Include="DlgDeviceSet.h" />
     <ClInclude Include="DlgDiagramPanel.h" />
+    <ClInclude Include="DlgGridContainer.h" />
     <ClInclude Include="DlgGridPanel.h" />
     <ClInclude Include="DlgPageNameConfig.h" />
     <ClInclude Include="DlgSensorChoose.h" />
@@ -263,6 +264,7 @@
     <ClInclude Include="GridCtrlBase.h" />
     <ClInclude Include="GridDataManager.h" />
     <ClInclude Include="GridDefine.h" />
+    <ClInclude Include="GridDisplayColumnInfo.h" />
     <ClInclude Include="GridView.h" />
     <ClInclude Include="GridViewManager.h" />
     <ClInclude Include="Lock.h" />
@@ -274,6 +276,8 @@
     <ClInclude Include="Observer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SensorConfig.h" />
+    <ClInclude Include="SensorData.h" />
+    <ClInclude Include="SensorDataManager.h" />
     <ClInclude Include="SensorIDGenerator.h" />
     <ClInclude Include="SplitBar.h" />
     <ClInclude Include="stdafx.h" />
@@ -306,6 +310,7 @@
     <ClCompile Include="DlgDevicePanel.cpp" />
     <ClCompile Include="DlgDeviceSet.cpp" />
     <ClCompile Include="DlgDiagramPanel.cpp" />
+    <ClCompile Include="DlgGridContainer.cpp" />
     <ClCompile Include="DlgGridPanel.cpp" />
     <ClCompile Include="DlgPageNameConfig.cpp" />
     <ClCompile Include="DlgSensorChoose.cpp" />
@@ -323,6 +328,7 @@
     <ClCompile Include="GridControlFactory.cpp" />
     <ClCompile Include="GridCtrlBase.cpp" />
     <ClCompile Include="GridDataManager.cpp" />
+    <ClCompile Include="GridDisplayColumnInfo.cpp" />
     <ClCompile Include="GridView.cpp" />
     <ClCompile Include="GridViewManager.cpp" />
     <ClCompile Include="Lock.cpp" />
@@ -331,6 +337,8 @@
     <ClCompile Include="Observable.cpp" />
     <ClCompile Include="Observer.cpp" />
     <ClCompile Include="SensorConfig.cpp" />
+    <ClCompile Include="SensorData.cpp" />
+    <ClCompile Include="SensorDataManager.cpp" />
     <ClCompile Include="SensorIDGenerator.cpp" />
     <ClCompile Include="SplitBar.cpp" />
     <ClCompile Include="stdafx.cpp">

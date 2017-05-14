@@ -91,6 +91,7 @@ void CCustomGrid::OnPosSizeChanged()
 BEGIN_MESSAGE_MAP(CCustomGrid, CBCGPGridCtrl)
 	ON_WM_CREATE()
 	ON_WM_SIZE()
+	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 /*******************************************************************
@@ -432,9 +433,6 @@ void CCustomGrid::GetHeaderInfo(std::vector<HEADRER_INFO>& HeaderInfoArray)
 *******************************************************************/
 void CCustomGrid::FillData(void)
 {
-
-	//只有在调试模式下才起作用
-#ifdef _DEBUG
 	if (NULL == GetSafeHwnd())
 	{
 		return;
@@ -450,15 +448,14 @@ void CCustomGrid::FillData(void)
 			for (int i = 0; i < GetColumnCount (); i++)
 			{
 				CString strItem;
-				strItem.Format (_T("%c%d"), _T('A') + i, nRow + 1);
-				pRow->GetItem(i)->SetValue ((_variant_t) strItem);
+				pRow->GetItem(i)->SetValue((_variant_t) strItem);
 			}
 		}
 		AddRow (pRow, FALSE);
 	}
 
 	AdjustLayout();
-#endif
+
 }
 
 
@@ -531,3 +528,11 @@ void CCustomGrid::OnSize(UINT nType, int cx, int cy)
 }
 
 
+
+
+void CCustomGrid::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO: 在此添加消息处理程序代码和/或调用默认值
+
+	CBCGPGridCtrl::OnTimer(nIDEvent);
+}
