@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -49,6 +49,7 @@ BEGIN_MESSAGE_MAP(CBCGPGridView, CView)
 	ON_WM_SETFOCUS()
 	ON_WM_DESTROY()
 	//}}AFX_MSG_MAP
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -195,7 +196,10 @@ void CBCGPGridView::OnBeginPrinting(CDC* pDC, CPrintInfo* pInfo)
 
 		// Specify pages count:
 		int nPagesCount = m_pWndGridCtrl->OnCalcPrintPages (pDC, pInfo);
-		pInfo->SetMaxPage (nPagesCount);
+		if (nPagesCount > 0)
+		{
+			pInfo->SetMaxPage (nPagesCount);
+		}
 	}
 }
 //*******************************************************************************
@@ -238,6 +242,19 @@ void CBCGPGridView::OnPrint(CDC* pDC, CPrintInfo* pInfo)
 void CBCGPGridView::OnPrepareDC(CDC* pDC, CPrintInfo* pInfo) 
 {
 	CView::OnPrepareDC(pDC, pInfo);
+}
+//*******************************************************************************
+LRESULT CBCGPGridView::OnChangeVisualManager(WPARAM, LPARAM)
+{
+	if (m_pWndGridCtrl->GetSafeHwnd() != NULL)
+	{
+		if (m_pWndGridCtrl->IsVisualManagerStyle())
+		{
+			m_pWndGridCtrl->SetVisualManagerColorTheme();
+		}
+	}
+
+	return 0;
 }
 
 #endif // BCGP_EXCLUDE_GRID_CTRL

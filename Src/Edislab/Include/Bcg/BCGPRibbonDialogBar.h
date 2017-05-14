@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -36,7 +36,7 @@ class BCGCBPRODLLEXPORT CBCGPRibbonDialogBar : public CBCGPDockingControlBar
 
 // Construction
 public:
-	CBCGPRibbonDialogBar();
+	CBCGPRibbonDialogBar(CRuntimeClass* pRTI = NULL);
 	virtual ~CBCGPRibbonDialogBar();
 
 	BOOL Create(LPCTSTR lpszCaption, CWnd* pParentWnd, const RECT& rect, 
@@ -49,9 +49,9 @@ public:
 
 // Attributes
 public:
-	CBCGPRibbonBar& GetRibbon ()
+	CBCGPRibbonBar& GetRibbon()
 	{
-		return m_wndRibbon;
+		return m_pCustomRibbon == NULL ? m_wndRibbon : *m_pCustomRibbon;
 	}
 
 // Operations
@@ -78,6 +78,7 @@ protected:
 
 protected:
 	CBCGPRibbonBar			m_wndRibbon;
+	CBCGPRibbonBar*			m_pCustomRibbon;
 	CBCGPRibbonCategory*	m_pCategory;
 	UINT					m_nImagesSmall;
 	UINT					m_nImagesLarge;

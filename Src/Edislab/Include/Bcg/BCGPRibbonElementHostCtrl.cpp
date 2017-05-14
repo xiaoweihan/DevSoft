@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "bcgcbpro.h"
 #include "BCGPRibbonElementHostCtrl.h"
 #include "BCGPRibbonCategory.h"
+#include "BCGPRibbonBackstageView.h"
 #include "BCGPVisualManager.h"
 
 #ifdef _DEBUG
@@ -38,6 +39,8 @@ CBCGPRibbonGalleryCtrl::CBCGPRibbonGalleryCtrl()
 {
 	ASSERT_VALID(m_pPanel);
 
+	m_PaletteButton.SetDrawDisabledItems(TRUE);
+
 	m_bIsCtrlMode = TRUE;
 	m_pPanel->m_bMenuMode = TRUE;
 
@@ -46,6 +49,8 @@ CBCGPRibbonGalleryCtrl::CBCGPRibbonGalleryCtrl()
 	m_PaletteButton.m_pParentControl = this;
 
 	m_bIsMouseClicked = FALSE;
+	m_bNotifyBySingleClick = FALSE;
+	m_pClicked = NULL;
 }
 
 CBCGPRibbonGalleryCtrl::~CBCGPRibbonGalleryCtrl()
@@ -61,6 +66,11 @@ BEGIN_MESSAGE_MAP(CBCGPRibbonGalleryCtrl, CBCGPRibbonPanelMenuBar)
 	ON_WM_DESTROY()
 	ON_WM_LBUTTONUP()
 	ON_WM_LBUTTONDBLCLK()
+	ON_WM_LBUTTONDOWN()
+	ON_WM_CANCELMODE()
+	ON_WM_SETFOCUS()
+	ON_WM_KILLFOCUS()
+	ON_WM_ENABLE()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
@@ -93,12 +103,12 @@ void CBCGPRibbonGalleryCtrl::PreSubclassWindow()
 //***********************************************************************************************	
 BOOL CBCGPRibbonGalleryCtrl::PreTranslateMessage(MSG* pMsg)
 {
-	if (pMsg->message == WM_KEYDOWN)
+	if (pMsg->message == WM_KEYDOWN && IsWindowVisible())
 	{
 		switch (pMsg->wParam)
 		{
 		case VK_RETURN:
-			GetParent()->SendMessage(WM_COMMAND, (WPARAM)GetDlgCtrlID(), (LPARAM)GetSafeHwnd());
+			NotifyCommand(FALSE);
 			return TRUE;
 
 		case VK_ESCAPE:
@@ -228,6 +238,13 @@ void CBCGPRibbonGalleryCtrl::OnLButtonUp(UINT nFlags, CPoint point)
 	
 	CBCGPRibbonPanelMenuBar::OnLButtonUp(nFlags, point);
 
+	if (m_bNotifyBySingleClick && m_PaletteButton.GetHighlighted() == m_pClicked && m_pClicked != NULL)
+	{
+		m_pClicked = NULL;
+		NotifyCommand(TRUE);
+		return;
+	}
+
 	if (::IsWindow(GetSafeHwnd()) && nOldSelected != GetSelectedItem())
 	{
 		m_bIsMouseClicked = TRUE;
@@ -240,6 +257,8 @@ void CBCGPRibbonGalleryCtrl::OnLButtonUp(UINT nFlags, CPoint point)
 
 		m_bIsMouseClicked = FALSE;
 	}
+
+	m_pClicked = NULL;
 }
 //****************************************************************************************
 BOOL CBCGPRibbonGalleryCtrl::OnKey (UINT nChar)
@@ -267,15 +286,271 @@ BOOL CBCGPRibbonGalleryCtrl::OnKey (UINT nChar)
 //****************************************************************************************
 void CBCGPRibbonGalleryCtrl::OnLButtonDblClk(UINT /*nFlags*/, CPoint /*point*/) 
 {
-	if (::IsWindow(GetSafeHwnd()))
+	if (!m_bNotifyBySingleClick)
 	{
-		m_bIsMouseClicked = TRUE;
+		NotifyCommand(TRUE);
+	}
+}
+//**************************************************************************
+void CBCGPRibbonGalleryCtrl::EnsureVisible(int nItemIndex)
+{
+	ASSERT_VALID(this);
 
-		GetParent()->SendMessage(WM_COMMAND, (WPARAM)GetDlgCtrlID(), (LPARAM)GetSafeHwnd());
+	int nCurrIndex = 0;
 
+	CRect rect;
+	GetClientRect(rect);
+	
+	for (int i = 0; i < m_PaletteButton.m_arIcons.GetSize(); i++)
+	{
+		CBCGPRibbonPaletteIcon* pIcon = DYNAMIC_DOWNCAST(CBCGPRibbonPaletteIcon, m_PaletteButton.m_arIcons[i]);
+		
+		if (pIcon == NULL)
+		{
+			continue;
+		}
+		
+		ASSERT_VALID (pIcon);
+		
+		if (nCurrIndex == nItemIndex)
+		{
+			if (pIcon->GetRect().bottom > rect.bottom)
+			{
+				while (TRUE)
+				{
+					int nScrollOffsetOld = m_wndScrollBarVert.GetScrollPos();
+
+					OnVScroll(SB_LINEDOWN, 0, &m_wndScrollBarVert);
+
+					if (nScrollOffsetOld == m_wndScrollBarVert.GetScrollPos() ||
+						pIcon->GetRect().bottom <= rect.bottom)
+					{
+						break;
+					}
+				}
+			}
+			else if (pIcon->GetRect().top < rect.top)
+			{
+				while (TRUE)
+				{
+					int nScrollOffsetOld = m_wndScrollBarVert.GetScrollPos();
+					
+					OnVScroll(SB_LINEUP, 0, &m_wndScrollBarVert);
+					
+					if (nScrollOffsetOld == m_wndScrollBarVert.GetScrollPos() ||
+						pIcon->GetRect().top >= rect.top)
+					{
+						break;
+					}
+				}
+			}
+
+			break;
+		}
+		
+		nCurrIndex++;
+	}
+	
+	RedrawWindow();
+}
+//**************************************************************************
+void CBCGPRibbonGalleryCtrl::NotifyCommand(BOOL bByMouseClick)
+{
+	if (::IsWindow(GetSafeHwnd()) && GetOwner()->GetSafeHwnd() != NULL)
+	{
+		m_bIsMouseClicked = bByMouseClick;
+		GetOwner()->SendMessage(WM_COMMAND, (WPARAM)GetDlgCtrlID(), (LPARAM)GetSafeHwnd());
 		m_bIsMouseClicked = FALSE;
+	}
+}
+//**************************************************************************
+void CBCGPRibbonGalleryCtrl::OnLButtonDown(UINT nFlags, CPoint point) 
+{
+	CBCGPRibbonPanelMenuBar::OnLButtonDown(nFlags, point);
+
+	m_pClicked = m_PaletteButton.GetHighlighted();
+
+	if (DYNAMIC_DOWNCAST(CBCGPRibbonPaletteIcon, m_pClicked) == NULL)
+	{
+		m_pClicked = NULL;
+	}
+}
+//**************************************************************************
+void CBCGPRibbonGalleryCtrl::OnCancelMode() 
+{
+	CBCGPRibbonPanelMenuBar::OnCancelMode();
+	m_pClicked = NULL;
+}
+//**************************************************************************
+void CBCGPRibbonGalleryCtrl::OnSetFocus(CWnd* pOldWnd) 
+{
+	CBCGPRibbonPanelMenuBar::OnSetFocus(pOldWnd);
+
+	if (GetSelectedItem() < 0 && GetCount() > 0)
+	{
+		SelectItem(0);
+	}
+
+	m_PaletteButton.OnSetFocus(TRUE);
+	m_PaletteButton.m_bIsFocused = TRUE;
+
+	RedrawWindow();
+}
+//**************************************************************************
+void CBCGPRibbonGalleryCtrl::OnKillFocus(CWnd* pNewWnd) 
+{
+	CBCGPRibbonPanelMenuBar::OnKillFocus(pNewWnd);
+	m_PaletteButton.m_bIsFocused = FALSE;
+
+	RedrawWindow();
+}
+//**************************************************************************
+void CBCGPRibbonGalleryCtrl::OnEnable(BOOL bEnable) 
+{
+	CBCGPRibbonPanelMenuBar::OnEnable(bEnable);
+
+	m_PaletteButton.m_bIsDisabled = !bEnable;
+
+	if (m_wndScrollBarVert.GetSafeHwnd() != NULL)
+	{
+		m_wndScrollBarVert.EnableWindow(bEnable);
+	}
+
+	RedrawWindow();
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPNewDocumentGalleryCtrl control
+
+IMPLEMENT_DYNAMIC(CBCGPNewDocumentGalleryCtrl, CBCGPRibbonGalleryCtrl)
+
+CBCGPNewDocumentGalleryCtrl::CBCGPNewDocumentGalleryCtrl()
+{
+	m_nTemplatesGroupStartIndex = -1;
+	m_sizeTemplatePadding = CSize(0, 0);
+}
+//**************************************************************************
+int CBCGPNewDocumentGalleryCtrl::AddApplicationDocTemplates(const CString strGroupName, CSize sizeItem, CSize sizePadding)
+{
+	for (POSITION pos = AfxGetApp()->GetFirstDocTemplatePosition(); pos != NULL;)
+	{
+		CMultiDocTemplate* pTemplate = DYNAMIC_DOWNCAST(CMultiDocTemplate, AfxGetApp()->GetNextDocTemplate(pos));
+		if (pTemplate != NULL)
+		{
+			ASSERT_VALID(pTemplate);
+			m_arTemplates.Add((CBCGPMultiDocTemplate*)pTemplate);
+		}
+	}
+	
+	const int nSize = (int)m_arTemplates.GetSize();
+	if (nSize == 0)
+	{
+		return 0;
+	}
+
+	m_nTemplatesGroupStartIndex = GetCount();
+
+	AddGroup(strGroupName, globalUtils.ScaleByDPI(sizeItem), nSize);
+	
+	for (int i = 0; i < nSize; i++)
+	{
+		CBCGPMultiDocTemplate* pTemplate = m_arTemplates[i];
+		ASSERT_VALID(pTemplate);
+
+		int nIndex = m_nTemplatesGroupStartIndex + i;
+
+		CString strTypeName;
+		if (pTemplate->GetDocString(strTypeName, CDocTemplate::fileNewName) && !strTypeName.IsEmpty())
+		{
+			m_PaletteButton.SetItemToolTip(nIndex, strTypeName);
+		}
+	}
+
+	m_sizeTemplatePadding = sizePadding;
+	return nSize;
+}
+//**************************************************************************
+BOOL CBCGPNewDocumentGalleryCtrl::CloseBackstageView()
+{
+	for (CWnd* pParent = GetParent(); pParent->GetSafeHwnd() != NULL; pParent = pParent->GetParent())
+	{
+		if (DYNAMIC_DOWNCAST(CBCGPRibbonBackstageView, pParent) != NULL)
+		{
+			pParent->SendMessage(WM_CLOSE);
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
+//**************************************************************************
+void CBCGPNewDocumentGalleryCtrl::NotifyCommand(BOOL bByMouseClick)
+{
+	if (m_arTemplates.GetSize() > 0)
+	{
+		int nSel = GetSelectedItem();
+		int nTemplateIndex = nSel - m_nTemplatesGroupStartIndex;
+
+		if (nTemplateIndex >= 0 && nTemplateIndex < (int)m_arTemplates.GetSize())
+		{
+			CBCGPMultiDocTemplate* pTemplate = m_arTemplates[nTemplateIndex];
+			ASSERT_VALID(pTemplate);
+
+			pTemplate->OpenDocumentFile(NULL);
+			
+			CloseBackstageView();
+			return;
+		}
+	}
+
+	CBCGPRibbonGalleryCtrl::NotifyCommand(bByMouseClick);
+}
+//**************************************************************************
+void CBCGPNewDocumentGalleryCtrl::OnDrawGalleryItem (CDC* pDC, CRect rect, int nIconIndex, CBCGPRibbonPaletteIcon* pIcon, COLORREF clrText)
+{
+	int nTemplateIndex = nIconIndex - m_nTemplatesGroupStartIndex;
+	
+	int nImageHeight = 0;
+
+	rect.DeflateRect(globalUtils.ScaleByDPI(m_sizeTemplatePadding.cx), globalUtils.ScaleByDPI(m_sizeTemplatePadding.cy));
+
+	if (nTemplateIndex >= 0 && m_nTemplatesGroupStartIndex < (int)m_arTemplates.GetSize())
+	{
+		CBCGPMultiDocTemplate* pTemplate = m_arTemplates[nTemplateIndex];
+
+		HICON hIcon = AfxGetApp()->LoadIcon (pTemplate->GetResId ());
+		if (hIcon == NULL)
+		{
+			hIcon = ::LoadIcon(NULL, IDI_APPLICATION);
+		}
+	
+		if (hIcon != NULL)
+		{
+			CSize size = globalUtils.GetIconSize(hIcon);
+
+			::DrawIconEx(pDC->GetSafeHdc(), rect.left + max(0, (rect.Width() - size.cx) / 2), rect.top, hIcon, 
+				size.cx, size.cy, NULL, (HBRUSH)NULL, DI_NORMAL);
+
+			nImageHeight = size.cy + globalUtils.ScaleByDPI(m_sizeTemplatePadding.cy);
+		}
+	}
+
+	CRect rectText = rect;
+	rectText.top += nImageHeight;
+	
+	COLORREF clrTextOld = (COLORREF)-1;
+
+	if (clrText != (COLORREF)-1)
+	{
+		clrTextOld = pDC->SetTextColor(clrText);
+	}
+
+	pDC->DrawText(m_PaletteButton.GetIconTextLabel(pIcon), rectText, DT_WORDBREAK | DT_END_ELLIPSIS | DT_CENTER);
+
+	if (clrTextOld != (COLORREF)-1)
+	{
+		pDC->SetTextColor(clrTextOld);
 	}
 }
 
 #endif // BCGP_EXCLUDE_RIBBON
-

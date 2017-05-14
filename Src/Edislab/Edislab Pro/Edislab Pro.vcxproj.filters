@@ -306,6 +306,9 @@
     <ClInclude Include="ConverEncode.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="CustomGrid.h">
+      <Filter>UIExtend</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -463,6 +466,9 @@
     </ClCompile>
     <ClCompile Include="ConverEncode.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="CustomGrid.cpp">
+      <Filter>UIExtend</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

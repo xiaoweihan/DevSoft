@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,10 @@
 #include "Bcgglobals.h"
 #include "BCGPEdit.h"
 #include "BCGPDlgImpl.h"
+
+#if (!defined _BCGSUITE_)
+#include "BCGPToolbarMenuButton.h"
+#endif
 
 extern BCGCBPRODLLEXPORT UINT BCGM_ONSETCONTROLAERO;
 
@@ -329,6 +333,16 @@ COLORREF CBCGPBreadcrumb::SetBackColor (COLORREF color)
 	return (COLORREF)SendMessage (BCCM_SETBKCOLOR, 0, (LPARAM)color);
 }
 
+void CBCGPBreadcrumb::SetProgress(int nPercent)
+{
+	SendMessage(BCCM_SETPROGRESS, (WPARAM)nPercent);
+}
+
+int CBCGPBreadcrumb::GetProgress() const
+{
+	return (int)::SendMessage (m_hWnd, BCCM_GETPROGRESS, 0, 0);
+}
+
 COLORREF CBCGPBreadcrumb::SetDefaultHighlightedTextColor (COLORREF color)
 {
 	return (COLORREF)SendMessage (BCCM_SETHILITETEXTCOLOR, 0, (LPARAM)color);
@@ -374,7 +388,7 @@ BEGIN_MESSAGE_MAP (CBCGPBreadcrumb, CEdit)
 	ON_NOTIFY_REFLECT(BCCN_INITROOT, OnInitRootReflect)
 	ON_NOTIFY_REFLECT_EX(NM_KEYDOWN, OnKeyDownReflect)
 	ON_NOTIFY_REFLECT(NM_RETURN, OnReturnKeyReflect)
-	ON_NOTIFY_REFLECT(BCCN_SELECTIONCHANGED, OnSelectionChangeReflect)
+	ON_NOTIFY_REFLECT_EX(BCCN_SELECTIONCHANGED, OnSelectionChangeReflect)
 	ON_NOTIFY_REFLECT(NM_CLICK, OnLClickReflect)
 	ON_NOTIFY_REFLECT(NM_RCLICK, OnRClickReflect)
 	ON_NOTIFY_REFLECT(BCCN_BEGIN_INPLACE_EDITING, OnBeginInplaceEditingReflect)
@@ -410,9 +424,10 @@ void CBCGPBreadcrumb::OnReturnKeyReflect (NMHDR*, LRESULT*)
 	OnReturnKey ();
 }
 
-void CBCGPBreadcrumb::OnSelectionChangeReflect (NMHDR*, LRESULT*)
+BOOL CBCGPBreadcrumb::OnSelectionChangeReflect (NMHDR*, LRESULT*)
 {
 	OnSelectionChanged (GetSelectedItem ());
+	return FALSE;
 }
 
 void CBCGPBreadcrumb::OnLClickReflect (NMHDR* pNmhdr, LRESULT*)
@@ -634,9 +649,17 @@ void CBCGPBreadcrumb::PreSubclassWindow ()
 	bool bWantReturn	 = (dwEditStyle & ES_WANTRETURN) != 0;
 	bool bSupportEdit	 = (dwEditStyle & ES_READONLY) == 0;
 
-	DWORD dwBreadcrumbStyle = dwEditStyle & (WS_TABSTOP | WS_VISIBLE | WS_CHILD | WS_BORDER | WS_GROUP);
-	if (bWantReturn) dwBreadcrumbStyle |= BCCS_WANTRETURN;
-	if (bSupportEdit) dwBreadcrumbStyle |= BCCS_INPLACEEDIT;
+	DWORD dwBreadcrumbStyle = dwEditStyle & (WS_TABSTOP | WS_VISIBLE | WS_CHILD | WS_BORDER | WS_GROUP | WS_DISABLED);
+
+	if (bWantReturn) 
+	{
+		dwBreadcrumbStyle |= BCCS_WANTRETURN;
+	}
+
+	if (bSupportEdit) 
+	{
+		dwBreadcrumbStyle |= BCCS_INPLACEEDIT;
+	}
 
 	::SetWindowLong (m_hWnd, GWL_STYLE, dwBreadcrumbStyle);
 	SetWindowPos (NULL, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
@@ -677,4 +700,15 @@ LRESULT CBCGPBreadcrumb::OnBCGSetControlAero (WPARAM wp, LPARAM)
 
 void CBCGPBreadcrumb::OnContextMenu(CWnd* /*pWnd*/, CPoint /*point*/) 
 {
+}
+
+BOOL CBCGPBreadcrumb::OnDrawMenuImage(CDC* pDC, const CBCGPToolbarMenuButton* pMenuButton, const CRect& rectImage)
+{
+	BREADCRUMBMENUICONDRAWINFO info;
+
+	info.hdc = pDC->GetSafeHdc();
+	info.iIndex = pMenuButton->m_nID - 1;
+	info.rectIcon = *(LPCRECT)rectImage;
+	
+	return (BOOL)SendMessage(BCCM_DRAWMENUITEMICON, 0, (LPARAM)&info);
 }

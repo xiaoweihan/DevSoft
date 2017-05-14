@@ -5,7 +5,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -38,6 +38,16 @@ public:
 		return CBCGPBreadcrumb::Create(rect, pParentWnd, nID, dwStyle, dwStyleEx);
 	}
 
+	void EnableSystemUserInput(BOOL bEnable = TRUE)
+	{
+		m_bSystemUserInput = bEnable;
+	}
+	
+	BOOL IsSystemUserInputEnabled() const
+	{
+		return m_bSystemUserInput;
+	}
+
 	void SetRelatedShellList(CBCGPShellList* pShellListControl);
 	CBCGPShellList* GetRelatedShellList () const
 	{ return m_pRelatedShellList; }
@@ -50,8 +60,9 @@ public:
 	}
 
 	virtual CString GetItemPath (HBREADCRUMBITEM hItem, TCHAR delimiter = '\\') const;
-
 	virtual BOOL SelectPath(const CString& itemPath, TCHAR delimiter = '\\');
+	virtual BOOL Refresh();
+
 	BOOL SelectShellItem (LPCITEMIDLIST lpidl);
 
 protected:
@@ -68,6 +79,7 @@ protected:
 private:
 	CBCGPShellList* m_pRelatedShellList;
 	DWORD           m_dwShellFlags; // SHCONTF_* flags
+	BOOL			m_bSystemUserInput;
 };
 
 #endif

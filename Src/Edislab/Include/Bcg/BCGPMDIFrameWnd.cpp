@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -19,6 +19,7 @@
 #include "BCGPToolbar.h"
 #include "BCGPMenuBar.h"
 #include "BCGPPopupMenu.h"
+#include "BCGPPopupWindow.h"
 #include "BCGPToolbarMenuButton.h"
 #include "BCGPMiniFrameWnd.h"
 #include "BCGPLocalResource.h"
@@ -29,6 +30,8 @@
 #include "BCGPSlider.h"
 #include "BCGPWorkspace.h"
 #include "BCGPRibbonBackstageView.h"
+#include "BCGPIntelliSenseWnd.h"
+#include "BCGPRegistry.h"
 
 #if _MSC_VER >= 1300
 	#include <..\atlmfc\src\mfc\oleimpl2.h>
@@ -49,7 +52,9 @@ static char THIS_FILE[] = __FILE__;
 #endif
 
 
-extern CBCGPWorkspace* g_pWorkspace;
+extern CBCGPWorkspace*	g_pWorkspace;
+extern CObList			gAllToolbars;
+extern UINT				BCGM_ON_CHANGE_BACKSTAGE_PROP_HIGHLIGHTING;
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMDIFrameWnd
@@ -57,6 +62,8 @@ extern CBCGPWorkspace* g_pWorkspace;
 IMPLEMENT_DYNCREATE(CBCGPMDIFrameWnd, CMDIFrameWnd)
 
 BOOL CBCGPMDIFrameWnd::m_bDisableSetRedraw = TRUE;
+HWND CBCGPMDIFrameWnd::m_hwndActiveDetachedMDIFrame = NULL;
+HWND CBCGPMDIFrameWnd::m_hwndLastActiveDetachedMDIFrame = NULL;
 
 #pragma warning (disable : 4355)
 
@@ -68,6 +75,12 @@ BOOL CBCGPMDIFrameWnd::m_bDisableSetRedraw = TRUE;
 #define MSGFLT_REMOVE 2
 #endif
 
+UINT BCGM_REACTIVATE_DETACHED_FRAME			= ::RegisterWindowMessage (_T("BCGM_REACTIVATE_DETACHED_FRAME"));
+UINT BCGM_RESET_DETACHED_FRAME				= ::RegisterWindowMessage (_T("BCGM_RESET_DETACHED_FRAME"));
+UINT BCGM_SYNC_FRAME_OPTIONS				= ::RegisterWindowMessage (_T("BCGM_SYNC_FRAME_OPTIONS"));
+UINT BCGM_ON_ACTIVATE_MDI_TEAR_OFF_FRAME	= ::RegisterWindowMessage (_T("BCGM_ON_ACTIVATE_MDI_TEAR_OFF_FRAME"));
+UINT BCGM_POST_ACTIVATE_MDI_TEAR_OFF_FRAME	= ::RegisterWindowMessage (_T("BCGM_POST_ACTIVATE_MDI_TEAR_OFF_FRAME"));
+
 CBCGPMDIFrameWnd::CBCGPMDIFrameWnd() :
 	m_Impl (this),
 	m_hmenuWindow (NULL),
@@ -76,12 +89,17 @@ CBCGPMDIFrameWnd::CBCGPMDIFrameWnd() :
 	m_uiWindowsDlgMenuId (0),
 	m_bShowWindowsDlgAlways (FALSE),
 	m_bShowWindowsDlgHelpButton (FALSE),
+	m_bResizableWindowsDlg(FALSE),
 	m_bWasMaximized (FALSE),
 	m_bIsMinimized (FALSE),
 	m_bClosing (FALSE),
 	m_nFrameID (0),
 	m_pPrintPreviewFrame (NULL),
-	m_bCanCovertControlBarToMDIChild (FALSE)
+	m_bCanCovertControlBarToMDIChild (FALSE),
+	m_bAutoPaneActivation(TRUE),
+	m_bIsMDIChildDetached(FALSE),
+	m_bIsInternalEnable(FALSE),
+	m_bActivatedBySysKey(FALSE)
 {
 	if (globalData.bIsWindows7)
 	{
@@ -116,6 +134,9 @@ BEGIN_MESSAGE_MAP(CBCGPMDIFrameWnd, CMDIFrameWnd)
 	ON_WM_LBUTTONUP()
 	ON_WM_MOUSEMOVE()
 	ON_WM_LBUTTONDOWN()
+	ON_WM_WINDOWPOSCHANGING()
+	ON_WM_SYSCOMMAND()
+	ON_WM_ENABLE()
 	//}}AFX_MSG_MAP
 	ON_WM_ACTIVATEAPP()
 	ON_MESSAGE(WM_IDLEUPDATECMDUI, OnIdleUpdateCmdUI)
@@ -137,6 +158,13 @@ BEGIN_MESSAGE_MAP(CBCGPMDIFrameWnd, CMDIFrameWnd)
 	ON_REGISTERED_MESSAGE(BCGM_ON_AFTER_TASKBAR_ACTIVATE, OnAfterTaskbarActivate)
 	ON_MESSAGE(WM_DWMCOMPOSITIONCHANGED, OnDWMCompositionChanged)
 	ON_MESSAGE(WM_POWERBROADCAST, OnPowerBroadcast)
+	ON_REGISTERED_MESSAGE(BCGM_REACTIVATE_DETACHED_FRAME, OnReactivateDetachedFrame)
+	ON_REGISTERED_MESSAGE(BCGM_RESET_DETACHED_FRAME, OnCleanDetachedFrame)
+	ON_REGISTERED_MESSAGE(BCGM_SYNC_FRAME_OPTIONS, OnSyncFrameOptions)
+	ON_REGISTERED_MESSAGE(BCGM_ON_CHANGE_BACKSTAGE_PROP_HIGHLIGHTING, OnChangeBackstagePropHighlighting)
+	ON_REGISTERED_MESSAGE(BCGM_POST_ACTIVATE_MDI_TEAR_OFF_FRAME, OnPostMDITearOffFrame)
+	ON_MESSAGE(WM_DPICHANGED, OnDPIChanged)
+	ON_MESSAGE(WM_THEMECHANGED, OnThemeChanged)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -144,6 +172,12 @@ END_MESSAGE_MAP()
 
 BOOL CBCGPMDIFrameWnd::OnSetMenu (HMENU hmenu)
 {
+	HMENU hMenuctiveMDITearOff = GetActiveMDITearOffMenu();
+	if (hMenuctiveMDITearOff != NULL)
+	{
+		hmenu = hMenuctiveMDITearOff;
+	}
+
 	COleClientItem*	pActiveItem = GetInPlaceActiveItem ();
 	if (pActiveItem != NULL && 
 		pActiveItem->GetInPlaceWindow () != NULL)
@@ -174,7 +208,8 @@ BOOL CBCGPMDIFrameWnd::OnSetMenu (HMENU hmenu)
 //*******************************************************************************************
 BOOL CBCGPMDIFrameWnd::OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext) 
 {
-	if (!CMDIFrameWnd::OnCreateClient(lpcs, pContext))
+	BOOL bRes = m_bIsMDIChildDetached ? CreateClient(lpcs, NULL) : CMDIFrameWnd::OnCreateClient(lpcs, pContext);
+	if (!bRes)
 	{
 		return FALSE;
 	}
@@ -262,10 +297,18 @@ void CBCGPMDIFrameWnd::OnWindowPosChanged(WINDOWPOS FAR* lpwndpos)
 BOOL CBCGPMDIFrameWnd::PreTranslateMessage(MSG* pMsg) 
 {
 	BOOL bProcessAccel = TRUE;
+	int nKey = 0;
 
 	switch (pMsg->message)
 	{
 	case WM_SYSKEYDOWN:
+		if (m_wndClientArea.IsDragMDIChild())
+		{
+			return TRUE;
+		}
+
+		nKey = (int)pMsg->wParam;
+
 #ifndef BCGP_EXCLUDE_RIBBON
 		if (m_Impl.m_pRibbonBar != NULL && m_Impl.m_pRibbonBar->OnSysKeyDown (this, pMsg->wParam, pMsg->lParam))
 		{
@@ -283,31 +326,65 @@ BOOL CBCGPMDIFrameWnd::PreTranslateMessage(MSG* pMsg)
 		}
 
 	case WM_CONTEXTMENU:
+		if (m_wndClientArea.IsDragMDIChild())
+		{
+			return TRUE;
+		}
+
+		if (pMsg->message == WM_CONTEXTMENU)
+		{
+			nKey = 0;
+		}
+
 		if (!globalData.m_bSysUnderlineKeyboardShortcuts && !globalData.m_bUnderlineKeyboardShortcuts)
 		{
 			globalData.m_bUnderlineKeyboardShortcuts = TRUE;
 			CBCGPToolBar::RedrawUnderlines ();
 		}
 
-		if (CBCGPPopupMenu::GetSafeActivePopupMenu() != NULL && (pMsg->wParam == VK_MENU || pMsg->wParam == VK_F10))
+		if (CBCGPPopupMenu::GetSafeActivePopupMenu() != NULL && (nKey == VK_MENU || nKey == VK_F10))
 		{
 			CBCGPPopupMenu::m_pActivePopupMenu->SendMessage (WM_CLOSE);
 			return TRUE;
 		}
-		else if (m_Impl.ProcessKeyboard ((int) pMsg->wParam))
+		else if (m_Impl.ProcessKeyboard(nKey))
 		{
 			return TRUE;
 		}
 		break;
 
 	case WM_SYSKEYUP:
-		if (m_Impl.ProcessSysKeyUp(pMsg->wParam, pMsg->lParam))
+		if (m_wndClientArea.IsDragMDIChild())
 		{
 			return TRUE;
 		}
+
+		m_bActivatedBySysKey = TRUE;
+
+		if (m_Impl.ProcessSysKeyUp(pMsg->wParam, pMsg->lParam))
+		{
+			m_bActivatedBySysKey = FALSE;
+			return TRUE;
+		}
+
+		m_bActivatedBySysKey = FALSE;
 		break;
 
 	case WM_KEYDOWN:
+		if (m_wndClientArea.IsDragMDIChild())
+		{
+			if (pMsg->wParam == VK_ESCAPE)
+			{
+				CBCGPTabWnd* pCapturedTab = DYNAMIC_DOWNCAST(CBCGPTabWnd, GetCapture());
+				if (pCapturedTab->GetSafeHwnd() != NULL)
+				{
+					pCapturedTab->SendMessage(WM_CANCELMODE);
+				}
+			}
+
+			return TRUE;
+		}
+
 		//-----------------------------------------
 		// Pass keyboard action to the active menu:
 		//-----------------------------------------
@@ -405,6 +482,13 @@ BOOL CBCGPMDIFrameWnd::PreTranslateMessage(MSG* pMsg)
 		}
 		break;
 
+	case WM_COMMAND:
+		if (m_hwndLastActiveDetachedMDIFrame != NULL)
+		{
+			PostMessage(BCGM_REACTIVATE_DETACHED_FRAME);
+		}
+		break;
+
 	case WM_MOUSEMOVE:
 		{
 			CPoint pt (BCG_GET_X_LPARAM(pMsg->lParam), BCG_GET_Y_LPARAM(pMsg->lParam));
@@ -426,11 +510,37 @@ BOOL CBCGPMDIFrameWnd::PreTranslateMessage(MSG* pMsg)
 //*******************************************************************************************
 BOOL CBCGPMDIFrameWnd::OnCommand(WPARAM wParam, LPARAM lParam) 
 {
-	if (HIWORD (wParam) == 1)
-	{
-		UINT uiCmd = LOWORD (wParam);
+	UINT uiCmd = LOWORD(wParam);
 
+	if (uiCmd == ID_HELP && m_Impl.ProcessRibbonContextHelp())
+	{
+		return TRUE;
+	}
+
+	if (HIWORD (wParam) == 1 && lParam == 0)
+	{
 		CBCGPToolBar::AddCommandUsage (uiCmd);
+
+		if (IsWindowsNavigatorEnabled() && (uiCmd == m_Impl.m_nWindowsNextNavigationCmdID || uiCmd == m_Impl.m_nWindowsPrevNavigationCmdID))
+		{
+			m_Impl.ShowWindowsNavigator(uiCmd == m_Impl.m_nWindowsPrevNavigationCmdID);
+			return TRUE;
+		}
+
+		if (m_bAutoPaneActivation)
+		{
+			if ((uiCmd == ID_PREV_PANE || uiCmd == ID_NEXT_PANE) && ActivateNextPane(uiCmd == ID_PREV_PANE))
+			{
+				return TRUE;
+			}
+		}
+
+#ifndef BCGP_EXCLUDE_EDIT_CTRL
+		if (CBCGPIntelliSenseWnd::m_hwndActive != NULL && ::IsWindow(CBCGPIntelliSenseWnd::m_hwndActive))
+		{
+			::SendMessage(CBCGPIntelliSenseWnd::m_hwndActive, WM_CLOSE, 0, 0);
+		}
+#endif
 
 		//---------------------------
 		// Simmulate ESC keystroke...
@@ -463,11 +573,13 @@ HMENU CBCGPMDIFrameWnd::GetWindowMenuPopup (HMENU hMenuBar)
 //********************************************************************************************
 BOOL CBCGPMDIFrameWnd::LoadFrame(UINT nIDResource, DWORD dwDefaultStyle, CWnd* pParentWnd, CCreateContext* pContext) 
 {
+	m_Impl.m_bIsLoadingFrame = TRUE;
 	m_Impl.m_nIDDefaultResource = nIDResource;
 	m_Impl.LoadLargeIconsState ();
 	
 	if (!CMDIFrameWnd::LoadFrame(nIDResource, dwDefaultStyle, pParentWnd, pContext))
 	{
+		m_Impl.m_bIsLoadingFrame = FALSE;
 		return FALSE;
 	}
 
@@ -478,6 +590,7 @@ BOOL CBCGPMDIFrameWnd::LoadFrame(UINT nIDResource, DWORD dwDefaultStyle, CWnd* p
 		m_hMenuDefault = m_Impl.m_hDefaultMenu;
 	}
 
+	m_Impl.m_bIsLoadingFrame = FALSE;
 	return TRUE;
 }
 //*******************************************************************************************
@@ -488,6 +601,56 @@ void CBCGPMDIFrameWnd::OnClose()
 		m_pPrintPreviewFrame->SendMessage (WM_COMMAND, AFX_ID_PREVIEW_CLOSE);
 		m_pPrintPreviewFrame = NULL;
 		return;
+	}
+
+	if (m_bIsMDIChildDetached)
+	{
+		CPushRoutingFrame prf(this);
+
+		HWND hwndMDIChild = ::GetWindow(m_hWndMDIClient, GW_CHILD);
+		
+		while (hwndMDIChild != NULL)
+		{
+			CBCGPMDIChildWnd* pMDIChildFrame = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, CWnd::FromHandle(hwndMDIChild));
+			if (pMDIChildFrame != NULL)
+			{
+				ASSERT_VALID(pMDIChildFrame);
+				
+				CDocument* pDoc = pMDIChildFrame->GetActiveDocument();
+				if (pDoc != NULL)
+				{
+					ASSERT_VALID(pDoc);
+
+					if (!pDoc->SaveModified())
+					{
+						BringWindowToTop();
+						SetActiveWindow();
+						return;
+					}
+				}
+			}
+			
+			hwndMDIChild = ::GetWindow(hwndMDIChild, GW_HWNDNEXT);
+		}
+
+		CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+		if (pMainFrame->GetSafeHwnd() != NULL)
+		{
+#ifndef BCGP_EXCLUDE_RIBBON
+			if (pMainFrame->m_Impl.m_pBackstageView->GetSafeHwnd() != NULL)
+			{
+				pMainFrame->m_Impl.m_pBackstageView->SendMessage(WM_CLOSE);
+				pMainFrame->BringWindowToTop();
+				pMainFrame->SetActiveWindow();
+			}
+#endif
+#if _MSC_VER < 1300
+			if (pMainFrame->IsPrintPreview())
+			{
+				pMainFrame->SendMessage(WM_CLOSE);
+			}
+#endif
+		}
 	}
 
 	if (!m_Impl.IsPrintPreview ())
@@ -543,7 +706,6 @@ BOOL CBCGPMDIFrameWnd::ShowPopupMenu (CBCGPPopupMenu* pMenuPopup)
 	{
 		return FALSE;
 	}
-
 
 	if (!CBCGPToolBar::IsCustomizeMode () && m_hmenuWindow != NULL &&
 		pMenuPopup != NULL && pMenuPopup->GetHMenu () != NULL)
@@ -633,10 +795,16 @@ BOOL CBCGPMDIFrameWnd::ShowPopupMenu (CBCGPPopupMenu* pMenuPopup)
 		return TRUE;
 	}
 
-	BOOL bResult = OnShowPopupMenu (pMenuPopup);
-	
+	if (IsTearOff())
+	{
+		CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+		if (pMainFrame->GetSafeHwnd() != NULL)
+		{
+			return pMainFrame->OnShowPopupMenu(pMenuPopup);
+		}
+	}
 
-	return bResult; 
+	return OnShowPopupMenu(pMenuPopup); 
 }
 //**********************************************************************************
 void CBCGPMDIFrameWnd::OnClosePopupMenu (CBCGPPopupMenu* pMenuPopup)
@@ -681,11 +849,21 @@ BOOL CBCGPMDIFrameWnd::OnDrawMenuImage (CDC* pDC,
 	ASSERT_VALID (this);
 
 #ifndef BCGP_EXCLUDE_RIBBON
+	if (m_bIsMDIChildDetached)
+	{
+		CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+		if (pMainFrame->GetSafeHwnd() != NULL)
+		{
+			return pMainFrame->OnDrawMenuImage(pDC, pMenuButton, rectImage);
+		}
+	}
+
 	if (m_Impl.m_pRibbonBar != NULL)
 	{
 		ASSERT_VALID (m_Impl.m_pRibbonBar);
 		return m_Impl.m_pRibbonBar->DrawMenuImage (pDC, pMenuButton, rectImage);
 	}
+
 #endif
 
 	return FALSE;
@@ -757,7 +935,50 @@ BOOL CBCGPMDIFrameWnd::DockControlBarLeftOf (CBCGPControlBar* pBar, CBCGPControl
 //***************************************************************************************
 void CBCGPMDIFrameWnd::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized) 
 {
+	if (!m_bIsMDIChildDetached)
+	{
+		m_hwndLastActiveDetachedMDIFrame = NULL;
+	}
+
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+	CBCGPPopupWindow* pPopup = DYNAMIC_DOWNCAST(CBCGPPopupWindow, pWndOther);
+	if (pPopup != NULL && pPopup->m_bDontChangeActiveStatus)
+	{
+		return;
+	}
+#endif
+
+	if (nState == WA_CLICKACTIVE && !m_bIsMDIChildDetached)
+	{
+		CPoint ptCursor;
+		::GetCursorPos(&ptCursor);
+
+		CWnd* pWndUnderCursor = CWnd::WindowFromPoint(ptCursor);
+
+		if (DYNAMIC_DOWNCAST(CBCGPToolBar, pWndUnderCursor) != NULL
+#ifndef BCGP_EXCLUDE_RIBBON
+			|| DYNAMIC_DOWNCAST(CBCGPRibbonBar, pWndUnderCursor) != NULL
+#endif
+		)
+		{
+			CBCGPMDIFrameWnd* pOtherMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, pWndOther);
+			if (pOtherMDIFrame->GetSafeHwnd() != NULL && pOtherMDIFrame->m_bIsMDIChildDetached)
+			{
+				m_hwndLastActiveDetachedMDIFrame = pOtherMDIFrame->GetSafeHwnd();
+			}
+		}
+	}
+	else if (nState == WA_ACTIVE && m_bActivatedBySysKey && !m_bIsMDIChildDetached)
+	{
+		CBCGPMDIFrameWnd* pOtherMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, pWndOther);
+		if (pOtherMDIFrame->GetSafeHwnd() != NULL && pOtherMDIFrame->m_bIsMDIChildDetached)
+		{
+			m_hwndLastActiveDetachedMDIFrame = pOtherMDIFrame->GetSafeHwnd();
+		}
+	}
+	
 	CMDIFrameWnd::OnActivate(nState, pWndOther, bMinimized);
+
 	switch (nState)
 	{
 	case WA_CLICKACTIVE:
@@ -777,6 +998,24 @@ void CBCGPMDIFrameWnd::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
 	if (nState != WA_INACTIVE)
 	{
 		m_Impl.ActivateRibbonBackstageView();
+
+		if (AreMDIChildrenTearOff() && !CBCGPToolBar::IsCustomizeMode())
+		{
+			HMENU hMenu = GetActiveMDITearOffMenu();
+
+			if (!m_bIsMDIChildDetached)
+			{
+				OnUpdateFrameMenu(hMenu);
+			}
+			else
+			{
+				CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+				if (pMainFrame->GetSafeHwnd() != NULL)
+				{
+					pMainFrame->OnUpdateFrameMenu(hMenu);
+				}
+			}
+		}
 	}
 }
 //***************************************************************************************
@@ -793,7 +1032,8 @@ void CBCGPMDIFrameWnd::OnActivateApp(BOOL bActive, HTASK /*hTask*/)
 void CBCGPMDIFrameWnd::EnableWindowsDialog (UINT uiMenuId, 
 										   LPCTSTR lpszMenuText,
 										   BOOL bShowAllways,
-										   BOOL bShowHelpButton)
+										   BOOL bShowHelpButton,
+										   BOOL bResizable)
 {
 	ASSERT (lpszMenuText != NULL);
 	ASSERT (uiMenuId != 0);
@@ -802,24 +1042,26 @@ void CBCGPMDIFrameWnd::EnableWindowsDialog (UINT uiMenuId,
 	m_strWindowsDlgMenuText = lpszMenuText;
 	m_bShowWindowsDlgAlways = bShowAllways;
 	m_bShowWindowsDlgHelpButton = bShowHelpButton;
+	m_bResizableWindowsDlg = bResizable;
 }
 //****************************************************************************
 void CBCGPMDIFrameWnd::EnableWindowsDialog (UINT uiMenuId, 
 										   UINT uiMenuTextResId,
 										   BOOL bShowAllways,
-										   BOOL bShowHelpButton)
+										   BOOL bShowHelpButton,
+										   BOOL bResizable)
 {
 	CString strMenuText;
 	VERIFY (strMenuText.LoadString (uiMenuTextResId));
 
-	EnableWindowsDialog (uiMenuId, strMenuText, bShowAllways, bShowHelpButton);
+	EnableWindowsDialog (uiMenuId, strMenuText, bShowAllways, bShowHelpButton, bResizable);
 }
 //****************************************************************************
 void CBCGPMDIFrameWnd::ShowWindowsDialog ()
 {
 	CBCGPLocalResource locaRes;
 
-	CBCGPWindowsManagerDlg dlg (this, m_bShowWindowsDlgHelpButton);
+	CBCGPWindowsManagerDlg dlg (this, m_bShowWindowsDlgHelpButton, m_bResizableWindowsDlg);
 	dlg.DoModal ();
 }
 //****************************************************************************
@@ -849,6 +1091,30 @@ COleClientItem*	CBCGPMDIFrameWnd::GetInPlaceActiveItem ()
 
 	ASSERT_VALID (pDoc);
 	return pDoc->GetInPlaceActiveItem (pView);
+}
+//****************************************************************************
+HMENU CBCGPMDIFrameWnd::GetActiveMDITearOffMenu() const
+{
+	CBCGPMDIFrameWnd* pActiveMDIFrame = GetActiveTearOffFrame();
+	if (pActiveMDIFrame != NULL && pActiveMDIFrame->GetSafeHwnd() != GetSafeHwnd())
+	{
+		CMDIChildWnd* pActiveWnd = pActiveMDIFrame->MDIGetActive();
+		if (pActiveWnd != NULL)
+		{
+			// attempt to get default menu from document
+			CDocument* pDoc = pActiveWnd->GetActiveDocument();
+			if (pDoc != NULL)
+			{
+				CMultiDocTemplate* pTemplate = DYNAMIC_DOWNCAST(CMultiDocTemplate, pDoc->GetDocTemplate());
+				if (pTemplate != NULL)
+				{
+					return pTemplate->m_hMenuShared;
+				}
+			}
+		}
+	}
+
+	return NULL;
 }
 //****************************************************************************
 void CBCGPMDIFrameWnd::OnUpdateFrameMenu (HMENU hMenuAlt)
@@ -931,6 +1197,20 @@ void CBCGPMDIFrameWnd::OnDestroy()
 void CBCGPMDIFrameWnd::EnableMDITabbedGroups (BOOL bEnable, const CBCGPMDITabParams& params)
 {
 	m_wndClientArea.EnableMDITabbedGroups (bEnable, params);
+
+	if (AreMDIChildrenTearOff() && !m_bIsMDIChildDetached)
+	{
+		const CList<CFrameWnd*, CFrameWnd*>& lstFrames = CBCGPFrameImpl::GetFrameList();
+		for (POSITION pos = lstFrames.GetHeadPosition(); pos != NULL;)
+		{
+			CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, lstFrames.GetNext(pos));
+			
+			if (pMDIFrame->GetSafeHwnd() != NULL && pMDIFrame->m_bIsMDIChildDetached)
+			{
+				pMDIFrame->PostMessage(BCGM_SYNC_FRAME_OPTIONS, 0, (LPARAM) GetSafeHwnd());
+			}
+		}
+	}
 }
 //*************************************************************************************
 void CBCGPMDIFrameWnd::EnableMDITabs (BOOL bEnable/* = TRUE*/,
@@ -1181,9 +1461,9 @@ BOOL CBCGPMDIFrameWnd::EnableAutoHideBars (DWORD dwDockStyle, BOOL bActivateOnMo
 	return m_dockManager.EnableAutoHideBars (dwDockStyle, bActivateOnMouseClick);
 }
 //****************************************************************************************
-void CBCGPMDIFrameWnd::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeByDblClick)
+void CBCGPMDIFrameWnd::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeByDblClick, BOOL bRestoreMaximizeFloatingBars)
 {
-	m_dockManager.EnableMaximizeFloatingBars(bEnable, bMaximizeByDblClick);
+	m_dockManager.EnableMaximizeFloatingBars(bEnable, bMaximizeByDblClick, bRestoreMaximizeFloatingBars);
 }
 //****************************************************************************************
 BOOL CBCGPMDIFrameWnd::AreFloatingBarsCanBeMaximized() const
@@ -1377,6 +1657,50 @@ BOOL CBCGPMDIFrameWnd::OnBarCheck(UINT nID)
 //********************************************************************************
 LRESULT CBCGPMDIFrameWnd::OnIdleUpdateCmdUI(WPARAM, LPARAM)
 {
+	if (m_bIsMDIChildDetached)
+	{
+		CWnd* pFocus = GetFocus();
+
+		if (pFocus->GetSafeHwnd () != NULL && (IsChild (pFocus) || pFocus->GetSafeHwnd () == GetSafeHwnd ()))
+		{
+			CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+			if (pMainFrame->GetSafeHwnd() != NULL)
+			{
+				for (POSITION posTlb = gAllToolbars.GetHeadPosition (); posTlb != NULL;)
+				{
+					CBCGPToolBar* pToolBar = (CBCGPToolBar*) gAllToolbars.GetNext (posTlb);
+					ASSERT (pToolBar != NULL);
+					
+					if (CWnd::FromHandlePermanent (pToolBar->m_hWnd) != NULL && pToolBar->GetOwner()->GetSafeHwnd() == pMainFrame->GetSafeHwnd() &&
+						pToolBar->IsWindowVisible())
+					{
+						ASSERT_VALID(pToolBar);
+						pToolBar->OnUpdateCmdUI(this, FALSE);
+					}
+				}
+
+#ifndef BCGP_EXCLUDE_RIBBON
+				if (pMainFrame->m_Impl.m_pRibbonBar->GetSafeHwnd() != NULL && pMainFrame->m_Impl.m_pRibbonBar->IsWindowVisible())
+				{
+					pMainFrame->m_Impl.m_pRibbonBar->OnUpdateCmdUI(this, FALSE);
+				}
+#endif
+			}
+		}
+	}
+
+	if (!m_bIsMDIChildDetached && m_hwndLastActiveDetachedMDIFrame != NULL && !m_Impl.IsMenuActive()
+#ifndef BCGP_EXCLUDE_RIBBON
+		&& m_Impl.m_pBackstageView->GetSafeHwnd() == NULL
+#endif
+		)
+	{
+		if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0)
+		{
+			PostMessage(BCGM_RESET_DETACHED_FRAME);
+		}
+	}
+
 	m_dockManager.SendMessageToMiniFrames (WM_IDLEUPDATECMDUI);
 	return 0L;
 }
@@ -1482,8 +1806,25 @@ void CBCGPMDIFrameWnd::OnGetMinMaxInfo(MINMAXINFO FAR* lpMMI)
 	}
 }
 //**************************************************************************************
-CBCGPMDIChildWnd* CBCGPMDIFrameWnd::CreateDocumentWindow (LPCTSTR /*lpcszDocName*/, CObject* /*pObj*/)
+CBCGPMDIChildWnd* CBCGPMDIFrameWnd::CreateDocumentWindow (LPCTSTR lpcszDocName, CObject* pObj)
 {
+	if (m_bIsMDIChildDetached)
+	{
+		CBCGPMDIChildWnd* pDocWindow = NULL;
+
+		CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+		if (pMainFrame->GetSafeHwnd() != NULL)
+		{
+			pDocWindow = pMainFrame->CreateDocumentWindow(lpcszDocName, pObj);
+			if (pDocWindow->GetSafeHwnd() != NULL)
+			{
+				AttachMDIChild(pDocWindow);
+			}
+		}
+
+		return pDocWindow;
+	}
+
 	ASSERT (FALSE);
 	TRACE0("If you use save/load state for MDI tabs, you must override this method in a derived class!\n");
 	return NULL;
@@ -1520,12 +1861,104 @@ CBCGPMDIChildWnd* CBCGPMDIFrameWnd::CreateNewWindow (LPCTSTR lpcszDocName, CObje
 //**************************************************************************************
 BOOL CBCGPMDIFrameWnd::LoadMDIState (LPCTSTR lpszProfileName)
 {
-	return m_wndClientArea.LoadState (lpszProfileName, m_nFrameID);
+	if (!m_wndClientArea.LoadState (lpszProfileName, m_nFrameID))
+	{
+		return FALSE;
+	}
+
+	if (AreMDIChildrenTearOff())
+	{
+		for (int nIndex = 1;; nIndex++)
+		{
+			CString strKey;
+			strKey.Format (CBCGPMainClientAreaWnd::m_strRegSectionFmt, lpszProfileName, nIndex);
+			
+			CBCGPRegistrySP regSP;
+			CBCGPRegistry& reg = regSP.Create (FALSE, TRUE);
+
+			if (!reg.VerifyKey(strKey))
+			{
+				break;
+			}
+
+			CBCGPMDIFrameWnd* pNewFrame = DetachMDIChild(NULL, CRect(0, 0, 0, 0));
+			if (pNewFrame->GetSafeHwnd() != NULL)
+			{
+				pNewFrame->m_wndClientArea.LoadState(lpszProfileName, nIndex, TRUE);
+
+				// If no windows were restored, destroy the frame:
+				const CObList& lstTabGroups = pNewFrame->m_wndClientArea.GetMDITabGroups();
+				BOOL bHasMDITab = FALSE;
+				
+				for (POSITION pos = lstTabGroups.GetHeadPosition(); pos != NULL;)
+				{
+					CBCGPTabWnd* pTab = DYNAMIC_DOWNCAST(CBCGPTabWnd, lstTabGroups.GetNext(pos));
+					if (pTab != NULL && pTab->GetTabsNum() > 0)
+					{
+						bHasMDITab = TRUE;
+						break;
+					}
+				}
+				
+				if (!bHasMDITab)
+				{
+					pNewFrame->SendMessage(WM_CLOSE);
+				}
+			}
+		}
+	}
+
+	return TRUE;
 }	
 //**************************************************************************************
 BOOL CBCGPMDIFrameWnd::SaveMDIState (LPCTSTR lpszProfileName)
 {
-	return m_wndClientArea.SaveState (lpszProfileName, m_nFrameID);
+	if (m_bIsMDIChildDetached)
+	{
+		return TRUE;
+	}
+
+	if (!m_wndClientArea.SaveState (lpszProfileName, m_nFrameID))
+	{
+		return FALSE;
+	}
+
+	int nIndex = 1;
+	
+	//------------------------------------------------
+	// First, clear old detached MDIs in the registry:
+	//------------------------------------------------
+	for (nIndex = 1;; nIndex++)
+	{
+		CString strKey;
+		strKey.Format (CBCGPMainClientAreaWnd::m_strRegSectionFmt, lpszProfileName, nIndex);
+		
+		CBCGPRegistrySP regSP;
+		CBCGPRegistry& reg = regSP.Create (FALSE, FALSE);
+		
+		if (!reg.DeleteKey (strKey))
+		{
+			break;
+		}
+	}
+	
+	if (AreMDIChildrenTearOff())
+	{
+		nIndex = 1;
+		
+		const CList<CFrameWnd*, CFrameWnd*>& lstFrames = CBCGPFrameImpl::GetFrameList();
+		for (POSITION pos = lstFrames.GetHeadPosition(); pos != NULL;)
+		{
+			CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, lstFrames.GetNext(pos));
+			
+			if (pMDIFrame->GetSafeHwnd() != NULL && pMDIFrame->m_bIsMDIChildDetached)
+			{
+				pMDIFrame->m_wndClientArea.SaveState(lpszProfileName, nIndex++, TRUE);
+			}
+		}
+	}
+
+	return TRUE;
 }
 //**************************************************************************************
 void CBCGPMDIFrameWnd::OnContextMenu(CWnd* pWnd, CPoint point) 
@@ -1562,13 +1995,28 @@ void CBCGPMDIFrameWnd::OnContextMenu(CWnd* pWnd, CPoint point)
 
 				if (nTab >= 0)
 				{
-					pWndTab->SetActiveTab (nTab);
+					if (pWndTab->GetSelectedTabsCount() == 0)
+					{
+						pWndTab->SetActiveTab (nTab);
+					}
 
-					CRect rectClose; rectClose.SetRectEmpty();
+					CRect rectClose;
+					rectClose.SetRectEmpty();
 
 					if (!pWndTab->GetTabCloseButtonRect(nTab, rectClose) || !rectClose.PtInRect(ptTab))
 					{
-						OnShowMDITabContextMenu (point, GetMDITabsContextMenuAllowedItems (), FALSE);
+						if (IsTearOff())
+						{
+							CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+							if (pMainFrame->GetSafeHwnd() != NULL)
+							{
+								pMainFrame->OnShowMDITabContextMenu (point, pMainFrame->GetMDITabsContextMenuAllowedItems (), FALSE);
+							}
+						}
+						else
+						{
+							OnShowMDITabContextMenu (point, GetMDITabsContextMenuAllowedItems (), FALSE);
+						}
 					}
 				}
 			}
@@ -1631,7 +2079,19 @@ LRESULT CBCGPMDIFrameWnd::OnToolbarContextMenu(WPARAM,LPARAM)
 //**************************************************************************************
 BOOL CBCGPMDIFrameWnd::OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo) 
 {
-	if (CMDIFrameWnd::OnCmdMsg(nID, nCode, pExtra, pHandlerInfo))
+	BOOL bRes = FALSE;
+
+	CBCGPMDIFrameWnd* pActiveMDIFrame = GetActiveTearOffFrame();
+	if (pActiveMDIFrame != NULL && pActiveMDIFrame->GetSafeHwnd() != GetSafeHwnd())
+	{
+		bRes = pActiveMDIFrame->OnCmdMsg(nID, nCode, pExtra, pHandlerInfo);
+	}
+	else
+	{
+		bRes = CMDIFrameWnd::OnCmdMsg(nID, nCode, pExtra, pHandlerInfo);
+	}
+
+	if (bRes)
 	{
 		return TRUE;
 	}
@@ -1655,8 +2115,39 @@ LRESULT CBCGPMDIFrameWnd::OnSetText(WPARAM, LPARAM lParam)
 	return lRes;
 }
 //*****************************************************************************************
+LRESULT CBCGPMDIFrameWnd::OnPostMDITearOffFrame(WPARAM wp, LPARAM)
+{
+	CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+	if (pMainFrame->GetSafeHwnd() != NULL)
+	{
+		pMainFrame->SendMessage(BCGM_ON_ACTIVATE_MDI_TEAR_OFF_FRAME, wp, (LPARAM)this);
+	}
+
+	return 0;
+}
+//*****************************************************************************************
 BOOL CBCGPMDIFrameWnd::OnNcActivate(BOOL bActive) 
 {
+	if (bActive)
+	{
+		HWND hwndActiveDetachedMDIFramePrev = m_hwndActiveDetachedMDIFrame;
+
+		m_hwndActiveDetachedMDIFrame = m_bIsMDIChildDetached ? GetSafeHwnd() : NULL;
+
+		if (hwndActiveDetachedMDIFramePrev != m_hwndActiveDetachedMDIFrame && m_hwndActiveDetachedMDIFrame != NULL)
+		{
+			PostMessage(BCGM_POST_ACTIVATE_MDI_TEAR_OFF_FRAME, TRUE);
+		}
+	}
+	else if (m_hwndActiveDetachedMDIFrame == GetSafeHwnd())
+	{
+		CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+		if (pMainFrame->GetSafeHwnd() != NULL)
+		{
+			pMainFrame->SendMessage(BCGM_ON_ACTIVATE_MDI_TEAR_OFF_FRAME, FALSE, (LPARAM)this);
+		}
+	}
+
 	if (m_Impl.OnNcActivate (bActive))
 	{
 		return TRUE;
@@ -1687,8 +2178,7 @@ LRESULT CBCGPMDIFrameWnd::OnChangeVisualManager (WPARAM, LPARAM)
 	m_dockManager.SendMessageToMiniFrames(BCGM_CHANGEVISUALMANAGER);
 	m_dockManager.SendMessageToControlBars(BCGM_CHANGEVISUALMANAGER);
 
-	m_Impl.OnChangeVisualManager ();
-	
+	m_Impl.OnChangeVisualManager();
 	return 0;
 }
 //***************************************************************************
@@ -1751,8 +2241,8 @@ CBCGPMDIChildWnd* CBCGPMDIFrameWnd::ControlBarToTabbedDocument (CBCGPDockingCont
 	ASSERT_VALID (this);
 	ASSERT_VALID (pBar);
 
-	CBCGPMDIChildWnd* pFrame = new CBCGPMDIChildWnd;
-	ASSERT_VALID (pFrame);
+	CBCGPMDIChildWnd* pFrame = pBar->OnNewMDITabbedChildWnd(this);
+	ASSERT_VALID(pFrame);
 
 	CString strName;
 	pBar->GetWindowText (strName);
@@ -1818,9 +2308,7 @@ void CBCGPMDIFrameWnd::UpdateMDITabbedBarsIcons ()
 			CBCGPDockingControlBar* pBar = pMDIChildFrame->GetTabbedControlBar ();
 			ASSERT_VALID (pBar);
 
-#pragma warning (disable : 4311)
-			SetClassLongPtr (hwndMDIChild, GCLP_HICONSM, (LONG_PTR) pBar->GetIcon (FALSE));
-#pragma warning (default : 4311)
+			SetClassLongPtr(hwndMDIChild, GCLP_HICONSM, (LONG_PTR)pBar->GetIcon (FALSE));
 		}
 
 		hwndMDIChild = ::GetWindow (hwndMDIChild, GW_HWNDNEXT);
@@ -2007,4 +2495,407 @@ void CBCGPMDIFrameWnd::OnCancelWndCapture(CWnd* pWndCapture)
 	ASSERT_VALID(pWndCapture);
 
 	pWndCapture->SendMessage(WM_CANCELMODE);
+}
+//************************************************************************************
+void CBCGPMDIFrameWnd::OnWindowPosChanging(WINDOWPOS FAR* lpwndpos)
+{
+	CMDIFrameWnd::OnWindowPosChanging(lpwndpos);
+
+	if (IsZoomed())
+	{
+		m_Impl.AdjustMaximizedSize(lpwndpos->cx, lpwndpos->cy);
+	}
+}
+//************************************************************************************
+void CBCGPMDIFrameWnd::OnSysCommand(UINT nID, LPARAM lParam)
+{
+	m_Impl.OnSysCommand(nID, lParam);
+	CMDIFrameWnd::OnSysCommand(nID, lParam);
+}
+//************************************************************************************
+void CBCGPMDIFrameWnd::EnableWindowsNavigator(BOOL bEnable)
+{
+	m_Impl.EnableWindowsNavigator(bEnable);
+}
+//************************************************************************************
+void CBCGPMDIFrameWnd::EnableWindowsNavigator(UINT nNextCmdID, UINT nPrevCmdID)
+{
+	m_Impl.EnableWindowsNavigator(nNextCmdID, nPrevCmdID);
+}
+//************************************************************************************
+CBCGPMDIFrameWnd* CBCGPMDIFrameWnd::DetachMDIChild(CBCGPMDIChildWnd* pMDIChildWnd, CRect rectNewFrame)
+{
+	ASSERT_VALID(this);
+
+	if (!IsMDITabbedGroup())
+	{
+		return NULL;
+	}
+
+	CDocument* pDoc = pMDIChildWnd != NULL ? pMDIChildWnd->GetActiveDocument() : NULL;
+	CView* pView = pMDIChildWnd != NULL ? pMDIChildWnd->GetActiveView() : NULL;
+	
+	CCreateContext context;
+	context.m_pCurrentFrame = this;
+	context.m_pCurrentDoc = pDoc;
+	context.m_pNewViewClass = NULL;
+	context.m_pLastView = pView;
+	context.m_pNewDocTemplate = NULL;
+
+	if (pMDIChildWnd->GetSafeHwnd() != NULL)
+	{
+		//----------------------------------
+		// Detach MDI child from this frame:
+		//----------------------------------
+		m_wndClientArea.OnMDIDestroy((WPARAM)pMDIChildWnd->GetSafeHwnd(), 0);
+		pMDIChildWnd->UnregisterTaskbarTab();
+		pMDIChildWnd->m_bToBeDestroyed = FALSE;
+	}
+
+	//----------------------
+	// Create new MDI frame:
+	//----------------------
+	CBCGPMDIFrameWnd* pNewMDIFrame = new CBCGPMDIFrameWnd;
+
+	pNewMDIFrame->m_bIsMDIChildDetached = TRUE;
+	pNewMDIFrame->m_Impl.m_bIsTearOffFrame = TRUE;
+
+	CString strTitle = GetTitle();
+
+	if (rectNewFrame.IsRectEmpty() && pMDIChildWnd->GetSafeHwnd() != NULL)
+	{
+		pMDIChildWnd->GetWindowRect(rectNewFrame);
+	}
+	
+	if (!pNewMDIFrame->Create(globalData.RegisterWindowClass(_T("BCGPDetachedMDIFrame")), strTitle, FWS_ADDTOTITLE | WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, rectNewFrame,
+		NULL, 0, 0L, &context))
+	{
+		delete pNewMDIFrame;
+		return NULL;
+	}
+
+	//----------------------------------------
+	// Set the current icon to the new frame:
+	//----------------------------------------
+	HICON hIcon = GetIcon(FALSE);
+	if (hIcon == NULL)
+	{
+		hIcon = (HICON)(LONG_PTR) GetClassLongPtr (GetSafeHwnd (), GCLP_HICONSM);
+	}
+
+	pNewMDIFrame->SetIcon(hIcon, FALSE);
+
+	//-----------------------------------------
+	// Copy default keybaord accelerator table:
+	//-----------------------------------------
+	int nAccelSize = ::CopyAcceleratorTable(m_hAccelTable, NULL, 0);
+	if (nAccelSize > 0)
+	{
+		LPACCEL lpAccel = new ACCEL[nAccelSize];
+		ASSERT(lpAccel != NULL);
+	
+		::CopyAcceleratorTable(m_hAccelTable, lpAccel, nAccelSize);
+		pNewMDIFrame->m_hAccelTable = ::CreateAcceleratorTable(lpAccel, nAccelSize);
+
+		delete[] lpAccel;
+	}
+
+	if (pMDIChildWnd->GetSafeHwnd() != NULL)
+	{
+		//-----------------------------------
+		// Attach MDI child to the new frame:
+		//-----------------------------------
+		pMDIChildWnd->SetParent(&pNewMDIFrame->m_wndClientArea);
+		pMDIChildWnd->m_pMDIFrame = pNewMDIFrame;
+
+		pNewMDIFrame->m_wndClientArea.SendMessage(WM_MDIACTIVATE, (WPARAM)pMDIChildWnd->GetSafeHwnd(), 0);
+
+		pMDIChildWnd->RegisterTaskbarTab();
+	}
+
+	pNewMDIFrame->SendMessage(BCGM_SYNC_FRAME_OPTIONS, 0, (LPARAM) GetSafeHwnd());
+
+	pNewMDIFrame->ShowWindow(SW_SHOW);
+	pNewMDIFrame->SetMenu(NULL);
+
+	CleanUpLastMDIChild();
+	return pNewMDIFrame;
+}
+//************************************************************************************
+BOOL CBCGPMDIFrameWnd::AttachMDIChild(CBCGPMDIChildWnd* pMDIChildWnd)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pMDIChildWnd);
+
+	if (!IsMDITabbedGroup())
+	{
+		return FALSE;
+	}
+
+	CBCGPMDIFrameWnd* pParentFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, pMDIChildWnd->GetParentFrame());
+	if (pParentFrame->GetSafeHwnd() == NULL || pParentFrame->GetSafeHwnd() == GetSafeHwnd())
+	{
+		return FALSE;
+	}
+
+	//----------------------------------------
+	// Detach MDI child from the parent frame:
+	//----------------------------------------
+	pParentFrame->m_wndClientArea.OnMDIDestroy((WPARAM)pMDIChildWnd->GetSafeHwnd(), 0);
+	pMDIChildWnd->UnregisterTaskbarTab();
+	pMDIChildWnd->m_bToBeDestroyed = FALSE;
+
+	//---------------------------------
+	// Attach MDI child to this frame:
+	//---------------------------------
+	pMDIChildWnd->m_pMDIFrame = this;
+	pMDIChildWnd->SetParent(&m_wndClientArea);
+	pMDIChildWnd->RegisterTaskbarTab();
+
+	m_wndClientArea.UpdateMDITabbedGroups(TRUE);
+
+	if (m_bIsMDIChildDetached)
+	{
+		SetMenu(NULL);
+	}
+
+	pParentFrame->CleanUpLastMDIChild();
+	return TRUE;
+}
+//************************************************************************************
+void CBCGPMDIFrameWnd::CleanUpLastMDIChild()
+{
+	const CObList& lstTabGroups = m_wndClientArea.GetMDITabGroups();
+	BOOL bHasMDITab = FALSE;
+	
+	for (POSITION pos = lstTabGroups.GetHeadPosition(); pos != NULL;)
+	{
+		CBCGPTabWnd* pTab = DYNAMIC_DOWNCAST(CBCGPTabWnd, lstTabGroups.GetNext(pos));
+		if (pTab != NULL && pTab->GetTabsNum() > 0)
+		{
+			bHasMDITab = TRUE;
+			break;
+		}
+	}
+	
+	if (!bHasMDITab)
+	{
+		CBCGPMDIChildWnd* pDummyChild = new CBCGPMDIChildWnd;
+		pDummyChild->Create(globalData.RegisterWindowClass(_T("BCGPMDIDummy")), _T(""), WS_CHILD | WS_VISIBLE, rectDefault, this, NULL);
+		
+		m_wndClientArea.SendMessage(WM_MDIACTIVATE, (WPARAM)pDummyChild->GetSafeHwnd(), 0);
+		pDummyChild->SendMessage(WM_CLOSE);
+		
+		OnSetMenu(NULL);
+	}
+}
+//************************************************************************************
+void CBCGPMDIFrameWnd::RestoreDetachedFrameActivation()
+{
+	if (m_hwndLastActiveDetachedMDIFrame != NULL && ::IsWindow(m_hwndLastActiveDetachedMDIFrame))
+	{
+		CWnd* pWndDetachedMDIFrame = CWnd::FromHandlePermanent(m_hwndLastActiveDetachedMDIFrame);
+		if (pWndDetachedMDIFrame->GetSafeHwnd() != NULL)
+		{
+			pWndDetachedMDIFrame->BringWindowToTop();
+			pWndDetachedMDIFrame->SetActiveWindow();
+		}
+		
+		m_hwndLastActiveDetachedMDIFrame = NULL;
+	}
+}
+//************************************************************************************
+LRESULT CBCGPMDIFrameWnd::OnReactivateDetachedFrame(WPARAM, LPARAM)
+{
+	RestoreDetachedFrameActivation();
+	return 0;
+}
+//************************************************************************************
+LRESULT CBCGPMDIFrameWnd::OnCleanDetachedFrame(WPARAM, LPARAM)
+{
+	m_hwndLastActiveDetachedMDIFrame = NULL;
+	return 0;
+}
+//************************************************************************************
+LRESULT CBCGPMDIFrameWnd::OnSyncFrameOptions(WPARAM, LPARAM lParam)
+{
+	CBCGPMDIFrameWnd* pFrameSrc = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, CWnd::FromHandlePermanent((HWND)lParam));
+	if (pFrameSrc->GetSafeHwnd() == NULL)
+	{
+		return 0L;
+	}
+
+	m_Impl.m_bIsWindowsNavigatorEnabled = pFrameSrc->m_Impl.m_bIsWindowsNavigatorEnabled;
+	m_Impl.m_nWindowsNextNavigationCmdID = pFrameSrc->m_Impl.m_nWindowsNextNavigationCmdID;
+	m_Impl.m_nWindowsPrevNavigationCmdID = pFrameSrc->m_Impl.m_nWindowsPrevNavigationCmdID;
+	
+	EnableTearOffMDIChildren(pFrameSrc->AreMDIChildrenTearOff());
+	EnableMDITabbedGroups(TRUE, pFrameSrc->GetMDITabbedGroupsParams());
+	
+	m_wndClientArea.UpdateMDITabbedGroups(TRUE);
+
+	return 0L;
+}
+//*****************************************************************************************
+LRESULT CBCGPMDIFrameWnd::WindowProc(UINT message, WPARAM wParam, LPARAM lParam) 
+{
+	if (message == BCGM_ON_GET_TAB_TOOLTIP && IsTearOff())
+	{
+		CBCGPTabToolTipInfo* pInfo = (CBCGPTabToolTipInfo*)lParam;
+		ASSERT(pInfo != NULL);
+		ASSERT_VALID(pInfo->m_pTabWnd);
+		
+		if (pInfo->m_pTabWnd->IsMDITab ())
+		{
+			CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, AfxGetMainWnd());
+			if (pMainFrame->GetSafeHwnd() != NULL)
+			{
+				return pMainFrame->SendMessage(BCGM_ON_GET_TAB_TOOLTIP, wParam, lParam);
+			}
+		}
+	}
+	
+	return CMDIFrameWnd::WindowProc(message, wParam, lParam);
+}
+//*****************************************************************************************
+void CBCGPMDIFrameWnd::OnEnable(BOOL bEnable) 
+{
+	CMDIFrameWnd::OnEnable(bEnable);
+	
+	if (!m_bIsInternalEnable)
+	{
+		// Enable/disable MDI tear-off frames
+		const CList<CFrameWnd*, CFrameWnd*>& lstFrames = CBCGPFrameImpl::GetFrameList();
+		for (POSITION pos = lstFrames.GetHeadPosition(); pos != NULL;)
+		{
+			CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, lstFrames.GetNext(pos));
+			
+			if (pMDIFrame->GetSafeHwnd() != NULL && pMDIFrame->GetSafeHwnd() != GetSafeHwnd())
+			{
+				pMDIFrame->EnableWindow(bEnable);
+			}
+		}
+	}
+}
+//*****************************************************************************************
+void CBCGPMDIFrameWnd::SetRibbonBackstageView (CBCGPRibbonBackstageView* pView)
+{
+	m_Impl.SetRibbonBackstageView(pView);
+
+	if (AreMDIChildrenTearOff() && !m_bIsMDIChildDetached)
+	{
+		const CList<CFrameWnd*, CFrameWnd*>& lstFrames = CBCGPFrameImpl::GetFrameList();
+		for (POSITION pos = lstFrames.GetHeadPosition(); pos != NULL;)
+		{
+			CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, lstFrames.GetNext(pos));
+			
+			if (pMDIFrame->GetSafeHwnd() != NULL && pMDIFrame->m_bIsMDIChildDetached)
+			{
+				pMDIFrame->m_bIsInternalEnable = TRUE;
+				pMDIFrame->EnableWindow(pView == NULL);
+				pMDIFrame->m_bIsInternalEnable = FALSE;
+			}
+		}
+	}
+}
+//*****************************************************************************************
+BOOL CBCGPMDIFrameWnd::LoadDockingLayout(LPCTSTR lpszProfileName/* = _T("DefaultLayout")*/)
+{
+	if (g_pWorkspace == NULL)
+	{
+		return FALSE;
+	}
+
+	if (IsFullScreen() && !IsPrintPreview())
+	{
+		m_Impl.InvokeFullScreenCommand();
+	}
+
+	return g_pWorkspace->LoadDockingLayout(lpszProfileName, &m_Impl);
+}
+//*****************************************************************************************
+BOOL CBCGPMDIFrameWnd::SaveDockingLayout(LPCTSTR lpszProfileName/* = _T("DefaultLayout")*/)
+{
+	if (g_pWorkspace == NULL)
+	{
+		return FALSE;
+	}
+
+	return g_pWorkspace->SaveDockingLayout(lpszProfileName, &m_Impl);
+}
+//*****************************************************************************************
+LRESULT CBCGPMDIFrameWnd::OnChangeBackstagePropHighlighting(WPARAM, LPARAM)
+{
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_Impl.m_pBackstageView->GetSafeHwnd() != NULL)
+	{
+		m_Impl.m_pBackstageView->SendMessage(WM_CANCELMODE);
+	}
+#endif
+
+	return 0;
+}
+//*****************************************************************************************
+int CBCGPMDIFrameWnd::GetSelectedMDIChildren(CList<HWND, HWND>& lstSelected) const
+{
+	ASSERT_VALID(this);
+
+	lstSelected.RemoveAll();
+
+	HWND hwndActive = MDIGetActive()->GetSafeHwnd();
+	if (hwndActive == NULL)
+	{
+		return 0;
+	}
+
+	if (m_wndClientArea.m_bIsMDITabbedGroup && m_wndClientArea.m_mdiTabParams.m_bTabMultipleSelection)
+	{
+		CBCGPTabWnd* pTabWnd = ((CBCGPMDIFrameWnd*)this)->m_wndClientArea.FindActiveTabWnd();
+		if (pTabWnd != NULL)
+		{
+			ASSERT_VALID(pTabWnd);
+
+			CList<int, int> lstSelectedTabs;
+			if (pTabWnd->GetSelectedTabs(lstSelectedTabs) > 0)
+			{
+				CList<HWND, HWND> lstTabWnds;
+				POSITION pos = NULL;
+				
+				for (pos = lstSelectedTabs.GetHeadPosition(); pos != NULL;)
+				{
+					int nIndex = lstSelectedTabs.GetNext(pos);
+					HWND hWnd = pTabWnd->GetTabWnd(nIndex)->GetSafeHwnd();
+
+					if (hWnd != NULL)
+					{
+						lstSelected.AddTail(hWnd);
+					}
+				}
+			}
+		}
+	}
+
+	if (lstSelected.Find(hwndActive) == NULL)
+	{
+		lstSelected.AddTail(hwndActive);
+	}
+
+	return (int)lstSelected.GetCount();
+}
+//*****************************************************************************************
+LRESULT CBCGPMDIFrameWnd::OnDPIChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+	
+	OnChangeVisualManager(0, 0);
+	return lRes;
+}
+//*****************************************************************************************
+LRESULT CBCGPMDIFrameWnd::OnThemeChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+	
+	CBCGPVisualManager::GetInstance()->OnUpdateSystemColors();
+	OnChangeVisualManager(0, 0);
+	return lRes;
 }

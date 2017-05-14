@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -30,17 +30,23 @@
 #include "BCGPBaseControlBar.h"
 #include "BCGPBaseTabWnd.h"
 #include "BCGPButton.h"
+#include "BCGPScrollBar.h"
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPTabWnd window
 
 class CBCGPTabInfo;
 
+//////////////////////////////////////////////////////////////////////////////
+// CBCGPTabWnd notification messages:
+
 extern BCGCBPRODLLEXPORT UINT BCGM_GETDRAGBOUNDS;
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_DRAGCOMPLETE;
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_TABGROUPMOUSEMOVE;
-extern BCGCBPRODLLEXPORT UINT BCGM_ON_CANCELTABMOVE;
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_MOVETABCOMPLETE;
+extern BCGCBPRODLLEXPORT UINT BCGM_ON_CANCELTABMOVE;
+
+extern BCGCBPRODLLEXPORT UINT BCGM_ON_HSCROLL;
 
 class CBCGTabButton : public CBCGPButton
 {
@@ -62,6 +68,7 @@ class BCGCBPRODLLEXPORT CBCGPTabWnd : public CBCGPBaseTabWnd
 	friend class CBCGPMainClientAreaWnd;
 	friend class CBCGPTabbedControlBar;
 	friend class CBCGTabButton;
+	friend class CBCGPMDIChildDragWnd;
 
 	DECLARE_DYNCREATE(CBCGPTabWnd)
 
@@ -80,6 +87,7 @@ public:
 		STYLE_3D_ROUNDED				= 6,
 		STYLE_3D_ROUNDED_SCROLL			= 7,
 		STYLE_POINTER					= 8,
+		STYLE_DOTS						= 9,
 	};
 
 	enum ResizeMode
@@ -98,6 +106,12 @@ public:
 		TAB_CLOSE_BUTTON_ALL				= 4,
 	};
 
+	enum TabDotShape
+	{
+		TAB_DOT_ELLIPSE	= 0,
+		TAB_DOT_SQUARE	= 1,
+	};
+
 // Operations
 public:
 	// Create methods:
@@ -108,7 +122,7 @@ public:
 		COLORREF clrTransp = RGB (255, 0, 255));
 	virtual BOOL SetImageList (HIMAGELIST hImageList);
 
-	BOOL ModifyTabStyle (Style style);
+	BOOL ModifyTabStyle (Style style, BOOL bUpdateScrollControls = FALSE);
 
 	virtual void RecalcLayout ();
 
@@ -121,12 +135,12 @@ public:
 	void EnableActiveTabCloseButton (BOOL bEnable = TRUE);
 	virtual BOOL IsActiveTabCloseButton() const
 	{
-		return m_TabCloseButtonMode == TAB_CLOSE_BUTTON_ACTIVE;
+		return m_TabCloseButtonMode == TAB_CLOSE_BUTTON_ACTIVE && !IsDotsStyle();
 	}
 	
 	virtual BOOL IsTabCloseButton() const 
 	{ 
-		return m_TabCloseButtonMode != TAB_CLOSE_BUTTON_NONE;
+		return m_TabCloseButtonMode != TAB_CLOSE_BUTTON_NONE && !IsDotsStyle();
 	}
 
 	void EnableTabDocumentsMenu (BOOL bEnable = TRUE);
@@ -136,11 +150,7 @@ public:
 	}
 
 	virtual void EnableInPlaceEdit (BOOL bEnable);
-	virtual void CalcRectEdit (CRect& rectEdit)
-	{
-		ASSERT_VALID (this);
-		rectEdit.DeflateRect (m_nTabsHeight / 2, 1);
-	}
+	virtual void CalcRectEdit (CRect& rectEdit);
 
 	virtual void EnableNewTab(BOOL bEnable = TRUE);
 	virtual BOOL IsNewTabEnabled() const
@@ -148,10 +158,36 @@ public:
 		return m_bNewTab;
 	}
 
+	void SetNewTabLabel(const CString strLabel);
+	LPCTSTR GetNewTabLabel() const
+	{
+		return m_strNewTabLabel;
+	}
+
 	void EnableTabAnimation(BOOL bEnable = TRUE);	// STYLE_POINTER only!
 	BOOL IsTabAnimationEnabled() const
 	{
 		return m_bTabAnimationSupport;
+	}
+
+	void EnableTabsHandCursor(BOOL bEnable = TRUE)
+	{
+		m_bTabsHandCursor = bEnable;
+	}
+
+	BOOL IsTabsHandCursor() const
+	{
+		return m_bTabsHandCursor;
+	}
+
+	void SetDotShape(TabDotShape shape)
+	{
+		m_DotShape = shape;
+	}
+
+	TabDotShape GetDotShape() const
+	{
+		return m_DotShape;
 	}
 
 	virtual BOOL SetActiveTab (int iTab);
@@ -183,6 +219,7 @@ protected:
 
 	void RelayEvent(UINT message, WPARAM wParam, LPARAM lParam);
 	void SetTabsHeight ();
+	void UpdateScrollControls();
 	void ReposButtons (CPoint pt, CSize sizeButton, BOOL bHide, int nButtonMargin);
 
 	void SetupTabCloseButton(CBCGPTabInfo* pTab, int nIndex);
@@ -216,11 +253,6 @@ public:
 	BOOL IsFlatFrame () const
 	{
 		return m_bFlatFrame;
-	}
-
-	void HideInactiveWindow (BOOL bHide = TRUE)
-	{
-		m_bHideInactiveWnd = bHide;
 	}
 
 	void AutoSizeWindow (BOOL bAutoSize = TRUE)
@@ -283,7 +315,7 @@ public:
 
 	virtual BOOL Is3DStyle () const
 	{
-		return !m_bFlat && !m_bIsOneNoteStyle && !m_bIsVS2005Style && !m_bLeftRightRounded && !m_bIsPointerStyle;
+		return !m_bFlat && !m_bIsOneNoteStyle && !m_bIsVS2005Style && !m_bLeftRightRounded && !m_bIsPointerStyle && !m_bIsDotsStyle;
 	}
 
 	virtual BOOL IsOneNoteStyle () const
@@ -304,6 +336,11 @@ public:
 	virtual BOOL IsPointerStyle() const
 	{
 		return m_bIsPointerStyle;
+	}
+
+	virtual BOOL IsDotsStyle() const
+	{
+		return m_bIsDotsStyle;
 	}
 
 	void HideNoTabs (BOOL bHide = TRUE);
@@ -374,7 +411,8 @@ protected:
 	BOOL			m_bIsOneNoteStyle;	// Is OneNote-like mode
 	BOOL			m_bIsVS2005Style;	// Is VS 2005 MDI-like mode
 	BOOL			m_bLeftRightRounded;// Is VS 2005 two-side rounded tab
-	BOOL			m_bIsPointerStyle;	// Offce 2013 pointer style
+	BOOL			m_bIsPointerStyle;	// Office 2013 pointer style
+	BOOL			m_bIsDotsStyle;		// "Dots" style: each tab looks like a dot
 	BOOL			m_bSharedScroll;	// Have a scrollbar shared with active window
 	BOOL			m_bScroll;			// Scroll buttons
 	BOOL			m_bCloseBtn;		// Close button
@@ -384,7 +422,7 @@ protected:
 	CRect			m_rectTabsArea;		// Tabs area
 	CRect			m_rectWndArea;		// Child window area
 	
-	CScrollBar		m_wndScrollWnd;		// Active window horizontal scroll bar
+	CBCGPScrollBar	m_wndScrollWnd;		// Active window horizontal scroll bar
 
 	CBCGTabButton	m_btnScrollLeft;
 	CBCGTabButton	m_btnScrollRight;
@@ -408,14 +446,14 @@ protected:
 
 	BOOL			m_bFlatFrame;		// Is frame flat?
 	
-	BOOL			m_bAutoSizeWindow;	// Auto-resize tab widnows
+	BOOL			m_bAutoSizeWindow;	// Auto-resize tab windows
 	
 
 	BOOL			m_bTransparent;
 	BOOL			m_bTopEdge;
 	BOOL			m_bDrawFrame;		// Draw frame around window area
 	
-	BOOL			m_bHideNoTabs;		// Hide tabs are when no tabs are availible
+	BOOL			m_bHideNoTabs;		// Hide tabs are when no tabs are available
 
 	BOOL				m_bIsActiveTabBold;				// Active tab text is drawing bold
 	TabCloseButtonMode	m_TabCloseButtonMode;
@@ -425,6 +463,7 @@ protected:
 	BOOL			m_bTabDocumentsMenu;
 	BOOL			m_bHiddenDocuments;
 	BOOL			m_bNewTab;
+	CString			m_strNewTabLabel;
 	int				m_nTabMaxWidth;
 
 	ResizeMode		m_ResizeMode;
@@ -440,6 +479,9 @@ protected:
 	int				m_nTabAnimationOffset;
 	int				m_nTabAnimationStep;
 
+	BOOL			m_bTabsHandCursor;
+	TabDotShape		m_DotShape;
+
 	static CMap<UINT,UINT,HICON,HICON>	m_mapDocIcons;
 
 // Overrides
@@ -454,6 +496,7 @@ protected:
 	
 	virtual void Draw3DTab (CDC* pDC, CBCGPTabInfo* pTab, BOOL bActive);
 	virtual void DrawFlatTab (CDC* pDC, CBCGPTabInfo* pTab, BOOL bActive);
+	virtual void DrawTabDot(CDC* pDC, CBCGPTabInfo* pTab, BOOL bActive);
 
 	virtual void DrawResizeDragRect (CRect& rectNew, CRect& rectOld);
 	virtual void OnRTLChanged (BOOL bIsRTL);
@@ -488,12 +531,9 @@ protected:
 	//}}AFX_MSG
 	afx_msg LRESULT OnBCGUpdateToolTips(WPARAM, LPARAM);
 	afx_msg LRESULT OnPrintClient(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnGestureEvent(WPARAM wp, LPARAM lp);
 	DECLARE_MESSAGE_MAP()
 };
-
-//////////////////////////////////////////////////////////////////////////////
-// CBCGPTabWnd notification messages:
-extern BCGCBPRODLLEXPORT UINT BCGM_ON_HSCROLL;
 
 #endif // BCGP_NO_TABCTRL
 

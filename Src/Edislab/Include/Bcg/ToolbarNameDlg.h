@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,11 +21,13 @@
 
 #include "BCGCBPro.h"
 #include "bcgprores.h"
+#include "BCGPDialog.h"
+#include "BCGPButton.h"
 
 /////////////////////////////////////////////////////////////////////////////
 // CToolbarNameDlg dialog
 
-class CToolbarNameDlg : public CDialog
+class CToolbarNameDlg : public CBCGPDialog
 {
 // Construction
 public:
@@ -34,7 +36,7 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CToolbarNameDlg)
 	enum { IDD = IDD_BCGBARRES_TOOLBAR_NAME };
-	CButton	m_btnOk;
+	CBCGPButton	m_btnOk;
 	CString	m_strToolbarName;
 	//}}AFX_DATA
 

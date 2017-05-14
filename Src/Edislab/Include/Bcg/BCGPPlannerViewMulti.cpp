@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -73,7 +73,7 @@ void CBCGPPlannerViewMulti::Dump(CDumpContext& dc) const
 
 void CBCGPPlannerViewMulti::OnDrawAppointmentsDuration (CDC* pDC)
 {
-	if ((GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 
+	if ((GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 
 			BCGP_PLANNER_DRAW_VIEW_NO_DURATION)
 	{
 		return;
@@ -227,14 +227,40 @@ void CBCGPPlannerViewMulti::AdjustLayout (CDC* /*pDC*/, const CRect& rectClient)
 		StopTimer (FALSE);
 	}
 
-	m_nHeaderHeight       = 2;
+	const DWORD dwDrawFlags = GetDrawFlags ();
+	const BOOL bCaptionWithHeader = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_WITH_HEADER) == 
+		BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_WITH_HEADER;
+	const BOOL bHeaderEx = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED) == 
+		BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED;
+	const BOOL bCaptionEx = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED) == 
+		BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED;
+	const BOOL bTimeBarSimple = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_TIME_BAR_NO_MINUTS) == 
+		BCGP_PLANNER_DRAW_VIEW_TIME_BAR_NO_MINUTS;
+
+	m_nHeaderHeight = 2;
+
+	if (bCaptionWithHeader || bCaptionEx)
+	{
+		m_nHeaderHeight = m_nRowHeight;
+
+		if (bCaptionEx)
+		{
+			m_nHeaderHeight = (m_nHeaderHeight * 5) / 4;
+		}
+
+		if (bCaptionWithHeader)
+		{
+			m_nHeaderHeight += bHeaderEx ? (m_nRowHeight * 5) / 4 : m_nRowHeight;
+		}
+	}
+
 	m_nHeaderAllDayHeight = 1;
 
 	const int nMinuts = CBCGPPlannerView::GetTimeDeltaInMinuts (GetTimeDelta ());
 	const int nCount = GetViewHours() * 60 / nMinuts;
 
 	m_rectTimeBar = rectClient;
-	m_rectTimeBar.right = m_rectTimeBar.left + (long)(m_nRowHeight * (nMinuts == 60 ? 2.5 : 3.0)) + 5;
+	m_rectTimeBar.right = m_rectTimeBar.left + (long)(m_nRowHeight * ((nMinuts == 60 || bTimeBarSimple) ? 2.5 : 3.0)) + 5;
 
 	m_rectApps.left = m_rectTimeBar.right;
 
@@ -368,8 +394,17 @@ void CBCGPPlannerViewMulti::AdjustLayout (CDC* /*pDC*/, const CRect& rectClient)
 		}
 	}
 
-	int nRow = rectClient.Height () / 
-		(nCount + m_nHeaderHeight + m_nHeaderAllDayHeight);
+	int nRow = 0;
+	if (bCaptionWithHeader || bCaptionEx)
+	{
+		nRow = (rectClient.Height () - m_nHeaderHeight) / 
+			(nCount + 1 + m_nHeaderAllDayHeight);
+	}
+	else
+	{
+		nRow = rectClient.Height () / 
+			(nCount + m_nHeaderHeight + m_nHeaderAllDayHeight);
+	}
 
 	int nOldRowHeight = m_nRowHeight;
 
@@ -380,7 +415,16 @@ void CBCGPPlannerViewMulti::AdjustLayout (CDC* /*pDC*/, const CRect& rectClient)
 
 	const int nRowHeightPadding = m_nRowHeight + s_HeaderAllDayPadding;
 	int nHeaderAllDayCount = m_nHeaderAllDayHeight;
-	m_nHeaderHeight       *= m_nRowHeight;
+
+	if (!bCaptionWithHeader && !bCaptionEx)
+	{
+		m_nHeaderHeight *= m_nRowHeight;
+	}
+	else
+	{
+		m_nHeaderHeight += m_nRowHeight;
+	}
+
 	m_nHeaderAllDayHeight *= nRowHeightPadding;
 
 	m_rectApps.top += m_nHeaderHeight;
@@ -565,7 +609,7 @@ void CBCGPPlannerViewMulti::AdjustAppointments ()
 	int nDay = 0;
 
 	const BOOL bNoDuration = 
-		(GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 
+		(GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 
 		BCGP_PLANNER_DRAW_VIEW_NO_DURATION;
 
 	for (int nRes = 0; nRes < m_Resources.GetSize (); nRes++)
@@ -956,6 +1000,11 @@ void CBCGPPlannerViewMulti::OnPaint (CDC* pDC, const CRect& rectClient)
 		pDC->SelectClipRgn (NULL);
 	}
 
+	if (!m_rectTimeBar.IsRectEmpty ())
+	{
+		OnDrawTimeBar (pDC, m_rectTimeBar, IsCurrentTimeVisible ());
+	}
+
 	{
 		CRgn rgn;
 		rgn.CreateRectRgn (m_rectApps.left, m_rectApps.top, m_rectApps.right, m_rectApps.bottom);
@@ -967,23 +1016,18 @@ void CBCGPPlannerViewMulti::OnPaint (CDC* pDC, const CRect& rectClient)
 		pDC->SelectClipRgn (NULL);
 	}
 
-	if (!m_rectTimeBar.IsRectEmpty ())
-	{
-		OnDrawTimeBar (pDC, m_rectTimeBar, IsCurrentTimeVisible ());
-	}
-
 	OnDrawUpDownIcons (pDC);
 
 	if (m_nHeaderHeight != 0)
 	{
 		CRect rtHeader (rectClient);
 		rtHeader.left   = m_rectApps.left;
-		rtHeader.bottom = rtHeader.top + m_nHeaderHeight / 2;
+		rtHeader.bottom = rtHeader.top + m_nHeaderHeight - m_nRowHeight;
 
 		OnDrawHeader (pDC, rtHeader);
 
 		rtHeader.top = rtHeader.bottom;
-		rtHeader.bottom = rtHeader.top + m_nHeaderHeight / 2;
+		rtHeader.bottom = rtHeader.top + m_nRowHeight;
 
 		OnDrawHeaderResource (pDC, rtHeader);
 	}
@@ -1054,7 +1098,7 @@ void CBCGPPlannerViewMulti::OnDrawClient (CDC* pDC, const CRect& rect)
 							 m_Selection[0].GetSecond () == 59));
 
 	BOOL bIsDrawDuration = 
-		(GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 0;
+		(GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 0;
 	const int nDurationWidth = bIsDrawDuration ? BCGP_PLANNER_DURATION_BAR_WIDTH + 1 : 0;
 
 	visualManager->PreparePlannerBackItem (FALSE, FALSE);
@@ -1219,8 +1263,8 @@ void CBCGPPlannerViewMulti::OnDrawHeaderResource (CDC* pDC, const CRect& rectHea
 
 	const int nDays = GetViewDuration ();
 
-	DWORD dwFlags = GetPlanner ()->GetDrawFlags ();
-	BOOL bBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD) ==
+	const DWORD dwFlags = GetDrawFlags ();
+	const BOOL bBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD) ==
 			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD;
 
 	HFONT hOldFont = NULL;

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -24,6 +24,11 @@
 #include "BCGPKeyHelper.h"
 #include "BCGPToolBar.h"
 #include "RegPath.h"
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	#include "BCGPRibbonBar.h"
+	#include "BCGPBaseRibbonElement.h"
+#endif
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -122,7 +127,7 @@ BOOL CBCGPKeyboardManager::UpdateAcellTable (CMultiDocTemplate* pTemplate,
 		pTemplate->m_hAccelTable = hAccelNew;
 
 		//--------------------------------------------------
-		// Walk trougth all template's documents and change
+		// Walk trough all template's documents and change
 		// frame's accelerator tables:
 		//--------------------------------------------------
 		for (POSITION pos = pTemplate->GetFirstDocPosition(); pos != NULL;)
@@ -204,7 +209,7 @@ BOOL CBCGPKeyboardManager::SaveAccelaratorState (LPCTSTR lpszProfileName,
 }
 //************************************************************************************************
 BOOL CBCGPKeyboardManager::LoadAccelaratorState (LPCTSTR lpszProfileName, 
-	UINT uiResId, HACCEL& hAccelTable)
+	UINT uiResId, HACCEL& hAccelTable, CBCGPRibbonBar* pRibbonBar/* = NULL*/)
 {
 	ASSERT (hAccelTable == NULL);
 
@@ -230,10 +235,31 @@ BOOL CBCGPKeyboardManager::LoadAccelaratorState (LPCTSTR lpszProfileName,
 
 		for (int i = 0; i < nAccelSize; i ++)
 		{
-			if (!CBCGPToolBar::IsCommandPermitted (lpAccel [i].cmd))
+			UINT nCmdID = lpAccel [i].cmd;
+
+			if (!CBCGPToolBar::IsCommandPermitted(nCmdID))
 			{
 				lpAccel [i].cmd = 0;
 			}
+
+#ifndef BCGP_EXCLUDE_RIBBON
+			if (pRibbonBar != NULL && pRibbonBar->GetApplicationModes() != (UINT)-1)
+			{
+				CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arRibbonButtons;
+				pRibbonBar->GetElementsByID(nCmdID, arRibbonButtons, TRUE);
+
+				for (int nButton = 0; nButton < (int)arRibbonButtons.GetSize(); nButton++)
+				{
+					ASSERT_VALID(arRibbonButtons[nButton]);
+
+					if (!pRibbonBar->IsElementInApplicationMode(arRibbonButtons[nButton]->GetApplicationModes()))
+					{
+						lpAccel [i].cmd = 0;
+						break;
+					}
+				}
+			}
+#endif
 		}
 
 		hAccelTable = ::CreateAcceleratorTable(lpAccel, nAccelSize);
@@ -245,6 +271,25 @@ BOOL CBCGPKeyboardManager::LoadAccelaratorState (LPCTSTR lpszProfileName,
 //************************************************************************************************
 BOOL CBCGPKeyboardManager::LoadState (LPCTSTR lpszProfileName, CFrameWnd* pDefaultFrame)
 {
+	CBCGPRibbonBar* pRibbonBar = NULL;
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	CBCGPMDIFrameWnd* pMDIFrameWnd = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, pDefaultFrame);
+	if (pMDIFrameWnd != NULL)
+	{
+		pRibbonBar = pMDIFrameWnd->GetRibbonBar();
+	}
+	else
+	{
+		CBCGPFrameWnd* pFrameWnd = DYNAMIC_DOWNCAST(CBCGPFrameWnd, pDefaultFrame);
+		if (pFrameWnd != NULL)
+		{
+			pRibbonBar = pFrameWnd->GetRibbonBar();
+		}
+	}
+
+#endif
+
 	CString strProfileName = ::BCGPGetRegPath (strKbProfile, lpszProfileName);
 
 	CDocManager* pDocManager = AfxGetApp ()->m_pDocManager;
@@ -261,8 +306,8 @@ BOOL CBCGPKeyboardManager::LoadState (LPCTSTR lpszProfileName, CFrameWnd* pDefau
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CMultiDocTemplate objects with
-			// the sahred menu only....
+			// We are interesting in CMultiDocTemplate objects with
+			// the shared menu only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
 				pTemplate->m_hAccelTable == NULL)
@@ -274,7 +319,7 @@ BOOL CBCGPKeyboardManager::LoadState (LPCTSTR lpszProfileName, CFrameWnd* pDefau
 			ASSERT (uiResId != 0);
 
 			HACCEL hAccellTable = NULL;
-			if (LoadAccelaratorState (strProfileName, uiResId, hAccellTable))
+			if (LoadAccelaratorState (strProfileName, uiResId, hAccellTable, pRibbonBar))
 			{
 				UpdateAcellTable (pTemplate, hAccellTable);
 			}
@@ -292,7 +337,7 @@ BOOL CBCGPKeyboardManager::LoadState (LPCTSTR lpszProfileName, CFrameWnd* pDefau
 	if (pDefaultFrame != NULL && pDefaultFrame->m_hAccelTable != NULL)
 	{
 		HACCEL hAccelTable = NULL;
-		if (LoadAccelaratorState (strProfileName, 0, hAccelTable))
+		if (LoadAccelaratorState (strProfileName, 0, hAccelTable, pRibbonBar))
 		{
 			UpdateAcellTable (NULL, hAccelTable, pDefaultFrame);
 		}
@@ -319,7 +364,7 @@ BOOL CBCGPKeyboardManager::SaveState (LPCTSTR lpszProfileName, CFrameWnd* pDefau
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CMultiDocTemplate objects in
+			// We are interesting in CMultiDocTemplate objects in
 			// the shared accelerator table only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
@@ -353,6 +398,38 @@ BOOL CBCGPKeyboardManager::SaveState (LPCTSTR lpszProfileName, CFrameWnd* pDefau
 //******************************************************************
 void CBCGPKeyboardManager::ResetAll ()
 {
+	UINT uiDefaultResId = 0;
+	CBCGPRibbonBar* pRibbonBar = NULL;
+
+	CFrameWnd* pWndMain = DYNAMIC_DOWNCAST (CFrameWnd, AfxGetMainWnd ());
+	if (pWndMain != NULL && pWndMain->m_hAccelTable != NULL)
+	{
+		CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, AfxGetMainWnd ());
+		if (pMDIFrame != NULL)
+		{
+			uiDefaultResId = pMDIFrame->GetDefaultResId ();
+			pRibbonBar = pMDIFrame->GetRibbonBar();
+		}
+		else	// Maybe, SDI frame...
+		{
+			CBCGPFrameWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPFrameWnd, AfxGetMainWnd ());
+			if (pFrame != NULL)
+			{
+				uiDefaultResId = pFrame->GetDefaultResId ();
+				pRibbonBar = pFrame->GetRibbonBar();
+			}
+			else	// Maybe, OLE frame...
+			{
+				CBCGPOleIPFrameWnd* pOleFrame = 
+					DYNAMIC_DOWNCAST (CBCGPOleIPFrameWnd, AfxGetMainWnd ());
+				if (pOleFrame != NULL)
+				{
+					uiDefaultResId = pOleFrame->GetDefaultResId ();
+				}
+			}
+		}
+	}
+
 	CDocManager* pDocManager = AfxGetApp ()->m_pDocManager;
 	if (pDocManager != NULL)
 	{
@@ -367,7 +444,7 @@ void CBCGPKeyboardManager::ResetAll ()
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CMultiDocTemplate objects in
+			// We are interesting in CMultiDocTemplate objects in
 			// the shared accelerator table only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
@@ -379,12 +456,12 @@ void CBCGPKeyboardManager::ResetAll ()
 			UINT uiResId = pTemplate->GetResId ();
 			ASSERT (uiResId != 0);
 
-			HINSTANCE hInst = AfxFindResourceHandle(
-				MAKEINTRESOURCE (uiResId), RT_MENU);
+			HINSTANCE hInst = AfxFindResourceHandle(MAKEINTRESOURCE (uiResId), RT_MENU);
 
 			HACCEL hAccellTable = ::LoadAccelerators(hInst, MAKEINTRESOURCE (uiResId));
 			if (hAccellTable != NULL)
 			{
+				RemoveRibbonUnusableItems(hAccellTable, pRibbonBar);
 				UpdateAcellTable (pTemplate, hAccellTable);
 			}
 		}
@@ -393,51 +470,23 @@ void CBCGPKeyboardManager::ResetAll ()
 	//-----------------------------------
 	// Restore default accelerator table:
 	//-----------------------------------
-	CFrameWnd* pWndMain = DYNAMIC_DOWNCAST (CFrameWnd, AfxGetMainWnd ());
-	if (pWndMain != NULL && pWndMain->m_hAccelTable != NULL)
+	if (uiDefaultResId != 0)
 	{
-		UINT uiResId = 0;
-
-		CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, AfxGetMainWnd ());
-		if (pMDIFrame != NULL)
-		{
-			uiResId = pMDIFrame->GetDefaultResId ();
-		}
-		else	// Maybe, SDI frame...
-		{
-			CBCGPFrameWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPFrameWnd, AfxGetMainWnd ());
-			if (pFrame != NULL)
-			{
-				uiResId = pFrame->GetDefaultResId ();
-			}
-			else	// Maybe, OLE frame...
-			{
-				CBCGPOleIPFrameWnd* pOleFrame = 
-					DYNAMIC_DOWNCAST (CBCGPOleIPFrameWnd, AfxGetMainWnd ());
-				if (pOleFrame != NULL)
-				{
-					uiResId = pOleFrame->GetDefaultResId ();
-				}
-			}
-		}
+		HINSTANCE hInst = AfxFindResourceHandle(MAKEINTRESOURCE(uiDefaultResId), RT_MENU);
 		
-		if (uiResId != 0)
+		HACCEL hAccellTable = ::LoadAccelerators(hInst, MAKEINTRESOURCE(uiDefaultResId));
+		if (hAccellTable != NULL)
 		{
-			HINSTANCE hInst = AfxFindResourceHandle(
-				MAKEINTRESOURCE (uiResId), RT_MENU);
-
-			HACCEL hAccellTable = ::LoadAccelerators(hInst, MAKEINTRESOURCE (uiResId));
-			if (hAccellTable != NULL)
-			{
-				UpdateAcellTable (NULL, hAccellTable);
-			}
+			RemoveRibbonUnusableItems(hAccellTable, pRibbonBar);
+			UpdateAcellTable (NULL, hAccellTable);
 		}
 	}
 }
 //******************************************************************
 BOOL CBCGPKeyboardManager::FindDefaultAccelerator (UINT uiCmd, CString& str, 
 												CFrameWnd* pWndFrame,
-												BOOL bIsDefaultFrame)
+												BOOL bIsDefaultFrame,
+												LPACCEL lpAccelOut)
 {
 	str.Empty ();
 
@@ -467,6 +516,11 @@ BOOL CBCGPKeyboardManager::FindDefaultAccelerator (UINT uiCmd, CString& str,
 		if (lpAccel [i].cmd == uiCmd)
 		{
 			bFound = TRUE;
+
+			if (lpAccelOut != NULL)
+			{
+				*lpAccelOut = lpAccel[i];
+			}
 
 			CBCGPKeyHelper helper (&lpAccel [i]);
 			
@@ -571,7 +625,7 @@ UINT CBCGPKeyboardManager::TranslateCharToUpper (const UINT nChar)
 					return toupper (nChar);
 				}
 			}
-			else // virt codes (A - Z)
+			else // virtual codes (A - Z)
 			{
 				return nChar;
 			}
@@ -591,7 +645,7 @@ UINT CBCGPKeyboardManager::TranslateCharToUpper (const UINT nChar)
 					1,
 					::GetKeyboardLayout (AfxGetThread()->m_nThreadID));
 
-		TCHAR szChar [2] = {(TCHAR) wChar, '\0'};
+		TCHAR szChar [2] = {(TCHAR) wChar, _T('\0') };
 	#else
 		TCHAR szChar [2];
 		memset (szChar, 0, sizeof (TCHAR) * 2);
@@ -605,6 +659,8 @@ UINT CBCGPKeyboardManager::TranslateCharToUpper (const UINT nChar)
 					2,
 					1,
 					::GetKeyboardLayout (AfxGetThread()->m_nThreadID));
+
+		szChar[1] = _T('\0');
 	#endif // _UNICODE
 	
 	CharUpper(szChar);
@@ -685,4 +741,57 @@ void CBCGPKeyboardManager::AllowReassign(BOOL bAllow)
 {
 	m_bIsReassignAllowed = bAllow;
 }
+//************************************************************************
+void CBCGPKeyboardManager::RemoveRibbonUnusableItems(HACCEL& hAccellTable, CBCGPRibbonBar* pRibbonBar)
+{
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (pRibbonBar == NULL || pRibbonBar->GetApplicationModes() == (UINT)-1)
+	{
+		return;
+	}
 
+	BOOL bChanged = FALSE;
+	int nSize = ::CopyAcceleratorTable(hAccellTable, NULL, 0);
+	
+	LPACCEL lpAccel = new ACCEL[nSize];
+	ASSERT(lpAccel != NULL);
+	
+	::CopyAcceleratorTable (hAccellTable, lpAccel, nSize);
+
+	for (int i = 0; i < nSize; i ++)
+	{
+		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arRibbonButtons;
+		pRibbonBar->GetElementsByID(lpAccel[i].cmd, arRibbonButtons, TRUE);
+			
+		for (int nButton = 0; nButton < (int)arRibbonButtons.GetSize(); nButton++)
+		{
+			ASSERT_VALID(arRibbonButtons[nButton]);
+			
+			if (!pRibbonBar->IsElementInApplicationMode(arRibbonButtons[nButton]->GetApplicationModes()))
+			{
+				lpAccel [i].cmd = 0;
+				bChanged = TRUE;
+				break;
+			}
+		}
+	}
+
+	if (!bChanged)
+	{
+		delete [] lpAccel;
+		return;
+	}
+
+    HACCEL hAccellTableNew = ::CreateAcceleratorTable(lpAccel, nSize);
+	if (hAccellTableNew == NULL)
+	{
+		TRACE(_T ("Can't create accelerator table!\n"));
+		return;
+	}
+	
+	::DestroyAcceleratorTable (hAccellTable);
+	hAccellTable = hAccellTableNew;
+
+	delete [] lpAccel;
+#endif
+}

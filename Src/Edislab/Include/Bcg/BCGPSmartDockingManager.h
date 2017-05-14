@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,21 +21,24 @@
 #pragma once
 #endif // _MSC_VER > 1000
 
+#include "BCGCBPro.h"
 #include "BCGPSmartDockingMarker.h"
 #include "BCGPSDPlaceMarkerWnd.h"
 
-class CBCGPSmartDockingManager : public CObject  
+class BCGCBPRODLLEXPORT CBCGPSmartDockingManager : public CObject  
 {
+	DECLARE_DYNCREATE(CBCGPSmartDockingManager)
+
 public:
 	CBCGPSmartDockingManager();
 	virtual ~CBCGPSmartDockingManager();
 
 	// create/destroy the manager
-	void Create (CWnd* pwndOwner,
+	virtual void Create (CWnd* pwndOwner,
 		CRuntimeClass* prtMarker = NULL,
 		CRuntimeClass* prtCentralGroup = NULL);
 
-	void Destroy ();
+	virtual void Destroy ();
 
 	// start/stop smart-docking action
 	void Start (CWnd* pDockingWnd);
@@ -66,8 +69,8 @@ public:
 
     // move central group to new position
     // middle marker: nMiddleIsOn == -1 no change, 0 off, 1 on
-    void MoveCentralGroup (CRect rect, int nMiddleIsOn = -1, DWORD dwEnabledAlignment = CBRS_ALIGN_ANY);
-    void ShowCentralGroup (BOOL bShow = TRUE, DWORD dwEnabledAlignment = CBRS_ALIGN_ANY);
+    virtual void MoveCentralGroup (CRect rect, int nMiddleIsOn = -1, DWORD dwEnabledAlignment = CBRS_ALIGN_ANY);
+    virtual void ShowCentralGroup (BOOL bShow = TRUE, DWORD dwEnabledAlignment = CBRS_ALIGN_ANY);
 
     // marker place
     void ShowPlaceAt (CRect rect);

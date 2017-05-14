@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -980,7 +980,7 @@ BOOL CBCGPRegistry::DeleteKey (LPCTSTR pszPath, BOOL bAdmin)
 		
 		if( dwSubKeys > 0 )
 		{
-			// call DeleteKey() recursivly
+			// call DeleteKey() recursively
 			LPTSTR szSubKeyName = new TCHAR[dwSubKeyLen + 1];
 			
 			if( ::RegEnumKey( hSubKey, 0, szSubKeyName, dwSubKeyLen+1) !=

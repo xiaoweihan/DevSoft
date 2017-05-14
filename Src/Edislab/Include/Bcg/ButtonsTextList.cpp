@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -47,6 +47,7 @@ BEGIN_MESSAGE_MAP(CButtonsTextList, CListBox)
 	//{{AFX_MSG_MAP(CButtonsTextList)
 	ON_WM_LBUTTONDOWN()
 	ON_WM_ERASEBKGND()
+	ON_WM_NCPAINT()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
@@ -157,4 +158,21 @@ BOOL CButtonsTextList::OnEraseBkgnd(CDC* pDC)
 
 	CBCGPVisualManager::GetInstance ()->OnFillCommandsListBackground (pDC, rectClient);
 	return TRUE;
+}
+//***************************************************************************************
+BOOL CButtonsTextList::IsInternalScrollBarThemed() const
+{
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_LISTBOX) != 0 && globalData.m_bUseVisualManagerInBuiltInDialogs;
+}
+//***************************************************************************************
+void CButtonsTextList::OnNcPaint() 
+{
+	CListBox::OnNcPaint();
+	
+	const BOOL bHasBorder = (GetExStyle () & WS_EX_CLIENTEDGE) || (GetStyle () & WS_BORDER);
+	
+	if (bHasBorder && globalData.m_bUseVisualManagerInBuiltInDialogs)
+	{
+		CBCGPVisualManager::GetInstance ()->OnDrawControlBorder(this);
+	}
 }

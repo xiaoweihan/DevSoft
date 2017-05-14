@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -10,7 +10,7 @@
 // of the accompanying license agreement.
 //*******************************************************************************
 
-// BCGFrameImpl.h: interface for the CBCGPFrameImpl class.
+// BCGPFrameImpl.h: interface for the CBCGPFrameImpl class.
 //
 //////////////////////////////////////////////////////////////////////
 
@@ -30,6 +30,7 @@ class CBCGPRibbonStatusBar;
 class CBCGPFrameCaptionButton;
 class CBCGPRibbonBackstageView;
 struct CBCGPToolbarOptions;
+class CBCGPRecentFilesListBox;
 
 #include "BCGCBPro.h"
 #include "BCGPDockManager.h"
@@ -55,6 +56,7 @@ class BCGCBPRODLLEXPORT CBCGPFrameImpl
 	friend class CBCGPMDIChildWnd;
 	friend class CBCGPWinApp;
 	friend class CBCGPShadowManager;
+	friend class CBCGPWindowsNavigator;
 
 public:
 	CBCGPFrameImpl(CFrameWnd* pFrame);
@@ -125,10 +127,13 @@ protected:
 	BOOL				m_bAutoCreatedMenuBar;
 	HMENU				m_hDefaultMenu;
 	CFrameWnd*			m_pFrame;
+	BOOL				m_bIsTearOffFrame;
+	BOOL				m_bIsPersistantFrame;
 	CBCGPDockManager*	m_pDockManager;
 	UINT				m_nIDDefaultResource;
 	CBCGPFullScreenImpl	m_FullScreenMgr;
 	BOOL				m_bLoadDockState;
+	BOOL				m_bIsLoadingFrame;
 
 	CRuntimeClass*		m_pCustomUserToolBarRTC;
 
@@ -151,8 +156,16 @@ protected:
 	BOOL				m_bHadCaption;
 	BOOL				m_bWindowPosChanging;
 	BOOL				m_bDisableThemeCaption;
+	BOOL				m_bPrevVisualManagerOwnerDrawCaption;
+	BOOL				m_bPrevVisualManagerSmallSystemBorders;
 
 	CBCGPRibbonBackstageView*	m_pBackstageView;
+
+	HWND				m_hwndWindowsNavigator;
+	BOOL				m_bIsWindowsNavigatorEnabled;
+	UINT				m_nWindowsNextNavigationCmdID;
+	UINT				m_nWindowsPrevNavigationCmdID;
+	BOOL				m_bIsPrevNavigation;
 
 // Operations
 protected:
@@ -180,6 +193,8 @@ protected:
 	void RestorePosition(CREATESTRUCT& cs);
 
 	void StoreWindowPlacement ();
+
+	BOOL IsPersistantFrame();
 
 	BOOL IsDockStateValid (const CDockState& state);
 	BOOL IsUserDefinedToolbar (const CBCGPToolBar* pToolBar) const;
@@ -280,6 +295,8 @@ protected:
 	BOOL SetupAutoMenuBar();
 	void SetupToolbars(const CBCGPToolbarOptions& toolbarOptions);
 
+	BOOL ProcessRibbonContextHelp();
+
 	static CList<CFrameWnd*, CFrameWnd*>	m_lstFrames;
 
 	void SetInputMode(BCGP_INPUT_MODE mode);
@@ -287,11 +304,31 @@ protected:
 
 	void AdjustShadow(BOOL bActive);
 	CBCGPShadowManager*	m_pShadow;
+
+	void AdjustMaximizedSize(int& cx, int& cy);
+	void GetMonitorRect(CRect& rect);
+
+	void OnSysCommand(UINT nID, LPARAM lParam);
+
+	BOOL ActivateNextPane(BOOL bPrev, CFrameWnd* pActiveFrame);
+
+	void EnableWindowsNavigator(BOOL bEnable);
+	void EnableWindowsNavigator(UINT nNextCmdID, UINT nPrevCmdID);
+
+	BOOL ShowWindowsNavigator(BOOL bPrev);
+
+	BOOL IsMenuActive();
+
+	HICON OnGetRecentFileIcon(CBCGPRecentFilesListBox* pWndListBox, const CString& strPath, int nIndex) const;
+	
+	void SendMessageToViews(UINT msg, WPARAM wp = 0, LPARAM lp = 0);
 };
 
 #define UserToobars	UserToolbars
 
 extern UINT BCGM_POSTSETPREVIEWFRAME;
 extern UINT BCGCBPRODLLEXPORT BCGM_ONAFTERUPDATECAPTION;
+extern UINT BCGM_PRECLOSEFRAME;
+
 
 #endif // !defined(AFX_BCGPFRAMEIMPL_H__829B77B5_FE0E_11D1_8BCB_00A0C9B05590__INCLUDED_)

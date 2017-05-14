@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,10 @@
 
 #include "ButtonsList.h"
 #include "bcgprores.h"
+#include "BCGPDialog.h"
+#include "BCGPButton.h"
+#include "BCGPEdit.h"
+#include "BCGPStatic.h"
 
 class CBCGPToolBarImages;
 class CBCGPUserTool;
@@ -28,12 +32,12 @@ class CBCGPUserTool;
 /////////////////////////////////////////////////////////////////////////////
 // CButtonAppearanceDlg dialog
 
-class CButtonAppearanceDlg : public CDialog
+class CButtonAppearanceDlg : public CBCGPDialog
 {
 // Construction
 public:
 	CButtonAppearanceDlg(CBCGPToolbarButton* pButton,
-						CBCGPToolBarImages* pImages, CWnd* pParent = NULL,
+						CBCGPToolBarImages* pImages, CBCGPToolBarImages* pImagesScaled, CWnd* pParent = NULL,
 						int iStartImage = 0,
 						BOOL bMenuMode = FALSE);   // standard constructor
 	virtual ~CButtonAppearanceDlg ();
@@ -41,13 +45,13 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CButtonAppearanceDlg)
 	enum { IDD = IDD_BCGBARRES_BUTTON_PROPS };
-	CButton	m_wndDefautImageBtn;
-	CButton	m_wndUserImageBtn;
-	CStatic	m_wndDefaultImageArea;
-	CEdit	m_wndButtonText;
-	CButton	m_wndAddImage;
+	CBCGPButton	m_wndDefautImageBtn;
+	CBCGPButton	m_wndUserImageBtn;
+	CBCGPStatic	m_wndDefaultImageArea;
+	CBCGPEdit	m_wndButtonText;
+	CBCGPButton	m_wndAddImage;
 	CButtonsList	m_wndButtonList;
-	CButton	m_wndEditImage;
+	CBCGPButton	m_wndEditImage;
 	CString	m_strButtonText;
 	CString	m_strButtonDescr;
 	//}}AFX_DATA
@@ -88,6 +92,7 @@ protected:
 protected:
 	CBCGPToolbarButton*	m_pButton;
 	CBCGPToolBarImages*	m_pImages;
+	CBCGPToolBarImages*	m_pImagesScaled;
 	int					m_iStartImage;
 	CObList				m_Buttons;
 	int					m_iSelImage;

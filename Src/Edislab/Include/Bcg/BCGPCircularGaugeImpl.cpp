@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -32,6 +32,7 @@ IMPLEMENT_DYNAMIC(CBCGPCircularGaugeCtrl, CBCGPVisualCtrl)
 void CBCGPCircularGaugeColors::SetTheme(BCGP_CIRCULAR_GAUGE_COLOR_THEME theme)
 {
 	m_brFrameFillInv.Empty();
+	m_bIsVisualManagerTheme = FALSE;
 
 	switch (theme)
 	{
@@ -98,6 +99,11 @@ void CBCGPCircularGaugeColors::SetTheme(BCGP_CIRCULAR_GAUGE_COLOR_THEME theme)
 		m_brCapFill.SetColors(CBCGPColor::LightGray, CBCGPColor::White, CBCGPBrush::BCGP_GRADIENT_RADIAL_TOP);
 		m_brTickMarkFill.SetColors(CBCGPColor::LightGray, CBCGPColor::White, CBCGPBrush::BCGP_GRADIENT_RADIAL_TOP_LEFT);
 		m_brTickMarkOutline.SetColor(CBCGPColor::Gray);
+		break;
+		
+	case BCGP_CIRCULAR_GAUGE_VISUAL_MANAGER:
+		CBCGPVisualManager::GetInstance()->GetCircularGaugeColors(*this);
+		m_bIsVisualManagerTheme = TRUE;
 		break;
 	}
 }
@@ -768,47 +774,40 @@ void CBCGPCircularGaugeImpl::OnDrawScale(CBCGPGraphicsManager* pGM, int nScale, 
 
 				if (bRecalcPositions)
 				{
-					CBCGPPoint ptText = ptTo;
-
-					if (m_bDrawTextBeforeTicks)
-					{
-						ptText = CBCGPPoint(center.x + angleCos * radius, center.y - angleSin * radius);
-					}
-
-					double xLabel = ptText.x - angleCos * 5.0 * scaleRatio;
-					double yLabel = ptText.y + angleSin * 10.0 * scaleRatio;
-
 					CBCGPSize sizeText = GetTickMarkTextLabelSize(pGM, strLabel, tf);
 
-					if (pScale->m_bRotateLabels)
-					{
-						double dx = .5 * sizeText.cx * angleCos;
-						double dy = .5 * sizeText.cy * angleSin;
+					CBCGPPoint ptText = ((m_bDrawTicksOutsideFrame && m_bDrawTextBeforeTicks) || m_bDrawTextBeforeTicks)
+											? ptFrom
+											: ptTo;
+					CBCGPPoint ptTextCenter(ptText);
+					double distText = 0.0;
+					ptText.Offset(-sizeText.cx / 2.0, -sizeText.cy / 2.0);
 
-						rectText = CBCGPRect(xLabel - dx, yLabel - dy, 
-											xLabel + dx, yLabel + dy);
+					if (pScale->m_bRotateLabels ||
+						(m_bDrawTicksOutsideFrame && !m_bDrawTextBeforeTicks) ||
+						(!m_bDrawTicksOutsideFrame && m_bDrawTextBeforeTicks))
+					{
+						distText = fabs(GetMaxLabelWidth(pGM, nScale) + (m_nFrameSize + 1) * scaleRatio) / 2.0;
+						if ((m_bDrawTicksOutsideFrame && !m_bDrawTextBeforeTicks) ||
+							(pScale->m_bRotateLabels && !m_bDrawTicksOutsideFrame && !m_bDrawTextBeforeTicks))
+						{
+							distText = -distText;
+						}
 					}
 					else
 					{
-						if (fabs(ptTo.x - center.x) < sizeText.cx)
-						{
-							rectText.left = xLabel - sizeText.cx / 2;
-							rectText.right = rectText.left + sizeText.cx;
-						}
-						else if (ptTo.x < center.x)
-						{
-							rectText.left = xLabel;
-							rectText.right = rectText.left + sizeText.cx;
-						}
-						else
-						{
-							rectText.right = xLabel;
-							rectText.left = rectText.right - sizeText.cx;
-						}
+						CBCGPPoint ptInter;
+						bcg_CS_intersect(CBCGPRect(ptText, sizeText), center, ptTextCenter, ptInter);
 
-						rectText.top = yLabel - sizeText.cy / 2;
-						rectText.bottom = rectText.top + sizeText.cy;
+						distText = bcg_distance(ptInter, ptTextCenter) + 5.0 * scaleRatio;
+						if (!m_bDrawTextBeforeTicks)
+						{
+							distText = -distText;
+						}
 					}
+
+					ptText.Offset(angleCos * distText, -angleSin * distText);
+					rectText = CBCGPRect(ptText, sizeText);
 
 					pScale->m_arRectTickLabel.Add(rectText);
 				}
@@ -1038,7 +1037,7 @@ void CBCGPCircularGaugeImpl::CreatePointerPoints(double dblRadius,
 		return;
 	}
 
-	double dblValue = pData->m_nAnimTimerID != 0 ? pData->m_dblAnimatedValue : pData->m_dblValue;
+	double dblValue = pData->IsAnimated() ? pData->m_dblAnimatedValue : pData->m_dblValue;
 
 	double dblSize = bcg_clamp(pData->m_dblSize, 0.0, 1.0) * scaleRatio;
 	if (dblSize == 0.0)
@@ -1325,8 +1324,6 @@ BOOL CBCGPCircularGaugeImpl::RemovePointer(int nIndex, BOOL bRedraw)
 	{
 		return FALSE;
 	}
-
-	StopAnimation(m_arData[nIndex]->GetAnimationID(), FALSE);
 
 	delete m_arData[nIndex];
 	m_arData.RemoveAt(nIndex);
@@ -1643,8 +1640,8 @@ BOOL CBCGPCircularGaugeImpl::HitTestValue(const CBCGPPoint& pt, double& dblValue
 	{
 		dblValue = pScale->m_dblStart + dblValue;
 	}
-
-	dblValue = bcg_clamp(dblValue, pScale->m_dblStart, pScale->m_dblFinish);
+	
+	dblValue = bcg_clamp(dblValue, min(pScale->m_dblStart, pScale->m_dblFinish), max(pScale->m_dblStart, pScale->m_dblFinish));
 	return TRUE;
 }
 //*******************************************************************************
@@ -1912,6 +1909,8 @@ void CBCGPCircularGaugeImpl::ReposSubGauge(CBCGPGraphicsManager* pGM, CBCGPGauge
 		rect.left += (rect.Width() - rect.Height()) / 2;
 		rect.right = rect.left + rect.Height();
 	}
+
+	rect.OffsetRect(m_ptScrollOffset);
 
 	CBCGPPoint pt;
 

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -24,6 +24,11 @@
 #endif
 
 #include "bcgprores.h"
+#include "BCGPButton.h"
+#include "BCGPStatic.h"
+#include "BCGPComboBox.h"
+#include "BCGPGroup.h"
+#include "BCGPPropertyPage.h"
 
 class CBCGPMenuBar;
 class CBCGPPopupMenu;
@@ -31,7 +36,7 @@ class CBCGPPopupMenu;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMenuPage dialog
 
-class CBCGPMenuPage : public CPropertyPage
+class CBCGPMenuPage : public CBCGPPropertyPage
 {
 	DECLARE_DYNCREATE(CBCGPMenuPage)
 
@@ -48,16 +53,16 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPMenuPage)
 	enum { IDD = IDD_BCGBARRES_PROPPAGE3 };
-	CStatic	m_wndMenuAnimationsLabel;
-	CComboBox	m_wndMenuAnimations;
-	CButton	m_wndMenuShadows;
-	CButton	m_wndContextFrame;
-	CStatic	m_wndContextHint;
-	CButton	m_wndResetMenuButton;
-	CStatic	m_wndContextMenuCaption;
-	CComboBox	m_wndContextMenus;
-	CStatic	m_wndIcon;
-	CComboBox	m_wndMenuesList;
+	CBCGPStatic	m_wndMenuAnimationsLabel;
+	CBCGPComboBox	m_wndMenuAnimations;
+	CBCGPButton	m_wndMenuShadows;
+	CBCGPGroup	m_wndContextFrame;
+	CBCGPStatic	m_wndContextHint;
+	CBCGPButton	m_wndResetMenuButton;
+	CBCGPStatic	m_wndContextMenuCaption;
+	CBCGPComboBox	m_wndContextMenus;
+	CBCGPStatic	m_wndIcon;
+	CBCGPComboBox	m_wndMenuesList;
 	CString	m_strMenuDescr;
 	CString	m_strContextMenuName;
 	CString	m_strMenuName;

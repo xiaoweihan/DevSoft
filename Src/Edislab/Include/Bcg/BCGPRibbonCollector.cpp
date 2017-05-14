@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -251,6 +251,7 @@ void CBCGPRibbonCollector::CollectRibbonBar(const CBCGPRibbonBar& bar, CBCGPRibb
 	info.m_bKeyTips = bar.IsKeyTipEnabled ();
 	info.m_bPrintPreview = bar.IsPrintPreviewEnabled ();
 	info.m_bBackstageMode = bar.IsBackstageMode ();
+	info.m_bBackstagePageCaptions = bar.HasBackstagePageCaptions();
 	info.m_bDrawUsingFont = CBCGPRibbonFontComboBox::m_bDrawUsingFont;
 
 	// main button
@@ -323,6 +324,21 @@ void CBCGPRibbonCollector::CollectRibbonBar(const CBCGPRibbonBar& bar, CBCGPRibb
 				pInfoContext->m_arCategories.Add (pInfo);
 			}
 		}
+	}
+
+	// context help
+	info.m_bContextHelp = bar.IsContextHelpEnabled();
+	info.m_strContextHelpTooltipPrompt = bar.GetContextHelpTooltipPrompt();
+
+	// command search
+	if (bar.m_pCommandsCombo != NULL)
+	{
+		info.m_bCommandSearch = bar.IsCommandSearchEnabled();
+		info.m_nCommandSearchWidth = bar.m_pCommandsCombo->GetWidth();
+		info.m_strCommandSearchPrompt = bar.m_pCommandsCombo->GetPrompt();
+		info.m_strCommandSearchToolTip = bar.m_pCommandsCombo->GetToolTip();
+		info.m_strCommandSearchDescription = bar.m_pCommandsCombo->GetDescription();
+		info.m_strCommandSearchKeys = bar.m_pCommandsCombo->GetKeys();
 	}
 
 	// panel images
@@ -548,6 +564,7 @@ void CBCGPRibbonCollector::CollectCategory(const CBCGPRibbonCategory& category, 
 {
 	info.m_strName = category.GetName ();
 	info.m_strKeys = category.m_Tab.GetKeys ();
+	info.m_nApplicationModes = category.GetApplicationModes();
 
 	int i = 0;
 	int count = category.GetPanelCount ();
@@ -610,11 +627,23 @@ void CBCGPRibbonCollector::CollectCategory(const CBCGPRibbonCategory& category, 
 
 void CBCGPRibbonCollector::CollectPanel(const CBCGPRibbonPanel& panel, CBCGPRibbonInfo::XPanel& info)
 {
- 	info.m_strName = panel.GetName ();
+	info.m_strName = panel.GetName ();
 	info.m_strKeys = const_cast<CBCGPRibbonPanel&>(panel).GetDefaultButton ().GetKeys ();
 	info.m_nImageIndex = const_cast<CBCGPRibbonPanel&>(panel).GetDefaultButton().GetImageIndex(FALSE);
 	info.m_bJustifyColumns = panel.IsJustifyColumns ();
 	info.m_bCenterColumnVert = panel.IsCenterColumnVert ();
+	info.m_bAlwaysAlignByColumn = panel.IsAlwaysAlignByColumn();
+	info.m_nApplicationModes = panel.GetApplicationModes();
+	
+	info.m_CollapseMode = 0;
+	if (panel.IsNonCollapsible())
+	{
+		info.m_CollapseMode = 1;
+	}
+	else if (panel.IsAlwaysCollapsed ())
+	{
+		info.m_CollapseMode = 2;
+	}
 
 	CollectElement (const_cast<CBCGPRibbonPanel&>(panel).GetLaunchButton (), info.m_btnLaunch);
 
@@ -836,6 +865,7 @@ CBCGPRibbonInfo::XElement* CBCGPRibbonCollector::CollectElement(const CBCGPBaseR
 		pNewInfo->m_bEnableMenuResize = pElement->IsMenuResizeEnabled ();
 		pNewInfo->m_bMenuResizeVertical = pElement->IsMenuResizeVertical ();
 		pNewInfo->m_bDrawDisabledItems = pElement->IsDrawDisabledItems();
+		pNewInfo->m_nInitialColumns = pElement->GetInitialColumns ();
 		pNewInfo->m_nIconsInRow = pElement->GetIconsInRow ();
 
 		GetElementImages (*pElement, pNewInfo->m_Images);
@@ -873,6 +903,17 @@ CBCGPRibbonInfo::XElement* CBCGPRibbonCollector::CollectElement(const CBCGPBaseR
 				pNewInfo->m_arGroups.Add (pGroup);
 			}
 		}
+
+		pNewInfo->m_bItemCheckBoxes = pElement->IsItemCheckBoxesEnabled();
+		pNewInfo->m_CheckBoxLocation = pElement->GetCheckBoxLocation();
+		pNewInfo->m_bCheckBoxOverlapsIcon = pElement->IsCheckBoxOverlapsIcon();
+
+		pNewInfo->m_bItemTextLabels = pElement->IsItemTextLabelsEnabled();
+		pNewInfo->m_TextLabelLocation = pElement->GetTextLabelLocation();
+		pNewInfo->m_clrTextLabel = pElement->GetTextLabelColor();
+
+		pNewInfo->m_arTooltips.Copy(pElement->m_arToolTips);
+		pNewInfo->m_arKeys.Copy(pElement->m_arKeys);
 	}
 	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPRibbonHyperlink)))
 	{
@@ -989,6 +1030,7 @@ CBCGPRibbonInfo::XElement* CBCGPRibbonCollector::CollectElement(const CBCGPBaseR
 		ASSERT_VALID (pElement);
 
 		pNewInfo->m_bIsHoriz = pElement->IsHorizontal ();
+		pNewInfo->m_nApplicationModes = pElement->GetApplicationModes();
 	}
 
 	return info;
@@ -1062,6 +1104,7 @@ void CBCGPRibbonCollector::CollectBaseElement (const CBCGPBaseRibbonElement& ele
 	info.m_strDescription = element.GetDescription ();
 	info.m_strKeys = element.GetKeys ();
 	info.m_strMenuKeys = element.GetMenuKeys ();
+	info.m_nApplicationModes = element.GetApplicationModes();
 
 	const CBCGPRibbonButton* pButton = DYNAMIC_DOWNCAST (CBCGPRibbonButton, &element);
 	if (pButton != NULL)
@@ -1074,6 +1117,7 @@ void CBCGPRibbonCollector::CollectBaseElement (const CBCGPBaseRibbonElement& ele
 		infoButton.m_bIsAlwaysLarge = pButton->CBCGPBaseRibbonElement::IsAlwaysLargeImage ();
 		infoButton.m_bIsDefaultCommand = pButton->IsDefaultCommand ();
 		infoButton.m_QATType = pButton->GetQATType ();
+		infoButton.m_bDontCloseParentPopupOnClick = pButton->DontCloseParentPopupOnClick ();
 
 		if (bSubItems)
 		{

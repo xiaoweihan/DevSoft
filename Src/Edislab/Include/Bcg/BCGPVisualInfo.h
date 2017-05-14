@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -37,8 +37,10 @@
 #include "BCGPDiagramVisualObject.h"
 #include "BCGPDiagramConnector.h"
 #include "BCGPDiagramShape.h"
+#include "BCGPGridCtrl.h"
+#include "BCGPChartVisualObject.h"
 
-class CBCGPVisualInfo: public CBCGPBaseInfo  
+class BCGCBPRODLLEXPORT CBCGPVisualInfo: public CBCGPBaseInfo  
 {
 public:
 	static CBCGPBaseInfo::XBase* CreateBaseFromName (const CString& name);
@@ -106,9 +108,41 @@ public:
 		XID			m_ID;
 		CRect		m_Rect;
 		BOOL		m_bIsVisible;
+		BOOL		m_bIsEnabled;
 		BOOL		m_bIsAutoDestroy;
 	};
 	typedef CArray<XElement*, XElement*> XArrayElement;
+
+	class XScrollBars
+	{
+	public:
+		XScrollBars();
+		virtual ~XScrollBars();
+
+		virtual BOOL FromTag (const CString& strTag);
+		virtual void ToTag (CString& strTag) const;
+
+	public:
+		BOOL			m_Enabled;
+		CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE
+						m_Style;
+		CBCGPVisualScrollBarColorTheme
+						m_Colors;
+	};
+
+	class XWinScrollBars
+	{
+	public:
+		XWinScrollBars();
+		virtual ~XWinScrollBars();
+
+		virtual BOOL FromTag (const CString& strTag);
+		virtual void ToTag (CString& strTag) const;
+
+	public:
+		CBCGPScrollBar::BCGPSB_STYLE	m_Style;
+		BCGPSCROLLBAR_COLOR_THEME		m_Colors;
+	};
 
 	class XContainer: public CBCGPBaseInfo::XBase
 	{
@@ -124,6 +158,10 @@ public:
 		CRect			m_Rect;
 		CBCGPBrush		m_brFill;
 		CBCGPBrush		m_brOutline;
+
+		BOOL			m_Tooltip;
+
+		XScrollBars     m_ScrollBars;
 
 		XArrayElement	m_arElements;
 	};
@@ -980,6 +1018,115 @@ public:
 		virtual ~XElementDiagramCustom();
 	};
 
+	class XControlElement: public XElement
+	{
+	protected:
+		XControlElement(const CString& strElementName);
+
+	public:
+		virtual ~XControlElement();
+
+		static XControlElement* CreateFromName (const CString& name);
+
+		virtual BOOL FromTag (const CString& strTag);
+		virtual void ToTag (CString& strTag) const;
+
+	protected:
+		virtual BOOL ColorsFromTag (const CString& strTag) = 0;
+		virtual void ColorsToTag (CString& strTag) const = 0;
+
+	public:
+		CBCGPTextFormat	m_fmtText;
+		CString			m_strRTIControl;
+	};
+
+	class XElementControlHost: public XControlElement
+	{
+	public:
+		XElementControlHost();
+		virtual ~XElementControlHost();
+
+		virtual BOOL FromTag (const CString& strTag);
+		virtual void ToTag (CString& strTag) const;
+
+	protected:
+		virtual BOOL ColorsFromTag (const CString& strTag);
+		virtual void ColorsToTag (CString& strTag) const;
+
+	public:
+		CBCGPWndHostColors	m_Colors;
+	};
+
+	class XElementControlEdit: public XControlElement
+	{
+	public:
+		XElementControlEdit();
+		virtual ~XElementControlEdit();
+
+		virtual BOOL FromTag (const CString& strTag);
+		virtual void ToTag (CString& strTag) const;
+
+	protected:
+		virtual BOOL ColorsFromTag (const CString& strTag);
+		virtual void ColorsToTag (CString& strTag) const;
+
+	public:
+		CBCGPEditColors	m_Colors;
+		CString			m_strText;
+	};
+
+	class XControlGridHeader
+	{
+	public:
+		XControlGridHeader();
+		~XControlGridHeader ();
+
+		BOOL FromTag (const CString& strTag);
+		void ToTag (CString& strTag) const;
+
+	public:
+		BOOL	m_bEnable;
+		BOOL	m_bSelectAllMarker;
+		BOOL	m_bDragItems;
+		DWORD	m_dwFlags;
+	};
+
+	class XElementControlGrid: public XControlElement
+	{
+	public:
+		XElementControlGrid();
+		virtual ~XElementControlGrid();
+
+		virtual BOOL FromTag (const CString& strTag);
+		virtual void ToTag (CString& strTag) const;
+
+	protected:
+		virtual BOOL ColorsFromTag (const CString& strTag);
+		virtual void ColorsToTag (CString& strTag) const;
+
+	public:
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+		CBCGPGridColors		m_Colors;
+#endif
+
+		XControlGridHeader	m_Header;
+	};
+
+	class XElementChart: public XElement
+	{
+	public:
+		XElementChart();
+		virtual ~XElementChart();
+
+		virtual BOOL FromTag (const CString& strTag);
+		virtual void ToTag (CString& strTag) const;
+
+	public:
+		BCGPChartCategory			m_Category;
+		BCGPChartType				m_Type;
+		CBCGPChartTheme::ChartTheme	m_Theme;
+	};
+
 public:
 	CBCGPVisualInfo();
 	virtual ~CBCGPVisualInfo();
@@ -1026,6 +1173,12 @@ public:
 	static LPCTSTR s_szDiagramTable;
 	static LPCTSTR s_szDiagramImage;
 	static LPCTSTR s_szDiagramCustom;
+
+	static LPCTSTR s_szControlHost;
+	static LPCTSTR s_szControlEdit;
+	static LPCTSTR s_szControlGrid;
+
+	static LPCTSTR s_szChart;
 
 	static LPCTSTR s_szContainer;
 

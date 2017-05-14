@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -139,6 +139,7 @@ public:
 	virtual COLORREF GetHighlightedMenuItemTextColor (CBCGPToolbarMenuButton* pButton);	
 
 	virtual CBrush& GetDlgButtonsAreaBrush(CWnd* pDlg, COLORREF* pclrLine);
+	virtual COLORREF GetDlgHeaderTextColor(CWnd* pDlg);
 
 	virtual CFont& GetNcCaptionTextFont();
 	virtual COLORREF GetNcCaptionTextColor(BOOL bActive, BOOL bTitle = TRUE) const;
@@ -210,6 +211,7 @@ public:
 	virtual void OnDrawMenuSystemButton (CDC* pDC, CRect rect, UINT uiSystemCommand, 
 										UINT nStyle, BOOL bHighlight);
 
+	virtual int GetListBoxItemExtraHeight(CBCGPListBox* pListBox);
 	virtual COLORREF OnFillListBoxItem (CDC* pDC, CBCGPListBox* pListBox, int nItem, CRect rect, BOOL bIsHighlihted, BOOL bIsSelected);
 
 	virtual COLORREF OnFillComboBoxItem(CDC* pDC, CBCGPComboBox* pComboBox, int nIndex, CRect rect, BOOL bIsHighlihted, BOOL bIsSelected);
@@ -270,6 +272,8 @@ public:
 											   BOOL bIsPressed,
 											   BOOL bIsDisabled);
 
+	virtual void OnDrawTabDot(CDC* pDC, CBCGPBaseTabWnd* pWndTab, int nShape, const CRect& rect, int iTab, BOOL bIsActive, BOOL bIsHighlighted);
+
 	virtual BOOL AlwaysHighlight3DTabs () const		{	return CanDrawImage () ? TRUE : CBCGPVisualManager2003::AlwaysHighlight3DTabs ();	}
 	virtual COLORREF GetTabTextColor (const CBCGPBaseTabWnd* pTabWnd, int iTab, BOOL bIsActive);
 	virtual int GetTabHorzMargin (const CBCGPBaseTabWnd* pTabWnd);
@@ -284,6 +288,7 @@ public:
 	virtual void OnDrawOutlookPageButtonBorder (CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed);
 	virtual void OnDrawOutlookBarSplitter (CDC* pDC, CRect rectSplitter);
 	virtual void OnFillOutlookBarCaption (CDC* pDC, CRect rectCaption, COLORREF& clrText);
+	virtual COLORREF OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption);
 
 	virtual void GetCalendarColors (const CBCGPCalendar* pCalendar,
 				   CBCGPCalendarColors& colors);
@@ -324,6 +329,7 @@ public:
 	virtual void OnDrawGridGroupByBoxItemBorder (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect);
 	virtual COLORREF GetGridLeftOffsetColor (CBCGPGridCtrl* pCtrl);
 	virtual COLORREF OnFillGridRowBackground (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rectFill, BOOL bSelected);
+	virtual COLORREF GetGridTreeLineColor (CBCGPGridCtrl* pCtrl);
 	virtual BOOL OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_GRID_COLOR_DATA& theme);
 	virtual void OnDrawGridDataBar (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect);
 
@@ -340,6 +346,13 @@ public:
     virtual void DrawGanttHeaderCell (const CBCGPGanttChart* pChart, CDC& dc, const BCGP_GANTT_CHART_HEADER_CELL_INFO& cellInfo, BOOL bHilite);
 	virtual COLORREF GetGanttHeaderTextColor (BOOL bHilite) const;
 #endif // !defined (BCGP_EXCLUDE_GRID_CTRL) && !defined (BCGP_EXCLUDE_GANTT)
+
+	// Chart:
+	virtual void GetChartColors(CBCGPChartColors& colors);
+
+	// Gauges:
+	virtual void GetCircularGaugeColors(CBCGPCircularGaugeColors& colors);
+	virtual void GetLinearGaugeColors(CBCGPLinearGaugeColors& colors);
 
 	// Ribbon control:
 #ifndef BCGP_EXCLUDE_RIBBON
@@ -365,6 +378,9 @@ public:
 					CDC* pDC, 
 					CBCGPRibbonTab* pTab, 
 					BOOL bIsActive);
+
+	virtual COLORREF OnFillRibbonBackstageLeftPane(CDC* pDC, CRect rectPanel);
+	virtual COLORREF OnGetRibbonBackstageLeftPaneTextColor();
 
 	virtual COLORREF OnDrawRibbonPanel (
 					CDC* pDC,
@@ -419,6 +435,8 @@ public:
 					CRect rect, 
 					BOOL bIsSelected, 
 					BOOL bHighlighted);
+
+	virtual BOOL IsRibbonCaptionTextCentered(CBCGPRibbonBar* pBar);
 
 	virtual void OnDrawRibbonCaption (
 					CDC* pDC, CBCGPRibbonBar* pBar, CRect rectCaption,
@@ -604,6 +622,7 @@ public:
 #endif
 
 	virtual BOOL OnEraseMDIClientArea (CDC* pDC, CRect rectClient);
+	virtual COLORREF GetPrintPreviewBackgroundColor(CBCGPPrintPreviewView* pPrintPreview);
 
 	// ToolTip
 	virtual BOOL GetToolTipParams (CBCGPToolTipParams& params, UINT nType = (UINT)(-1));
@@ -669,6 +688,17 @@ public:
 	// List control:
 	virtual HBRUSH GetListControlFillBrush(CBCGPListCtrl* pListCtrl);
 	virtual COLORREF GetListControlTextColor(CBCGPListCtrl* pListCtrl);
+
+	// IntelliSense window:
+	virtual COLORREF GetIntelliSenseFillColor(CBCGPBaseIntelliSenseLB* pCtrl, BOOL bIsSelected = FALSE);
+	virtual COLORREF GetIntelliSenseTextColor(CBCGPBaseIntelliSenseLB* pTreeCtrl, BOOL bIsSelected = FALSE);
+
+	// Breadcrumb control:
+	virtual void OnDrawBreadcrumbButton(CDC& dc, CBCGPBreadcrumb* pControl, CRect rect, UINT uState);
+	virtual void BreadcrumbFillProgress (CDC& dc, CBCGPBreadcrumb* pControl, CRect rectProgress, CRect rectChunk, int nValue);
+
+	// WinUITiles:
+	virtual void GetWinUITilesColors(CBCGPWinUITilesColors& colors);
 
 protected:
 	BOOL CanDrawImage () const
@@ -872,6 +902,8 @@ protected:
 	COLORREF				m_clrTabFlatTextActive;
 	COLORREF				m_clrTabFlatTextInactive;
 	COLORREF				m_clrTabFlatTextHighlighted;
+	CBCGPControlRenderer	m_ctrlTabDotE;
+	CBCGPControlRenderer	m_ctrlTabDotR;
 
 	CBCGPControlRenderer	m_ctrlOutlookWndBar;
 	CBCGPControlRenderer	m_ctrlOutlookWndPageBtn;
@@ -1101,6 +1133,8 @@ protected:
 	BOOL					IsBeta  () const {	return m_nType < 20;	}
 
 	BOOL					m_bUseScenicColors;
+
+	CWnd*					m_pCurrentNcWnd;
 
 	virtual BOOL ParseStyleXML (CBCGPTagManager& tm);
 	virtual BOOL ParseStyleXMLVersion (const CString& strItem);

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -119,7 +119,7 @@ BOOL CBCGPStaticLayout::Create(CWnd* pHostWnd)
 		ASSERT(FALSE);
 		return FALSE;
 	}
-	
+
 	m_pHostWnd = pHostWnd;
 
 	return TRUE;
@@ -183,6 +183,42 @@ BOOL CBCGPStaticLayout::AddAnchor (HWND hWnd, XMoveType typeMove, XSizeType type
 	}
 
 	return AddAnchor ((LPVOID)hWnd, typeMove, typeSize, percMove, percSize);
+}
+
+BOOL CBCGPStaticLayout::RemoveAnchor (UINT nID)
+{
+	if (m_pHostWnd->GetSafeHwnd () == NULL)
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+	return RemoveAnchor (m_pHostWnd->GetDlgItem (nID)->GetSafeHwnd ());
+}
+
+BOOL CBCGPStaticLayout::RemoveAnchor (HWND hWnd)
+{
+	return RemoveAnchor ((LPVOID)hWnd);
+}
+
+BOOL CBCGPStaticLayout::RemoveAnchor (LPVOID lpHandle)
+{
+	XWndItem item;
+	if (!FindItem (lpHandle, item))
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+	POSITION pos = FindItem(lpHandle);
+	if (pos == NULL)
+	{
+		return FALSE;
+	}
+
+	m_listWnd.RemoveAt(pos);
+
+	return TRUE;
 }
 
 BOOL CBCGPStaticLayout::AddAnchor (LPVOID lpHandle, XMoveType typeMove, XSizeType typeSize, 
@@ -270,23 +306,37 @@ BOOL CBCGPStaticLayout::AddAnchor (LPVOID lpHandle, XMoveType typeMove, XSizeTyp
 	return TRUE;
 }
 
-BOOL CBCGPStaticLayout::FindItem (LPVOID handle, XWndItem& item)
+POSITION CBCGPStaticLayout::FindItem (LPVOID handle)
 {
-	BOOL bRes = FALSE;
+	POSITION posRes = NULL;
 
+	POSITION posLast = NULL;
 	POSITION pos = m_listWnd.GetHeadPosition ();
 	while (pos != NULL)
 	{
+		posLast = pos;
 		XWndItem& it = m_listWnd.GetNext (pos);
 		if (it.m_Handle == handle)
 		{
-			item = it;
-			bRes = TRUE;
+			posRes = posLast;
 			break;
 		}
 	}
 
-	return bRes;
+	return posRes;
+}
+
+BOOL CBCGPStaticLayout::FindItem (LPVOID handle, XWndItem& item)
+{
+	POSITION pos = FindItem(handle);
+	if (pos == NULL)
+	{
+		return FALSE;
+	}
+
+	item = m_listWnd.GetAt(pos);
+
+	return TRUE;
 }
 
 void CBCGPStaticLayout::CorrectItem (XWndItem& item) const
@@ -382,7 +432,7 @@ UINT CBCGPStaticLayout::CalculateItem (XWndItem& item, CRect& rectItem) const
 
 	if (rectHost.IsRectNull ())
 	{
-		return 0;
+		return SWP_NOMOVE | SWP_NOSIZE;
 	}
 
 	UINT uiFlags = 0;

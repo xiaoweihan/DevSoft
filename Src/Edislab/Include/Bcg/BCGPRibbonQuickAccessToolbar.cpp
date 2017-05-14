@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -80,6 +80,8 @@ class BCGCBPRODLLEXPORT CBCGPRibbonQuickAccessCustomizeButton : public CBCGPRibb
 	{
 		CBCGPLocalResource locaRes;
 		m_strMoreButtons.LoadString (IDS_BCGBARRES_MORE_BUTTONS);
+
+		m_bQuickAccessMode = TRUE;
 	}
 
 	virtual CSize GetImageSize (RibbonImageType /*type*/) const
@@ -132,16 +134,22 @@ class BCGCBPRODLLEXPORT CBCGPRibbonQuickAccessCustomizeButton : public CBCGPRibb
 
 		SetKeys (m_arHidden.GetSize () == 0 ? NULL : _T("00"));
 
-		CRect rectWhite = m_rect;
-		rectWhite.OffsetRect (0, 1);
-
 		CSize sizeImage = CBCGPMenuImages::Size ();
 
-		CBCGPMenuImages::Draw (pDC, nImageIndex, rectWhite, CBCGPMenuImages::ImageLtGray, sizeImage);
-		CBCGPMenuImages::Draw (pDC, nImageIndex, m_rect, CBCGPMenuImages::ImageBlack2, sizeImage);
+		if (IsDrawSimplifiedIcon())
+		{
+			CBCGPMenuImages::Draw(pDC, nImageIndex, m_rect, CBCGPMenuImages::ImageWhite, sizeImage);
+		}
+		else
+		{
+			CRect rectWhite = m_rect;
+			rectWhite.OffsetRect (0, 1);
+
+			CBCGPMenuImages::Draw (pDC, nImageIndex, rectWhite, CBCGPMenuImages::ImageLtGray, sizeImage);
+			CBCGPMenuImages::Draw (pDC, nImageIndex, m_rect, (IsHighlighted() && !IsDroppedDown()) ? CBCGPMenuImages::ImageBlack2 : CBCGPMenuImages::ImageBlack, sizeImage);
+		}
 		
-		CBCGPVisualManager::GetInstance ()->OnDrawRibbonButtonBorder 
-			(pDC, this);
+		CBCGPVisualManager::GetInstance ()->OnDrawRibbonButtonBorder(pDC, this);
 	}
 
 	virtual void OnLButtonDown (CPoint /*point*/)
@@ -511,7 +519,7 @@ void CBCGPRibbonQuickAccessToolbar::RebuildHiddenItems ()
 		CBCGPBaseRibbonElement* pButton = m_arButtons [i];
 		ASSERT_VALID (pButton);
 
-		if (pButton->m_rect.IsRectEmpty ())
+		if (pButton->m_rect.IsRectEmpty () && !pButton->IsHiddenInAppMode())
 		{
 			pCustButton->m_arHidden.Add (pButton);
 		}
@@ -551,6 +559,11 @@ void CBCGPRibbonQuickAccessToolbar::Add (CBCGPBaseRibbonElement* pElem)
 
 	pButton->m_pRibbonBar = m_pRibbonBar;
 
+	if (DYNAMIC_DOWNCAST(CBCGPPopupMenuBar, pElem->GetParentWnd()) != NULL)
+	{
+		pButton->m_pOriginal = NULL;
+	}
+
 	m_arButtons.InsertAt (m_arButtons.GetSize () - 1, pButton);
 	RebuildKeys ();
 }
@@ -575,6 +588,42 @@ void CBCGPRibbonQuickAccessToolbar::Remove (CBCGPBaseRibbonElement* pElem)
 			return;
 		}
 	}
+}
+//*****************************************************************************
+int CBCGPRibbonQuickAccessToolbar::RemoveCategoryItems(CBCGPRibbonCategory* pCategory)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pCategory);
+
+	int nDeletedCount = 0;
+
+	for (int i = 0; i < m_arButtons.GetSize () - 1; i++)
+	{
+		CBCGPBaseRibbonElement* pButton = m_arButtons [i];
+		ASSERT_VALID (pButton);
+
+		if (pButton->GetOriginal() != NULL)
+		{
+			ASSERT_VALID(pButton->GetOriginal());
+
+			if (pButton->GetOriginal()->GetParentCategory() == pCategory)
+			{
+				m_arButtons.RemoveAt(i);
+				delete pButton;
+
+				nDeletedCount++;
+				i--;
+			}
+		}
+	}
+
+	if (nDeletedCount > 0)
+	{
+		RebuildHiddenItems();
+		RebuildKeys();
+	}
+
+	return nDeletedCount;
 }
 //*****************************************************************************
 void CBCGPRibbonQuickAccessToolbar::GetDefaultCommands (CList<UINT,UINT>& lstCommands)
@@ -912,6 +961,11 @@ HRESULT CBCGPRibbonQuickAccessToolbar::accNavigate(long navDir, VARIANT varStart
 	}
 
 	return S_FALSE;
+}
+//*******************************************************************************
+BOOL CBCGPRibbonQuickAccessToolbar::IsCustomizeButton(CBCGPBaseRibbonElement* pButton) const
+{
+	return DYNAMIC_DOWNCAST(CBCGPRibbonQuickAccessCustomizeButton, pButton) != NULL;
 }
 
 #endif // BCGP_EXCLUDE_RIBBON

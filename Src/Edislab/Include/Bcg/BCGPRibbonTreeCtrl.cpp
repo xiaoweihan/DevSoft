@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 #include "BCGPRibbonPanel.h"
 #include "BCGPRibbonCustomizePage.h"
 #include "BCGPRibbonCustomizeQATPage.h"
+#include "BCGPDrawManager.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -30,6 +31,8 @@ static char THIS_FILE[] = __FILE__;
 
 #ifndef BCGP_EXCLUDE_GRID_CTRL
 #ifndef BCGP_EXCLUDE_RIBBON
+
+static const CString strDummyAmpSeq = _T("\001\001");
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPRibbonTreeCtrl
@@ -41,6 +44,7 @@ CBCGPRibbonTreeCtrl::CBCGPRibbonTreeCtrl(CBCGPRibbonCustomizationData* pCustomiz
 	m_bShowHiddenCategories(bShowHiddenCategories)
 {
 	m_bListMode = FALSE;
+	m_bLockTooltipUpdate = FALSE;
 }
 
 CBCGPRibbonTreeCtrl::~CBCGPRibbonTreeCtrl()
@@ -65,6 +69,7 @@ void CBCGPRibbonTreeCtrl::RebuildItems(int nRibbonTabsDest, LPCTSTR lpszMainTabs
 	ASSERT_VALID(m_pRibbonBar);
 
 	int nTab = 0;
+	m_bLockTooltipUpdate = TRUE;
 
 	RemoveAll();
 	RemoveSortColumn(0);
@@ -125,6 +130,11 @@ void CBCGPRibbonTreeCtrl::RebuildItems(int nRibbonTabsDest, LPCTSTR lpszMainTabs
 		CBCGPRibbonCategory* pTab = arCategoriesOrdered[nTab];
 		ASSERT_VALID(pTab);
 
+		if (pTab->IsHiddenInAppMode())
+		{
+			continue;
+		}
+
 		UINT nContextID = GetCategoryContextID(pTab);
 
 		if (pPrevTabTab == NULL || (pPrevTabTab != NULL && GetCategoryContextID(pPrevTabTab) != nContextID))
@@ -146,6 +156,7 @@ void CBCGPRibbonTreeCtrl::RebuildItems(int nRibbonTabsDest, LPCTSTR lpszMainTabs
 		pPrevTabTab = pTab;
 	}
 
+	m_bLockTooltipUpdate = FALSE;
 	AdjustLayout();
 }
 //*******************************************************************************************
@@ -154,6 +165,7 @@ void CBCGPRibbonTreeCtrl::RebuildItems(const CArray<CBCGPBaseRibbonElement*, CBC
 	ASSERT_VALID(m_pRibbonBar);
 
 	m_bListMode = TRUE;
+	m_bLockTooltipUpdate = TRUE;
 
 	RemoveAll();
 	RemoveSortColumn(0);
@@ -170,8 +182,160 @@ void CBCGPRibbonTreeCtrl::RebuildItems(const CArray<CBCGPBaseRibbonElement*, CBC
 		}
 	}
 
+	m_bLockTooltipUpdate = FALSE;
+
 	SetSortColumn(0);
 	AdjustLayout();
+}
+//*******************************************************************************************
+void CBCGPRibbonTreeCtrl::GetVisibleItemsList(CBCGPGridRow* pRootRow, CList<CBCGPGridRow*, CBCGPGridRow*>& lst)
+{
+	if (pRootRow == NULL)
+	{
+		for (int nRow = 0; nRow < GetRowCount(); nRow++)
+		{
+			CBCGPGridRow* pRow = GetRow(nRow);
+			ASSERT_VALID(pRow);
+
+			GetVisibleItemsList(pRow, lst);
+		}
+
+		return;
+	}
+
+	ASSERT_VALID(pRootRow);
+
+	CRect rect = pRootRow->GetRect();
+	if (rect.IsRectEmpty())
+	{
+		return;
+	}
+
+	CBCGPBaseRibbonElement* pItem = DYNAMIC_DOWNCAST(CBCGPBaseRibbonElement, (CObject*) pRootRow->GetData());
+	if (pItem != NULL)
+	{
+		lst.AddTail(pRootRow);
+		return;
+	}
+
+	if (pRootRow->IsExpanded())
+	{
+		for (int i = 0; i < pRootRow->GetSubItemsCount(); i++)
+		{
+			CBCGPGridRow* pRow = pRootRow->GetSubItem(i);
+			ASSERT_VALID(pRow);
+			
+			GetVisibleItemsList(pRow, lst);
+		}
+	}
+}
+//*******************************************************************************************
+void CBCGPRibbonTreeCtrl::RebuildTooltips()
+{
+	if (m_pToolTip->GetSafeHwnd() == NULL || m_bLockTooltipUpdate)
+	{
+		return;
+	}
+
+	for (int i = m_pToolTip->GetToolCount() - 1 ; i > 0; i--)
+	{
+		m_pToolTip->DelTool(this, i + 1);
+	}
+
+	int nIndex = 2;
+
+	CList<CBCGPGridRow*, CBCGPGridRow*> lstItems;
+	GetVisibleItemsList(NULL, lstItems);
+
+	for (POSITION pos = lstItems.GetHeadPosition(); pos != NULL;)
+	{
+		CBCGPGridRow* pRow = lstItems.GetNext(pos);
+		ASSERT_VALID(pRow);
+
+		CBCGPBaseRibbonElement* pItem = DYNAMIC_DOWNCAST(CBCGPBaseRibbonElement, (CObject*) pRow->GetData());
+		if (pItem != NULL)
+		{
+			ASSERT_VALID(pItem);
+
+			CString strTooltip;
+			CString strName;
+
+			if (!pItem->m_strToolTip.IsEmpty())
+			{
+				strName = pItem->m_strToolTip;
+			}
+			else
+			{
+				strName = pItem->m_strText;
+			}
+
+			if (!strName.IsEmpty())
+			{
+				if (m_pCustomizationData != NULL)
+				{
+					strTooltip = strName;
+
+					CString strDescr = pItem->m_strDescription;
+					if (!strDescr.IsEmpty() && strDescr != strName)
+					{
+						strTooltip += _T(" (");
+						strTooltip += strDescr;
+						strTooltip += _T(")");
+					}
+				}
+				else
+				{
+					CBCGPRibbonCategory* pCategory = pItem->GetParentCategory();
+					if (pCategory != NULL)
+					{
+						ASSERT_VALID(pCategory);
+
+						UINT nContextID = pCategory->GetContextID();
+						if (nContextID != 0)
+						{
+							CBCGPRibbonBar* pRibbonBar = pCategory->GetParentRibbonBar();
+							if (pRibbonBar != NULL)
+							{
+								ASSERT_VALID(pRibbonBar);
+
+								CString strContextName;
+								pRibbonBar->GetContextName(nContextID, strContextName);
+
+								if (!strContextName.IsEmpty())
+								{
+									strTooltip += strContextName;
+									strTooltip += _T(" | ");
+								}
+							}
+						}
+
+						strTooltip += pCategory->GetName();
+						strTooltip += _T(" | ");
+					}
+					
+					CBCGPRibbonPanel* pPanel = pItem->GetParentPanel();
+					if (pPanel != NULL)
+					{
+						ASSERT_VALID(pPanel);
+						
+						strTooltip += pPanel->GetName();
+						strTooltip += _T(" | ");
+					}
+
+					strTooltip += strName;
+				}
+
+				strTooltip.Replace (_T("&&"), strDummyAmpSeq);
+				strTooltip.Remove (_T('&'));
+				strTooltip.Replace (strDummyAmpSeq, _T("&"));
+
+				strTooltip.TrimLeft();
+				strTooltip.TrimRight();
+
+				m_pToolTip->AddTool(this, strTooltip, pRow->GetRect(), nIndex++);
+			}
+		}
+	}
 }
 //*******************************************************************************************
 UINT CBCGPRibbonTreeCtrl::GetCategoryContextID(CBCGPRibbonCategory* pCategory) const
@@ -185,6 +349,11 @@ void CBCGPRibbonTreeCtrl::AddCategoty(CBCGPRibbonCategory* pCategory)
 	ASSERT_VALID(pCategory);
 	ASSERT_VALID(m_pRibbonBar);
 
+	if (pCategory->IsHiddenInAppMode())
+	{
+		return;
+	}
+
 	BOOL bIsVisible = m_pCustomizationData == NULL || !m_pCustomizationData->IsTabHidden(pCategory);
 
 	const int nColumns = GetColumnCount ();
@@ -193,7 +362,7 @@ void CBCGPRibbonTreeCtrl::AddCategoty(CBCGPRibbonCategory* pCategory)
 	ASSERT_VALID (pTab);
 
 	pTab->AllowSubItems ();
-	pTab->SetData((DWORD)pCategory);
+	pTab->SetData((DWORD_PTR)pCategory);
 
 	CString strCategoryName;
 	if (m_pCustomizationData == NULL || !m_pCustomizationData->GetTabName(pCategory, strCategoryName))
@@ -243,6 +412,11 @@ void CBCGPRibbonTreeCtrl::AddCategoty(CBCGPRibbonCategory* pCategory)
 		CBCGPRibbonPanel* pPanel = arPanelsOrdered[nPanel];
 		ASSERT_VALID(pPanel);
 
+		if (pPanel->IsHiddenInAppMode())
+		{
+			continue;
+		}
+
 		if (pPanel->m_bToBeDeleted)
 		{
 			continue;
@@ -262,7 +436,7 @@ void CBCGPRibbonTreeCtrl::AddCategoty(CBCGPRibbonCategory* pCategory)
 		ASSERT_VALID(pPanelItem);
 
 		pPanelItem->AllowSubItems ();
-		pPanelItem->SetData((DWORD)pPanel);
+		pPanelItem->SetData((DWORD_PTR)pPanel);
 
 		CString strPanelName;
 		if (m_pCustomizationData == NULL || !m_pCustomizationData->GetPanelName(pPanel, strPanelName))
@@ -461,13 +635,10 @@ BOOL CBCGPRibbonTreeCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 		return CBCGPGridCtrl::OnDrawItem(pDC, pItem);
 	}
 
-	if (pItem->IsGroup () && (!IsSortingMode () || IsGrouping ()) && pItem->GetSubItemsCount() > 0)
+	if (pItem->HasExpandButton())
 	{
-		int dx = IsSortingMode () && !IsGrouping () ? 0 : pItem->GetHierarchyLevel () * GetHierarchyLevelOffset ();
-
-		CRect rectExpand = pItem->GetRect();
-		rectExpand.right = rectExpand.left + GetButtonWidth () + dx;
-		rectExpand.DeflateRect (dx, 0, 0, 0);
+		int dx = GetHierarchyOffset(pItem);
+		CRect rectExpand = pItem->GetExpandBoxRect(dx);
 
 		CRgn rgnClipExpand;
 		CRect rectExpandClip = rectExpand;
@@ -491,27 +662,61 @@ BOOL CBCGPRibbonTreeCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 
 	if (pItem->IsSelected())
 	{
-		if (bIsFocused)
+		if (IsVisualManagerStyle())
 		{
-			::FillRect (pDC->GetSafeHdc (), rect, GetSysColorBrush (COLOR_HIGHLIGHT));
-			clrText = pDC->SetTextColor (!bDrawDisabled ? GetSysColor (COLOR_HIGHLIGHTTEXT) : globalData.clrBtnLight);
+			CBCGPGridColors colors = GetColorTheme();
+			COLORREF clrTextNew;
+
+			if (bIsFocused)
+			{
+				pDC->FillSolidRect(rect, colors.m_SelColors.m_clrBackground);
+				clrTextNew = colors.m_SelColors.m_clrText;
+			}
+			else
+			{
+				pDC->FillSolidRect(rect, colors.m_SelColorsInactive.m_clrBackground == (COLORREF)-1 ? globalData.clrBarFace : colors.m_SelColorsInactive.m_clrBackground);
+				clrTextNew = colors.m_SelColorsInactive.m_clrText == (COLORREF)-1 ? colors.m_SelColors.m_clrText : colors.m_SelColorsInactive.m_clrText;
+			}
+
+			if (bDrawDisabled)
+			{
+				clrTextNew = CBCGPDrawManager::IsDarkColor(clrTextNew) ? 
+					CBCGPDrawManager::ColorMakeLighter(clrTextNew) : CBCGPDrawManager::ColorMakeDarker(clrTextNew);
+			}
+
+			clrText = pDC->SetTextColor(clrTextNew);
 		}
 		else
 		{
-			pDC->FillRect (rect, &globalData.brBtnFace);
-			clrText = pDC->SetTextColor (!bDrawDisabled ? globalData.clrBtnText : globalData.clrGrayedText);
+			if (bIsFocused)
+			{
+				::FillRect (pDC->GetSafeHdc (), rect, GetSysColorBrush (COLOR_HIGHLIGHT));
+				clrText = pDC->SetTextColor (!bDrawDisabled ? GetSysColor (COLOR_HIGHLIGHTTEXT) : globalData.clrBtnLight);
+			}
+			else
+			{
+				pDC->FillRect (rect, &globalData.brBtnFace);
+				clrText = pDC->SetTextColor (!bDrawDisabled ? globalData.clrBtnText : globalData.clrGrayedText);
+			}
 		}
 	}
 	else if (bDrawDisabled)
 	{
-		clrText = pDC->SetTextColor(globalData.clrGrayedText);
+		COLORREF clrTextDisabled = globalData.clrGrayedText;
+
+		if (IsVisualManagerStyle() && CBCGPVisualManager::GetInstance()->IsDarkTheme())
+		{
+			clrTextDisabled = CBCGPDrawManager::ColorMakeLighter(clrTextDisabled, .2);
+		}
+
+		clrText = pDC->SetTextColor(clrTextDisabled);
 	}
 
 	int nSmallImageSize = 16;
 
 	if (globalData.IsRibbonImageScaleEnabled ())
 	{
-		nSmallImageSize = (int) (nSmallImageSize * globalData.GetRibbonImageScale ());
+		nSmallImageSize = globalUtils.ScaleByDPI(nSmallImageSize);
 		nSmallImageSize = max(nSmallImageSize, pElem->GetImageSize (CBCGPBaseRibbonElement::RibbonImageSmall).cx);
 	}
 
@@ -531,6 +736,7 @@ BOOL CBCGPRibbonTreeCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 		pElem->m_nCustomImageIndex = m_pCustomizationData->GetElementImage(pElem);
 	}
 
+	pElem->m_bIsDrawingOnList = TRUE;
 	pElem->OnDrawOnList(pDC, strText, nTextOffset, rect, pItem->IsSelected(), FALSE);
 	
 	pElem->SetForceDrawDisabledOnList(FALSE);
@@ -542,10 +748,23 @@ BOOL CBCGPRibbonTreeCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 	
 	pElem->m_bDrawDefaultIcon = bDrawDefaultIconSaved;
 	pElem->m_nCustomImageIndex = nCustomImageIndexSaved;
+	pElem->m_bIsDrawingOnList = FALSE;
 
 	globalData.EnableRibbonImageScale (bIsRibbonImageScale);
 
 	return TRUE;
+}
+//*******************************************************************************************
+void CBCGPRibbonTreeCtrl::ReposItems()
+{
+	CBCGPGridCtrl::ReposItems();
+	RebuildTooltips();
+}
+//*******************************************************************************************
+void CBCGPRibbonTreeCtrl::ShiftItems (int dx, int dy)
+{
+	CBCGPGridCtrl::ShiftItems(dx, dy);
+	RebuildTooltips();
 }
 //*******************************************************************************************
 BOOL CBCGPRibbonTreeCtrl::MoveSelection(BOOL bMoveNext)

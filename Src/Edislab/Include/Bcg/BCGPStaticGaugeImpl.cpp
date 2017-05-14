@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -15,8 +15,9 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
-#include "bcgcbpro.h"
+#include <math.h>
 #include "BCGPStaticGaugeImpl.h"
+#include "BCGPVisualCtrl.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -25,6 +26,7 @@ static char THIS_FILE[]=__FILE__;
 #endif
 
 UINT BCGM_ON_GAUGE_CLICK = ::RegisterWindowMessage (_T("BCGM_ON_GAUGE_CLICK"));
+UINT BCGM_ON_GAUGE_SCROLL_FINISHED = ::RegisterWindowMessage (_T("BCGM_ON_GAUGE_SCROLL_FINISHED"));
 
 IMPLEMENT_DYNAMIC(CBCGPStaticGaugeImpl, CBCGPGaugeImpl)
 
@@ -40,6 +42,16 @@ CBCGPStaticGaugeImpl::CBCGPStaticGaugeImpl(CBCGPVisualContainer* pContainer) :
 	m_bOff = FALSE;
 	m_bIsPressed = FALSE;
 	m_dblOpacity = 1.0;
+	m_dblScrollOffset = 0.0;
+	m_nAnimationType = BCGPSTATICGAUGE_ANIMATION_NONE;
+	m_bIsHorizontalScroll = TRUE;
+	m_nScrollFlags = 0;
+	m_dblScrollTime = 0.0;
+	m_dblScrollDelay = 0.0;
+	m_ScrollAnimationType = CBCGPAnimationManager::BCGPANIMATION_AccelerateDecelerate;
+	m_bScrollInternal = FALSE;
+	m_bScrollStopped = FALSE;
+	m_bScrollPaused = FALSE;
 	m_DefaultDrawFlags = BCGP_DRAW_STATIC;
 }
 //*******************************************************************************
@@ -49,29 +61,173 @@ CBCGPStaticGaugeImpl::~CBCGPStaticGaugeImpl()
 //*******************************************************************************
 void CBCGPStaticGaugeImpl::StartFlashing(UINT nTime)
 {
+	StopContentScrolling();
+
 	if (IsFlashing() || nTime == 0)
 	{
 		return;
 	}
 
-	m_arData[0]->SetAnimationID((UINT) ::SetTimer (NULL, 0, nTime, AnimTimerProc));
-
-	g_cs.Lock ();
-	m_mapAnimations.SetAt (m_arData[0]->GetAnimationID(), this);
-	g_cs.Unlock ();
-
+	m_arData[0]->StartFlashAnimation(0.001 * nTime);
 	m_nFlashTime = nTime;
+	m_nAnimationType = BCGPSTATICGAUGE_ANIMATION_FLASH;
 }
 //*******************************************************************************
 void CBCGPStaticGaugeImpl::StopFlashing()
 {
-	if (m_arData[0]->GetAnimationID() > 0)
+	if (IsFlashing())
 	{
-		::KillTimer(NULL, m_arData[0]->GetAnimationID());
-		m_arData[0]->SetAnimationID(0);
-
+		m_arData[0]->StopAnimation();
 		m_bOff = FALSE;
+		m_nAnimationType = BCGPSTATICGAUGE_ANIMATION_NONE;
 		Redraw();
+	}
+}
+//*******************************************************************************
+BOOL CBCGPStaticGaugeImpl::StartContentScrolling(double dblScrollTime, double dblScrollDelay,
+		BOOL bIsHorizontal, UINT nFlags,
+		CBCGPAnimationManager::BCGPAnimationType type, 
+		CBCGPAnimationManagerOptions* pOptions)
+{
+	StopFlashing();
+
+	if (IsContentScrolling())
+	{
+		return FALSE;
+	}
+
+	BOOL bWasPaused = m_bScrollPaused;
+
+	m_bScrollPaused = FALSE;
+	m_bIsHorizontalScroll = bIsHorizontal;
+	m_nScrollFlags = nFlags;
+	m_ScrollAnimationType = type;
+	m_dblScrollTime = dblScrollTime;
+	m_dblScrollDelay = dblScrollDelay;
+	m_bScrollStopped = FALSE;
+
+	if (pOptions != NULL)
+	{
+		m_ScrollAnimationOptions = *pOptions;
+	}
+
+	CBCGPBaseVisualCtrl* pWnd = DYNAMIC_DOWNCAST(CBCGPBaseVisualCtrl, GetParentWnd());
+	if (pWnd->GetSafeHwnd() == NULL)
+	{
+		return FALSE;
+	}
+
+	const CBCGPSize sizeTotal = GetContentTotalSize(pWnd->GetGraphicsManager());
+	const double dblTotal = bIsHorizontal ? sizeTotal.cx : sizeTotal.cy;
+
+	if (dblTotal <= 0.0)
+	{
+		return FALSE;
+	}
+
+	const double dblGaugeSize = bIsHorizontal ? m_rect.Width() : m_rect.Height();
+	double dblFinishVal = dblTotal - dblGaugeSize;
+
+	if (dblFinishVal <= 0.0)
+	{
+		return FALSE;
+	}
+
+	if (m_dblScrollOffset >= dblFinishVal)
+	{
+		if ((m_nScrollFlags & BCGPSTATICGAUGE_CONTENT_SCROLL_CYCLIC) == BCGPSTATICGAUGE_CONTENT_SCROLL_CYCLIC)
+		{
+			// Scroll back
+			dblFinishVal = 0.0;
+		}
+	}
+
+	if (bWasPaused)
+	{
+		// Adjust scroll time:
+		dblScrollTime = dblScrollTime * fabs(dblFinishVal - m_dblScrollOffset) / (dblTotal - dblGaugeSize);
+	}
+
+	if (!m_arData[0]->StartAnimation(m_dblScrollOffset, dblFinishVal, dblScrollTime, 
+		m_ScrollAnimationType, &m_ScrollAnimationOptions, m_bScrollInternal ? m_dblScrollDelay : 0.0))
+	{
+		return FALSE;
+	}
+
+	m_nAnimationType = BCGPSTATICGAUGE_ANIMATION_SCROLL;
+	return TRUE;
+}
+//*******************************************************************************
+void CBCGPStaticGaugeImpl::StopContentScrolling(BOOL bResetOffset)
+{
+	if (IsContentScrolling())
+	{
+		m_bScrollStopped = TRUE;
+
+		m_arData[0]->StopAnimation();
+		m_bScrollInternal = FALSE;
+		m_nAnimationType = BCGPSTATICGAUGE_ANIMATION_NONE;
+
+		if (bResetOffset)
+		{
+			m_dblScrollOffset = 0.0;
+		}
+
+		Redraw();
+	}
+	else if (bResetOffset && m_dblScrollOffset != 0.0)
+	{
+		m_dblScrollOffset = 0.0;
+		Redraw();
+	}
+}
+//*******************************************************************************
+void CBCGPStaticGaugeImpl::OnAnimation(CBCGPVisualDataObject* pDataObject)
+{
+	if (m_nAnimationType == BCGPSTATICGAUGE_ANIMATION_SCROLL)
+	{
+		ASSERT_VALID(pDataObject);
+
+		m_dblScrollOffset = pDataObject->GetAnimatedValue();
+	}
+	else if (m_nAnimationType == BCGPSTATICGAUGE_ANIMATION_FLASH)
+	{
+		m_bOff = !m_bOff;
+	}
+}
+//*******************************************************************************
+void CBCGPStaticGaugeImpl::OnAnimationFinished(CBCGPVisualDataObject* /*pDataObject*/)
+{
+	if (m_nAnimationType == BCGPSTATICGAUGE_ANIMATION_SCROLL)
+	{
+		if ((m_nScrollFlags & BCGPSTATICGAUGE_CONTENT_SCROLL_CYCLIC) == 0)
+		{
+			m_bScrollInternal = FALSE;
+			m_nAnimationType = BCGPSTATICGAUGE_ANIMATION_NONE;
+
+			if (!m_bScrollStopped)
+			{
+				if (m_pWndOwner->GetSafeHwnd() != NULL)
+				{
+					ASSERT_VALID(m_pWndOwner);
+
+					m_pWndOwner->PostMessage(BCGM_ON_GAUGE_SCROLL_FINISHED, (WPARAM)GetID());
+				
+					CWnd* pOwner = m_pWndOwner->GetOwner();
+					if (pOwner->GetSafeHwnd() != NULL)
+					{
+						m_pWndOwner->GetOwner()->PostMessage(BCGM_ON_GAUGE_SCROLL_FINISHED, (WPARAM)GetID());
+					}
+				}
+			}
+		}
+		else
+		{
+			m_bScrollInternal = TRUE;
+
+			StartContentScrolling(m_dblScrollTime, m_dblScrollDelay, m_bIsHorizontalScroll, m_nScrollFlags,
+				m_ScrollAnimationType, &m_ScrollAnimationOptions);
+		}
 	}
 }
 //*******************************************************************************
@@ -119,10 +275,28 @@ void CBCGPStaticGaugeImpl::OnMouseUp(int nButton, const CBCGPPoint& pt)
 //*******************************************************************************
 void CBCGPStaticGaugeImpl::OnMouseMove(const CBCGPPoint& pt)
 {
+	if ((m_nScrollFlags & BCGPSTATICGAUGE_CONTENT_SCROLL_PAUSE_ON_MOUSE) == BCGPSTATICGAUGE_CONTENT_SCROLL_PAUSE_ON_MOUSE &&
+		IsContentScrolling())
+	{
+		StopContentScrolling(FALSE);
+		m_bScrollPaused = TRUE;
+	}
+
 	if (!m_bIsPressed)
 	{
 		CBCGPGaugeImpl::OnMouseMove(pt);
 	}
+}
+//*******************************************************************************
+void CBCGPStaticGaugeImpl::OnMouseLeave()
+{
+	if (m_bScrollPaused)
+	{
+		StartContentScrolling(m_dblScrollTime, m_dblScrollDelay, m_bIsHorizontalScroll, m_nScrollFlags,
+			m_ScrollAnimationType, &m_ScrollAnimationOptions);
+	}
+
+	CBCGPGaugeImpl::OnMouseLeave();
 }
 //*******************************************************************************
 void CBCGPStaticGaugeImpl::OnCancelMode()

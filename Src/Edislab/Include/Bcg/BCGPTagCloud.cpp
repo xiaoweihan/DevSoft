@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -104,7 +104,17 @@ void CBCGPTagCloudElement::DoDraw(CBCGPTagCloud* pTagCloud, CBCGPGraphicsManager
 			clrText = (bIsPressed || bIsHighlighted || bIsSelected) ? pTagCloud->GetHighlightedTextColor() : pTagCloud->GetTextColor();
 		}
 
-		pGM->DrawText(m_strLabel, rect, tf, CBCGPBrush(clrText));
+		if (pTagCloud->IsUnderlineHighlighted() && bIsHighlighted)
+		{
+			CBCGPTextFormat tfUnderline = tf;
+			tfUnderline.SetUnderline(!tf.IsUnderline());
+
+			pGM->DrawText(m_strLabel, rect, tfUnderline, CBCGPBrush(clrText));
+		}
+		else
+		{
+			pGM->DrawText(m_strLabel, rect, tf, CBCGPBrush(clrText));
+		}
 
 		if (!m_colorBorder.IsNull())
 		{
@@ -193,6 +203,8 @@ CBCGPTagCloud::CBCGPTagCloud()
 	m_clrText = CBCGPColor::Black;
 	m_clrHighlightedText = CBCGPColor::SteelBlue;
 	m_brFill = CBCGPBrush(CBCGPColor::White);
+
+	m_bIsUnderlineHighlighted = FALSE;
 
 	SetMaxWeight(5);
 
@@ -710,6 +722,11 @@ void CBCGPTagCloud::SetTextColor(const CBCGPColor& clrText)
 void CBCGPTagCloud::SetHighlightedTextColor(const CBCGPColor& clrText)
 {
 	m_clrHighlightedText = clrText;
+}
+//*****************************************************************************************
+void CBCGPTagCloud::SetUnderlineHighlighted(BOOL bSet)
+{
+	m_bIsUnderlineHighlighted = bSet;
 }
 //*****************************************************************************************
 void CBCGPTagCloud::AddSorted(CBCGPTagCloudElement* pTagNew)

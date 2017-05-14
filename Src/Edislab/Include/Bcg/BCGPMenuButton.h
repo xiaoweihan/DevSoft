@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,8 @@
 #include "BCGCBPro.h"
 #include "BCGPButton.h"
 
+class CBCGPDialog;
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMenuButton window
 
@@ -31,6 +33,7 @@ class BCGCBPRODLLEXPORT CBCGPMenuButton : public CBCGPButton
 
 	friend class CBCGPPopupMenu;
 	friend class CBCGPRibbonPaletteButton;
+	friend class CBCGPParentMenuButtonPtr;
 
 // Construction
 public:
@@ -38,19 +41,27 @@ public:
 
 // Attributes
 public:
-	BOOL	m_bRightArrow;
-	HMENU	m_hMenu;
-	int		m_nMenuResult;
-	BOOL	m_bStayPressed;
-	BOOL	m_bOSMenu;			// User standard Windows menu either than library
-	BOOL	m_bDefaultClick;	// Allow default (on button text/image) processing
+	BOOL			m_bRightArrow;
+	HMENU			m_hMenu;
+	int				m_nMenuResult;
+	BOOL			m_bStayPressed;
+	BOOL			m_bOSMenu;			// User standard Windows menu either than library
+	BOOL			m_bDefaultClick;	// Allow default (on button text/image) processing
 
 protected:
-	BOOL	m_bMenuIsActive;
-	BOOL	m_bClickOnMenu;
+	BOOL			m_bMenuIsActive;
+	BOOL			m_bClickOnMenu;
+
+	CRuntimeClass*	m_pRTIPopupDlg;
+	LPCTSTR			m_lpszPopupDlgTemplateName;
+	CBCGPDialog*	m_pPopupDlg;
+	BOOL			m_bIsResizablePopup;
+	BOOL			m_bIsRightAlignedPopup;
 
 // Operations
 public:
+	void EnablePopupDialog(CRuntimeClass* pRTI, UINT nIDTemplate, BOOL bIsResizable = FALSE, BOOL bIsRightAligned = FALSE);
+	void EnablePopupDialog(CRuntimeClass* pRTI, LPCTSTR lpszTemplateName, BOOL bIsResizable = FALSE, BOOL bIsRightAligned = FALSE);
 
 // Overrides
 	// ClassWizard generated virtual function overrides
@@ -58,6 +69,13 @@ public:
 	public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	//}}AFX_VIRTUAL
+
+	virtual void OnBeforeShowPopupDlg(CBCGPDialog* pDlg) 
+	{
+		UNREFERENCED_PARAMETER(pDlg);
+	}
+
+	virtual void ClosePopupDlg(BOOL bOK, DWORD_PTR dwUserData = 0);
 
 // Implementation
 public:

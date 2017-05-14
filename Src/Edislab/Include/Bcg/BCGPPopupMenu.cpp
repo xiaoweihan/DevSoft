@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,6 +27,7 @@
 #pragma warning (default : 4996)
 #pragma warning (default : 4706)
 
+#include "BCGPMath.h"
 #include "BCGPPopupMenu.h"
 #include "BCGPMenuBar.h"
 #include "BCGGlobals.h"
@@ -59,6 +60,8 @@
 #include "BCGPAccessibility.h"
 #include "BCGPBaseRibbonElement.h"
 #include "BCGPRibbonFloaty.h"
+#include "BCGPGlobalUtils.h"
+#include "BCGPWorkspace.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -172,16 +175,33 @@ void CBCGPShadowWnd::DrawShadow ()
 		rgn.CreateRectRgn(0, 0, size.cx, size.cy);
 
 		CRgn rgnRound;
+		
 		rgnRound.CreateRoundRectRgn(0, 0, size.cx, size.cy, m_szCorners.cx, m_szCorners.cy);
 		rgnRound.OffsetRgn(m_bIsRTL ? m_nOffset : -m_nOffset, -m_nOffset);
+
 		rgn.CombineRgn(&rgn, &rgnRound, RGN_DIFF);
 
+		if (m_rgnStem.GetSafeHandle() != NULL)
+		{
+			rgn.CombineRgn(&rgn, &m_rgnStem, RGN_DIFF);
+		}
+
+		dc.SelectClipRgn(&rgn);
+	}
+	else if (m_rgnStem.GetSafeHandle() != NULL)
+	{
+		rgn.CreateRectRgn(0, 0, size.cx, size.cy);
+		rgn.CombineRgn(&rgn, &m_rgnStem, RGN_DIFF);
+		
 		dc.SelectClipRgn(&rgn);
 	}
 
 	m_Shadow.Draw (&dc, CRect (point, size), 0, m_nTransparency);
 
-	dc.SelectClipRgn(NULL);
+	if (rgn.GetSafeHandle() != NULL)
+	{
+		dc.SelectClipRgn(NULL);
+	}
 
 	BLENDFUNCTION bf;
 	bf.BlendOp             = AC_SRC_OVER;
@@ -205,6 +225,15 @@ void CBCGPShadowWnd::UpdateTransparency (BYTE nTransparency)
 	}
 }
 
+void CBCGPShadowWnd::SetStemRegion(POINT* pts, int nPoints)
+{
+	m_rgnStem.DeleteObject();
+	m_rgnStem.CreatePolygonRgn(pts, nPoints, WINDING);
+
+	int delta = m_nOffset + 2;
+	m_rgnStem.OffsetRgn(m_bIsRTL ? m_nOffset : -m_nOffset, -delta);
+}
+
 void CBCGPShadowWnd::Repos() 
 {
 	ASSERT_VALID (m_pOwner);
@@ -212,6 +241,7 @@ void CBCGPShadowWnd::Repos()
 	CRect rectWindow;
 	m_pOwner->GetWindowRect (rectWindow);
 
+	rectWindow.DeflateRect(m_rectPadding);
 	rectWindow.OffsetRect (m_bIsRTL ? -m_nOffset : m_nOffset, m_nOffset);
 
 	SetRedraw (FALSE);
@@ -245,12 +275,13 @@ static const int iAnimTimerId = 1;
 static const int iScrollTimerId = 2;
 static const int iScrollTimerDuration = 80;
 static const int iMenuBarId = 1;
-static const int iTearOffBarHeight = 10;
 static const int iResizeBarBarHeightRight = 12;
 static const int iResizeBarBarHeight = 9;
 static const int nScrollBarID = 1;
 
-CBCGPPopupMenu::ANIMATION_TYPE CBCGPPopupMenu::m_AnimationType = NO_ANIMATION;
+#define TEAR_OFF_BAR_HEIGHT globalUtils.ScaleByDPI(10)
+
+CBCGPPopupMenu::ANIMATION_TYPE CBCGPPopupMenu::m_AnimationType = SYSTEM_DEFAULT_ANIMATION;
 UINT CBCGPPopupMenu::m_AnimationSpeed = 15;
 CBCGPPopupMenu* CBCGPPopupMenu::m_pActivePopupMenu = NULL;
 BOOL CBCGPPopupMenu::m_bForceShadow = TRUE;
@@ -312,6 +343,7 @@ void CBCGPPopupMenu::Initialize ()
 	m_bShowScrollBar = FALSE;
 	m_nMaxHeight = -1;
 	m_bTobeDstroyed = FALSE;
+	m_bHotChangedByKeyboard = FALSE;
 	m_bShown = FALSE;
 
 	m_iMaxWidth = -1;
@@ -348,8 +380,10 @@ void CBCGPPopupMenu::Initialize ()
 	m_DropDirection = DROP_DIRECTION_NONE;
 
 	m_pMessageWnd = NULL;
+	m_hwndOwner = NULL;
 	m_bTrackMode = FALSE;
 	m_bRightAlign = FALSE;
+	m_nConnectedFloatyHeight = 0;
 	m_bQuickCusomize = FALSE;
 	m_QuickType = QUICK_CUSTOMIZE_NONE;
 	m_bEscClose   = FALSE;
@@ -367,6 +401,8 @@ void CBCGPPopupMenu::Initialize ()
 	m_sizeCurrent = CSize (0, 0);
 	m_bHasBeenResized = FALSE;
 	m_pWndShadow = NULL;
+
+	m_bShadowHiddenInAnimation = (m_AnimationType == SLIDE || m_AnimationType == UNFOLD);
 }
 //****************************************************************************************
 CBCGPPopupMenu::~CBCGPPopupMenu()
@@ -469,6 +505,7 @@ BOOL CBCGPPopupMenu::Create (CWnd* pWndParent, int x, int y, HMENU hMenu, BOOL b
 	if (m_bDisableAnimation)
 	{
 		m_bAnimationIsDone = TRUE;
+		m_bShadowHiddenInAnimation = FALSE;
 	}
 
 	BOOL bIsAnimate = (GetAnimationType () != NO_ANIMATION) && 
@@ -532,19 +569,22 @@ BOOL CBCGPPopupMenu::Create (CWnd* pWndParent, int x, int y, HMENU hMenu, BOOL b
 		//--------------------------
 		m_AnimSize = m_FinalSize + CSize (m_iShadowSize, m_iShadowSize);
 
-		switch (GetAnimationType ())
+		if (m_wndScrollBarVert.GetSafeHwnd () == NULL)
 		{
-		case UNFOLD:
-			m_AnimSize.cx = pMenuBar->GetColumnWidth ();
+			switch (GetAnimationType ())
+			{
+			case UNFOLD:
+				m_AnimSize.cx = pMenuBar->GetColumnWidth ();
 
-		case SLIDE:
-			m_AnimSize.cy = pMenuBar->GetRowHeight ();
-			break;
-		}
+			case SLIDE:
+				m_AnimSize.cy = GetMenuRowHeight();
+				break;
+			}
 
-		if (pMenuBar->IsWindowVisible ())
-		{
-			pMenuBar->ShowWindow (SW_HIDE);
+			if (pMenuBar->IsWindowVisible ())
+			{
+				pMenuBar->ShowWindow (SW_HIDE);
+			}
 		}
 
 		SetTimer (iAnimTimerId, m_AnimationSpeed, NULL);
@@ -572,16 +612,6 @@ BOOL CBCGPPopupMenu::Create (CWnd* pWndParent, int x, int y, HMENU hMenu, BOOL b
 	return TRUE;
 }
 //****************************************************************************************
-
-//-----------------------------------------------------
-// My "classic " trick - how I can access to protected
-// member m_pRecentFileList?
-//-----------------------------------------------------
-class CBCGPApp : public CWinApp
-{
-	friend class CBCGPPopupMenu;
-};
-
 int CBCGPPopupMenu::OnCreate(LPCREATESTRUCT lpCreateStruct) 
 {
 	if (CMiniFrameWnd::OnCreate(lpCreateStruct) == -1)
@@ -619,7 +649,8 @@ int CBCGPPopupMenu::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	}
 
 	pMenuBar->m_iMaxWidth = m_iMaxWidth;
-	pMenuBar->m_iMinWidth = m_nMinWidth;
+	pMenuBar->m_iMinWidth = max(m_nMinWidth, pMenuBar->m_iMinWidth);
+
 	pMenuBar->SetOwner (GetParent ());
 
 	if (m_iShadowSize > 0 && globalData.IsWindowsLayerSupportAvailable () &&
@@ -646,6 +677,11 @@ void CBCGPPopupMenu::OnSize(UINT nType, int cx, int cy)
 		return;
 	}
 	
+	if (m_bResizeTracking && pMenuBar->GetDroppedDownMenu() != NULL)
+	{
+		pMenuBar->OnCancelMode();	
+	}
+
 	if (pMenuBar->GetSafeHwnd () != NULL)
 	{
 		AdjustScroll (TRUE /*bForceMenuBarResize*/);
@@ -755,6 +791,8 @@ void CBCGPPopupMenu::RecalcLayout (BOOL /*bNotify*/)
 		::SystemParametersInfo (SPI_GETWORKAREA, 0, &rectScreen, 0);
 	}
 
+	rectScreen.top += m_nConnectedFloatyHeight;
+
 	const int nBorderSize = GetBorderSize ();
 	const BOOL bRTL = GetExStyle() & WS_EX_LAYOUTRTL;
 
@@ -798,19 +836,23 @@ void CBCGPPopupMenu::RecalcLayout (BOOL /*bNotify*/)
 	BOOL bScrollSizeAdded = FALSE;
 	if (!m_bResizeTracking && !m_bWasResized)
 	{
-		size.cx += nBorderSize * 2;
 		size.cy += nBorderSize * 2;
 
-		if (m_bScrollable && m_bShowScrollBar)
+		if (size.cx > pMenuBar->m_iMinWidth)
 		{
-			size.cx += ::GetSystemMetrics (SM_CXVSCROLL);
+			size.cx += nBorderSize * 2;
 
-			if (!m_rectResize.IsRectEmpty ())
+			if (m_bScrollable && m_bShowScrollBar)
 			{
-				m_rectResize.right += ::GetSystemMetrics (SM_CXVSCROLL);
-			}
+				size.cx += ::GetSystemMetrics (SM_CXVSCROLL);
 
-			bScrollSizeAdded = TRUE;
+				if (!m_rectResize.IsRectEmpty ())
+				{
+					m_rectResize.right += ::GetSystemMetrics (SM_CXVSCROLL);
+				}
+
+				bScrollSizeAdded = TRUE;
+			}
 		}
 
 		switch (m_nLogoLocation)
@@ -835,8 +877,8 @@ void CBCGPPopupMenu::RecalcLayout (BOOL /*bNotify*/)
 	else if (bIsTearOff)
 	{
 		m_rectTearOffCaption = CRect (CPoint (nBorderSize, nBorderSize), 
-			CSize (size.cx - 2 * nBorderSize, iTearOffBarHeight));
-		size.cy += iTearOffBarHeight;
+			CSize (size.cx - 2 * nBorderSize, TEAR_OFF_BAR_HEIGHT));
+		size.cy += TEAR_OFF_BAR_HEIGHT;
 
 		if (!CBCGPToolBar::IsCustomizeMode () && m_wndToolTip.GetSafeHwnd () == NULL)
 		{
@@ -858,18 +900,17 @@ void CBCGPPopupMenu::RecalcLayout (BOOL /*bNotify*/)
 		if (!m_bResizeTracking && !m_bWasResized)
 		{
 			int nMaxHeight = m_nMaxHeight - nBorderSize * 2;
-
-			size.cy = nMaxHeight - (nMaxHeight % pMenuBar->GetRowHeight ()) + nBorderSize * 2 + 2;
+			
+			size.cy = nMaxHeight - (nMaxHeight % GetMenuRowHeight()) + nBorderSize * 2 + 2;
 			m_bHasBeenResized = TRUE;
 		}
-
+		
 		m_bScrollable = TRUE;
 	}
 
 	if (m_bIsResizable)
 	{
-		const int nResizeBarHeight = 
-			m_sizeMinResize.cx > 0 ? iResizeBarBarHeightRight : iResizeBarBarHeight;
+		int nResizeBarHeight = globalUtils.ScaleByDPI(m_sizeMinResize.cx > 0 ? iResizeBarBarHeightRight : iResizeBarBarHeight);
 
 		if (m_bIsResizeBarOnTop)
 		{
@@ -1188,7 +1229,7 @@ void CBCGPPopupMenu::RecalcLayout (BOOL /*bNotify*/)
 
 				if (GetParentPopupMenu () != NULL)
 				{
-					m_ptLocation.y += pMenuBar->GetRowHeight () + nBorderSize * 2;
+					m_ptLocation.y += GetMenuRowHeight() + nBorderSize * 2;
 				}
 			}
 		}
@@ -1244,7 +1285,7 @@ void CBCGPPopupMenu::RecalcLayout (BOOL /*bNotify*/)
 		}
 	}
 
-	if (!bScrollSizeAdded && m_bScrollable && m_bShowScrollBar && !m_bResizeTracking && !m_bWasResized)
+	if (size.cx > pMenuBar->m_iMinWidth && !bScrollSizeAdded && m_bScrollable && m_bShowScrollBar && !m_bResizeTracking && !m_bWasResized)
 	{
 		size.cx += ::GetSystemMetrics (SM_CXVSCROLL);
 
@@ -1275,6 +1316,10 @@ void CBCGPPopupMenu::RecalcLayout (BOOL /*bNotify*/)
 		{
 			SetWindowPos (NULL, m_ptLocation.x - (bRTL ? size.cx : 0), m_ptLocation.y, size.cx, size.cy,
 						SWP_NOZORDER | SWP_NOACTIVATE);
+			if (m_bRightAlign && m_pWndShadow->GetSafeHwnd() != NULL && !m_bShadowHiddenInAnimation)
+			{
+				m_pWndShadow->Repos();
+			}
 		}
 	}
 
@@ -1456,7 +1501,7 @@ void CBCGPPopupMenu::OnDestroy()
 	NotifyParentDlg (FALSE);
 
 	//------------------------------------------------
-	// Inform the main frame about the menu detsroyng:
+	// Inform the main frame about the menu destroying:
 	//------------------------------------------------
 	CFrameWnd* pWndMain = BCGCBProGetTopLevelFrame (this);
 
@@ -1719,7 +1764,7 @@ void CBCGPPopupMenu::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		// Maybe, selected item is invisible now?
 		//---------------------------------------
 		CBCGPToolbarButton* pItem = pMenuBar->GetButton (pMenuBar->m_iHighlighted);
-		if (pItem == NULL && pMenuBar->GetRowHeight () == 0)
+		if (pItem == NULL && GetMenuRowHeight() == 0)
 		{
 			ASSERT (FALSE);
 		}
@@ -1737,7 +1782,7 @@ void CBCGPPopupMenu::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 				// Scroll up is needed!
 				//---------------------
 				iOffsetDelta = (pItem->Rect ().top - rectBar.top) / 
-					pMenuBar->GetRowHeight () - 1;
+					GetMenuRowHeight() - 1;
 			}
 			else if (pItem->Rect ().bottom > rectBar.bottom)
 			{
@@ -1745,12 +1790,12 @@ void CBCGPPopupMenu::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 				// Scroll down is needed!
 				//-----------------------
 				iOffsetDelta = (pItem->Rect ().bottom - rectBar.bottom) / 
-					pMenuBar->GetRowHeight () + 1;
+					GetMenuRowHeight() + 1;
 			}
 
 			if (iOffsetDelta != 0)
 			{
-				int iTotalRows = m_FinalSize.cy / pMenuBar->GetRowHeight () - 2;
+				int iTotalRows = m_FinalSize.cy / GetMenuRowHeight() - 2;
 
 				iOffset += iOffsetDelta;
 				iOffset = min (max (0, iOffset), 
@@ -1777,7 +1822,9 @@ void CBCGPPopupMenu::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 	if (bHightlightWasChanged && pMenuBar->m_bDropDownListMode)
 	{
+		m_bHotChangedByKeyboard = TRUE;
 		OnChangeHot (pMenuBar->m_iHighlighted);
+		m_bHotChangedByKeyboard = FALSE;
 	}
 }
 //****************************************************************************************
@@ -2084,7 +2131,7 @@ void CBCGPPopupMenu::OnTimer(UINT_PTR nIDEvent)
 				// no break intentionally
 
 			case SLIDE:
-				m_AnimSize.cy += nSteps * pMenuBar->GetRowHeight ();
+				m_AnimSize.cy += nSteps * GetMenuRowHeight();
 				break;
 
 			case FADE:
@@ -2110,6 +2157,16 @@ void CBCGPPopupMenu::OnTimer(UINT_PTR nIDEvent)
 				pMenuBar->ValidateRect (NULL);
     
 				m_bAnimationIsDone = TRUE;
+
+				if (m_bShadowHiddenInAnimation)
+				{
+					m_bShadowHiddenInAnimation = FALSE;
+
+					if (m_pWndShadow->GetSafeHwnd() != NULL)
+					{
+						m_pWndShadow->Repos();
+					}
+				}
 
 				if (m_iShadowSize != 0 &&
 					GetAnimationType () != FADE &&
@@ -2219,6 +2276,18 @@ BOOL CBCGPPopupMenu::IsScrollDnAvailable ()
 	CBCGPPopupMenuBar* pMenuBar = GetMenuBar ();
 	ASSERT_VALID (pMenuBar);
 
+	if (m_wndScrollBarVert.GetSafeHwnd () != NULL && m_wndScrollBarVert.IsWindowVisible())
+	{
+		SCROLLINFO scrollInfo;
+		ZeroMemory(&scrollInfo, sizeof(SCROLLINFO));
+		
+		scrollInfo.cbSize = sizeof(SCROLLINFO);
+		scrollInfo.fMask = SIF_ALL;
+		
+		m_wndScrollBarVert.GetScrollInfo (&scrollInfo);
+		return pMenuBar->GetOffset() < scrollInfo.nMax;
+	}
+
 	if (pMenuBar->GetCount () == 0)
 	{
 		return FALSE;
@@ -2227,7 +2296,7 @@ BOOL CBCGPPopupMenu::IsScrollDnAvailable ()
 	CRect rectLastItem;
 	pMenuBar->GetItemRect (pMenuBar->GetCount () - 1, rectLastItem);
 
-	return rectLastItem.bottom > m_nMenuBarHeight + pMenuBar->GetRowHeight ();
+	return rectLastItem.bottom > m_nMenuBarHeight + GetMenuRowHeight();
 }
 //****************************************************************************************
 void CBCGPPopupMenu::CollapseSubmenus ()
@@ -2365,10 +2434,7 @@ BOOL CBCGPPopupMenu::InitMenuBar ()
 	//----------------------------------------
 	// Maybe, we should process the MRU files:
 	//----------------------------------------
-	CRecentFileList* pMRUFiles = 
-		((CBCGPApp*) AfxGetApp ())->m_pRecentFileList;
-
-	if (pMRUFiles != NULL && !CBCGPToolBar::IsCustomizeMode ())
+	if (!CBCGPToolBar::IsCustomizeMode ())
 	{
 		int iMRUItemIndex = 0;
 		BOOL bIsPrevSeparator = FALSE;
@@ -2404,12 +2470,10 @@ BOOL CBCGPPopupMenu::InitMenuBar ()
 				// Add MRU files:
 				//---------------
 				int iNumOfFiles = 0;	// Actual added to menu
-				for (int i = 0; i < pMRUFiles->GetSize (); i ++)
+				for (int i = 0; i < CBCGPWinApp::_GetRecentFilesCount(); i++)
 				{
 					CString strName;
-
-					if (pMRUFiles->GetDisplayName (strName, i, 
-						szCurDir, nCurDir))
+					if (CBCGPWinApp::_GetRecentFileDisplayName(strName, i, szCurDir, nCurDir))
 					{
 						//---------------------
 						// Add shortcut number:
@@ -2426,8 +2490,8 @@ BOOL CBCGPPopupMenu::InitMenuBar ()
 				}
 
 				//------------------------------------------------------
-				// Usualy, the MRU group is "covered" by two seperators.
-				// If MRU list is empty, remove redandant separator:
+				// Usually, the MRU group is "covered" by two separators.
+				// If MRU list is empty, remove unnecessary separator:
 				//------------------------------------------------------
 				if (iNumOfFiles == 0 &&	// No files were added
 					bIsPrevSeparator &&	// Prev. button was separator
@@ -3142,6 +3206,17 @@ BOOL CBCGPPopupMenu::AdjustScroll (BOOL bForceMenuBarResize)
 		rectScrollUpOld != m_rectScrollUp ||
 		rectScrollDnOld != m_rectScrollDn)
 	{
+		if (rectClient.Width() < pMenuBar->m_iMinWidth && pMenuBar->m_arColumns.GetSize() == 1)
+		{
+			pMenuBar->m_arColumns.RemoveAll();
+			pMenuBar->m_iMinWidth = rectClient.Width();
+
+			if (m_bScrollable && m_bShowScrollBar)
+			{
+				pMenuBar->m_iMinWidth += ::GetSystemMetrics (SM_CXVSCROLL);
+			}
+		}
+
 		pMenuBar->SetWindowPos (NULL, rectClient.left, rectClient.top,
 					rectClient.Width (), 
 					rectClient.Height (),
@@ -3182,6 +3257,11 @@ BOOL CBCGPPopupMenu::AdjustScroll (BOOL bForceMenuBarResize)
 CBCGPPopupMenu::MENUAREA_TYPE CBCGPPopupMenu::CheckArea (const CPoint& ptScreen) const
 {
 	ASSERT_VALID (this);
+
+	if (HasDroppedDown())
+	{
+		return MENU;
+	}
 
 	CRect rectWindow;
 	GetClientRect (rectWindow);
@@ -3830,7 +3910,7 @@ void CBCGPPopupMenu::UpdateShadow (LPRECT lprectScreen)
 //*******************************************************************************
 void CBCGPPopupMenu::UpdateShadowTransparency (BYTE nTransparency)
 {
-	if (m_pWndShadow->GetSafeHwnd () != NULL)
+	if (m_pWndShadow->GetSafeHwnd () != NULL && !m_bShadowHiddenInAnimation)
 	{
 		m_pWndShadow->UpdateTransparency (nTransparency);
 	}
@@ -3983,14 +4063,14 @@ void CBCGPPopupMenu::SetScrollBar ()
 	si.nMax = 0;
 	si.nPage = 0;
 
-	const int nMenuRowHeight = pMenuBar->GetRowHeight ();
+	const int nMenuRowHeight = GetMenuRowHeight();
 	const int nMenuTotalItems = pMenuBar->GetCount ();
 
 	if (nMenuTotalItems > 0 && nMenuRowHeight > 0)
 	{
 		si.nMax = (nMenuTotalItems * nMenuRowHeight - m_nMenuBarHeight) / nMenuRowHeight + 1;
-		si.nPage = /*m_nMenuBarHeight / nMenuRowHeight*/1;
-		
+		si.nPage = 1;
+
 		pMenuBar->m_nDropDownPageSize = m_nMenuBarHeight / nMenuRowHeight;
 	}
 	else
@@ -4027,13 +4107,17 @@ void CBCGPPopupMenu::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 
 	if (nMaxOffset == 0)
 	{
-		const int nMenuRowHeight = pMenuBar->GetRowHeight ();
+		const int nMenuRowHeight = GetMenuRowHeight();
 		const int nMenuTotalItems = pMenuBar->GetCount ();
 
 		if (nMenuTotalItems > 0 && nMenuRowHeight > 0 && nMenuTotalItems)
 		{
 			nMaxOffset = max(0, (nMenuTotalItems * nMenuRowHeight - m_nMenuBarHeight) / nMenuRowHeight + 1);
 		}
+	}
+	else
+	{
+		nMaxOffset = nMaxOffset - scrollInfo.nPage + 1;
 	}
 
 	int nPage = scrollInfo.nPage;
@@ -4073,7 +4157,7 @@ void CBCGPPopupMenu::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 		return;
 	}
 
-	iOffset = min (max (0, iOffset), nMaxOffset);
+	iOffset = bcg_clamp(iOffset, 0, nMaxOffset);
 
 	if (iOffset == pMenuBar->GetOffset ())
 	{
@@ -4103,7 +4187,24 @@ BOOL CBCGPPopupMenu::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/)
 
 	for (int i = 0; i < nSteps; i++)
 	{
-		OnVScroll (zDelta < 0 ? SB_LINEDOWN : SB_LINEUP, 0, &m_wndScrollBarVert);
+		if (zDelta > 0)
+		{
+			if (!IsScrollUpAvailable())
+			{
+				return TRUE;
+			}
+
+			OnVScroll(SB_LINEUP, 0, &m_wndScrollBarVert);
+		}
+		else
+		{
+			if (!IsScrollDnAvailable())
+			{
+				return TRUE;
+			}
+
+			OnVScroll(SB_LINEDOWN, 0, &m_wndScrollBarVert);
+		}
 	}
 
 	return TRUE;
@@ -4134,7 +4235,7 @@ CWnd* CBCGPPopupMenu::GetParentArea (CRect& rectParentBtn)
 
 		if (pWndParent != NULL)
 		{
-			rectParentBtn = m_pParentRibbonElement->GetRect ();
+			rectParentBtn = m_pParentRibbonElement->GetRectInWnd();
 			return pWndParent;
 		}
 	}
@@ -4218,8 +4319,9 @@ void CBCGPPopupMenu::EnableResize (CSize sizeMinResize)
 
 	if (m_bIsResizable)
 	{
-		sizeMinResize.cy += 
-			sizeMinResize.cx > 0 ? iResizeBarBarHeightRight : iResizeBarBarHeight;
+		int nResizeBarHeight = globalUtils.ScaleByDPI(sizeMinResize.cx > 0 ? iResizeBarBarHeightRight : iResizeBarBarHeight);
+
+		sizeMinResize.cy += nResizeBarHeight;
 	}
 
 	m_sizeMinResize = sizeMinResize;
@@ -4427,10 +4529,12 @@ void CBCGPPopupMenu::OnWindowPosChanged(WINDOWPOS FAR* lpwndpos)
 		{
 			m_pWndShadow->ShowWindow (SW_HIDE);
 		}
-		else if ((lpwndpos->flags & (SWP_NOSIZE | SWP_NOMOVE)) == 0 ||
-			(lpwndpos->flags & SWP_SHOWWINDOW))
+		else if ((lpwndpos->flags & (SWP_NOSIZE | SWP_NOMOVE)) == 0 || (lpwndpos->flags & SWP_SHOWWINDOW))
 		{
-			m_pWndShadow->Repos ();
+			if (!m_bShadowHiddenInAnimation)
+			{
+				m_pWndShadow->Repos ();
+			}
 		}
 	}
 }
@@ -4447,6 +4551,14 @@ CBCGPPopupMenu* CBCGPPopupMenu::GetSafeActivePopupMenu()
 	return NULL;
 }
 //************************************************************************************
+int CBCGPPopupMenu::GetMenuRowHeight() const
+{
+	CBCGPPopupMenuBar* pMenuBar = ((CBCGPPopupMenu*)this)->GetMenuBar();
+	ASSERT_VALID (pMenuBar);
+	
+	return pMenuBar->GetRowHeight ();
+}
+//************************************************************************************
 HRESULT CBCGPPopupMenu::get_accName(VARIANT varChild, BSTR *pszName)
 {
 	if (varChild.vt == VT_I4 && varChild.lVal == CHILDID_SELF)
@@ -4457,6 +4569,8 @@ HRESULT CBCGPPopupMenu::get_accName(VARIANT varChild, BSTR *pszName)
 		{
 			str = m_pParentBtn->m_strText;
 		}
+
+#ifndef BCGP_EXCLUDE_RIBBON
 		if (m_pParentRibbonElement != NULL)
 		{
 			str = m_pParentRibbonElement->m_strText;
@@ -4466,6 +4580,8 @@ HRESULT CBCGPPopupMenu::get_accName(VARIANT varChild, BSTR *pszName)
 				str = m_pParentRibbonElement->m_strToolTip;
 			}
 		}
+#endif
+
 		if (str.IsEmpty())
 		{
 			str = _T("PopupMenu");
@@ -4594,4 +4710,17 @@ HRESULT CBCGPPopupMenu::get_accState(VARIANT varChild, VARIANT *pvarState)
 	}
 
 	return S_FALSE;
+}
+//************************************************************************************
+BOOL CBCGPPopupMenu::IsDropListMode()
+{
+	CBCGPPopupMenuBar* pMenuBar = GetMenuBar ();
+	ASSERT_VALID(pMenuBar);
+	
+	return pMenuBar->IsDropDownListMode();
+}
+//************************************************************************************
+BOOL CBCGPPopupMenu::IsParentEditFocused()
+{
+	return FALSE;
 }

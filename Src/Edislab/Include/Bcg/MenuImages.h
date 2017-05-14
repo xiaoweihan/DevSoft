@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -69,6 +69,9 @@ public:
 		IdLaunchArrow,
 		IdMaximizeRibbon,
 		IdMinimizeRibbon,
+		IdExplorerBack,
+		IdExplorerForward,
+		IdExplorerUp,
 	};
 
 	enum IMAGE_STATE
@@ -107,7 +110,7 @@ public:
 
 	static CBCGPMenuImages::IMAGE_STATE GetStateByColor(COLORREF color, BOOL bIsBackgroundColor = TRUE);
 
-	static void CleanUp ();
+	static void CleanUp (BOOL bIsGlobalCleanUp = FALSE);
 
 protected:
 	static BOOL Initialize ();
@@ -121,6 +124,7 @@ protected:
 	static CBCGPToolBarImages	m_ImagesBlack2;
 
 	static BOOL					m_bInitializing;
+	static BOOL					m_bCleannedUpGlobally;
 };
 
 #endif // !defined(AFX_MENUIMAGES_H__DE028D41_36EB_11D3_95C5_00A0C9289F1B__INCLUDED_)

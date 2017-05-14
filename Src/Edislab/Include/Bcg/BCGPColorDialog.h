@@ -2,7 +2,7 @@
 #define AFX_BCGPCOLORDIALOG_H__2C7F710C_9879_49AC_B4F5_3A6699211BE3__INCLUDED_
 
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -72,6 +72,12 @@ public:
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
 	//}}AFX_VIRTUAL
+
+	virtual void OnNewColorChanged(COLORREF clrPrev, COLORREF clrNew)
+	{
+		UNREFERENCED_PARAMETER(clrPrev);
+		UNREFERENCED_PARAMETER(clrNew);
+	}
 
 // Implementation
 protected:

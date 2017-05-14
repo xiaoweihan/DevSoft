@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -219,6 +219,9 @@ void CBCGPToolbarEditBoxButton::OnMove ()
 		m_rect.Width () - 2 * iHorzMargin, 
 		cy,
 		SWP_NOZORDER | SWP_NOACTIVATE);
+
+	const int nMargin = globalUtils.ScaleByDPI(2);
+	m_pWndEdit->SetMargins(nMargin, nMargin);
 
 	m_pWndEdit->SetSel(-1, 0);
 }

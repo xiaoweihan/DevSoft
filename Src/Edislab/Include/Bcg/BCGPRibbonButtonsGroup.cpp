@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -38,11 +38,13 @@ IMPLEMENT_DYNCREATE(CBCGPRibbonButtonsGroup, CBCGPBaseRibbonElement)
 CBCGPRibbonButtonsGroup::CBCGPRibbonButtonsGroup()
 {
 	m_bIsRibbonTabElements = FALSE;
+	m_bAutoGrayedDisabledImages = FALSE;
 }
 //********************************************************************************
 CBCGPRibbonButtonsGroup::CBCGPRibbonButtonsGroup(CBCGPBaseRibbonElement* pButton)
 {
 	m_bIsRibbonTabElements = FALSE;
+	m_bAutoGrayedDisabledImages = FALSE;
 	AddButton (pButton);
 }
 //********************************************************************************
@@ -58,6 +60,11 @@ void CBCGPRibbonButtonsGroup::AddButton (CBCGPBaseRibbonElement* pButton)
 
 	pButton->SetParentCategory (m_pParent);
 	pButton->m_pParentGroup = this;
+
+	if (pButton->GetApplicationModes() == (UINT)-1)
+	{
+		pButton->SetApplicationModes(GetApplicationModes());
+	}
 
 	if (IsBackstageViewMode())
 	{
@@ -128,6 +135,7 @@ void CBCGPRibbonButtonsGroup::OnDraw (CDC* pDC)
 
 		if ((IsQAT() || m_bIsRibbonTabElements) && pButton->m_pRibbonBar != NULL && pButton->m_pRibbonBar->IsBackstageViewActive())
 		{
+			pButton->m_bTemporaryDisabled = TRUE;
 			pButton->m_bIsDisabled = TRUE;
 		}
 
@@ -141,6 +149,7 @@ void CBCGPRibbonButtonsGroup::OnDraw (CDC* pDC)
 
 		pButton->m_strText = strText;
 		pButton->m_bIsDisabled = bIsDisabled;
+		pButton->m_bTemporaryDisabled = FALSE;
 	}
 
 	if (clrTextOld != (COLORREF)-1)
@@ -154,6 +163,9 @@ CSize CBCGPRibbonButtonsGroup::GetRegularSize (CDC* pDC)
 	ASSERT_VALID (this);
 
 	const BOOL bIsOnStatusBar = IsStatusBarMode();
+	const BOOL bIsOnQAT = IsQAT();
+
+	const CSize szQATMargin = globalUtils.ScaleByDPI(CBCGPVisualManager::GetInstance ()->GetRibbonQATButtonHorzMargin());
 
 	CSize size (0, 0);
 
@@ -167,16 +179,22 @@ CSize CBCGPRibbonButtonsGroup::GetRegularSize (CDC* pDC)
 
 		CSize sizeButton = pButton->GetSize (pDC);
 		
+		if (bIsOnQAT)
+		{
+			sizeButton.cx += szQATMargin.cx;
+			sizeButton.cy += szQATMargin.cy;
+		}
+
 		size.cx += sizeButton.cx;
 		size.cy = max (size.cy, sizeButton.cy);
 	}
 
 	if (bIsOnStatusBar)
 	{
-		size.cx += 2;
+		size.cx += globalUtils.ScaleByDPI(2);
 	}
 
-	if (!IsQAT() && !bIsOnStatusBar && m_pParentMenu == NULL)
+	if (!bIsOnQAT && !bIsOnStatusBar && m_pParentMenu == NULL)
 	{
 		size.cx += CBCGPVisualManager::GetInstance ()->GetRibbonButtonsGroupHorzMargin() * 2;
 	}
@@ -202,6 +220,9 @@ void CBCGPRibbonButtonsGroup::OnUpdateCmdUI (CBCGPRibbonCmdUI* pCmdUI,
 void CBCGPRibbonButtonsGroup::OnAfterChangeRect (CDC* pDC)
 {
 	ASSERT_VALID (this);
+
+	const BOOL bIsOnQAT = IsQAT();
+	const CSize szQATMargin = globalUtils.ScaleByDPI(CBCGPVisualManager::GetInstance ()->GetRibbonQATButtonHorzMargin());
 
 	BOOL bIsFirst = TRUE;
 
@@ -267,7 +288,13 @@ void CBCGPRibbonButtonsGroup::OnAfterChangeRect (CDC* pDC)
 		pButton->SetParentCategory (m_pParent);
 
 		CSize sizeButton = pButton->GetSize (pDC);
+
 		sizeButton.cy = i != nCustomizeButtonIndex ? nButtonHeight : nButtonHeight - 1;
+
+		if (bIsOnQAT)
+		{
+			sizeButton.cy -= szQATMargin.cy;
+		}
 
 		const int y = i != nCustomizeButtonIndex ? rectGroup.top + nMarginTop : rectGroup.top;
 
@@ -284,6 +311,11 @@ void CBCGPRibbonButtonsGroup::OnAfterChangeRect (CDC* pDC)
 		else
 		{
 			x += sizeButton.cx;
+
+			if (bIsOnQAT)
+			{
+				x += szQATMargin.cx;
+			}
 		}
 
 		pButton->OnAfterChangeRect (pDC);
@@ -572,6 +604,17 @@ void CBCGPRibbonButtonsGroup::SetImages (
 		pDisabledImages->CopyTo (m_DisabledImages);
 	}
 
+	if (m_DisabledImages.GetCount() == 0 && m_Images.GetCount() > 0)
+	{
+		CBCGPRibbonBar* pRibbonBar = GetParentRibbonBar();
+		if (pRibbonBar != NULL && pRibbonBar->IsGrayDisabledImages())
+		{
+			m_Images.CopyTo(m_DisabledImages);
+			m_DisabledImages.ConvertToGrayScale(1.0, TRUE);
+			m_bAutoGrayedDisabledImages = TRUE;
+		}
+	}
+
 	const CSize sizeImage = m_Images.GetImageSize ();
 
 	const double dblScale = globalData.GetRibbonImageScale ();
@@ -617,9 +660,21 @@ void CBCGPRibbonButtonsGroup::OnDrawImage (
 
 	image.SetTransparentColor (globalData.clrBtnFace);
 	image.Draw (pDC, ptImage.x, ptImage.y, nImageIndex, FALSE, 
-		pButton->IsDisabled () && m_DisabledImages.GetCount () == 0);
+		pButton->IsDisabled () && (m_DisabledImages.GetCount () == 0 || m_bAutoGrayedDisabledImages));
 
 	image.EndDrawImage (ds);
+}
+//*****************************************************************************
+HICON CBCGPRibbonButtonsGroup::ExtractIcon(int nImageIndex)
+{
+	ASSERT_VALID (this);
+	
+	if (nImageIndex < 0 || nImageIndex >= m_Images.GetCount())
+	{
+		return NULL;
+	}
+
+	return m_Images.ExtractIcon(nImageIndex);
 }
 //*****************************************************************************
 void CBCGPRibbonButtonsGroup::CopyFrom (const CBCGPBaseRibbonElement& s)
@@ -649,6 +704,8 @@ void CBCGPRibbonButtonsGroup::CopyFrom (const CBCGPBaseRibbonElement& s)
 	src.m_Images.CopyTo (m_Images);
 	src.m_HotImages.CopyTo (m_HotImages);
 	src.m_DisabledImages.CopyTo (m_DisabledImages);
+	
+	m_bAutoGrayedDisabledImages = src.m_bAutoGrayedDisabledImages;
 }
 //*****************************************************************************
 void CBCGPRibbonButtonsGroup::SetParentMenu (CBCGPRibbonPanelMenuBar* pMenuBar)
@@ -672,8 +729,7 @@ void CBCGPRibbonButtonsGroup::SetOriginal (CBCGPBaseRibbonElement* pOriginal)
 
 	CBCGPBaseRibbonElement::SetOriginal (pOriginal);
 
-	CBCGPRibbonButtonsGroup* pOriginalGroup =
-		DYNAMIC_DOWNCAST (CBCGPRibbonButtonsGroup, pOriginal);
+	CBCGPRibbonButtonsGroup* pOriginalGroup = DYNAMIC_DOWNCAST (CBCGPRibbonButtonsGroup, m_pOriginal);
 
 	if (pOriginalGroup == NULL)
 	{
@@ -738,6 +794,24 @@ void CBCGPRibbonButtonsGroup::GetElementsByName (LPCTSTR lpszName,
 	}
 }
 //*************************************************************************************
+BOOL CBCGPRibbonButtonsGroup::QueryElements(const CStringArray& arWords, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, int nMaxResults, BOOL bDescription, BOOL bAll)
+{
+	ASSERT_VALID (this);
+	
+	for (int i = 0; i < m_arButtons.GetSize (); i++)
+	{
+		CBCGPBaseRibbonElement* pButton = m_arButtons [i];
+		ASSERT_VALID (pButton);
+		
+		if (pButton->QueryElements (arWords, arButtons, nMaxResults, bDescription, bAll))
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+//*************************************************************************************
 void CBCGPRibbonButtonsGroup::GetVisibleElements (
 	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arElements)
 {
@@ -799,6 +873,19 @@ void CBCGPRibbonButtonsGroup::CleanUpSizes ()
 	}
 }
 //*************************************************************************************
+void CBCGPRibbonButtonsGroup::OnChangeRibbonFont()
+{
+	ASSERT_VALID (this);
+
+	for (int i = 0; i < m_arButtons.GetSize (); i++)
+	{
+		CBCGPBaseRibbonElement* pButton = m_arButtons [i];
+		ASSERT_VALID (pButton);
+
+		pButton->OnChangeRibbonFont();
+	}
+}
+//*************************************************************************************
 void CBCGPRibbonButtonsGroup::SetParentRibbonBar (CBCGPRibbonBar* pRibbonBar)
 {
 	ASSERT_VALID (this);
@@ -811,6 +898,13 @@ void CBCGPRibbonButtonsGroup::SetParentRibbonBar (CBCGPRibbonBar* pRibbonBar)
 		ASSERT_VALID (pButton);
 
 		pButton->SetParentRibbonBar (pRibbonBar);
+	}
+
+	if (m_DisabledImages.GetCount() == 0 && m_Images.GetCount() > 0 && pRibbonBar->IsGrayDisabledImages())
+	{
+		m_Images.CopyTo(m_DisabledImages);
+		m_DisabledImages.ConvertToGrayScale(1.0, TRUE);
+		m_bAutoGrayedDisabledImages = TRUE;
 	}
 }
 //*************************************************************************************
@@ -841,6 +935,14 @@ void CBCGPRibbonButtonsGroup::SetParentCategory (CBCGPRibbonCategory* pCategory)
 		ASSERT_VALID (pButton);
 
 		pButton->SetParentCategory (pCategory);
+	}
+
+	if (m_DisabledImages.GetCount() == 0 && m_Images.GetCount() > 0 && pCategory->IsGrayDisabledImages())
+	{
+		m_Images.CopyTo(m_DisabledImages);
+		m_DisabledImages.ConvertToGrayScale(1.0, TRUE);
+
+		m_bAutoGrayedDisabledImages = TRUE;
 	}
 }
 //*************************************************************************************
@@ -894,7 +996,7 @@ CBCGPBaseRibbonElement* CBCGPRibbonButtonsGroup::GetFirstTabStop ()
 		ASSERT_VALID (pButton);
 
 		CBCGPBaseRibbonElement* pTabStop = pButton->GetFirstTabStop ();
-		if (pTabStop != NULL)
+		if (pTabStop != NULL && !pTabStop->IsHiddenInAppMode())
 		{
 			return pTabStop;
 		}
@@ -913,7 +1015,7 @@ CBCGPBaseRibbonElement* CBCGPRibbonButtonsGroup::GetLastTabStop ()
 		ASSERT_VALID (pButton);
 
 		CBCGPBaseRibbonElement* pTabStop = pButton->GetLastTabStop ();
-		if (pTabStop != NULL)
+		if (pTabStop != NULL && !pTabStop->IsHiddenInAppMode())
 		{
 			return pTabStop;
 		}
@@ -1009,6 +1111,32 @@ BOOL CBCGPRibbonButtonsGroup::CanBePlacedOnNonCollapsiblePanel() const
 	}
 
 	return TRUE;
+}
+//*******************************************************************************
+void CBCGPRibbonButtonsGroup::SetApplicationModes(UINT nAppModes, BOOL bIncludeSubItems)
+{
+	ASSERT_VALID(this);
+	
+	CBCGPBaseRibbonElement::SetApplicationModes(nAppModes);
+	
+	for (int i = 0; i < m_arButtons.GetSize (); i++)
+	{
+		ASSERT_VALID (m_arButtons [i]);
+		m_arButtons[i]->SetApplicationModes(nAppModes, bIncludeSubItems);
+	}
+}
+//*******************************************************************************
+void CBCGPRibbonButtonsGroup::OnUpdateToolTips()
+{
+	ASSERT_VALID(this);
+	
+	CBCGPBaseRibbonElement::OnUpdateToolTips();
+	
+	for (int i = 0; i < m_arButtons.GetSize (); i++)
+	{
+		ASSERT_VALID (m_arButtons [i]);
+		m_arButtons[i]->OnUpdateToolTips();
+	}
 }
 
 IMPLEMENT_DYNCREATE(CBCGPRibbonTabsGroup, CBCGPRibbonButtonsGroup)

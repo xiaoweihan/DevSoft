@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -135,6 +135,7 @@ void CBCGPRibbonComboBox::EnableCalculator(BOOL bEnable, const CStringList* plst
 		if (globalData.Is32BitIcons ())
 		{
 			m_ButtonImages.ConvertTo32Bits(RGB(255, 0, 255));
+			globalUtils.ScaleByDPI(m_ButtonImages);
 		}
 	}
 }
@@ -343,19 +344,19 @@ BOOL CBCGPRibbonComboBox::SelectItem (int iIndex)
 		if (pRibbonBar != NULL)
 		{
 			ASSERT_VALID (pRibbonBar);
-
+			
 			CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
 			pRibbonBar->GetElementsByID (m_nID, arButtons, TRUE);
-
+			
 			for (int i = 0; i < arButtons.GetSize (); i++)
 			{
 				CBCGPRibbonComboBox* pOther =
 					DYNAMIC_DOWNCAST (CBCGPRibbonComboBox, arButtons [i]);
-
+				
 				if (pOther != NULL && pOther != this)
 				{
 					ASSERT_VALID (pOther);
-
+					
 					pOther->m_bDontNotify = TRUE;
 					pOther->SelectItem (iIndex);
 					pOther->m_bDontNotify = FALSE;
@@ -365,7 +366,7 @@ BOOL CBCGPRibbonComboBox::SelectItem (int iIndex)
 		}
 	}
 
-	Redraw ();
+	Redraw();
 	return TRUE;
 }
 //**************************************************************************
@@ -585,11 +586,16 @@ void CBCGPRibbonComboBox::OnDraw (CDC* pDC)
 
 		BOOL bDrawPrompt = m_strEdit.IsEmpty() && !m_strSearchPrompt.IsEmpty() && !IsDroppedDown();
 		const CString& str =  bDrawPrompt ? m_strSearchPrompt : m_strEdit;
-		COLORREF clrText = bDrawPrompt ? CBCGPVisualManager::GetInstance()->GetToolbarEditPromptColor() : (COLORREF)-1;
 
-		if (IsDisabled())
+		COLORREF clrText = CBCGPVisualManager::GetInstance ()->GetRibbonEditTextColor(m_pWndEdit, bIsHighlighted, IsDisabled());
+		if (clrText == (COLORREF)-1 && !CBCGPToolBarImages::m_bIsDrawOnGlass)
 		{
-			clrText = globalData.clrGrayedText;
+			clrText = globalData.clrWindowText;
+		}
+
+		if (bDrawPrompt)
+		{
+			clrText = CBCGPVisualManager::GetInstance()->GetToolbarEditPromptColor();
 		}
 
 		DoDrawText (pDC, str, rectText, uiDTFlags, clrText);
@@ -608,22 +614,24 @@ void CBCGPRibbonComboBox::OnDraw (CDC* pDC)
 	CBCGPVisualManager::GetInstance ()->OnDrawRibbonButtonBorder 
 			(pDC, this);
 
-	CBCGPToolbarComboBoxButton buttonDummy;
-	buttonDummy.m_bIsRibbon = TRUE;
-	buttonDummy.m_bIsRibbonFloaty = IsFloatyMode ();
-
-	BOOL bIsDropDownHighlighted = IsMenuAreaHighlighted () || m_bIsFocused ||
-		m_bIsEditFocused ||
-		(bIsHighlighted && !m_bHasEditBox);
-
-	CBCGPVisualManager::GetInstance ()->OnDrawComboDropButton (
-		pDC, m_rectMenu, IsDisabled (), IsDroppedDown (),
-		bIsDropDownHighlighted,
-		&buttonDummy);
-
 	if (m_bIsCalculator)
 	{
 		m_ButtonImages.DrawEx(pDC, m_rectMenu, 2, CBCGPToolBarImages::ImageAlignHorzCenter, CBCGPToolBarImages::ImageAlignVertCenter);
+	}
+	else
+	{
+		BOOL bIsDropDownHighlighted = IsMenuAreaHighlighted () || m_bIsFocused ||
+			m_bIsEditFocused ||
+			(bIsHighlighted && !m_bHasEditBox);
+
+		CBCGPToolbarComboBoxButton buttonDummy;
+		buttonDummy.m_bIsRibbon = TRUE;
+		buttonDummy.m_bIsRibbonFloaty = IsFloatyMode ();
+		
+		CBCGPVisualManager::GetInstance ()->OnDrawComboDropButton (
+			pDC, m_rectMenu, IsDisabled (), IsDroppedDown () || m_pPopupDlg != NULL,
+			bIsDropDownHighlighted,
+			&buttonDummy);
 	}
 
 	m_bIsHighlighted = bIsHighlighted;
@@ -799,8 +807,25 @@ void CBCGPRibbonComboBox::DropDownList ()
 		return;
 	}
 
+	CWnd* pWndParent = GetParentWnd ();
+	if (pWndParent == NULL)
+	{
+		ASSERT (FALSE);
+		return;
+	}
+
+	if (DisplayPopupDialog(pWndParent))
+	{
+		return;
+	}
+
 	CBCGPDropDownList* pList = new CBCGPDropDownList (this);
 	pList->SetParentRibbonElement (this);
+
+	if (m_bHasEditBox && !m_strEdit.IsEmpty())
+	{
+		m_iSelIndex = -1;
+	}
 
 	int i = 0;
 	for (POSITION pos = m_lstItems.GetHeadPosition (); pos != NULL; i++)
@@ -817,13 +842,6 @@ void CBCGPRibbonComboBox::DropDownList ()
 	pList->SetCurSel (m_iSelIndex);
 	pList->SetMaxHeight (m_nDropDownHeight);
 	pList->SetMinWidth (m_rect.Width ());
-
-	CWnd* pWndParent = GetParentWnd ();
-	if (pWndParent == NULL)
-	{
-		ASSERT (FALSE);
-		return;
-	}
 
 	const BOOL bIsRTL = (pWndParent->GetExStyle () & WS_EX_LAYOUTRTL);
 
@@ -900,6 +918,23 @@ void CBCGPRibbonComboBox::OnSelectItem (int nItem)
 	}
 }
 //**************************************************************************
+BOOL CBCGPRibbonComboBox::OnEditChange()
+{
+	m_iSelIndex = FindItem(m_strEdit);
+
+	if (IsDroppedDown())
+	{
+		CBCGPDropDownList* pList = DYNAMIC_DOWNCAST(CBCGPDropDownList, m_pPopupMenu);
+		if (pList != NULL)
+		{
+			ASSERT_VALID(pList);
+			pList->SetCurSel(m_iSelIndex);
+		}
+	}
+
+	return CBCGPRibbonEdit::OnEditChange();
+}
+//**************************************************************************
 void CBCGPRibbonComboBox::OnAfterChangeRect (CDC* pDC)
 {
 	ASSERT_VALID (this);
@@ -932,11 +967,7 @@ void CBCGPRibbonComboBox::OnAfterChangeRect (CDC* pDC)
 	m_rectCommand.right = m_rectMenu.left;
 	m_rectCommand.left += m_nLabelImageWidth;
 
-	int cx = m_bFloatyMode ? m_nWidthFloaty : m_nWidth;
-	if (globalData.GetRibbonImageScale () > 1.)
-	{
-		cx = (int)(.5 + globalData.GetRibbonImageScale () * cx);
-	}
+	int cx = globalUtils.ScaleByDPI(m_bFloatyMode ? m_nWidthFloaty : m_nWidth);
 
 	if (m_rectCommand.Width () > cx)
 	{
@@ -1251,6 +1282,18 @@ BOOL CBCGPRibbonFontComboBox::SetFont (LPCTSTR lpszName, BYTE nCharSet, BOOL bEx
 	return FALSE;
 }
 //********************************************************************************
+const CBCGPFontDesc* CBCGPRibbonFontComboBox::GetFontDesc(int iIndex) const
+{
+	DWORD_PTR dwData = GetItemData(iIndex);
+	if (dwData == 0 && iIndex == -1)
+	{
+		static CBCGPFontDesc emptyDescr(_T(""), _T(""), 0, 0, 0);
+		return &emptyDescr;
+	}
+	
+	return (CBCGPFontDesc*)dwData;
+}
+//********************************************************************************
 BOOL CBCGPRibbonFontComboBox::OnDrawDropListItem (CDC* pDC, 
 											  int nIndex, 	
 											  CBCGPToolbarMenuButton* pItem,
@@ -1267,6 +1310,11 @@ BOOL CBCGPRibbonFontComboBox::OnDrawDropListItem (CDC* pDC,
 		if (globalData.Is32BitIcons())
 		{
 			m_Images.Load(IDB_BCGBARRES_FONT32);
+
+			if (globalData.GetRibbonImageScale() > 1.)
+			{
+				m_Images.SmoothResize(globalData.GetRibbonImageScale());
+			}
 		}
 		else
 		{
@@ -1295,14 +1343,14 @@ BOOL CBCGPRibbonFontComboBox::OnDrawDropListItem (CDC* pDC,
 		m_Images.DrawEx(pDC, rc, pDesc->GetImageIndex (), CBCGPToolBarImages::ImageAlignHorzLeft, CBCGPToolBarImages::ImageAlignVertCenter);
 	}
 
-	rc.left += nImageWidth + nImageMargin;
+	rc.left += m_Images.GetImageSize().cx + nImageMargin;
 	
 	if (m_bDrawUsingFont && pDesc->m_nCharSet != SYMBOL_CHARSET)
 	{
 		LOGFONT lf;
 		globalData.fontRegular.GetLogFont (&lf);
 
-		lstrcpy (lf.lfFaceName, pDesc->m_strName);
+		lstrcpyn(lf.lfFaceName, pDesc->m_strName, LF_FACESIZE);
 
 		if (pDesc->m_nCharSet != DEFAULT_CHARSET)
 		{
@@ -1343,7 +1391,13 @@ CSize CBCGPRibbonFontComboBox::OnGetDropListItemSize (
 	ASSERT_VALID (this);
 
 	CSize size = sizeDefault;
-	size.cx += nImageWidth + nImageMargin;
+
+	if (m_bDrawUsingFont)
+	{
+		size.cx = 3 * size.cx / 2;
+	}
+
+	size.cx += m_Images.GetImageSize().cx + nImageMargin;
 
 	return size;
 }

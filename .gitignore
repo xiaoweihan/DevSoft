@@ -7,3 +7,4 @@ ipch/
 *.ilk
 *.pdb
 *.suo
+boost/

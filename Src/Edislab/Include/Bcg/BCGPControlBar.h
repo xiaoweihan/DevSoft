@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -25,7 +25,8 @@
 #include "BCGPRecentDockInfo.h"
 #include "BCGPDragFrameImpl.h"
 
-#pragma warning( disable : 4100 34 )
+#pragma warning (push)
+#pragma warning (disable : 4100 34)
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPControlBar window
@@ -43,7 +44,8 @@ typedef enum BCGP_CS_STATUS
 	BCGP_CS_DOCK_IMMEDIATELY,
 	BCGP_CS_DELAY_DOCK,
 	BCGP_CS_DELAY_DOCK_TO_TAB
-};
+}
+BCGP_CS_STATUS;
 
 static const DWORD dwDefaultCBStyle = CBRS_BCGP_FLOAT | CBRS_BCGP_CLOSE;
 static const int dwDefaultToolbarStyle = (WS_CHILD | WS_VISIBLE | CBRS_TOP | 
@@ -222,7 +224,13 @@ protected:
 	virtual void OnDrawDragRect (LPCRECT /*lprectNew*/, LPCRECT /*lprectOld*/) {}
 	
 	virtual BOOL OnBeforeDock (CBCGPBaseControlBar** ppDockBar, LPCRECT lpRect, BCGP_DOCK_METHOD dockMethod);
-	virtual void OnAfterDock  (CBCGPBaseControlBar* /*pBar*/, LPCRECT /*lpRect*/, BCGP_DOCK_METHOD /*dockMethod*/) {}
+
+	virtual void OnAfterDock  (CBCGPBaseControlBar* pBar, LPCRECT lpRect, BCGP_DOCK_METHOD dockMethod) 
+	{
+		UNREFERENCED_PARAMETER(pBar);
+		UNREFERENCED_PARAMETER(lpRect);
+		UNREFERENCED_PARAMETER(dockMethod);
+	}
 
 	virtual void OnBeforeStretch (int& /*nStretchSize*/) {}
 	virtual void OnAfterStretch (int /*nStretchSize*/) {}
@@ -297,6 +305,7 @@ protected:
 	BOOL				m_bExclusiveRow;
 
 	BOOL				m_bPinState;
+	BOOL				m_bFloatingMaximized;
 
 	CSize				m_sizeMin;
 
@@ -330,7 +339,7 @@ _inline BOOL CBCGPControlBar::CanBeDocked (CBCGPBaseControlBar* pDockBar) const
 	return ((GetEnabledAlignment () & pDockBar->GetCurrentAlignment ()) != 0);
 }
 
-#pragma warning( default : 4100 34 )
+#pragma warning (pop)
 
 /////////////////////////////////////////////////////////////////////////////
 

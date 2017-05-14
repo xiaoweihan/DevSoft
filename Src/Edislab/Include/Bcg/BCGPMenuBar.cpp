@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -313,6 +313,12 @@ void CBCGPMenuBar::CreateFromMenu (HMENU hMenu, BOOL bDefaultMenu, BOOL bForceUp
 CSize CBCGPMenuBar::CalcLayout(DWORD dwMode, int nLength)
 {
 	OnChangeHot (-1);
+
+	if (m_nHelpComboID != 0 && CommandToIndex(m_nHelpComboID) < 0)
+	{
+		CBCGPHelpComboBoxButton combobox(m_nHelpComboID, m_nHelpComboWidth, m_strHelpComboPrompt);
+		InsertButton(combobox);
+	}
 
 	//------------------------------------------
 	// Is menu bar have the buttons with images?
@@ -771,10 +777,10 @@ int CBCGPMenuBar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		
 	SetWindowText (strTitle);
 
-	//-------------------------------------------------------------
-	// Force the menu bar to be hiden whren the in-place editing is
+	//----------------------------------------------------------
+	// Force the menu bar to be hidden when the in-place editing
 	// is activated (server application shows its own menu):
-	//-------------------------------------------------------------
+	//----------------------------------------------------------
 	SetBarStyle (GetBarStyle() | CBRS_HIDE_INPLACE);
 
 	//------------------------------
@@ -810,8 +816,8 @@ BOOL CBCGPMenuBar::LoadState (LPCTSTR lpszProfileName, int nIndex, UINT /*uiID*/
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CMultiDocTemplate objects with
-			// the sahred menu only....
+			// We are interesting in CMultiDocTemplate objects with
+			// the shared menu only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
 				pTemplate->m_hMenuShared == NULL)
@@ -849,7 +855,7 @@ BOOL CBCGPMenuBar::LoadState (LPCTSTR lpszProfileName, int nIndex, UINT /*uiID*/
 	}
 
 	//----------------------
-	// Load defualt menubar:
+	// Load default menubar:
 	//----------------------
 	BuildOrigItems (m_uiDefMenuResId);
 
@@ -933,8 +939,8 @@ BOOL CBCGPMenuBar::SaveState (LPCTSTR lpszProfileName, int nIndex, UINT /*uiID*/
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CMultiDocTemplate objects with
-			// the sahred menu only....
+			// We are interesting in CMultiDocTemplate objects with
+			// the shared menu only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
 				pTemplate->m_hMenuShared == NULL)
@@ -1010,8 +1016,8 @@ void CBCGPMenuBar::ResetImages ()
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CMultiDocTemplate objects with
-			// the sahred menu only....
+			// We are interesting in CMultiDocTemplate objects with
+			// the shared menu only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
 				pTemplate->m_hMenuShared == NULL)
@@ -1119,7 +1125,7 @@ BOOL CBCGPMenuBar::RestoreOriginalstate ()
 			ASSERT_KINDOF (CDocTemplate, pTemplate);
 
 			//-----------------------------------------------------
-			// We are interessing CMultiDocTemplate objects with
+			// We are interesting in CMultiDocTemplate objects with
 			// the shared menu only....
 			//-----------------------------------------------------
 			if (!pTemplate->IsKindOf (RUNTIME_CLASS (CMultiDocTemplate)) ||
@@ -1166,7 +1172,7 @@ BOOL CBCGPMenuBar::RestoreOriginalstate ()
 	}
 
 	//----------------------
-	// Load defualt menubar:
+	// Load default menubar:
 	//----------------------
 	if (m_uiDefMenuResId != 0)
 	{
@@ -1263,7 +1269,7 @@ BOOL CBCGPMenuBar::PreTranslateMessage(MSG* pMsg)
 	if (pMsg->message == WM_KEYDOWN)
 	{
 		//-----------------------------------------------------------
-		// Fisrt, try to move keyboard control to the drop-down menu:
+		// First, try to move keyboard control to the drop-down menu:
 		//-----------------------------------------------------------
 		CBCGPToolbarMenuButton* pMenuButon = GetDroppedDownMenu ();
 		if (pMenuButon != NULL)

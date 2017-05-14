@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -131,9 +131,14 @@ BOOL CBCGPRibbonFloaty::Show (int x, int y)
 	return TRUE;
 }
 //*******************************************************************************
-BOOL CBCGPRibbonFloaty::ShowWithContextMenu (int x, int y, UINT uiMenuResID, CWnd* pWndOwner)
+BOOL CBCGPRibbonFloaty::ShowWithContextMenu (int x, int y, UINT uiMenuResID, HMENU hMenu, CWnd* pWndOwner, BOOL bAutoDestroyMenu)
 {
 	ASSERT_VALID (this);
+
+	if (uiMenuResID == 0 && hMenu == NULL)
+	{
+		return FALSE;
+	}
 
 	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
 	{
@@ -153,9 +158,19 @@ BOOL CBCGPRibbonFloaty::ShowWithContextMenu (int x, int y, UINT uiMenuResID, CWn
 
 	if (x == -1 || y == -1)
 	{
-		return g_pContextMenuManager->ShowPopupMenu (uiMenuResID, x, y, pWndOwner);
+		if (uiMenuResID != 0)
+		{
+			return g_pContextMenuManager->ShowPopupMenu (uiMenuResID, x, y, pWndOwner);
+		}
+		else if (hMenu != NULL)
+		{
+			return g_pContextMenuManager->ShowPopupMenu(hMenu, x, y, pWndOwner, FALSE, bAutoDestroyMenu) != NULL;
+		}
+
+		return FALSE;
 	}
 
+	m_wndRibbonBar.m_bIsOneRowFloaty = m_bIsOneRow;
 	CSize size = m_wndRibbonBar.CalcSize (FALSE);
 
 	const int yOffset = 15;
@@ -172,11 +187,20 @@ BOOL CBCGPRibbonFloaty::ShowWithContextMenu (int x, int y, UINT uiMenuResID, CWn
 	ASSERT_VALID (g_pContextMenuManager);
 
 	g_pContextMenuManager->SetDontCloseActiveMenu ();
+	g_pContextMenuManager->SetConnectedFloatyHeight(size.cy + yOffset + 1);
 
 	m_nMinWidth = size.cx;
 
-	g_pContextMenuManager->ShowPopupMenu (uiMenuResID, x, y, pWndOwner);
-
+	if (uiMenuResID != 0)
+	{
+		g_pContextMenuManager->ShowPopupMenu (uiMenuResID, x, y, pWndOwner);
+	}
+	else if (hMenu != NULL)
+	{
+		g_pContextMenuManager->ShowPopupMenu(hMenu, x, y, pWndOwner, FALSE, bAutoDestroyMenu);
+	}
+	
+	g_pContextMenuManager->SetConnectedFloatyHeight(0);
 	m_nMinWidth = 0;
 
 	CBCGPPopupMenu* pPopup = CBCGPPopupMenu::GetActiveMenu ();
@@ -206,6 +230,16 @@ BOOL CBCGPRibbonFloaty::ShowWithContextMenu (int x, int y, UINT uiMenuResID, CWn
 	}
 
 	return TRUE;
+}
+//*******************************************************************************
+BOOL CBCGPRibbonFloaty::ShowWithContextMenu (int x, int y, UINT uiMenuResID, CWnd* pWndOwner)
+{
+	return ShowWithContextMenu(x, y, uiMenuResID, (HMENU)NULL, pWndOwner, FALSE);
+}
+//*******************************************************************************
+BOOL CBCGPRibbonFloaty::ShowWithContextMenu (int x, int y, HMENU hMenu, CWnd* pWndOwner, BOOL bAutoDestroyMenu)
+{
+	return ShowWithContextMenu(x, y, 0, hMenu, pWndOwner, bAutoDestroyMenu);
 }
 //************************************************************************************
 void CBCGPRibbonFloaty::OnTimer(UINT_PTR nIDEvent) 

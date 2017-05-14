@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,7 @@
 #include "BCGPImageGaugeImpl.h"
 #include "BCGPDiagramConnector.h"
 #include "BCGPWinUITiles.h"
+#include "BCGPChartVisualObject.h"
 #include "BCGPMath.h"
 
 #ifdef _DEBUG
@@ -95,7 +96,24 @@ CBCGPVisualCollector::~CBCGPVisualCollector()
 
 void CBCGPVisualCollector::Collect(const CBCGPVisualContainer& container)
 {
+	CBCGPSize szScale = container.GetScaleRatio();
+	
+	CWnd* pWnd = container.GetOwner();
+	if (pWnd->GetSafeHwnd() != NULL)
+	{
+		pWnd->SetRedraw(FALSE);
+	}
+
+	((CBCGPVisualContainer&)container).SetScaleRatio(CBCGPSize(1., 1.));
+
 	CollectContainer (container, GetInfo ().GetContainer ());
+
+	((CBCGPVisualContainer&)container).SetScaleRatio(szScale);
+
+	if (pWnd->GetSafeHwnd() != NULL)
+	{
+		pWnd->SetRedraw();
+	}
 }
 
 void CBCGPVisualCollector::CollectContainer(const CBCGPVisualContainer& container, CBCGPVisualInfo::XContainer& info)
@@ -104,6 +122,10 @@ void CBCGPVisualCollector::CollectContainer(const CBCGPVisualContainer& containe
 	info.m_Rect      = container.GetRect ();
 	info.m_brFill    = container.GetFillBrush ();
 	info.m_brOutline = container.GetOutlineBrush ();
+
+	info.m_ScrollBars.m_Enabled = container.HasScrollBars();
+	info.m_ScrollBars.m_Style   = container.m_ScrollBarHorz.GetStyle();
+	info.m_ScrollBars.m_Colors  = container.m_ScrollBarHorz.GetColorTheme();
 
 	CPoint ptOffset (0, 0);
 
@@ -335,6 +357,20 @@ CBCGPVisualInfo::XElement* CBCGPVisualCollector::CollectElement(const CBCGPBaseV
 			}
 		}
 	}
+	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPChartVisualObject)))
+	{
+		CBCGPVisualInfo::XElementChart* pNewInfo = new CBCGPVisualInfo::XElementChart;
+		info = pNewInfo;
+
+		CollectBaseElement (element, *info);
+
+		const CBCGPChartVisualObject* pElement = (const CBCGPChartVisualObject*)&element;
+		ASSERT_VALID (pElement);
+
+		pNewInfo->m_Category = pElement->GetChartCategory();
+		pNewInfo->m_Type = pElement->GetChartType();
+		pNewInfo->m_Theme = pElement->GetColors().GetThemeType();
+	}
 	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPGaugeImpl)))
 	{
 		info = CollectGaugeElement ((const CBCGPGaugeImpl&)element);
@@ -342,6 +378,10 @@ CBCGPVisualInfo::XElement* CBCGPVisualCollector::CollectElement(const CBCGPBaseV
 	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPDiagramVisualObject)))
 	{
 		info = CollectDiagramElement ((const CBCGPDiagramVisualObject&)element);
+	}
+	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPWndHostVisualObject)))
+	{
+		info = CollectControlElement ((const CBCGPWndHostVisualObject&)element);
 	}
 
 	return info;
@@ -697,6 +737,7 @@ void CBCGPVisualCollector::CollectBaseElement (const CBCGPBaseVisualObject& elem
 	info.m_ID.m_Name  = element.GetName ();
 	info.m_ID.m_Value = element.GetID ();
 	info.m_bIsVisible = element.IsVisible ();
+	info.m_bIsEnabled = element.IsEnabled ();
 	info.m_bIsAutoDestroy = element.IsAutoDestroy ();
 	info.m_Rect       = element.GetRect ();
 }
@@ -894,6 +935,72 @@ void CBCGPVisualCollector::CollectBaseDiagramElement (const CBCGPDiagramVisualOb
 	info.m_brShadow            = element.GetShadowBrush ();
 	info.m_Thickness           = element.GetThickness ();
 	info.m_StrokeStyle         = element.GetStrokeStyle ();
+}
+
+CBCGPVisualInfo::XControlElement* CBCGPVisualCollector::CollectControlElement (const CBCGPWndHostVisualObject& element)
+{
+	CBCGPVisualInfo::XControlElement* info = NULL;
+
+	if (element.IsKindOf (RUNTIME_CLASS (CBCGPEditVisualObject)))
+	{
+		CBCGPVisualInfo::XElementControlEdit* pNewInfo = new CBCGPVisualInfo::XElementControlEdit;
+		info = pNewInfo;
+
+		CollectBaseControlElement (element, *info);
+
+		const CBCGPEditVisualObject* pElement = (const CBCGPEditVisualObject*)&element;
+		ASSERT_VALID (pElement);
+
+		CWnd* pWnd = ((CBCGPEditVisualObject*)pElement)->GetWnd();
+		if (pWnd != NULL && pWnd->GetRuntimeClass() != RUNTIME_CLASS(CBCGPEdit))
+		{
+			pNewInfo->m_strRTIControl = pWnd->GetRuntimeClass()->m_lpszClassName;
+		}
+
+		pNewInfo->m_Colors = pElement->GetColorTheme();
+		pNewInfo->m_strText = pElement->GetInitialValue();
+	}
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPGridVisualObject)))
+	{
+		CBCGPVisualInfo::XElementControlGrid* pNewInfo = new CBCGPVisualInfo::XElementControlGrid;
+		info = pNewInfo;
+
+		CollectBaseControlElement (element, *info);
+
+		const CBCGPGridVisualObject* pElement = (const CBCGPGridVisualObject*)&element;
+		ASSERT_VALID (pElement);
+
+		CWnd* pWnd = ((CBCGPGridVisualObject*)pElement)->GetWnd();
+		if (pWnd != NULL && pWnd->GetRuntimeClass() != RUNTIME_CLASS(CBCGPGridCtrl))
+		{
+			pNewInfo->m_strRTIControl = pWnd->GetRuntimeClass()->m_lpszClassName;
+		}
+
+		pNewInfo->m_Colors.FullCopy(pElement->GetColorTheme());
+	}
+#endif
+	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPWndHostVisualObject)))
+	{
+		CBCGPVisualInfo::XElementControlHost* pNewInfo = new CBCGPVisualInfo::XElementControlHost;
+		info = pNewInfo;
+
+		CollectBaseControlElement (element, *info);
+
+		const CBCGPWndHostVisualObject* pElement = (const CBCGPWndHostVisualObject*)&element;
+		ASSERT_VALID (pElement);
+
+		pNewInfo->m_Colors = pElement->GetColorTheme();
+	}
+
+	return info;
+}
+
+void CBCGPVisualCollector::CollectBaseControlElement (const CBCGPWndHostVisualObject& element, CBCGPVisualInfo::XControlElement& info)
+{
+	CollectBaseElement(element, info);
+
+	info.m_fmtText = element.GetTextFormat();
 }
 
 void CBCGPVisualCollector::CollectImage (const CBCGPImage& image, CBCGPVisualInfo::XImage& info)

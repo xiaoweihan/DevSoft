@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -65,11 +65,15 @@ protected:
 	virtual CWnd* OnCreateFormWnd();
 	virtual void CopyFrom (const CBCGPBaseRibbonElement& src);
 	virtual CSize GetRegularSize (CDC* /*pDC*/)	{	return m_sizeDlg;	}
-	virtual void OnDraw (CDC* /*pDC*/) {}
+	virtual void OnDraw (CDC* pDC);
 	virtual void OnChangeVisualManager();
 
 	virtual void OnSetBackstageWatermarkRect(CRect rectWatermark);
 	virtual void SetLayoutReady(BOOL /*bReady*/ = TRUE)	{}
+
+	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
+
+	int GetCaptionHeight();
 
 // Attributes
 protected:
@@ -83,6 +87,8 @@ protected:
 	COLORREF			m_clrWatermarkBaseColor;
 	BOOL				m_bImageMirror;
 	UINT				m_nRecentFlags;
+	int					m_nPrintMaxZoomLevel;
+	CRect				m_rectCaption;
 };
 
 ///////////////////////////////////////////////////////////////////////
@@ -93,7 +99,7 @@ class BCGCBPRODLLEXPORT CBCGPRibbonBackstageViewItemPropertySheet : public CBCGP
 	DECLARE_DYNCREATE(CBCGPRibbonBackstageViewItemPropertySheet)
 
 public:
-	CBCGPRibbonBackstageViewItemPropertySheet(UINT nIconsListResID, int nIconWidth = 32);
+	CBCGPRibbonBackstageViewItemPropertySheet(UINT nIconsListResID, int nIconWidth = 32, BOOL bIconsAutoScale = FALSE, BOOL bDefaultPageHeader = FALSE);
 	virtual ~CBCGPRibbonBackstageViewItemPropertySheet();
 
 	void EnablePageTransitionEffect(CBCGPPageTransitionManager::BCGPPageTransitionEffect effect, int nTime = 300)
@@ -112,6 +118,8 @@ public:
 	void AddGroup(LPCTSTR lpszCaption);
 	void RemoveAll();
 
+	int GetHeaderHeight();
+
 // Overrides
 protected:
 	virtual CWnd* OnCreateFormWnd();
@@ -123,12 +131,14 @@ protected:
 // Attributes
 protected:
 	UINT													m_nIconsListResID;
+	BOOL													m_bIconsAutoScale;
 	int														m_nIconWidth;
 	CStringArray											m_arCaptions;
 	CArray<CBCGPPropertyPage*, CBCGPPropertyPage*>			m_arPages;
 	CBCGPPageTransitionManager::BCGPPageTransitionEffect	m_PageTransitionEffect;
 	int														m_nPageTransitionTime;
 	BOOL													m_bUseDefaultPageTransitionEffect;
+	BOOL													m_bDefaultPageHeader;
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -138,6 +148,7 @@ class BCGCBPRODLLEXPORT CBCGPRibbonBackstageViewPanel : public CBCGPRibbonMainPa
 														public CBCGPPageTransitionManager
 {
 	friend class CBCGPRibbonBackstageViewItemForm;
+	friend class CBCGPRibbonBar;
 
 	DECLARE_DYNCREATE(CBCGPRibbonBackstageViewPanel)
 
@@ -182,15 +193,16 @@ public:
 	}
 
 	CBCGPRibbonButton* AddPrintPreview(UINT uiCommandID, LPCTSTR lpszLabel,
-		UINT uiWaterMarkResID = 0, COLORREF clrBase = (COLORREF)-1);
+		UINT uiWaterMarkResID = 0, COLORREF clrBase = (COLORREF)-1,
+		int nPrintMaxZoomLevel = 100);
 
-	CBCGPRibbonButton* AddRecentView(UINT uiCommandID, LPCTSTR lpszLabel, UINT nFlags = 0xFFFF,
+	CBCGPRibbonButton* AddRecentView(UINT uiCommandID, LPCTSTR lpszLabel, UINT nFlags = BCGP_BACKSTAGE_RECENT_VIEW_DEFAULT_FLAGS,
 		UINT uiWaterMarkResID = 0, COLORREF clrBase = (COLORREF)-1);
 
 	BOOL AttachViewToItem(UINT uiID, CBCGPRibbonBackstageViewItemForm* pView, BOOL bByCommand = TRUE);
 	BOOL AttachPrintPreviewToItem(UINT uiID, BOOL bByCommand = TRUE,
-		UINT uiWaterMarkResID = 0, COLORREF clrBase = (COLORREF)-1);
-	BOOL AttachRecentViewToItem(UINT uiID, UINT nFlags = 0xFFFF, BOOL bByCommand = TRUE,
+		UINT uiWaterMarkResID = 0, COLORREF clrBase = (COLORREF)-1, int nPrintMaxZoomLevel = 100);
+	BOOL AttachRecentViewToItem(UINT uiID, UINT nFlags = BCGP_BACKSTAGE_RECENT_VIEW_DEFAULT_FLAGS, BOOL bByCommand = TRUE,
 		UINT uiWaterMarkResID = 0, COLORREF clrBase = (COLORREF)-1);
 
 	virtual void ReposActiveForm();
@@ -200,6 +212,8 @@ public:
 
 	int GetFormsCount() const;
 	CBCGPRibbonBackstageViewItemForm* GetForm(int nIndex) const;
+
+	virtual void SelectView(CBCGPBaseRibbonElement* pElem);
 
 protected:
 	// The following methods cannot be called for CBCGPRibbonBackstageViewPanel:
@@ -229,21 +243,29 @@ protected:
 	virtual CBCGPBaseRibbonElement* MouseButtonDown (CPoint point);
 
 	virtual BOOL OnKey (UINT nChar);
+	virtual void CopyFrom (CBCGPRibbonPanel& src);
 
-	virtual void SelectView(CBCGPBaseRibbonElement* pElem);
 	void AdjustScrollBars();
 	virtual void OnPageTransitionFinished();
 
 	virtual void DoPaint (CDC* pDC);
 
 // Attributes:
+public:
+	BOOL IsStartPageMode() const
+	{
+		return m_bIsStartPage;
+	}
+
 protected:
+	BOOL						m_bIsStartPage;
 	CBCGPBaseRibbonElement*		m_pSelected;
 	CBCGPBaseRibbonElement*		m_pNewSelected;
 	CRect						m_rectRight;
 	CSize						m_sizeRightView;
 	BOOL						m_bInAdjustScrollBars;
 	BOOL						m_bSelectedByMouseClick;
+	BOOL						m_bHasCaptions;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -268,6 +290,9 @@ public:
 // Operations
 public:
 	void FillList(LPCTSTR lpszSelectedPath = NULL);
+	void FillList(const CStringArray& arRecent, const CStringArray& arPinned, LPCTSTR lpszSelectedPath = NULL);
+
+	BOOL CloseBackstageView();
 
 // Overrides
 	// ClassWizard generated virtual function overrides
@@ -285,6 +310,8 @@ public:
 
 	int AddItem(const CString& strFilePath, UINT nCmd = 0, BOOL bPin = FALSE);
 	CString GetItemPath(int nItem);
+
+	virtual BOOL IsRecentFilesListBox()	{ return TRUE; }
 
 // Implementation
 public:

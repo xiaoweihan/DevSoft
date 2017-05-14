@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "BCGPRibbonBar.h"
 #include "BCGPRibbonMainPanel.h"
 #include "BCGPRibbonStatusBar.h"
+#include "BCGPStatusBar.h"
 #include "BCGPFrameWnd.h"
 #include "BCGPMDIFrameWnd.h"
 
@@ -52,6 +53,7 @@ BEGIN_MESSAGE_MAP(CBCGPRibbonBackstageView, CBCGPRibbonPanelMenuBar)
 	ON_WM_NCDESTROY()
 	ON_WM_ERASEBKGND()
 	ON_WM_MOUSEWHEEL()
+	ON_WM_CANCELMODE()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
@@ -74,7 +76,13 @@ BOOL CBCGPRibbonBackstageView::Create()
 			::LoadCursor(NULL, IDC_ARROW),
 			(HBRUSH)(COLOR_BTNFACE + 1), NULL);
 
-	return CWnd::CreateEx(0, strClassName, _T(""), WS_CHILD | WS_VISIBLE, rectView, pParentFrame, (UINT)-1, NULL);
+	if (!CWnd::CreateEx(0, strClassName, _T(""), WS_CHILD | WS_VISIBLE, rectView, pParentFrame, (UINT)-1, NULL))
+	{
+		return FALSE;
+	}
+
+	SetFocus();
+	return TRUE;
 }
 
 void CBCGPRibbonBackstageView::GetRect(CRect& rect)
@@ -99,8 +107,6 @@ int CBCGPRibbonBackstageView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	SetOnOffMode(TRUE);
 
 	ModifyStyle(0, WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
-
-	SetFocus();
 	return 0;
 }
 
@@ -142,21 +148,33 @@ void CBCGPRibbonBackstageView::SetOnOffMode(BOOL bOn)
 			{
 				m_lstHiddenWindows.AddHead(pWndChild->GetSafeHwnd());
 
-				CBCGPRibbonStatusBar* pStatusBar = DYNAMIC_DOWNCAST(CBCGPRibbonStatusBar, pWndChild);
+				CBCGPRibbonStatusBar* pRibbonStatusBar = DYNAMIC_DOWNCAST(CBCGPRibbonStatusBar, pWndChild);
+				if (pRibbonStatusBar != NULL)
+				{
+					ASSERT_VALID(pRibbonStatusBar);
+					pRibbonStatusBar->m_bTemporaryHidden = TRUE;
+				}
+
+				CBCGPStatusBar* pStatusBar = DYNAMIC_DOWNCAST(CBCGPStatusBar, pWndChild);
 				if (pStatusBar != NULL)
 				{
 					ASSERT_VALID(pStatusBar);
 					pStatusBar->m_bTemporaryHidden = TRUE;
-
+					
 				}
 
 				pWndChild->ShowWindow(SW_HIDE);
+
+				if (pRibbonStatusBar != NULL)
+				{
+					ASSERT_VALID(pRibbonStatusBar);
+					pRibbonStatusBar->m_bTemporaryHidden = FALSE;
+				}
 
 				if (pStatusBar != NULL)
 				{
 					ASSERT_VALID(pStatusBar);
 					pStatusBar->m_bTemporaryHidden = FALSE;
-					
 				}
 			}
 
@@ -256,6 +274,17 @@ void CBCGPRibbonBackstageView::Deactivate ()
 {
 	m_pRibbonBar->m_bDontSetKeyTips = TRUE;
 	CBCGPRibbonPanelMenuBar::Deactivate();
+}
+
+void CBCGPRibbonBackstageView::OnCancelMode() 
+{
+	CBCGPRibbonPanelMenuBar::OnCancelMode();
+
+	if (m_pPanel != NULL)
+	{
+		ASSERT_VALID(m_pPanel);
+		m_pPanel->CancelMode();
+	}
 }
 
 #endif // BCGP_EXCLUDE_RIBBON

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -96,7 +96,7 @@ class CBCGPRibbonColorMenuButton : public CBCGPRibbonButton
 		}
 
 		CRect rectText = m_rect;
-		rectText.left += cxImageBar + TEXT_MARGIN;
+		rectText.left += cxImageBar + globalUtils.ScaleByDPI(TEXT_MARGIN);
 		rectText.DeflateRect (m_szMargin.cx, m_szMargin.cx);
 
 		pDC->DrawText (m_strText, rectText, DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
@@ -111,7 +111,7 @@ class CBCGPRibbonColorMenuButton : public CBCGPRibbonButton
 			CRect rectImage = m_rect;
 			rectImage.right = rectImage.left + cxImageBar;
 
-			const int nIconSize = 16;
+			const int nIconSize = globalUtils.ScaleByDPI(16);
 
 			if (globalData.m_hiconColors == NULL)
 			{
@@ -121,8 +121,8 @@ class CBCGPRibbonColorMenuButton : public CBCGPRibbonButton
 					AfxGetResourceHandle (),
 					MAKEINTRESOURCE (IDI_BCGRES_COLORS),
 					IMAGE_ICON,
-					16,
-					16,
+					nIconSize,
+					nIconSize,
 					LR_SHARED);
 			}
 
@@ -241,13 +241,7 @@ void CBCGPRibbonColorButton::DrawImage (CDC* pDC, RibbonImageType type, CRect re
 
 	CRect rectColor = rectImage;
 
-	int nColorHeight = 5;
-
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		nColorHeight = (int) (globalData.GetRibbonImageScale () * nColorHeight);
-	}
-
+	int nColorHeight = globalUtils.ScaleByDPI(type == CBCGPBaseRibbonElement::RibbonImageSmall ? 5 : 6);
 	rectColor.top = rectColor.bottom - nColorHeight + 1;
 
 	if ((m_rect.Width () % 2) == 0)
@@ -476,6 +470,26 @@ void CBCGPRibbonColorButton::SetPalette (CPalette* pPalette)
 	CBCGPColorBar::InitColors (pPalette, m_Colors);
 }
 //***************************************************************************
+void CBCGPRibbonColorButton::SetColors(const CArray<COLORREF, COLORREF>& colors)
+{
+	ASSERT_VALID (this);
+	
+	if (m_bHasGroups)
+	{
+		// You cannot call this method when the color gallery has groups!
+		ASSERT (FALSE);
+		return;
+	}
+	
+	if (m_Colors.GetSize () != 0)
+	{
+		m_Colors.SetSize (0);
+		m_Colors.FreeExtra ();
+	}
+	
+	m_Colors.Append(colors);
+}
+//***************************************************************************
 COLORREF CBCGPRibbonColorButton::GetHighlightedColor () const
 {
 	ASSERT_VALID (this);
@@ -578,6 +592,11 @@ void CBCGPRibbonColorButton::OnDrawPaletteIcon (CDC* pDC, CRect rectIcon,
 void CBCGPRibbonColorButton::OnShowPopupMenu ()
 {
 	ASSERT_VALID (this);
+
+	if (IsDisabled())
+	{
+		return;
+	}
 
 	m_ColorHighlighted = (COLORREF)-1;
 
@@ -799,13 +818,7 @@ void CBCGPRibbonColorButton::SetColorBoxSize (CSize sizeBox)
 {
 	ASSERT_VALID (this);
 
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		sizeBox.cx = (int) (.5 + globalData.GetRibbonImageScale () * sizeBox.cx);
-		sizeBox.cy = (int) (.5 + globalData.GetRibbonImageScale () * sizeBox.cy);
-	}
-
-	m_sizeBox = sizeBox;
+	m_sizeBox = globalUtils.ScaleByDPI(sizeBox);
 
 	if (m_bHasGroups && m_arContColumnsRanges.GetSize () > 0)
 	{

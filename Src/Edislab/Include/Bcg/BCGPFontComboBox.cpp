@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "BCGPFontComboBox.h"
 #include "BCGPToolBar.h"
 #include "BCGPToolbarFontCombo.h"
+#include "BCGPGlobalUtils.h"
 #include "BCGPLocalResource.h"
 #include "bcgprores.h"
 
@@ -28,6 +29,7 @@ static char THIS_FILE[] = __FILE__;
 
 const int nImageHeight = 15;
 const int nImageWidth = 16;
+const int nDrawUsingFontExtraHeight = 4;
 
 BOOL CBCGPFontComboBox::m_bDrawUsingFont = FALSE;
 
@@ -129,6 +131,7 @@ void CBCGPFontComboBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 		if (globalData.Is32BitIcons())
 		{
 			m_Images.Load(IDB_BCGBARRES_FONT32);
+			globalUtils.ScaleByDPI(m_Images);
 		}
 		else
 		{
@@ -144,33 +147,19 @@ void CBCGPFontComboBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 
 	CRect rc = lpDIS->rcItem;
 	
-	if (lpDIS->itemState & ODS_FOCUS)
-	{
-		pDC->DrawFocusRect(rc);
-	}
-
 	int nIndexDC = pDC->SaveDC ();
 
-	if (m_bVisualManagerStyle)
+	BOOL bSelected = (lpDIS->itemState & ODS_SELECTED) == ODS_SELECTED;
+	
+	if (m_bDefaultPrintClient && GetDroppedState())
 	{
-		COLORREF clrText = CBCGPVisualManager::GetInstance ()->OnFillComboBoxItem(pDC, this, (int)lpDIS->itemID, rc, FALSE, (lpDIS->itemState & ODS_SELECTED) == ODS_SELECTED);
-		pDC->SetTextColor (clrText);
+		bSelected = TRUE;
 	}
-	else
+	
+	COLORREF clrText = OnFillLbItem(pDC, (int)lpDIS->itemID, rc, FALSE, bSelected);
+	if (clrText != (COLORREF)-1)
 	{
-		CBrush brushFill;
-
-		if (lpDIS->itemState & ODS_SELECTED)
-		{
-			brushFill.CreateSolidBrush (globalData.clrHilite);
-			pDC->SetTextColor (globalData.clrTextHilite);
-		}
-		else
-		{
-			brushFill.CreateSolidBrush (pDC->GetBkColor());
-		}
-
-		pDC->FillRect(rc, &brushFill);
+		pDC->SetTextColor (clrText);
 	}
 
 	pDC->SetBkMode(TRANSPARENT);
@@ -189,14 +178,14 @@ void CBCGPFontComboBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 				m_Images.DrawEx(pDC, rc, pDesc->GetImageIndex (), CBCGPToolBarImages::ImageAlignHorzLeft, CBCGPToolBarImages::ImageAlignVertCenter);
 			}
 
-			rc.left += nImageWidth + 6;
+			rc.left += globalUtils.ScaleByDPI(nImageWidth) + 6;
 			
 			if (m_bDrawUsingFont && pDesc->m_nCharSet != SYMBOL_CHARSET)
 			{
 				LOGFONT lf;
 				globalData.fontRegular.GetLogFont (&lf);
 
-				lstrcpy (lf.lfFaceName, pDesc->m_strName);
+				lstrcpyn(lf.lfFaceName, pDesc->m_strName, LF_FACESIZE);
 				
 				if (pDesc->m_nCharSet != DEFAULT_CHARSET)
 				{
@@ -205,11 +194,11 @@ void CBCGPFontComboBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 
 				if (lf.lfHeight < 0)
 				{
-					lf.lfHeight -= 4;
+					lf.lfHeight -= nDrawUsingFontExtraHeight;
 				}
 				else
 				{
-					lf.lfHeight += 4;
+					lf.lfHeight += nDrawUsingFontExtraHeight;
 				}
 
 				fontSelected.CreateFontIndirect (&lf);
@@ -239,8 +228,13 @@ void CBCGPFontComboBox::MeasureItem(LPMEASUREITEMSTRUCT lpMIS)
 	GetWindowRect (&rc);
 	lpMIS->itemWidth = rc.Width();
 
-	int nFontHeight = max (globalData.GetTextHeight (), CBCGPToolbarFontCombo::m_nFontHeight);
-	lpMIS->itemHeight = max (nImageHeight, nFontHeight);
+	int nTextHeight = globalData.GetTextHeight();
+	if (m_bDrawUsingFont)
+	{
+		nTextHeight += nDrawUsingFontExtraHeight;
+	}
+
+	lpMIS->itemHeight = max(globalUtils.ScaleByDPI(nImageHeight), nTextHeight);
 }
 //****************************************************************************************
 void CBCGPFontComboBox::PreSubclassWindow() 

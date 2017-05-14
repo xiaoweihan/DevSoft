@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -245,11 +245,22 @@ void CBCGPChartSide3D::OnDraw(CBCGPEngine3D* pGM, BOOL bFill, BOOL bDrawLine)
 		}
 		else
 		{
+			double dblOpacity = pGM->GetCurrentOpacity();
+			if (dblOpacity >= 0)
+			{
+				pGM->SetCurrentOpacity(-1.0);
+			}
+
 			CBCGPChartShape3DWall* pWall = DYNAMIC_DOWNCAST(CBCGPChartShape3DWall, m_pShape);
 			pGM->m_bForceDisableDepthTest = pWall->GetWallPosition() != CBCGPChartShape3DWall::WALL_POS_FLOOR;
 			pGM->DrawSide(arVertexes[0], arVertexes[1], arVertexes[2], arVertexes[3], 
 					brFill, brEmpty, m_pOutlineFormat->m_dblWidth, bFill, FALSE);
 			pGM->m_bForceDisableDepthTest = FALSE;
+
+			if (dblOpacity >= 0)
+			{
+				pGM->SetCurrentOpacity(dblOpacity);
+			}
 		}
 	}
 
@@ -260,6 +271,12 @@ void CBCGPChartSide3D::OnDraw(CBCGPEngine3D* pGM, BOOL bFill, BOOL bDrawLine)
 		if (pChart == NULL)
 		{
 			return;
+		}
+
+		double dblOpacity = pGM->GetDefaultManager()->GetCurrentOpacity();
+		if (dblOpacity >= 0)
+		{
+			pGM->SetCurrentOpacity(-1.0);
 		}
 
 		CBCGPChartAxis* pAxis = NULL; // axis to draw
@@ -314,6 +331,11 @@ void CBCGPChartSide3D::OnDraw(CBCGPEngine3D* pGM, BOOL bFill, BOOL bDrawLine)
 		if (pAxis2 != NULL)
 		{
 			pAxis2->OnDrawGridLinesOnThickWall(pGM, this, m_bIsAxisGrid2Near);
+		}
+
+		if (dblOpacity >= 0)
+		{
+			pGM->SetCurrentOpacity(dblOpacity);
 		}
 	}
 }

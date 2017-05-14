@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -19,6 +19,7 @@
 #include "BCGPLocalResource.h"
 #include "BCGPDrawManager.h"
 #include "BCGPVisualManager.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -26,10 +27,26 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
+#define UM_PUMPMESSAGE (WM_USER + 101)
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPProgressDlgCtrl
+
+void CBCGPProgressDlgCtrl::OnAnimationIdle()
+{
+	if (::IsWindow(m_dlg.GetSafeHwnd()) && !m_dlg.m_bCancelled)
+	{
+		m_dlg.PostMessage(UM_PUMPMESSAGE);
+	}
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPProgressDlg dialog
 
-CBCGPProgressDlg::CBCGPProgressDlg()
+#pragma warning (disable : 4355)
+
+CBCGPProgressDlg::CBCGPProgressDlg() :
+	m_wndProgress(*this)
 {
 	//{{AFX_DATA_INIT(CBCGPProgressDlg)
 	//}}AFX_DATA_INIT
@@ -37,11 +54,14 @@ CBCGPProgressDlg::CBCGPProgressDlg()
 	m_bCancelled = FALSE;
     m_bParentDisabled = FALSE;
 	m_bWaitForMessages = TRUE;
+	m_bAnimation = FALSE;
 	m_nCurPos = 0;
 	m_yLine = -1;
 	m_bIsLocal = TRUE;
 }
-//**************************************************************************************
+
+#pragma warning (default : 4355)
+
 CBCGPProgressDlg::~CBCGPProgressDlg()
 {
     if (m_hWnd != NULL)
@@ -95,6 +115,7 @@ void CBCGPProgressDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CBCGPDialog::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPProgressDlg)
+	DDX_Control(pDX, IDC_BCGBARRES_PROGRESS, m_wndProgress);
 	DDX_Control(pDX, IDC_BCGBARRES_DLGLINE, m_wndLine);
 	DDX_Control(pDX, IDCANCEL, m_wndCancel);
 	DDX_Control(pDX, IDC_BCGBARRES_PROGRESS_PERC, m_wndProgressPerc);
@@ -108,7 +129,9 @@ BEGIN_MESSAGE_MAP(CBCGPProgressDlg, CBCGPDialog)
 	ON_WM_ERASEBKGND()
 	ON_WM_CTLCOLOR()
 	ON_WM_PAINT()
+	ON_WM_SYSCOMMAND()
 	//}}AFX_MSG_MAP
+	ON_MESSAGE(UM_PUMPMESSAGE, OnUMPumpMessages)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -129,23 +152,53 @@ BOOL CBCGPProgressDlg::OnInitDialog()
 {
 	CBCGPDialog::OnInitDialog();
 
+	if (m_Params.m_nRangeMin >= m_Params.m_nRangeMax)
+	{
+		ASSERT(FALSE);
+		EndDialog(IDCANCEL);
+
+		return TRUE;
+	}
+
 	CRect rectWindow;
 	GetWindowRect (rectWindow);
 
 	int cx = rectWindow.Width ();
 	int cy = rectWindow.Height ();
 
-	CProgressCtrl* pWndProgress = GetProgressCtrl ();
-	ASSERT_VALID (pWndProgress);
-	
-    pWndProgress->SetRange32 (m_Params.m_nRangeMin, m_Params.m_nRangeMax);
-    pWndProgress->SetStep (m_Params.m_nStep);
-    pWndProgress->SetPos (m_Params.m_nRangeMin);
+    m_wndProgress.SetRange32 (m_Params.m_nRangeMin, m_Params.m_nRangeMax);
+    m_wndProgress.SetStep (m_Params.m_nStep);
+    m_wndProgress.SetPos (m_Params.m_nRangeMin);
 
 	if (m_Params.m_bShowInfiniteProgress)
 	{
-		pWndProgress->ModifyStyle (0, PBS_MARQUEE);
-		pWndProgress->PostMessage (PBM_SETMARQUEE, 1, 0);
+		m_wndProgress.m_MarqueeStyle = m_Params.m_MarqueeStyle;
+		m_wndProgress.m_clrMarquee = m_Params.m_clrMarquee;
+		m_wndProgress.m_clrMarqueeGradient = m_Params.m_clrMarqueeGradient;
+
+		m_wndProgress.ModifyStyle (0, PBS_MARQUEE);
+
+		if (m_wndProgress.m_MarqueeStyle == CBCGPProgressCtrl::BCGP_MARQUEE_GRADIENT)
+		{
+			// Deflate progress for the better look:
+			CRect rectProgress;
+			m_wndProgress.GetWindowRect(rectProgress);
+			ScreenToClient(rectProgress);
+
+			int nProgressHeight = globalUtils.ScaleByDPI(8);
+
+			if (nProgressHeight < rectProgress.Height())
+			{
+				rectProgress.top = rectProgress.CenterPoint().y - nProgressHeight / 2;
+				rectProgress.bottom = rectProgress.top + nProgressHeight / 2;
+
+				m_wndProgress.MoveWindow(rectProgress, FALSE);
+			}
+		}
+
+		m_wndProgress.PostMessage (PBM_SETMARQUEE, 1, 0);
+
+		m_bAnimation = (m_wndProgress.m_MarqueeStyle == CBCGPProgressCtrl::BCGP_MARQUEE_DOTS);
 	}
 
 	SetWindowText (m_Params.m_strCaption);
@@ -188,17 +241,17 @@ BOOL CBCGPProgressDlg::OnInitDialog()
 	if (cyOffset != 0)
 	{
 		OffsetWnd (&m_wndMessage, cyOffset);
-		OffsetWnd (pWndProgress, cyOffset);
+		OffsetWnd (&m_wndProgress, cyOffset);
 		OffsetWnd (&m_wndProgressPerc, cyOffset);
 	}
 
 	if (!m_Params.m_bShowProgress)
 	{
 		CRect rectProgress;
-		pWndProgress->GetWindowRect (rectProgress);
+		m_wndProgress.GetWindowRect (rectProgress);
 		ScreenToClient (&rectProgress);
 
-		pWndProgress->ShowWindow (SW_HIDE);
+		m_wndProgress.ShowWindow (SW_HIDE);
 		m_wndProgressPerc.ShowWindow (SW_HIDE);
 
 		cy -= 2 * rectProgress.Height ();
@@ -213,11 +266,11 @@ BOOL CBCGPProgressDlg::OnInitDialog()
 		m_wndProgressPerc.ShowWindow (SW_HIDE);
 
 		CRect rectProgress;
-		pWndProgress->GetWindowRect (rectProgress);
+		m_wndProgress.GetWindowRect (rectProgress);
 		ScreenToClient (&rectProgress);
 
 		rectProgress.right = rectPerc.right;
-		pWndProgress->SetWindowPos (NULL, -1, -1, rectProgress.Width (), rectProgress.Height (),
+		m_wndProgress.SetWindowPos (NULL, -1, -1, rectProgress.Width (), rectProgress.Height (),
 			SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 	}
 
@@ -295,6 +348,12 @@ BOOL CBCGPProgressDlg::OnInitDialog()
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
 //**************************************************************************************
+LRESULT CBCGPProgressDlg::OnUMPumpMessages(WPARAM, LPARAM)
+{
+	PumpMessages();
+	return 0;
+}
+//**************************************************************************************
 void CBCGPProgressDlg::OnCancel() 
 {
 	m_bCancelled = TRUE;
@@ -302,18 +361,27 @@ void CBCGPProgressDlg::OnCancel()
 //**************************************************************************************
 long CBCGPProgressDlg::SetPos(long nPos)
 {
-    if (!PumpMessages ())
+	if (!PumpMessages())
 	{
 		return 0;
 	}
 
-	CProgressCtrl* pWndProgress = GetProgressCtrl ();
-	ASSERT_VALID (pWndProgress);
+	long lResult = m_wndProgress.SetPos(nPos);
+	UpdatePercent(nPos);
 
-    long lResult = pWndProgress->SetPos(nPos);
-    UpdatePercent(nPos);
+	return lResult;
+}
+//**************************************************************************************
+long CBCGPProgressDlg::SetPos(long nPos, BOOL bWaitForMessages)
+{
+	BOOL bWaitForMessagesSaved = m_bWaitForMessages;
+	m_bWaitForMessages = bWaitForMessages;
 
-    return lResult;
+	long lResult = SetPos(nPos);
+
+	m_bWaitForMessages = bWaitForMessagesSaved;
+
+	return lResult;
 }
 //**************************************************************************************
 long CBCGPProgressDlg::OffsetPos (long nPos)
@@ -323,10 +391,7 @@ long CBCGPProgressDlg::OffsetPos (long nPos)
 		return 0;
 	}
 
-	CProgressCtrl* pWndProgress = GetProgressCtrl ();
-	ASSERT_VALID (pWndProgress);
-
-    long lResult = pWndProgress->OffsetPos(nPos);
+    long lResult = m_wndProgress.OffsetPos(nPos);
     UpdatePercent (lResult + nPos);
 
     return lResult;
@@ -366,10 +431,7 @@ long CBCGPProgressDlg::StepIt(BOOL bWaitForMessages)
 		return 0;
 	}
 
-	CProgressCtrl* pWndProgress = GetProgressCtrl ();
-	ASSERT_VALID (pWndProgress);
-
-    long lResult = pWndProgress->StepIt();
+    long lResult = m_wndProgress.StepIt();
     UpdatePercent (lResult + m_Params.m_nStep);
 
     return lResult;
@@ -381,6 +443,11 @@ BOOL CBCGPProgressDlg::PumpMessages()
     ASSERT (GetSafeHwnd () != NULL);
 	
 	HWND hwndThis = GetSafeHwnd ();
+
+	if (!::IsWindow (hwndThis))
+	{
+		return FALSE;
+	}
 
     MSG msg;
 
@@ -410,7 +477,7 @@ BOOL CBCGPProgressDlg::PumpMessages()
 			return FALSE;
 		}
 
-		if (m_bWaitForMessages)
+		if (m_bWaitForMessages && !m_bAnimation)
 		{
 			WaitMessage ();
 		}
@@ -608,4 +675,15 @@ void CBCGPProgressDlg::OnPaint()
 
 		OnDrawHeader (pDC, rectHeader);
 	}
+}
+//**************************************************************************************
+void CBCGPProgressDlg::OnSysCommand(UINT nID, LPARAM lParam) 
+{
+	if (nID == SC_CLOSE)
+	{
+		m_bCancelled = TRUE;
+		return;
+	}
+	
+	CBCGPDialog::OnSysCommand(nID, lParam);
 }

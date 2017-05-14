@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -30,14 +30,15 @@
 #include "BCGPFrameWnd.h"
 #include "BCGPDropDown.h"
 #include "BCGPMiniFrameWnd.h"
+#include "BCGPMessageBox.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
 static char BASED_CODE THIS_FILE[] = __FILE__;
 #endif
 
-IMPLEMENT_DYNCREATE(CBCGPCustomizePage, CPropertyPage)
-IMPLEMENT_DYNCREATE(CBCGPToolbarsPage, CPropertyPage)
+IMPLEMENT_DYNCREATE(CBCGPCustomizePage, CBCGPPropertyPage)
+IMPLEMENT_DYNCREATE(CBCGPToolbarsPage, CBCGPPropertyPage)
 
 extern CObList	gAllToolbars;
 
@@ -45,7 +46,7 @@ extern CObList	gAllToolbars;
 // CBCGPCustomizePage property page
 
 CBCGPCustomizePage::CBCGPCustomizePage() : 
-	CPropertyPage(CBCGPCustomizePage::IDD)
+	CBCGPPropertyPage(CBCGPCustomizePage::IDD)
 {
 	//{{AFX_DATA_INIT(CBCGPCustomizePage)
 	m_strButtonDescription = _T("");
@@ -58,7 +59,7 @@ CBCGPCustomizePage::~CBCGPCustomizePage()
 
 void CBCGPCustomizePage::DoDataExchange(CDataExchange* pDX)
 {
-	CPropertyPage::DoDataExchange(pDX);
+	CBCGPPropertyPage::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPCustomizePage)
 	DDX_Control(pDX, IDC_BCGBARRES_CATEGORY, m_wndCategory);
 	DDX_Control(pDX, IDC_BCGBARRES_USER_TOOLS, m_wndTools);
@@ -67,7 +68,7 @@ void CBCGPCustomizePage::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CBCGPCustomizePage, CPropertyPage)
+BEGIN_MESSAGE_MAP(CBCGPCustomizePage, CBCGPPropertyPage)
 	//{{AFX_MSG_MAP(CBCGPCustomizePage)
 	ON_LBN_SELCHANGE(IDC_BCGBARRES_USER_TOOLS, OnSelchangeUserTools)
 	ON_LBN_SELCHANGE(IDC_BCGBARRES_CATEGORY, OnSelchangeCategory)
@@ -148,6 +149,12 @@ void CBCGPCustomizePage::OnSelchangeCategory()
 		m_wndTools.SetItemData (iIndex, (DWORD_PTR) pButton);
 	}
 
+	if (m_wndTools.GetCount() > 0)
+	{
+		m_wndTools.SetCurSel(0);
+		OnSelchangeUserTools();
+	}
+
 	m_wndTools.SetRedraw (TRUE);
 }
 //**************************************************************************************
@@ -166,14 +173,15 @@ void CBCGPCustomizePage::OnSelchangeUserTools()
 //**************************************************************************************
 BOOL CBCGPCustomizePage::OnInitDialog() 
 {
-	CPropertyPage::OnInitDialog();
+	CBCGPPropertyPage::OnInitDialog();
 	
 	CBCGPToolbarCustomize* pWndParent = DYNAMIC_DOWNCAST (CBCGPToolbarCustomize, GetParent ());
 	ASSERT (pWndParent != NULL);
 
 	pWndParent->FillCategoriesListBox (m_wndCategory);
 	
-	m_wndCategory.SetCurSel (0);
+	m_wndCategory.SetCurSel(0);
+
 	OnSelchangeCategory ();
 	
 	return TRUE;  // return TRUE unless you set the focus to a control
@@ -221,7 +229,7 @@ void CBCGPCustomizePage::SetAllCategory (LPCTSTR lpszCategory)
 // CBCGPToolbarsPage property page
 
 CBCGPToolbarsPage::CBCGPToolbarsPage(CFrameWnd* pParentFrame) : 
-	CPropertyPage(CBCGPToolbarsPage::IDD),
+	CBCGPPropertyPage(CBCGPToolbarsPage::IDD),
 	m_bUserDefinedToolbars (FALSE),
 	m_pParentFrame (pParentFrame)
 {
@@ -239,7 +247,7 @@ CBCGPToolbarsPage::~CBCGPToolbarsPage()
 
 void CBCGPToolbarsPage::DoDataExchange(CDataExchange* pDX)
 {
-	CPropertyPage::DoDataExchange(pDX);
+	CBCGPPropertyPage::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPToolbarsPage)
 	DDX_Control(pDX, IDC_BCGBARRES_TEXT_LABELS, m_wndTextLabels);
 	DDX_Control(pDX, IDC_BCGBARRES_RENAME_TOOLBAR, m_bntRenameToolbar);
@@ -252,7 +260,7 @@ void CBCGPToolbarsPage::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CBCGPToolbarsPage, CPropertyPage)
+BEGIN_MESSAGE_MAP(CBCGPToolbarsPage, CBCGPPropertyPage)
 	//{{AFX_MSG_MAP(CBCGPToolbarsPage)
 	ON_LBN_SELCHANGE(IDC_BCGBARRES_TOOLBAR_LIST, OnSelchangeToolbarList)
 	ON_LBN_DBLCLK(IDC_BCGBARRES_TOOLBAR_LIST, OnDblclkToolbarList)
@@ -268,7 +276,7 @@ END_MESSAGE_MAP()
 
 BOOL CBCGPToolbarsPage::OnInitDialog() 
 {
-	CPropertyPage::OnInitDialog();
+	CBCGPPropertyPage::OnInitDialog();
 
 	if (!m_bUserDefinedToolbars)
 	{
@@ -318,7 +326,7 @@ BOOL CBCGPToolbarsPage::OnInitDialog()
 						m_wndToolbarList.SetCheck (iIndex, 1);
 					}
 
-					m_wndToolbarList.EnableCheck (iIndex, pToolBar->CanBeClosed ());
+					m_wndToolbarList.EnableCheck(iIndex, pToolBar->CanBeClosed());
 				}
 			}
 		}
@@ -378,6 +386,7 @@ void CBCGPToolbarsPage::OnDblclkToolbarList()
 		if (m_pSelectedToolbar->CanBeClosed ())
 		{
 			m_wndToolbarList.SetCheck (iIndex, !m_wndToolbarList.GetCheck (iIndex));
+			SendMessage(WM_COMMAND, MAKEWPARAM(m_wndToolbarList.GetDlgCtrlID(), CLBN_CHKCHANGE), (LPARAM)m_wndToolbarList.m_hWnd);
 		}
 		else
 		{
@@ -422,7 +431,7 @@ void CBCGPToolbarsPage::OnResetToolbar()
 		CString strPrompt;
 		strPrompt.Format (IDS_BCGBARRES_RESET_TOOLBAR_FMT, strName);
 
-		if (MessageBox (strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
+		if (BCGPShowMessageBox(IsVisualManagerStyle(), this, strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
 		{
 			return;
 		}
@@ -439,7 +448,7 @@ void CBCGPToolbarsPage::OnResetAllToolbars()
 		CString strPrompt;
 		strPrompt.LoadString (IDS_BCGBARRES_RESET_ALL_TOOLBARS);
 
-		if (MessageBox (strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
+		if (BCGPShowMessageBox(IsVisualManagerStyle(), this, strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
 		{
 			return;
 		}
@@ -492,7 +501,7 @@ void CBCGPToolbarsPage::OnDeleteToolbar()
 		CString strPrompt;
 		strPrompt.Format (IDS_BCGBARRES_DELETE_TOOLBAR_FMT, strName);
 
-		if (MessageBox (strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
+		if (BCGPShowMessageBox(IsVisualManagerStyle(), this, strPrompt, NULL, MB_YESNO | MB_ICONQUESTION) != IDYES)
 		{
 			return;
 		}
@@ -637,7 +646,7 @@ BOOL CBCGPToolbarsPage::OnCommand(WPARAM wParam, LPARAM lParam)
 		}
 	}
 	
-	return CPropertyPage::OnCommand(wParam, lParam);
+	return CBCGPPropertyPage::OnCommand(wParam, lParam);
 }
 //***********************************************************************************
 void CBCGPToolbarsPage::OnBcgbarresTextLabels() 

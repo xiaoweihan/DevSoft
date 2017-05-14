@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -32,7 +32,7 @@ struct BCGCBPRODLLEXPORT BCGP_DIAGRAM_ITEM_INFO
 {
 	CBCGPDiagramVisualObject* pItem;	// An item
 	CBCGPDiagramItemID	idItem;			// ID of an item
-    int					nDataIndex;		// Index of the data object
+    int					nDataIndex;		// ID of the item's part, specifies the data object (CBCGPDiagramVisualObject::Parts)
 	DWORD				dwResultCode;	// Message specific
 };
 
@@ -74,9 +74,10 @@ public:
 
 	struct HitTestAnchorOptions
 	{
-		HitTestAnchorOptions () { bIgnoreSelection = FALSE; }
+		HitTestAnchorOptions () { bIgnoreSelection = FALSE; bIgnoreConnectors = TRUE; }
 
 		BOOL bIgnoreSelection;
+		BOOL bIgnoreConnectors;
 	};
 
 	// Anchors:
@@ -129,6 +130,7 @@ public:
 	virtual BOOL OnMouseDblClick(int /*nButton*/, const CBCGPPoint& /*pt*/);
 	virtual void OnMouseMove(const CBCGPPoint& pt);
 	virtual void OnMouseLeave();
+	virtual BOOL OnMouseWheel(const CBCGPPoint& pt, short zDelta);
 	virtual void OnCancelMode();
 	virtual BOOL OnKeyboardDown(UINT nChar, UINT nRepCnt, UINT nFlags);
 
@@ -137,6 +139,8 @@ protected:
 	CMap<int, int, CBCGPBaseVisualObject*, CBCGPBaseVisualObject*> m_mapItems;		// nodes
 	CMap<int, int, CBCGPDiagramConnector*, CBCGPDiagramConnector*> m_mapConnectors;	// edges
 	int	m_nLastID;
+
+	BCGP_DIAGRAM_ITEM_INFO m_ii;
 
 	BOOL m_bIsEditAnchorMode;
 

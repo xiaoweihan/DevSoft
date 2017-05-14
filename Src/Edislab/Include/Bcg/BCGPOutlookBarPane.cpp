@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,7 @@
 #include "BCGPOutlookBarPane.h"
 #include "BCGPOutlookButton.h"
 #include "BCGPOutlookBar.h"
+#include "BCGPPngImage.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -68,6 +69,7 @@ CBCGPOutlookBarPane::CBCGPOutlookBarPane()
 
 	m_clrTransparentColor = RGB (255, 0, 255);
 	m_Images.SetTransparentColor (m_clrTransparentColor);
+	m_ImagesLocal.SetTransparentColor (m_clrTransparentColor);
 
 	m_uiBackImageId = 0;
 
@@ -89,8 +91,11 @@ CBCGPOutlookBarPane::CBCGPOutlookBarPane()
 	m_bDontAdjustLayout = FALSE;
 
 	m_bLocked = TRUE;
-}
 
+	m_csImageLocal = CSize(0, 0);
+	m_bIsLocalImages = FALSE;
+}
+//*********************************************************************************************************
 CBCGPOutlookBarPane::~CBCGPOutlookBarPane()
 {
 }
@@ -144,9 +149,18 @@ BOOL CBCGPOutlookBarPane::AddButton (LPCTSTR szBmpFileName, LPCTSTR szLabel,
 {
 	ASSERT (szBmpFileName != NULL);
 
-	HBITMAP hBmp = (HBITMAP) ::LoadImage (	
-								NULL, szBmpFileName, IMAGE_BITMAP, 0, 0, 
-								LR_DEFAULTSIZE | LR_LOADFROMFILE); 
+	HBITMAP hBmp = NULL;
+
+	CBCGPPngImage pngImage;
+	if (pngImage.LoadFromFile(szBmpFileName))
+	{
+		hBmp = (HBITMAP)pngImage.Detach();
+	}
+	else
+	{
+		hBmp = (HBITMAP)::LoadImage(NULL, szBmpFileName, IMAGE_BITMAP, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
+	}
+
 	if (hBmp == NULL)
 	{
 		TRACE(_T("Can't load bitmap resource: %s"), szBmpFileName);
@@ -179,7 +193,13 @@ BOOL CBCGPOutlookBarPane::AddButton (UINT uiImage, LPCTSTR lpszLabel, UINT iIdCo
 	if (uiImage != 0)
 	{
 		CBitmap bmp;
-		if (!bmp.LoadBitmap (uiImage))
+
+		CBCGPPngImage pngImage;
+		if (pngImage.Load(uiImage))
+		{
+			bmp.Attach((HBITMAP)pngImage.Detach());
+		}
+		else if (!bmp.LoadBitmap (uiImage))
 		{
 			TRACE(_T("Can't load bitmap resource: %d"), uiImage);
 			return FALSE;
@@ -202,27 +222,29 @@ BOOL CBCGPOutlookBarPane::AddButton (HBITMAP hBmp, LPCTSTR lpszLabel, UINT iIdCo
 BOOL CBCGPOutlookBarPane::AddButton (HICON hIcon, LPCTSTR lpszLabel, UINT iIdCommand, int iInsertAt,
 									 BOOL bAlphaBlend)
 {
-	ASSERT (hIcon != NULL);
-
 	int iImageIndex = -1;
 
-	ICONINFO iconInfo;
-	::GetIconInfo (hIcon, &iconInfo);
+	CSize size = globalUtils.GetIconSize(hIcon);
 
-	BITMAP bitmap;
-	::GetObject (iconInfo.hbmColor, sizeof (BITMAP), &bitmap);
-
-	CSize size (bitmap.bmWidth, bitmap.bmHeight);
+	CBCGPToolBarImages& images = m_bIsLocalImages ? m_ImagesLocal : m_Images;
 
 	if (bAlphaBlend)
 	{
-		if (m_Images.GetCount() == 0)	// First image
+		if (images.GetCount() == 0)	// First image
 		{
-			m_csImage = size;
-			m_Images.SetImageSize (size);
+			if (m_bIsLocalImages)
+			{
+				m_csImageLocal = size;
+			}
+			else
+			{
+				m_csImage = size;
+			}
+
+			images.SetImageSize (size);
 		}
 
-		iImageIndex = m_Images.AddIcon (hIcon, TRUE);
+		iImageIndex = images.AddIcon (hIcon, TRUE);
 	}
 	else
 	{
@@ -248,9 +270,6 @@ BOOL CBCGPOutlookBarPane::AddButton (HICON hIcon, LPCTSTR lpszLabel, UINT iIdCom
 
 		iImageIndex = AddBitmapImage ((HBITMAP) bmp.GetSafeHandle ());
 	}
-
-	::DeleteObject (iconInfo.hbmColor);
-	::DeleteObject (iconInfo.hbmMask);
 
 	return InternalAddButton (iImageIndex, lpszLabel, iIdCommand, iInsertAt);
 }
@@ -337,18 +356,20 @@ int CBCGPOutlookBarPane::AddBitmapImage (HBITMAP hBitmap)
 	::GetObject (hBitmap, sizeof (BITMAP), &bitmap);
 
 	CSize csImage = CSize (bitmap.bmWidth, bitmap.bmHeight);
+	CBCGPToolBarImages& images = m_bIsLocalImages ? m_ImagesLocal : m_Images;
+	CSize& szImage = m_bIsLocalImages ? m_csImageLocal : m_csImage;
 
-	if (m_Images.GetCount() == 0)	// First image
+	if (images.GetCount() == 0)	// First image
 	{
-		m_csImage = csImage;
-		m_Images.SetImageSize(csImage);
+		szImage = csImage;
+		images.SetImageSize(csImage);
 	}
 	else
 	{
-		ASSERT (m_csImage == csImage);	// All buttons should be of the same size!
+		ASSERT (szImage == csImage);	// All buttons should be of the same size!
 	}
 
-	return m_Images.AddImage (hBitmap);
+	return images.AddImage (hBitmap);
 }
 //*************************************************************************************
 void CBCGPOutlookBarPane::OnSize(UINT nType, int cx, int cy) 
@@ -393,6 +414,17 @@ int CBCGPOutlookBarPane::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
 	if (CBCGPToolBar::OnCreate(lpCreateStruct) == -1)
 		return -1;
+
+	CString strName;
+	if (lpCreateStruct->lpszName != NULL)
+	{
+		strName = lpCreateStruct->lpszName;
+	}
+
+	if (strName.IsEmpty())
+	{
+		SetWindowText(_T("ShortcutsPane"));
+	}
 
 	CBCGPGestureConfig gestureConfig;
 	gestureConfig.EnablePan(TRUE, BCGP_GC_PAN_WITH_SINGLE_FINGER_VERTICALLY | BCGP_GC_PAN_WITH_GUTTER | BCGP_GC_PAN_WITH_INERTIA);
@@ -581,12 +613,23 @@ void CBCGPOutlookBarPane::SetBackImage (UINT uiImageID)
 	m_uiBackImageId = 0;
 	if (uiImageID != 0)
 	{
-		HBITMAP hbmp = (HBITMAP) ::LoadImage (
-				AfxGetResourceHandle (),
-				MAKEINTRESOURCE (uiImageID),
-				IMAGE_BITMAP,
-				0, 0,
-				LR_CREATEDIBSECTION | LR_LOADMAP3DCOLORS);
+		HBITMAP hbmp = NULL;
+
+		CBCGPPngImage pngImage;
+		if (pngImage.Load(uiImageID))
+		{
+			hbmp = (HBITMAP)pngImage.Detach();
+		}
+		else
+		{
+			hbmp = (HBITMAP)::LoadImage(
+						AfxGetResourceHandle (),
+						MAKEINTRESOURCE (uiImageID),
+						IMAGE_BITMAP,
+						0, 0,
+						LR_CREATEDIBSECTION | LR_LOADMAP3DCOLORS);
+		}
+
 		if (hbmp != NULL)
 		{
 			BITMAP bitmap;
@@ -623,7 +666,9 @@ void CBCGPOutlookBarPane::SetTransparentColor (COLORREF color)
 	m_clrTransparentColor = color;
 	if (GetSafeHwnd () != NULL)
 	{
-		m_Images.SetTransparentColor (m_clrTransparentColor);
+		CBCGPToolBarImages& images = m_bIsLocalImages ? m_ImagesLocal : m_Images;
+		images.SetTransparentColor (m_clrTransparentColor);
+
 		Invalidate ();
 		UpdateWindow ();
 	}
@@ -664,7 +709,8 @@ void CBCGPOutlookBarPane::AdjustLocations ()
 	CRect rectClient;
 	GetClientRect (rectClient);
 
-	CSize sizeDefault = CSize (rectClient.Width () - 2, m_csImage.cy);
+	CSize& szImage = m_bIsLocalImages ? m_csImageLocal : m_csImage;
+	CSize sizeDefault = CSize (rectClient.Width () - 2, szImage.cy);
 
 	if (IsButtonExtraSizeAvailable ())
 	{
@@ -698,7 +744,7 @@ void CBCGPOutlookBarPane::AdjustLocations ()
 		ASSERT (pButton != NULL);
 
 		pButton->m_bTextBelow = m_bTextLabels;
-		pButton->m_sizeImage = m_csImage;
+		pButton->m_sizeImage = szImage;
 
 		CSize sizeButton = pButton->OnCalculateSize (&dc, sizeDefault, FALSE);
 
@@ -792,8 +838,10 @@ void CBCGPOutlookBarPane::DoPaint(CDC* pDCPaint)
 		pDC->SetTextColor (globalData.clrBtnText);
 		pDC->SetBkMode (TRANSPARENT);
 
+		CBCGPToolBarImages& images = m_bIsLocalImages ? m_ImagesLocal : m_Images;
+
 		CBCGPDrawState ds(CBCGPVisualManager::GetInstance()->IsAutoGrayscaleImages());
-		if (!m_Images.PrepareDrawImage (ds))
+		if (!images.PrepareDrawImage (ds))
 		{
 			ASSERT (FALSE);
 			return;     // something went wrong
@@ -829,7 +877,7 @@ void CBCGPOutlookBarPane::DoPaint(CDC* pDCPaint)
 			CRect rectInter;
 			if (rectInter.IntersectRect (rect, rectClip))
 			{
-				pButton->OnDraw (pDC, rect, &m_Images, FALSE, IsCustomizeMode (),
+				pButton->OnDraw (pDC, rect, &images, FALSE, IsCustomizeMode (),
 								bHighlighted);
 			}
 		}
@@ -867,7 +915,7 @@ void CBCGPOutlookBarPane::DoPaint(CDC* pDCPaint)
 		pDC->SelectClipRgn (NULL);
 		pDC->SelectObject (pOldFont);
 
-		m_Images.EndDrawImage (ds);
+		images.EndDrawImage (ds);
 	}
 }
 //****************************************************************************************
@@ -1077,7 +1125,8 @@ void CBCGPOutlookBarPane::RemoveAllButtons()
 //*************************************************************************************
 void CBCGPOutlookBarPane::ClearAll ()
 {
-	m_Images.Clear ();
+	CBCGPToolBarImages& images = m_bIsLocalImages ? m_ImagesLocal : m_Images;
+	images.Clear ();
 }
 //*************************************************************************************
 BCGP_CS_STATUS CBCGPOutlookBarPane::IsChangeState (int /*nOffset*/,
@@ -1307,16 +1356,13 @@ void CBCGPOutlookBarPane::ScrollPageUp ()
 
 	CRect rcArea;
 	GetClientRect(rcArea);
-	int nVisibleCount = 0;
 	
-	nVisibleCount = (rcArea.Height())/(pFirstVisibleButton->Rect ().Height () + m_nExtraSpace);
+	int nVisibleCount = (rcArea.Height())/(pFirstVisibleButton->Rect ().Height () + m_nExtraSpace);
 
-	for(int i=0; i<nVisibleCount; i++)
+	for (int i = 0; i < nVisibleCount; i++)
 	{
 		 ScrollUp();
 	}
-	
-
 }
 //*************************************************************************************
 void CBCGPOutlookBarPane::ScrollPageDown ()
@@ -1337,20 +1383,29 @@ void CBCGPOutlookBarPane::ScrollPageDown ()
 
 	CRect rcArea;
 	GetClientRect(rcArea);
-	int nVisibleCount = 0;
 
-	
-	nVisibleCount = (rcArea.Height())/(pFirstVisibleButton->Rect ().Height () + m_nExtraSpace);
+	int nVisibleCount = (rcArea.Height())/(pFirstVisibleButton->Rect ().Height () + m_nExtraSpace);
 
-	 for(int i=0; i<nVisibleCount; i++)
-	 {
-		 ScrollDown();
-	 }
-
+	for (int i = 0; i < nVisibleCount; i++)
+	{
+		ScrollDown();
+	}
 }
 //*************************************************************************************
 BOOL CBCGPOutlookBarPane::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/) 
 {
 	CSize sizeOverPan(0, 0);
 	return InternalScroll((int)(zDelta * GetRowHeight() / WHEEL_DELTA), sizeOverPan);
+}
+//*************************************************************************************
+void CBCGPOutlookBarPane::SetLocalImages(BOOL bSet/* = TRUE*/)
+{
+	if (!m_Buttons.IsEmpty())
+	{
+		// Can be changed BEFORE adding any buttons.
+		ASSERT(FALSE);
+		return;
+	}
+
+	m_bIsLocalImages = bSet;
 }

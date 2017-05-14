@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -46,6 +46,7 @@ class BCGCBPRODLLEXPORT CBCGPRibbonPanelMenuBar : public CBCGPPopupMenuBar
 	friend class CBCGPRibbonQuickAccessCustomizeButton;
 	friend class CBCGPRibbonBackstageViewPanel;
 	friend class CBCGPRibbonCategory;
+	friend class CBCGPRibbonEdit;
 
 // Construction
 public:
@@ -340,6 +341,9 @@ public:
 	{
 		return m_wndRibbonBar.IsFloaty () && !m_wndRibbonBar.IsQATPopup ();
 	}
+
+	virtual BOOL IsParentEditFocused();
+	virtual BOOL IsDropListMode();
 
 protected:
 	virtual void DoPaint (CDC* pPaintDC);

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,9 +17,11 @@
 
 #include "BCGPIntelliSenseWnd.h"
 #include "BCGPEditCtrl.h"
+#include "Bcgglobals.h"
 
 #ifndef _BCGPEDIT_STANDALONE
 	#include "BCGPGlobalUtils.h"
+	#include "BCGPVisualManager.h"
 #endif
 
 #ifndef BCGP_EXCLUDE_EDIT_CTRL
@@ -47,6 +49,8 @@ static char THIS_FILE[] = __FILE__;
 
 IMPLEMENT_DYNCREATE(CBCGPIntelliSenseWnd, CMiniFrameWnd)
 
+HWND CBCGPIntelliSenseWnd::m_hwndActive = NULL;
+
 CBCGPIntelliSenseWnd::CBCGPIntelliSenseWnd()
 {
 	m_pParentEditCtrl = NULL;
@@ -62,6 +66,8 @@ BEGIN_MESSAGE_MAP(CBCGPIntelliSenseWnd, CMiniFrameWnd)
 	//{{AFX_MSG_MAP(CBCGPIntelliSenseWnd)
 	ON_WM_DESTROY()
 	ON_WM_NCHITTEST()
+	ON_WM_NCPAINT()
+	ON_WM_NCCALCSIZE()
 	//}}AFX_MSG_MAP
 	ON_MESSAGE (WM_DELETEITEM, DeleteItem)
 END_MESSAGE_MAP()
@@ -75,6 +81,8 @@ BOOL CBCGPIntelliSenseWnd::Create (CObList& lstData, DWORD dwStyle, CPoint pt,
 	ASSERT_VALID (this);
 	ASSERT (m_pLstBoxData == NULL);
 
+	m_hwndActive = NULL;
+
 	m_pParentEditCtrl = DYNAMIC_DOWNCAST (CBCGPEditCtrl, pParentWnd);
 
 	if (m_pParentEditCtrl == NULL)
@@ -83,11 +91,21 @@ BOOL CBCGPIntelliSenseWnd::Create (CObList& lstData, DWORD dwStyle, CPoint pt,
 	}
 
 	DWORD dwFinalStyle = dwStyle & ~WS_VISIBLE;
+
+#if (!defined _BCGPEDIT_STANDALONE) && (!defined _BCGSUITE_)
+	if (CBCGPVisualManager::GetInstance()->IsOwnerDrawCaption())
+	{
+		dwFinalStyle = dwFinalStyle & ~MFS_4THICKFRAME;
+	}
+#endif
+
 	if (!CMiniFrameWnd::Create (NULL, NULL, dwFinalStyle, 
 							CRect (pt.x, pt.y, pt.x + 100, pt.y + 100), pParentWnd))
 	{
 		return FALSE;
 	}
+
+	m_hwndActive = GetSafeHwnd();
 
 	if (pLBDataRTC != NULL)
 	{
@@ -116,8 +134,7 @@ BOOL CBCGPIntelliSenseWnd::Create (CObList& lstData, DWORD dwStyle, CPoint pt,
 	memset (&logfont, 0, sizeof (LOGFONT));
 	if (pLBFont == NULL)
 	{
-		logfont.lfHeight = 8;
-		lstrcpy (logfont.lfFaceName, _T ("MS Sans Serif"));
+		globalData.fontRegular.GetLogFont(&logfont);
 	}
 	else
 	{
@@ -125,8 +142,7 @@ BOOL CBCGPIntelliSenseWnd::Create (CObList& lstData, DWORD dwStyle, CPoint pt,
 	}
 
 	m_lbFont.CreateFontIndirect (&logfont);
-	m_pLstBoxData->m_pFont = &m_lbFont; 
-
+	m_pLstBoxData->m_pFont = &m_lbFont;
 
 	for (POSITION pos = lstData.GetHeadPosition (); pos != NULL;)
 	{
@@ -206,8 +222,10 @@ BOOL CBCGPIntelliSenseWnd::Create (CObList& lstData, DWORD dwStyle, CPoint pt,
 
 void CBCGPIntelliSenseWnd::OnDestroy() 
 {
-	CWnd* pParentWnd = GetParentEditCtrl ();
-	if(pParentWnd->GetSafeHwnd () != NULL)
+	m_hwndActive = NULL;
+
+	CWnd* pParentWnd = GetParentEditCtrl();
+	if (pParentWnd->GetSafeHwnd() != NULL && ::IsWindow(pParentWnd->GetSafeHwnd()))
 	{
 		pParentWnd->SetFocus ();
 	}
@@ -239,4 +257,32 @@ LRESULT CBCGPIntelliSenseWnd::DeleteItem (WPARAM /*wParam*/, LPARAM lParam)
 	return TRUE;
 }
 
+void CBCGPIntelliSenseWnd::OnNcPaint() 
+{
+#ifndef _BCGPEDIT_STANDALONE
+	if ((GetStyle() & MFS_4THICKFRAME) == 0)
+	{
+		CBCGPVisualManager::GetInstance ()->OnDrawControlBorder(this);
+	}
+	else
+#endif
+	{
+		Default();
+	}
+}
+
+void CBCGPIntelliSenseWnd::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR* lpncsp) 
+{
+	CMiniFrameWnd::OnNcCalcSize(bCalcValidRects, lpncsp);
+
+	if ((GetStyle() & MFS_4THICKFRAME) == 0)
+	{
+		lpncsp->rgrc[0].left++; 
+		lpncsp->rgrc[0].top++ ;
+		lpncsp->rgrc[0].right--;
+		lpncsp->rgrc[0].bottom--;
+	}
+}
+
 #endif	// BCGP_EXCLUDE_EDIT_CTRL
+

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -32,6 +32,7 @@
 #endif
 
 #include "BCGPMath.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -150,18 +151,22 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		return;
 	}
 
-	CBCGPPlannerManagerCtrl* pPlanner = GetPlanner ();
-	ASSERT_VALID (pPlanner);
-
-	const DWORD dwDrawFlags = pPlanner->GetDrawFlags ();
-	const BOOL bIsGradientFill = dwDrawFlags & BCGP_PLANNER_DRAW_APP_GRADIENT_FILL;
-	const BOOL bIsRoundedCorners = dwDrawFlags & BCGP_PLANNER_DRAW_APP_ROUNDED_CORNERS;
+	const DWORD dwDrawFlags = GetDrawFlags ();
+	const BOOL bIsGradientFill = (dwDrawFlags & BCGP_PLANNER_DRAW_APP_GRADIENT_FILL) ==
+		BCGP_PLANNER_DRAW_APP_GRADIENT_FILL;
+	const BOOL bIsRoundedCorners = (dwDrawFlags & BCGP_PLANNER_DRAW_APP_ROUNDED_CORNERS) == 
+		BCGP_PLANNER_DRAW_APP_ROUNDED_CORNERS;
 	const BOOL bDrawDuration = (dwDrawFlags & BCGP_PLANNER_DRAW_APP_NO_DURATION) == 0;
-	const BOOL bDrawDurationShape = (dwDrawFlags & BCGP_PLANNER_DRAW_APP_DURATION_SHAPE) == 
-		BCGP_PLANNER_DRAW_APP_DURATION_SHAPE && bDrawDuration;
-	const BOOL bIsOverrideSelection = (dwDrawFlags & BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION) ==
-		BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION || bDrawDurationShape;
-	
+	const BOOL bDrawDurationShape = ((dwDrawFlags & BCGP_PLANNER_DRAW_APP_DURATION_SHAPE) == 
+		BCGP_PLANNER_DRAW_APP_DURATION_SHAPE) && bDrawDuration;
+	const BOOL bDrawDurationAlternative = ((dwDrawFlags & BCGP_PLANNER_DRAW_APP_DURATION_MULTIDAY) == 
+		BCGP_PLANNER_DRAW_APP_DURATION_MULTIDAY) && bDrawDuration;
+	const BOOL bIsOverrideSelection = ((dwDrawFlags & BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION) ==
+		BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION) || bDrawDurationShape;
+	const BOOL bDrawBorder = ((dwDrawFlags & BCGP_PLANNER_DRAW_APP_NO_BORDER) == 0) ||
+		!bIsOverrideSelection;
+	const BOOL bFrameRgn = bIsRoundedCorners || bDrawDurationShape || !bDrawBorder;
+
 	const CRect& rectDS = pDS->GetRect ();
 	CRect rect   (rectDS);
 
@@ -172,93 +177,123 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 	CString      strFinish (pApp->m_strFinish);
 
 	const BOOL bAlternative = pApp->IsAllDay () || pApp->IsMultiDay ();
-	const BOOL bDrawShadow  = IsDrawAppsShadow () && !bAlternative;
+	const BOOL bDrawShadow  = IsDrawAppsShadow () && !bAlternative && (dwDrawFlags & BCGP_PLANNER_DRAW_APP_NO_SHADOW) == 0;
 	const BOOL bEmpty       = (dtStart == dtFinish) && !bAlternative;
 	const BOOL bSelected    = pApp->IsSelected ();
 
 	const BOOL bAllBoders   = pDS->GetBorder () == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_ALL;
 
-	BOOL bDrawTime     = TRUE;
+	const int nDurationBarWidth = globalUtils.ScaleByDPI(BCGP_PLANNER_DURATION_BAR_WIDTH);
+	const int nAlternativeLeft = bDrawDurationAlternative ? 0 : 4;
+	const int nAlternativeRight = 4;
+
+	const DWORD dwDrawTimeFlags = GetDrawTimeFlags ();
+	BOOL bDrawTime = dwDrawTimeFlags & BCGP_PLANNER_DRAW_TIME;
+	const BOOL bDrawTimeMulti = dwDrawTimeFlags & BCGP_PLANNER_DRAW_TIME_MULTI;
+	const BOOL bDrawTimeSmart = dwDrawTimeFlags & BCGP_PLANNER_DRAW_TIME_SMART;
+
 	BOOL bDurationFull = FALSE;
 	CRect rectDuration (0, 0, 0, 0);
 
-	if (!bAlternative && bDrawDuration)
+	if (bAlternative && nAlternativeLeft == 0 &&
+		(pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START) == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
 	{
-		const BOOL bNonSingleDay = !IsOneDay (dtStart, dtFinish);
-
-		if (bNonSingleDay)
+		if (rect.left != m_rectApps.left)
 		{
-			if (pDS->GetBorder () == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
-			{
-				dtFinish  = COleDateTime (dtFinish.GetYear (), dtFinish.GetMonth (), dtFinish.GetDay (),
-					0, 0, 0);
-			}
-			else if (pDS->GetBorder () == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_FINISH)
-			{
-				dtStart  = COleDateTime (dtFinish.GetYear (), dtFinish.GetMonth (), dtFinish.GetDay (),
-					0, 0, 0);
-			}
+			rect.left++;
 		}
+	}
 
+	if ((!bAlternative || bDrawDurationAlternative) && bDrawDuration)
+	{
 		rectDuration = rect;
-		rectDuration.right = rectDuration.left + CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH;
+		rectDuration.right = rectDuration.left + nDurationBarWidth;
 
-		const int nTimeDelta = CBCGPPlannerView::GetTimeDeltaInMinuts 
-			(GetTimeDelta ());
-
-		double dStart = 
-			(dtStart.GetHour () * 60 + dtStart.GetMinute ()) / (double)nTimeDelta;
-		double dEnd = IsOneDay (dtStart, dtFinish)
-			? (dtFinish.GetHour () * 60 + dtFinish.GetMinute ()) / (double)nTimeDelta
-			: 24 * 60 / (double)nTimeDelta;
-
-		int nStart = (int)dStart;
-		int nEnd   = (int)ceil(dEnd);
-
-		if (!bEmpty)
+		if (!bAlternative)
 		{
-			double dDelta = (double)rectDuration.Height () / (double)(nEnd - nStart);
+			const BOOL bNonSingleDay = !IsOneDay (dtStart, dtFinish);
 
-			rectDuration.top    += long((dStart - nStart) * dDelta);
-			rectDuration.bottom -= long((nEnd - dEnd) * dDelta);
-		}
+			if (bNonSingleDay)
+			{
+				if (pDS->GetBorder () == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
+				{
+					dtFinish  = COleDateTime (dtFinish.GetYear (), dtFinish.GetMonth (), dtFinish.GetDay (),
+						0, 0, 0);
+				}
+				else if (pDS->GetBorder () == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_FINISH)
+				{
+					dtStart  = COleDateTime (dtFinish.GetYear (), dtFinish.GetMonth (), dtFinish.GetDay (),
+						0, 0, 0);
+				}
+			}
 
-		if (bNonSingleDay)
-		{
-			dtStart  = pApp->GetStart ();
-			dtFinish = pApp->GetFinish ();
+			const int nTimeDelta = CBCGPPlannerView::GetTimeDeltaInMinuts 
+				(GetTimeDelta ());
 
-			dStart = 
+			double dStart = 
 				(dtStart.GetHour () * 60 + dtStart.GetMinute ()) / (double)nTimeDelta;
-			dEnd = IsOneDay (dtStart, dtFinish)
+			double dEnd = IsOneDay (dtStart, dtFinish)
 				? (dtFinish.GetHour () * 60 + dtFinish.GetMinute ()) / (double)nTimeDelta
 				: 24 * 60 / (double)nTimeDelta;
 
-			nStart = (int)dStart;
-			nEnd   = (int)ceil(dEnd);
+			int nStart = (int)dStart;
+			int nEnd   = (int)ceil(dEnd);
+
+			if (!bEmpty)
+			{
+				double dDelta = (double)rectDuration.Height () / (double)(nEnd - nStart);
+
+				rectDuration.top    += long((dStart - nStart) * dDelta);
+				rectDuration.bottom -= long((nEnd - dEnd) * dDelta);
+			}
+
+			if (bNonSingleDay)
+			{
+				dtStart  = pApp->GetStart ();
+				dtFinish = pApp->GetFinish ();
+
+				dStart = 
+					(dtStart.GetHour () * 60 + dtStart.GetMinute ()) / (double)nTimeDelta;
+				dEnd = IsOneDay (dtStart, dtFinish)
+					? (dtFinish.GetHour () * 60 + dtFinish.GetMinute ()) / (double)nTimeDelta
+					: 24 * 60 / (double)nTimeDelta;
+
+				nStart = (int)dStart;
+				nEnd   = (int)ceil(dEnd);
+			}
+
+			if (bDrawTime && bDrawTimeSmart)
+			{
+				bDrawTime = dStart != nStart || dEnd != nEnd;
+			}
+
+			bDurationFull = !bEmpty && (rectDuration.IsRectEmpty () ||
+					(rectDuration.top == rect.top && rectDuration.bottom == rect.bottom));
 		}
-
-		bDrawTime = dStart != nStart || dEnd != nEnd;
-
-		bDurationFull = !bEmpty && (rectDuration.IsRectEmpty () ||
-				(rectDuration.top == rect.top && rectDuration.bottom == rect.bottom));
+		else
+		{
+			if (bAllBoders || 
+				!bFrameRgn ||
+				(pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START) == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
+			{
+				rectDuration.OffsetRect(nAlternativeLeft, 0);
+				bDurationFull = TRUE;
+			}
+		}
 	}
 
-	const int durationMinHeight = 3;
+	const int durationMinHeight = globalUtils.ScaleByDPI(3);
 
 	CRgn rgn;
 	CRect rectClip (0, 0, 0, 0);
 	pDC->GetClipBox (rectClip);
 
-	if (bIsRoundedCorners)
+	if (bFrameRgn)
 	{
-		int left  = 0;
-		int right = 0;
-
 		if (bAlternative)
 		{
-			left  = 4;
-			right = 4;
+			int left = nAlternativeLeft;
+			int right = nAlternativeRight;
 
 			if (!bAllBoders)
 			{
@@ -277,20 +312,17 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 			{
 				rect.InflateRect (0, 1);
 			}
-		}
-		else
-		{
-			if (bSelected && !bIsOverrideSelection)
+
+			rect.DeflateRect (left, 0, right, 0);
+
+			if (bIsRoundedCorners)
 			{
-				rect.InflateRect (0, CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH - 1);
+				rgn.CreateRoundRectRgn (rect.left, rect.top, rect.right + 1, rect.bottom + 1, 5, 5);
 			}
-		}
-
-		rect.DeflateRect (left, 0, right, 0);
-
-		if (bAlternative)
-		{
-			rgn.CreateRoundRectRgn (rect.left, rect.top, rect.right + 1, rect.bottom + 1, 5, 5);
+			else
+			{
+				rgn.CreateRectRgn (rect.left, rect.top, rect.right, rect.bottom);
+			}
 
 			if (!bAllBoders)
 			{
@@ -313,15 +345,27 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		}
 		else
 		{
+			if (bSelected && !bIsOverrideSelection)
+			{
+				rect.InflateRect (0, nDurationBarWidth - 1);
+			}
+
 			BOOL bDuration = bDrawDurationShape && !bDurationFull;
 
 			int left = rect.left;
 			if (bDuration)
 			{
-				left += CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH;
+				left += nDurationBarWidth;
 			}
 
-			rgn.CreateRoundRectRgn (left, rect.top, rect.right + 1, rect.bottom + 1, 5, 5);
+			if (bIsRoundedCorners)
+			{
+				rgn.CreateRoundRectRgn (left, rect.top, rect.right + 1, rect.bottom + 1, 5, 5);
+			}
+			else
+			{
+				rgn.CreateRectRgn (left, rect.top, rect.right, rect.bottom);
+			}
 
 			if (!bAllBoders)
 			{
@@ -378,7 +422,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 
 			if (bSelected && !bIsOverrideSelection)
 			{
-				rect.DeflateRect (0, CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH - 1);
+				rect.DeflateRect (0, nDurationBarWidth - 1);
 			}
 		}
 
@@ -388,7 +432,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 	{
 		if (bAlternative)
 		{
-			rect.DeflateRect (4, 0);
+			rect.DeflateRect (nAlternativeLeft, 0, nAlternativeRight, 0);
 		}
 		else
 		{
@@ -397,7 +441,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 				int left = rect.left;
 				if (!bDurationFull)
 				{
-					left += CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH;
+					left += nDurationBarWidth;
 				}
 
 				rgn.CreateRectRgn (left, rect.top, rect.right, rect.bottom);
@@ -497,7 +541,14 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		if (bIsGradientFill)
 		{
 			CRect rt (rect);
-			rt.DeflateRect (1, 1);
+
+			rt.left++;
+			rt.top++;
+			if (bDrawBorder)
+			{
+				rt.right--;
+				rt.bottom--;
+			}
 
 			CBCGPDrawManager dm (*pDC);
 			dm.FillGradient (rt, clrBack1, clrBack2);
@@ -509,7 +560,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		}
 	}
 
-	if (bIsRoundedCorners && bAlternative)
+	if (bFrameRgn && bAlternative)
 	{
 		rect.DeflateRect (1, 0);
 	}
@@ -521,12 +572,18 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 
 		if (bDrawDurationShape)
 		{
-			if (pApp->GetDurationColor () != CLR_DEFAULT)
+			COLORREF clr = bIsRoundedCorners
+							? pApp->GetDurationColor ()
+							: visualManager->GetPlannerAppointmentDurationColor(this, pApp);
+			if (clr != CLR_DEFAULT)
 			{
-				CBrush br (pApp->GetDurationColor ());
+				CBrush br (clr);
 
 				CRect rt1 (rectDuration);
-				rt1.right += 1;
+				if (bDrawBorder)
+				{
+					rt1.right++;
+				}
 				pDC->FillRect (rt1, &br);
 			}
 
@@ -536,9 +593,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		{
 			pDC->FillRect (rt, &globalData.brWindow);
 
-			CBrush br (pApp->GetDurationColor () == CLR_DEFAULT
-				? globalData.clrWindow
-				: pApp->GetDurationColor ());
+			CBrush br (visualManager->GetPlannerAppointmentDurationColor(this, pApp));
 
 			CPen penBlack (PS_SOLID, 0, clrFrame1);
 			CPen* pOldPen = pDC->SelectObject (&penBlack);
@@ -570,8 +625,30 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 				pDC->LineTo (points[2].x, points[2].y);
 			}
 
-			pDC->MoveTo (rt.right, rt.top);
-			pDC->LineTo (rt.right, rt.bottom);
+			if (bDrawBorder)
+			{
+				pDC->MoveTo (rt.right, rt.top);
+				pDC->LineTo (rt.right, rt.bottom);
+			}
+			else
+			{
+				CRect rt1 (rt);
+				rt1.right++;
+
+				if (!bFrameRgn)
+				{
+					pDC->Draw3dRect (rt1, clrFrame1, clrFrame1);
+				}
+				else
+				{
+					CRgn rgnD;
+					rgnD.CreateRectRgnIndirect(rt1);
+					rgnD.CombineRgn(&rgn, &rgnD, RGN_AND);
+
+					CBrush brFrame(clrFrame1);
+					pDC->FrameRgn (&rgnD, &brFrame, 1, 1);
+				}
+			}
 
 			pDC->SelectObject (pOldPen);
 
@@ -586,7 +663,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 
 	CSize szClock (GetClockIconSize ());
 
-	if (bAlternative && !pApp->IsAllDay ())
+	if (bAlternative && !pApp->IsAllDay () && bDrawTimeMulti)
 	{
 		if ((IsDrawTimeAsIcons () || 
 			 (dwDrawFlags & BCGP_PLANNER_DRAW_APP_NO_MULTIDAY_CLOCKS) == 0) && 
@@ -597,7 +674,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 			if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
 			{
 				if (dtStart.GetHour () != 0 || dtStart.GetMinute () != 0 ||
-					dtStart.GetSecond () != 0)
+					dtStart.GetSecond () != 0 || !bDrawTimeSmart)
 				{
 					DrawClockIcon (pDC, CPoint (rect.left + 1, rect.top + top), 
 						dtStart);
@@ -609,7 +686,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 			if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_FINISH)
 			{
 				if (dtFinish.GetHour () != 0 || dtFinish.GetMinute () != 0 ||
-					dtFinish.GetSecond () != 0)
+					dtFinish.GetSecond () != 0 || !bDrawTimeSmart)
 				{
 					DrawClockIcon (pDC, CPoint (rect.right - szClock.cx - 1, rect.top + top), 
 						dtFinish);
@@ -646,7 +723,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 				if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
 				{
 					if (dtStart.GetHour () != 0 || dtStart.GetMinute () != 0 ||
-						dtStart.GetSecond () != 0)
+						dtStart.GetSecond () != 0 || !bDrawTimeSmart)
 					{
 						CRect rectText (rect);
 						rectText.DeflateRect (2, 0, 3, 1);
@@ -661,7 +738,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 				if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_FINISH)
 				{
 					if (dtFinish.GetHour () != 0 || dtFinish.GetMinute () != 0 ||
-						dtFinish.GetSecond () != 0)
+						dtFinish.GetSecond () != 0 || !bDrawTimeSmart)
 					{
 						CRect rectText (rect);
 						rectText.DeflateRect (2, 0, 3, 1);
@@ -757,7 +834,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		rect.left = pt.x;
 	}
 
-	if (!bCancelDraw && !bAlternative)
+	if (!bCancelDraw && !bAlternative && bDrawTime)
 	{
 		CSize szClock (GetClockIconSize ());
 
@@ -781,44 +858,41 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		}
 		else
 		{
-			if (bDrawTime)
+			CSize szSpace (pDC->GetTextExtent (_T(" ")));
+
+			CString str;
+
+			if (!strStart.IsEmpty ())
 			{
-				CSize szSpace (pDC->GetTextExtent (_T(" ")));
+				str += strStart;
 
-				CString str;
-
-				if (!strStart.IsEmpty ())
+				if (!strFinish.IsEmpty () && !bEmpty)
 				{
-					str += strStart;
+					str += _T("-") + strFinish;
+				}
+			}
 
-					if (!strFinish.IsEmpty () && !bEmpty)
-					{
-						str += _T("-") + strFinish;
-					}
+			if (!str.IsEmpty ())
+			{
+				COLORREF clrTime = visualManager->GetPlannerAppointmentTimeColor(this, 
+					bSelected, !bAlternative, dwDrawFlags);
+				if (clrTime != CLR_DEFAULT)
+				{
+					pDC->SetTextColor (clrTime);
 				}
 
-				if (!str.IsEmpty ())
+				CSize sz (pDC->GetTextExtent (str));
+
+				CRect rectText (rect);
+				rectText.DeflateRect (4, 1, 1, 0);
+
+				pDC->DrawText (str, rectText, DT_NOPREFIX);	
+
+				rect.left += sz.cx + szSpace.cx;
+
+				if (clrTime != CLR_DEFAULT)
 				{
-					COLORREF clrTime = visualManager->GetPlannerAppointmentTimeColor(this, 
-						bSelected, !bAlternative, dwDrawFlags);
-					if (clrTime != CLR_DEFAULT)
-					{
-						pDC->SetTextColor (clrTime);
-					}
-
-					CSize sz (pDC->GetTextExtent (str));
-
-					CRect rectText (rect);
-					rectText.DeflateRect (4, 1, 1, 0);
-
-					pDC->DrawText (str, rectText, DT_NOPREFIX);	
-
-					rect.left += sz.cx + szSpace.cx;
-
-					if (clrTime != CLR_DEFAULT)
-					{
-						pDC->SetTextColor (clrText);
-					}
+					pDC->SetTextColor (clrText);
 				}
 			}
 		}
@@ -844,7 +918,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 					rectText.left = rectDS.left;
 					if (bDrawDuration)
 					{
-						rectText.left += CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH + 1;
+						rectText.left += nDurationBarWidth + 1;
 					}
 
 					rectText.top += szText.cy;
@@ -890,7 +964,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 	if (bAlternative)
 	{
 		rect.right = rectDS.right;
-		rect.DeflateRect (4, 0);
+		rect.DeflateRect (nAlternativeLeft, 0, nAlternativeRight, 0);
 	}
 
 	CRect rectEdit (rect);
@@ -898,16 +972,16 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 	if (!bAlternative)
 	{
 		rectEdit.left = rectDS.left + 1;
-		if (bDrawDuration && (!bDrawDurationShape || !bDurationFull))
+		if (bDrawDuration && (!bDrawDurationShape || !bDurationFull || bFrameRgn))
 		{
-			rectEdit.left += CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH;
+			rectEdit.left += nDurationBarWidth;
 			if (!bIsOverrideSelection)
 			{
 				rectEdit.left++;
 			}
-		}	
+		}
 
-		if (bIsRoundedCorners || bIsOverrideSelection)
+		if (bFrameRgn || bIsOverrideSelection)
 		{
 			rectEdit.DeflateRect (0, 1, 1, 1);
 		}
@@ -916,19 +990,34 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 	}
 	else
 	{
-		if (bIsRoundedCorners)
+		if (bFrameRgn)
 		{
-			rectEdit.DeflateRect (1, 0);
-
-			if ((pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START) == 0)
+			if (bDrawDurationAlternative)
 			{
-				rectEdit.left = rectDS.left + 1;
+				rectEdit.left = rectDS.left + ((pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START) == 0 ? 0 : 1);
+				rectEdit.left += nDurationBarWidth;
+
+				if (!bIsOverrideSelection)
+				{
+					rectEdit.left++;
+				}
+			}
+			else
+			{
+				rectEdit.left++;
+
+				if ((pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START) == 0)
+				{
+					rectEdit.left = rectDS.left + 1;
+				}
 			}
 
 			if ((pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_FINISH) == 0)
 			{
-				rectEdit.right = rectDS.right - 1;
+				rectEdit.right = rectDS.right;
 			}
+
+			rectEdit.right--;
 		}
 		else
 		{
@@ -962,37 +1051,41 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 	{
 		rectEdit.DeflateRect (0, 1);
 	}
+
 	pDS->SetRectEditHitTest (rectEdit);
 
 	if (bAlternative)
 	{
-		if (!bIsRoundedCorners)
+		if (!bFrameRgn)
 		{
 			CPen pen (PS_SOLID, 0, clrFrame2);
 			CPen* pOldPen = pDC->SelectObject (&pen);
 
-			if(pDS->GetBorder () == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_ALL)
+			if (bDrawBorder || bSelected)
 			{
-				pDC->Draw3dRect (rect, clrFrame2, clrFrame2);
-			}
-			else
-			{
-				pDC->MoveTo (rect.left , rect.top);
-				pDC->LineTo (rect.right, rect.top);
-
-				pDC->MoveTo (rect.left , rect.bottom - 1);
-				pDC->LineTo (rect.right, rect.bottom - 1);
-
-				if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
+				if(pDS->GetBorder () == CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_ALL)
 				{
-					pDC->MoveTo (rect.left, rect.top);
-					pDC->LineTo (rect.left, rect.bottom);
+					pDC->Draw3dRect (rect, clrFrame2, clrFrame2);
 				}
-
-				if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_FINISH)
+				else
 				{
-					pDC->MoveTo (rect.right - 1, rect.top);
-					pDC->LineTo (rect.right - 1, rect.bottom);
+					pDC->MoveTo (rect.left , rect.top);
+					pDC->LineTo (rect.right, rect.top);
+
+					pDC->MoveTo (rect.left , rect.bottom - 1);
+					pDC->LineTo (rect.right, rect.bottom - 1);
+
+					if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
+					{
+						pDC->MoveTo (rect.left, rect.top);
+						pDC->LineTo (rect.left, rect.bottom);
+					}
+
+					if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_FINISH)
+					{
+						pDC->MoveTo (rect.right - 1, rect.top);
+						pDC->LineTo (rect.right - 1, rect.bottom);
+					}
 				}
 			}
 
@@ -1026,7 +1119,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		{
 			pDC->Draw3dRect (rect, clrFrame2, clrFrame2);
 		}
-		else
+		else if (bDrawBorder)
 		{
 			pDC->Draw3dRect (rect, clrFrame1, clrFrame1);
 		}
@@ -1036,30 +1129,28 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 			if (!bIsOverrideSelection)
 			{
 				CRect rt (rect);
-				rt.InflateRect (0, CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH - 1);
+				rt.InflateRect (0, nDurationBarWidth - 1);
 
-				CBrush br (pApp->GetDurationColor () == CLR_DEFAULT 
-					? globalData.clrWindow
-					: pApp->GetDurationColor ());
+				CBrush br (visualManager->GetPlannerAppointmentDurationColor(this, pApp));
 
 				rt.DeflateRect (1, 1, 1, 0);
-				rt.bottom = rt.top + CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH - 2;
+				rt.bottom = rt.top + nDurationBarWidth - 2;
 
 				if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_START)
 				{
 					pDC->FillRect (rt, &br);
-					rect.top -= CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH - 1;
+					rect.top -= nDurationBarWidth - 1;
 				}
 
 				if (pDS->GetBorder () & CBCGPAppointmentDrawStruct::BCGP_APPOINTMENT_DS_BORDER_FINISH)
 				{
 					rt.OffsetRect (0, rectDS.Height () + rt.Height ());
 					pDC->FillRect (rt, &br);
-					rect.bottom += CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH - 1;
+					rect.bottom += nDurationBarWidth - 1;
 				}
 			}
 
-			if (!bIsRoundedCorners)
+			if (!bFrameRgn)
 			{
 				CRect rt (rect);
 				if (bIsOverrideSelection)
@@ -1072,25 +1163,28 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 		}
 	}
 
-	if (bIsRoundedCorners || bDrawDurationShape)
+	if (bFrameRgn)
 	{
 		CRgn rgnClip;
 		rgnClip.CreateRectRgn (rectClip.left, rectClip.top, rectClip.right, rectClip.bottom);
 
 		pDC->SelectClipRgn (&rgnClip, RGN_COPY);
 
-		int nWidth = 1;
-
-		if (bSelected)
+		if (bDrawBorder || bSelected)
 		{
-			if (bIsOverrideSelection || bAlternative)
-			{
-				nWidth = 2;
-			}
-		}
+			int nWidth = 1;
 
-		CBrush br (clrFrame2);
-		pDC->FrameRgn (&rgn, &br, nWidth, nWidth);
+			if (bSelected)
+			{
+				if (bIsOverrideSelection || bAlternative)
+				{
+					nWidth = 2;
+				}
+			}
+
+			CBrush br (clrFrame2);
+			pDC->FrameRgn (&rgn, &br, nWidth, nWidth);
+		}
 	}
 
 	if (bCancelDraw)
@@ -1103,7 +1197,7 @@ void CBCGPPlannerViewDay::DrawAppointment (CDC* pDC, CBCGPAppointment* pApp, CBC
 
 void CBCGPPlannerViewDay::OnDrawAppointmentsDuration (CDC* pDC)
 {
-	if ((GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 
+	if ((GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 
 			BCGP_PLANNER_DRAW_VIEW_NO_DURATION)
 	{
 		return;
@@ -1127,6 +1221,7 @@ void CBCGPPlannerViewDay::OnDrawAppointmentsDuration (CDC* pDC)
 	const int nMinuts = CBCGPPlannerView::GetTimeDeltaInMinuts (GetTimeDelta ());
 	const int nCount = GetViewHours() * 60 / nMinuts;
 	const int yOffset = GetViewHourOffset () * m_nRowHeight;
+	const int nDurationBarWidth = globalUtils.ScaleByDPI(BCGP_PLANNER_DURATION_BAR_WIDTH);
 
 	for (int nApp = 0; nApp < 2; nApp++)
 	{
@@ -1197,16 +1292,13 @@ void CBCGPPlannerViewDay::OnDrawAppointmentsDuration (CDC* pDC)
 			int nStart = (dtStart - dtS).GetDays ();
 			int nEnd   = min(nStart + span.GetDays () + 1, GetViewDuration ());
 
-			CBrush br (pApp->GetDurationColor () == CLR_DEFAULT
-				? globalData.clrWindow
-				: pApp->GetDurationColor ());
+			CBrush br (visualManager->GetPlannerAppointmentDurationColor(this, pApp));
 
 			for(int i = nStart; i < nEnd; i++)
 			{
 				CRect rt (m_ViewRects[i]);
 
-				rt.right  = rt.left + 
-					CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH + 1;		
+				rt.right  = rt.left + nDurationBarWidth + 1;		
 				rt.left  -= (i == 0) ? 1 : 0;
 				rt.top   -= 1;
 				rt.bottom = rt.top + nCount * m_nRowHeight;
@@ -1244,7 +1336,7 @@ void CBCGPPlannerViewDay::OnDrawAppointmentsDuration (CDC* pDC)
 
 void CBCGPPlannerViewDay::OnDrawUpDownIcons (CDC* pDC)
 {
-	if ((GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_UPDOWN) == 
+	if ((GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_UPDOWN) == 
 			BCGP_PLANNER_DRAW_VIEW_NO_UPDOWN)
 	{
 		return;
@@ -1291,8 +1383,7 @@ void CBCGPPlannerViewDay::GetCaptionFormatStrings (CStringArray& sa)
 {
 	sa.RemoveAll ();
 
-	BOOL bCompact = (GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
-			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT;
+	BOOL bCompact = (GetDrawFlags () & (BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT | BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_WITH_HEADER)) != 0;
 
 	if (!bCompact)
 	{
@@ -1345,14 +1436,40 @@ void CBCGPPlannerViewDay::AdjustLayout (CDC* /*pDC*/, const CRect& rectClient)
 		StopTimer (FALSE);
 	}
 
-	m_nHeaderHeight       = 1;
+	const DWORD dwDrawFlags = GetDrawFlags ();
+	const BOOL bCaptionWithHeader = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_WITH_HEADER) == 
+		BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_WITH_HEADER;
+	const BOOL bHeaderEx = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED) == 
+		BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED;
+	const BOOL bCaptionEx = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED) == 
+		BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED;
+	const BOOL bTimeBarSimple = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_TIME_BAR_NO_MINUTS) == 
+		BCGP_PLANNER_DRAW_VIEW_TIME_BAR_NO_MINUTS;
+
+	m_nHeaderHeight = bCaptionWithHeader ? 2 : 1;
+
+	if (bCaptionWithHeader || bCaptionEx)
+	{
+		m_nHeaderHeight = m_nRowHeight;
+
+		if (bCaptionEx)
+		{
+			m_nHeaderHeight = (m_nHeaderHeight * 5) / 4;
+		}
+
+		if (bCaptionWithHeader)
+		{
+			m_nHeaderHeight += bHeaderEx ? (m_nRowHeight * 5) / 4 : m_nRowHeight;
+		}
+	}
+
 	m_nHeaderAllDayHeight = 1;
 
 	const int nMinuts = CBCGPPlannerView::GetTimeDeltaInMinuts (GetTimeDelta ());
 	const int nCount = GetViewHours() * 60 / nMinuts;
 
 	m_rectTimeBar = rectClient;
-	m_rectTimeBar.right = m_rectTimeBar.left + (long)(m_nRowHeight * (nMinuts == 60 ? 2.5 : 3.0)) + 5;
+	m_rectTimeBar.right = m_rectTimeBar.left + (long)(m_nRowHeight * ((nMinuts == 60 || bTimeBarSimple) ? 2.5 : 3.0)) + 5;
 
 	m_rectApps.left = m_rectTimeBar.right;
 
@@ -1461,8 +1578,17 @@ void CBCGPPlannerViewDay::AdjustLayout (CDC* /*pDC*/, const CRect& rectClient)
 		}
 	}
 
-	int nRow = rectClient.Height () / 
-		(nCount + m_nHeaderHeight + m_nHeaderAllDayHeight);
+	int nRow = 0;
+	if (bCaptionWithHeader || bCaptionEx)
+	{
+		nRow = (rectClient.Height () - m_nHeaderHeight) / 
+			(nCount + m_nHeaderAllDayHeight);
+	}
+	else
+	{
+		nRow = rectClient.Height () / 
+			(nCount + m_nHeaderHeight + m_nHeaderAllDayHeight);
+	}
 
 	int nOldRowHeight = m_nRowHeight;
 
@@ -1473,7 +1599,12 @@ void CBCGPPlannerViewDay::AdjustLayout (CDC* /*pDC*/, const CRect& rectClient)
 
 	const int nRowHeightPadding = m_nRowHeight + s_HeaderAllDayPadding;
 	int nHeaderAllDayCount = m_nHeaderAllDayHeight;
-	m_nHeaderHeight       *= m_nRowHeight;
+
+	if (!bCaptionWithHeader && !bCaptionEx)
+	{
+		m_nHeaderHeight *= m_nRowHeight;
+	}
+
 	m_nHeaderAllDayHeight *= nRowHeightPadding;
 
 	m_rectApps.top += m_nHeaderHeight;
@@ -1624,7 +1755,7 @@ void CBCGPPlannerViewDay::AdjustAppointments ()
 	int nDay = 0;
 
 	const BOOL bNoDuration = 
-		(GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 
+		(GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 
 		BCGP_PLANNER_DRAW_VIEW_NO_DURATION;
 
 	for (nDay = 0; nDay < nDays; nDay ++)
@@ -1955,7 +2086,7 @@ void CBCGPPlannerViewDay::AdjustAppointments ()
 
 void CBCGPPlannerViewDay::AddUpDownRect(BYTE nType, const CRect& rect)
 {
-	DWORD dwDrawFlags = GetPlanner ()->GetDrawFlags ();
+	DWORD dwDrawFlags = GetDrawFlags ();
 	BOOL bDaysUpDown  = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_DAYS_UPDOWN) == 
 			BCGP_PLANNER_DRAW_VIEW_DAYS_UPDOWN;
 
@@ -2019,7 +2150,7 @@ void CBCGPPlannerViewDay::AddUpDownRect(BYTE nType, const CRect& rect)
 
 void CBCGPPlannerViewDay::AddHeaderUpDownRect(BYTE nType, const CRect& rect)
 {
-	DWORD dwDrawFlags = GetPlanner ()->GetDrawFlags ();
+	DWORD dwDrawFlags = GetDrawFlags ();
 	BOOL bDaysUpDown  = (dwDrawFlags & BCGP_PLANNER_DRAW_VIEW_DAYS_UPDOWN) == 
 			BCGP_PLANNER_DRAW_VIEW_DAYS_UPDOWN;
 
@@ -2339,6 +2470,11 @@ void CBCGPPlannerViewDay::OnPaint (CDC* pDC, const CRect& rectClient)
 		pDC->SelectClipRgn (NULL);
 	}
 
+	if (!m_rectTimeBar.IsRectEmpty ())
+	{
+		OnDrawTimeBar (pDC, m_rectTimeBar, IsCurrentTimeVisible ());
+	}
+
 	{
 		CRgn rgn;
 		rgn.CreateRectRgn (m_rectApps.left, m_rectApps.top, m_rectApps.right, m_rectApps.bottom);
@@ -2348,11 +2484,6 @@ void CBCGPPlannerViewDay::OnPaint (CDC* pDC, const CRect& rectClient)
 		OnDrawAppointments (pDC, m_rectApps);
 
 		pDC->SelectClipRgn (NULL);
-	}
-
-	if (!m_rectTimeBar.IsRectEmpty ())
-	{
-		OnDrawTimeBar (pDC, m_rectTimeBar, IsCurrentTimeVisible ());
 	}
 
 	OnDrawUpDownIcons (pDC);
@@ -2434,8 +2565,9 @@ void CBCGPPlannerViewDay::OnDrawClient (CDC* pDC, const CRect& rect)
 							 m_Selection[0].GetSecond () == 59));
 
 	BOOL bIsDrawDuration = 
-		(GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 0;
-	const int nDurationWidth = bIsDrawDuration ? BCGP_PLANNER_DURATION_BAR_WIDTH + 1 : 0;
+		(GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_DURATION) == 0;
+	const int nDurationBarWidth = globalUtils.ScaleByDPI(BCGP_PLANNER_DURATION_BAR_WIDTH);
+	const int nDurationWidth = bIsDrawDuration ? nDurationBarWidth + 1 : 0;
 
 	visualManager->PreparePlannerBackItem (FALSE, FALSE);
 
@@ -2511,6 +2643,24 @@ void CBCGPPlannerViewDay::OnDrawClient (CDC* pDC, const CRect& rect)
 				pDC->FillRect (rectFill, &brHilite);
 			}
 
+			if (!WorkingParameters.m_strText.IsEmpty())
+			{
+				COLORREF clrTextOld = CLR_DEFAULT;
+				if (WorkingParameters.m_clrText != CLR_DEFAULT)
+				{
+					clrTextOld = pDC->SetTextColor (WorkingParameters.m_clrText);
+				}
+
+				CRect rectText=rectFill;
+				rectText.DeflateRect (WorkingParameters.m_Margins);
+				pDC->DrawText (WorkingParameters.m_strText, rectText, DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS);
+
+				if (clrTextOld != CLR_DEFAULT)
+				{
+					pDC->SetTextColor (clrTextOld);
+				}
+			}
+
 			int nPenIndex = bIsWork ? 0 : 1;
 
 			pDC->SelectObject (((iStep + 1) % nCount == 0) ? 
@@ -2532,7 +2682,7 @@ void CBCGPPlannerViewDay::OnDrawClient (CDC* pDC, const CRect& rect)
 		for (nDay = 0; nDay < nDays; nDay++)
 		{
 			CRect rectDurBar (m_ViewRects [nDay]);
-			rectDurBar.right = rectDurBar.left + BCGP_PLANNER_DURATION_BAR_WIDTH;
+			rectDurBar.right = rectDurBar.left + nDurationBarWidth;
 
 			// Draw duration bar (at left):
 			pDC->FillRect (rectDurBar, &globalData.brWindow);
@@ -2580,29 +2730,48 @@ void CBCGPPlannerViewDay::OnDrawHeader (CDC* pDC, const CRect& rectHeader)
 	dayCurrent.SetDateTime (dayCurrent.GetYear (), dayCurrent.GetMonth (), 
 		dayCurrent.GetDay (), 0, 0, 0);
 
-	DWORD dwFlags = GetPlanner ()->GetDrawFlags ();
-	BOOL bBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD) ==
+	const DWORD dwFlags = GetDrawFlags ();
+	const BOOL bCaptionBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD) ==
 			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD;
-	BOOL bCompact = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
+	const BOOL bCaptionBoldFC = !bCaptionBold && (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD_FC) ==
+			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD_FC;
+	const BOOL bCaptionEx = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED) == 
+		BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED;
+	const BOOL bHeaderBold = (dwFlags & BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD) ==
+			BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD;
+	const BOOL bHeaderBoldCur = !bHeaderBold && (dwFlags & BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD_CUR) ==
+			BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD_CUR;
+	const BOOL bHeaderEx = (dwFlags & BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED) == 
+		BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED;	
+	const BOOL bCompact = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT) ==
 			BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT;
+	const BOOL bCaptionWithHeader = (dwFlags & BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_WITH_HEADER) == 
+		BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_WITH_HEADER;
 
-	HFONT hOldFont = NULL;
-	if (bBold)
-	{
-		hOldFont = SetCurrFont (pDC, bBold);
-	}
+	const BOOL bCanDrawCaptionDayWithHeader = visualManager->CanDrawCaptionDayWithHeader();
+
+	HFONT hOldFont = SetCurrFont (pDC, bCaptionBold, bCaptionEx);
 
 	for (int nDay = 0; nDay < nDays; nDay++)
 	{
 		rectDayCaption.left = m_ViewRects [nDay].left;
 		rectDayCaption.right = m_ViewRects [nDay].right;
 
-		visualManager->PreparePlannerCaptionBackItem (TRUE);
-		COLORREF clrText = OnFillPlannerCaption (
-			pDC, rectDayCaption, day == dayCurrent, FALSE, FALSE);
+		BOOL bToday = day == dayCurrent;
+		BOOL bSelected = m_SelectionAllDay[nDay];
 
-		if (!bCompact)
+		HFONT hOldFontFC = NULL;
+		if (bCaptionBoldFC && (bToday || day.GetDay() == 1))
 		{
+			hOldFontFC = SetCurrFont (pDC, TRUE, bCaptionEx);
+		}
+
+		if (!bCompact && !bCaptionWithHeader)
+		{
+			visualManager->PreparePlannerCaptionBackItem (TRUE);
+			COLORREF clrText = OnFillPlannerCaption (
+				pDC, rectDayCaption, bToday, bSelected, FALSE);
+
 			DrawCaptionText (pDC, rectDayCaption, day, clrText);
 		}
 		else
@@ -2614,16 +2783,102 @@ void CBCGPPlannerViewDay::OnDrawHeader (CDC* pDC, const CRect& rectHeader)
 			{
 				CString strDate;
 
-				AfxExtractSubString (strDate, strText, 0, TCHAR('\n'));
-				DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_LEFT);
+				if (bCaptionWithHeader)
+				{
+					COLORREF clrText = CLR_DEFAULT;
+					if (!bCanDrawCaptionDayWithHeader)
+					{
+						visualManager->PreparePlannerCaptionBackItem (TRUE);
+						clrText = OnFillPlannerCaption (
+							pDC, rectDayCaption, bToday, bSelected, FALSE);
+					}
 
-				AfxExtractSubString (strDate, strText, 1, TCHAR('\n'));
-				DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_CENTER);
+					CRect rectDayCaptionOld(rectDayCaption);
+
+					if ((bHeaderEx && bCaptionEx) || (!bHeaderEx && !bCaptionEx))
+					{
+						rectDayCaption.top += rectDayCaption.Height() / 2;
+					}
+					else if (bHeaderEx)
+					{
+						rectDayCaption.top += (rectDayCaption.Height() * 20) / 36;
+					}
+					else
+					{
+						rectDayCaption.top += (rectDayCaption.Height() * 4) / 9;
+					}
+
+					HFONT hOldFontPart = SetCurrFont (pDC, bCaptionBold || (bCaptionBoldFC && (bToday || day.GetDay() == 1)), bCaptionEx);
+
+					if (bCanDrawCaptionDayWithHeader)
+					{
+						visualManager->PreparePlannerCaptionBackItem (FALSE);
+						clrText = OnFillPlannerCaption (
+							pDC, rectDayCaption, bToday, bSelected, FALSE);
+					}
+
+					AfxExtractSubString (strDate, strText, 0, TCHAR('\n'));
+					DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_LEFT);
+
+					rectDayCaption.bottom = rectDayCaption.top;
+					rectDayCaption.top = rectDayCaptionOld.top;
+
+					SetCurrFont (pDC, bHeaderBold || (bHeaderBoldCur && bToday), bHeaderEx);
+
+					if (bCanDrawCaptionDayWithHeader)
+					{
+						visualManager->PreparePlannerCaptionBackItem (TRUE);
+						clrText = OnFillPlannerCaption (
+							pDC, rectDayCaption, bToday, bSelected, FALSE);
+					}
+					
+					AfxExtractSubString (strDate, strText, 1, TCHAR('\n'));
+					DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_LEFT);
+
+					if (hOldFontPart != NULL)
+					{
+						::SelectObject (pDC->GetSafeHdc (), hOldFontPart);
+					}
+
+					rectDayCaption.bottom = rectDayCaptionOld.bottom;
+				}
+				else
+				{
+					visualManager->PreparePlannerCaptionBackItem (TRUE);
+					COLORREF clrText = OnFillPlannerCaption (
+						pDC, rectDayCaption, bToday, bSelected, FALSE);
+
+					AfxExtractSubString (strDate, strText, 0, TCHAR('\n'));
+					DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_LEFT);
+
+					HFONT hOldFontPart = NULL;
+					if (bCaptionBoldFC && (day != dayCurrent && day.GetDay() == 1))
+					{
+						hOldFontPart = SetCurrFont (pDC, FALSE, bCaptionEx);
+					}
+
+					AfxExtractSubString (strDate, strText, 1, TCHAR('\n'));
+					DrawCaptionText (pDC, rectDayCaption, strDate, clrText, DT_CENTER);
+
+					if (hOldFontPart != NULL)
+					{
+						::SelectObject (pDC->GetSafeHdc (), hOldFontPart);
+					}
+				}
 			}
 			else
 			{
+				visualManager->PreparePlannerCaptionBackItem (TRUE);
+				COLORREF clrText = OnFillPlannerCaption (
+					pDC, rectDayCaption, bToday, bSelected, FALSE);
+
 				DrawCaptionText (pDC, rectDayCaption, strText, clrText, DT_LEFT);
 			}
+		}
+
+		if (hOldFontFC != NULL)
+		{
+			::SelectObject (pDC->GetSafeHdc (), hOldFontFC);
 		}
 
 		day += COleDateTimeSpan (1, 0, 0, 0);
@@ -2704,6 +2959,11 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 		strPM.MakeLower ();
 	}
 
+	const BOOL bTimeLineFullWidth = (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_TIMELINE_FULL_WIDTH) == 
+					BCGP_PLANNER_DRAW_VIEW_TIMELINE_FULL_WIDTH;
+	const BOOL bTimeBarSimple = (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_TIME_BAR_NO_MINUTS) == 
+					BCGP_PLANNER_DRAW_VIEW_TIME_BAR_NO_MINUTS;
+
 	COLORREF clrLine = globalData.clrBtnShadow;
 
 	COLORREF clrText = visualManager->OnFillPlannerTimeBar (pDC, this, rectBar, clrLine);
@@ -2727,21 +2987,30 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 	}
 
 	CFont* pFont = CFont::FromHandle(GetFont ());
-
 	ASSERT (pFont != NULL);
-
-	LOGFONT lf;
-	pFont->GetLogFont (&lf);
-
-	lf.lfHeight *= 2;
 
 	CFont* pOldFont = pDC->SelectObject (pFont);
 
 	CFont fontBold;
+	LOGFONT lf;
+
+	if (!bTimeBarSimple)
+	{
+		pFont->GetLogFont (&lf);
+		lf.lfHeight *= 2;
+	}
+	else
+	{
+		CFont* pFontBold = CFont::FromHandle(GetFont (FALSE, TRUE));
+		pFontBold->GetLogFont (&lf);
+	}
+
 	fontBold.CreateFontIndirect (&lf);
 
 	int nStartHour = GetFirstViewHour();
 	int nEndHour = GetLastViewHour();
+
+	CRect rectTimeLine(rectBar);
 
 	if (bDrawTimeLine)
 	{
@@ -2749,20 +3018,27 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 			(m_CurrentTime.GetHour () + m_CurrentTime.GetMinute () / 60.0 - nStartHour) * 
 			nCount * m_nRowHeight);
 
-		CRect rectTime  = rectBar;
-		rectTime.bottom = y + nTimeHeight;
-		rectTime.top    = rectTime.bottom - m_nRowHeight / (nCount > 1 ? 2 : 4);
-		rectTime.left   += 5;
+		rectTimeLine.bottom = y + nTimeHeight;
+		rectTimeLine.top    = rectTimeLine.bottom - m_nRowHeight / (nCount > 1 ? 2 : 4);
+		rectTimeLine.left   += 5;
 
-		if (rectBar.top <= rectTime.bottom && rectTime.top <= rectBar.bottom)
+		bDrawTimeLine = (rectBar.top + (bTimeLineFullWidth ? nHeaderHeight : 0)) <= rectTimeLine.bottom && rectTimeLine.top <= rectBar.bottom;
+		
+		if (bDrawTimeLine && bTimeLineFullWidth)
 		{
-			OnDrawTimeLine (pDC, rectTime);
+			rectTimeLine.right = m_rectApps.right;
 		}
+	}
+
+	if (bDrawTimeLine && !bTimeLineFullWidth)
+	{
+		OnDrawTimeLine (pDC, rectTimeLine);
 	}
 
 	int bDrawFirstAM_PM = 0;
 
-	int right = 0;
+	const int cxDelta = 5;
+	const int right = bTimeBarSimple ? cxDelta : 0;
 
 	int nMinDelta = max (pDC->GetTextExtent (_T("000")).cx, 18);
 	CString strSeparator = CBCGPPlannerView::GetTimeSeparator ();
@@ -2772,8 +3048,8 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 		CRect rectHour  = rectBar;
 		rectHour.top    = y;
 		rectHour.bottom = y + m_nRowHeight * nCount;
-		rectHour.left   += 5;
-		rectHour.right  -= 5;
+		rectHour.left   += cxDelta;
+		rectHour.right  -= cxDelta;
 
 		if(rectHour.bottom < nHeaderHeight)
 		{
@@ -2781,7 +3057,7 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 			continue;
 		}
 
-		if (nCount > 2)
+		if (nCount > 2 && !bTimeBarSimple)
 		{
 			long nd = y + m_nRowHeight;
 
@@ -2830,7 +3106,7 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 				}
 			}
 
-			if (nCount == 1)
+			if (nCount == 1 && !bTimeBarSimple)
 			{
 				str.Format (_T("%2d%s00"), nHour, strSeparator);
 
@@ -2850,18 +3126,23 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 
 				rectHour.bottom = rectHour.top + m_nRowHeight;
 
+				BOOL bDrawMinuts = !bTimeBarSimple;
 				if (!b24Hours)
 				{
 					if (nHour == 12 || bDrawFirstAM_PM == 1)
 					{
+						bDrawMinuts = TRUE;
 						str = bAM ? strAM : strPM;
 					}
 				}
 
-				CRect rectMin (rectHour);
-				rectMin.left   = rectMin.right - nMinDelta;
+				if (bDrawMinuts)
+				{
+					CRect rectMin (rectHour);
+					rectMin.left   = rectMin.right - nMinDelta;
 
-				pDC->DrawText (str, rectMin, DT_SINGLELINE | DT_CENTER);
+					pDC->DrawText (str, rectMin, DT_SINGLELINE | DT_CENTER);
+				}
 
 				pDC->SelectObject (&fontBold);
 
@@ -2885,8 +3166,8 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 
 	visualManager->OnFillPlannerTimeBar (pDC, this, rt, clrLine);
 
-	pDC->MoveTo (rectBar.left, rt.bottom - 1);
-	pDC->LineTo (rectBar.right - 5, rt.bottom - 1);
+	pDC->MoveTo (rectBar.left + right, rt.bottom - 1);
+	pDC->LineTo (rectBar.right - cxDelta + right, rt.bottom - 1);
 
 	pDC->MoveTo (rectBar.right - 1, rectBar.top);
 	pDC->LineTo (rectBar.right - 1, rectBar.bottom);
@@ -2894,11 +3175,18 @@ void CBCGPPlannerViewDay::OnDrawTimeBar (CDC* pDC, const CRect& rectBar,
 	pDC->SelectObject (pOldPen);
 
 	pDC->SetTextColor (clrTextOld);
+
+	if (bDrawTimeLine && bTimeLineFullWidth)
+	{
+		OnDrawTimeLine (pDC, rectTimeLine);
+	}
 }
 
 BYTE CBCGPPlannerViewDay::OnDrawAppointments (CDC* pDC, const CRect& rect, const COleDateTime& date)
 {
 	BYTE res = 0;
+
+	const int nDurationBarWidth = globalUtils.ScaleByDPI(BCGP_PLANNER_DURATION_BAR_WIDTH);
 
 	XBCGPAppointmentArray& arQueryApps = GetQueryedAppointments ();
 	XBCGPAppointmentArray& arDragApps  = GetDragedAppointments ();
@@ -3013,7 +3301,7 @@ BYTE CBCGPPlannerViewDay::OnDrawAppointments (CDC* pDC, const CRect& rect, const
 				if (!(pApp->IsAllDay () || pApp->IsMultiDay ()))
 				{
 					CRect rt (pApp->GetRectDraw (date));
-					rt.InflateRect (0, CBCGPPlannerViewDay::BCGP_PLANNER_DURATION_BAR_WIDTH - 1);
+					rt.InflateRect (0, nDurationBarWidth - 1);
 
 					CRect rtInter;
 
@@ -3301,7 +3589,7 @@ CBCGPPlannerViewDay::HitTestArea (const CPoint& point) const
 		}
 	}
 
-	if ((GetPlanner ()->GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_UPDOWN) == 0 &&
+	if ((GetDrawFlags () & BCGP_PLANNER_DRAW_VIEW_NO_UPDOWN) == 0 &&
 		(bInTimeBar || hit == BCGP_PLANNER_HITTEST_CLIENT || hit == BCGP_PLANNER_HITTEST_HEADER_ALLDAY))
 	{
 		if (hit == BCGP_PLANNER_HITTEST_TIMEBAR || hit == BCGP_PLANNER_HITTEST_CLIENT)
@@ -3665,23 +3953,18 @@ BOOL CBCGPPlannerViewDay::OnKeyDown(UINT nChar, UINT /*nRepCnt*/, UINT /*nFlags*
 		}
 		else if (m_nScrollTotal != 0)
 		{
-			SetSelection (sel1, sel2, TRUE);
-
 			BOOL bScroll = FALSE;
-
-			COleDateTime dt1 (GetDateFromPoint (m_rectApps.TopLeft ()));
-			COleDateTime dt2 (GetDateFromPoint (m_rectApps.BottomRight ()));
 
 			if (nChar == VK_UP)
 			{
-				bScroll = (sel1.GetHour () * 60 + sel1.GetMinute ()) < 
-						  (dt1.GetHour () * 60 + dt1.GetMinute ());
+				bScroll = GetRectFromDate(sel1 < sel2 ? sel1 : sel2).top < m_rectApps.top;
 			}
 			else if (nChar == VK_DOWN)
 			{
-				bScroll = (sel2.GetHour () * 60 + sel2.GetMinute ()) >=
-						  (dt2.GetHour () * 60 + dt2.GetMinute ());
+				bScroll = m_rectApps.bottom < GetRectFromDate(sel1 < sel2 ? sel2 : sel1).bottom;
 			}
+
+			SetSelection (sel1, sel2, !bScroll);
 
 			if (bScroll)
 			{
@@ -3836,14 +4119,21 @@ BOOL CBCGPPlannerViewDay::OnTimer(UINT_PTR nIDEvent)
 
 		if (pDC != NULL && pDC->GetSafeHdc () != NULL)
 		{
-			int nOldBack = pDC->SetBkMode (TRANSPARENT);
+			if (GetDrawFlags() & BCGP_PLANNER_DRAW_VIEW_TIMELINE_FULL_WIDTH)
+			{
+				pPlanner->DoPaint(pDC);
+			}
+			else
+			{
+				int nOldBack = pDC->SetBkMode (TRANSPARENT);
 
-			OnDrawTimeBar (pDC, m_rectTimeBar, bDrawTimeLine);
+				OnDrawTimeBar (pDC, m_rectTimeBar, bDrawTimeLine);
 
-			pDC->SetBkMode (nOldBack);
-
-			pPlanner->ReleaseDC (pDC);
+				pDC->SetBkMode (nOldBack);
+			}
 		}
+
+		pPlanner->ReleaseDC (pDC);
 
 		return TRUE;
 	}

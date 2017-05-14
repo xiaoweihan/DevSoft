@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -35,11 +35,14 @@ void CBCGPBaseTreeMapNode::DrawTextWidthShadow(CBCGPGraphicsManager* pGM, const 
 {
 	ASSERT_VALID(pGM);
 
-	CBCGPSize sizeText = pGM->GetTextSize(str, tf);
-
-	if (sizeText.cx > rect.Width() || sizeText.cy > rect.Height())
+	if (!tf.IsClipText() && !tf.IsEndEllipsis())
 	{
-		return;
+		CBCGPSize sizeText = pGM->GetTextSize(str, tf);
+
+		if (sizeText.cx > rect.Width() || sizeText.cy > rect.Height())
+		{
+			return;
+		}
 	}
 
 	CBCGPRect rectShadow = rect;
@@ -54,8 +57,8 @@ void CBCGPBaseTreeMapNode::DrawTextWidthShadow(CBCGPGraphicsManager* pGM, const 
 
 IMPLEMENT_DYNAMIC(CBCGPTreeMapGroup, CBCGPBaseTreeMapNode)
 
-CBCGPTreeMapGroup::CBCGPTreeMapGroup(const CBCGPBrush& brush, LPCTSTR lpszLabel, const CBCGPColor& colorText, CBCGPTextFormat* pTF) :
-	CBCGPBaseTreeMapNode(lpszLabel)
+CBCGPTreeMapGroup::CBCGPTreeMapGroup(const CBCGPBrush& brush, LPCTSTR lpszLabel, const CBCGPColor& colorText, CBCGPTextFormat* pTF, DWORD_PTR dwUserData) :
+	CBCGPBaseTreeMapNode(lpszLabel, dwUserData)
 {
 	m_bIsRoot = FALSE;
 
@@ -82,7 +85,7 @@ void CBCGPTreeMapGroup::InitTextFormat(CBCGPTextFormat* pTF)
 
 		m_tf.SetTextAlignment(CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_CENTER);
 		m_tf.SetTextVerticalAlignment(CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_CENTER);
-		m_tf.SetClipText();
+		m_tf.SetClipText(FALSE);
 	}
 }
 //********************************************************************************

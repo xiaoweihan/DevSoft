@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -19,10 +19,14 @@
 // BCGPOptionsPage.h : header file
 //
 
+#include "BCGPPropertyPage.h"
+#include "BCGPButton.h"
+#include "BCGPStatic.h"
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPOptionsPage dialog
 
-class CBCGPOptionsPage : public CPropertyPage
+class CBCGPOptionsPage : public CBCGPPropertyPage
 {
 	DECLARE_DYNCREATE(CBCGPOptionsPage)
 
@@ -34,15 +38,15 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPOptionsPage)
 	enum { IDD = IDD_BCGBARRES_PROPPAGE6 };
-	CButton	m_wndSkinsBtn;
-	CButton	m_wndLook2000;
-	CButton	m_wndLargeIcons;
-	CButton	m_wndRUMenus;
-	CButton	m_wndResetUsageBtn;
-	CStatic	m_wndRuMenusLine;
-	CStatic	m_wndRuMenusTitle;
-	CButton	m_wndShowAllMenusDelay;
-	CButton	m_wndShowShortcutKeys;
+	CBCGPButton	m_wndSkinsBtn;
+	CBCGPButton	m_wndLook2000;
+	CBCGPButton	m_wndLargeIcons;
+	CBCGPButton	m_wndRUMenus;
+	CBCGPButton	m_wndResetUsageBtn;
+	CBCGPStatic	m_wndRuMenusLine;
+	CBCGPStatic	m_wndRuMenusTitle;
+	CBCGPButton	m_wndShowAllMenusDelay;
+	CBCGPButton	m_wndShowShortcutKeys;
 	BOOL	m_bShowTooltips;
 	BOOL	m_bShowShortcutKeys;
 	BOOL	m_bRecentlyUsedMenus;

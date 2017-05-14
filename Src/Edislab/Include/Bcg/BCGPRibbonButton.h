@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,6 +29,9 @@
 
 #define BCGPRIBBON_IMAGE_AUTO	9999
 
+class CBCGPDialog;
+class CBCGPMDIFrameWnd;
+
 class BCGCBPRODLLEXPORT CBCGPRibbonButton : public CBCGPBaseRibbonElement  
 {
 	friend class CBCGPRibbonPanel;
@@ -38,6 +41,7 @@ class BCGCBPRODLLEXPORT CBCGPRibbonButton : public CBCGPBaseRibbonElement
 	friend class CBCGPRibbonConstructor;
 	friend class CBCGPRibbonTreeCtrl;
 	friend class CBCGPRibbonLaunchButton;
+	friend class CBCGPParentRibbonButtonPtr;
 
 	DECLARE_DYNCREATE(CBCGPRibbonButton)
 
@@ -109,6 +113,12 @@ public:
 	void SetDefaultCommand (BOOL bSet = TRUE)
 	{
 		m_bIsDefaultCommand = bSet;
+
+		if (!bSet)
+		{
+			m_rectCommand.SetRectEmpty();
+			m_rectMenu.SetRectEmpty();
+		}
 	}
 
 	BOOL IsDefaultCommand () const
@@ -126,14 +136,14 @@ public:
 		return m_bRightAlignMenu;
 	}
 
-	BOOL IsAlwaysShowDescription () const
-	{
-		return m_bAlwaysShowDescription;
-	}
-
 	virtual BOOL HasMenu () const
 	{
-		return (m_hMenu != NULL || m_arSubItems.GetSize () > 0) && !IsBackstageViewMode();
+		return (m_hMenu != NULL || m_arSubItems.GetSize () > 0 || IsPopupDialogEnabled()) && !IsBackstageViewMode();
+	}
+
+	virtual BOOL IsDroppedDown () const
+	{
+		return m_bIsDroppedDown || m_pPopupDlg != NULL;
 	}
 
 	virtual BOOL HasSubitems () const
@@ -250,6 +260,21 @@ public:
 		m_QATType = type;
 	}
 
+	void EnablePopupDialog(CRuntimeClass* pRTI, UINT nIDTemplate, BOOL bIsResizable = FALSE, BOOL bIsDefaultCommand = FALSE, BOOL bIsRightAligned = FALSE);
+	void EnablePopupDialog(CRuntimeClass* pRTI, LPCTSTR lpszTemplateName, BOOL bIsResizable = FALSE, BOOL bIsDefaultCommand = FALSE, BOOL bIsRightAligned = FALSE);
+	
+	BOOL IsPopupDialogEnabled() const
+	{
+		return m_pRTIPopupDlg != NULL;
+	}
+
+	BOOL DontCloseParentPopupOnClick() const
+	{
+		return m_bDontCloseParentPopupOnClick;
+	}
+
+	void SetDontCloseParentPopupOnClick(BOOL bSet = TRUE, BOOL bIncludeSubItems = TRUE);
+	
 // Operations
 public:
 	void AddSubItem (CBCGPBaseRibbonElement* pSubItem, int nIndex = -1);
@@ -262,7 +287,11 @@ public:
 protected:
 	void CommonInit ();
 	void FillWindowList ();
+	BOOL AddFrameMDIChildren(CBCGPMDIFrameWnd* pMDIFrameWnd);
 	int GetGroupButtonExtraWidth ();
+	BOOL DisplayPopupDialog(CWnd* pWndParent);
+
+	int GetBackstageViewMarginX() const;
 
 // Overrides
 public:
@@ -274,7 +303,7 @@ public:
 
 	virtual BOOL HasLargeMode () const
 	{
-		return !m_bIsCustom && GetImageSize (RibbonImageLarge) != CSize (0, 0);
+		return GetImageSize (RibbonImageLarge) != CSize (0, 0);
 	}
 
 	virtual BOOL HasIntermediateMode () const
@@ -319,6 +348,21 @@ public:
 
 	virtual BOOL ReplaceSubitemByID (UINT uiCmdID, CBCGPBaseRibbonElement* pElem, BOOL bCopyContent);
 
+	virtual void SetApplicationModes(UINT nAppModes, BOOL bIncludeSubItems = TRUE);
+
+	// Popup dialog:
+	virtual void OnBeforeShowPopupDlg(CBCGPDialog* pDlg) 
+	{
+		UNREFERENCED_PARAMETER(pDlg);
+	}
+
+	virtual void ClosePopupDlg(LPCTSTR lpszEditValue, BOOL bOK, DWORD_PTR dwUserData = 0);
+	virtual void OnGetPopupDlgText(CString& /*strOut*/) {}
+	virtual void OnSetPopupDlgText(const CString& /*strResult*/) {}
+	virtual void OnAfterClosePopupDlg(BOOL bOK);
+
+	virtual BOOL IsDrawSimplifiedIcon();
+
 protected:
 	virtual void OnDrawMenuArrow(CDC* pDC, const CRect& rectMenuArrow);
 	virtual void OnDrawOnList (CDC* pDC, CString strText, int nTextOffset, CRect rect, BOOL bIsSelected, BOOL bHighlighted);
@@ -334,6 +378,7 @@ protected:
 	virtual void CopyFrom (const CBCGPBaseRibbonElement& src);
 	virtual void CopyBaseFrom (const CBCGPBaseRibbonElement& src);
 	virtual void SetOriginal (CBCGPBaseRibbonElement* pOriginal);
+	virtual CBCGPBaseRibbonElement* CreateCustomCopy();
 
 	virtual CBCGPBaseRibbonElement* FindByID (UINT uiCmdID);
 	virtual CBCGPBaseRibbonElement* FindByIDNonCustom (UINT uiCmdID);
@@ -347,6 +392,8 @@ protected:
 
 	virtual void GetElementsByName (LPCTSTR lpszName, 
 		CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, DWORD dwFlags = 0);
+
+	virtual BOOL QueryElements(const CStringArray& arWords, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, int nMaxResults, BOOL bDescription, BOOL bAll);
 
 	virtual void GetItemIDsList (CList<UINT,UINT>& lstItems) const;
 
@@ -372,6 +419,14 @@ protected:
 	virtual void SetCustom();
 	virtual void SetPadding(const CSize& sizePadding);
 
+	virtual CWnd* GetEmbeddedWnd() { return NULL; }
+
+	virtual BOOL IsHiddenInAppMode() const;
+
+	virtual HICON CreateSimplifiedIcon();
+
+	virtual void SetCommandSearchMenu(BOOL bSet = TRUE);
+
 // Attributes
 protected:
 	CSize	m_sizeTextRight;
@@ -395,6 +450,7 @@ protected:
 	BOOL	m_bIsMenuHighlighted;
 	BOOL	m_bIsCommandHighlighted;
 
+	HICON	m_hIconSimplified;
 	HICON	m_hIcon;
 	HICON	m_hIconSmall;
 	BOOL	m_bAutoDestroyIcon;
@@ -403,8 +459,6 @@ protected:
 	BOOL	m_bForceDrawBorder;
 
 	BOOL	m_bToBeClosed;
-	BOOL	m_bAlwaysShowDescription;
-
 	BOOL	m_bIsLargeImage;
 
 	BOOL	m_bCreatedFromMenu;
@@ -417,6 +471,15 @@ protected:
 	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>	m_arSubItems;
 
 	RibbonButtonOnQAT	m_QATType;
+
+	CRuntimeClass*		m_pRTIPopupDlg;
+	LPCTSTR				m_lpszPopupDlgTemplateName;
+	CBCGPDialog*		m_pPopupDlg;
+	BOOL				m_bIsResizablePopup;
+	BOOL				m_bIsRightAlignedPopup;
+
+	BOOL				m_bDontCloseParentPopupOnClick;
+	BOOL				m_bForceSingleLineText;
 };
 
 #endif // BCGP_EXCLUDE_RIBBON

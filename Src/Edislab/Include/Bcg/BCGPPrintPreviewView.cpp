@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -337,7 +337,7 @@ void CBCGPPrintPreviewView::OnDisplayPageNumber (UINT nPage, UINT nPagesDisplaye
 	}
 }
 //*********************************************************************************
-BCGCBPRODLLEXPORT void BCGPPrintPreview (CView* pView)
+BCGCBPRODLLEXPORT void BCGPPrintPreview (CView* pView, CRuntimeClass* pRTI)
 {
 	ASSERT_VALID (pView);
 
@@ -373,8 +373,23 @@ BCGCBPRODLLEXPORT void BCGPPrintPreview (CView* pView)
 
 	g_pPrintPreviewlocaRes = new CBCGPLocalResource;
 
-	if (!pView->DoPrintPreview (IDD_BCGBAR_RES_PRINT_PREVIEW, pView, 
-		RUNTIME_CLASS (CBCGPPrintPreviewView), pState))
+	if (pRTI != NULL)
+	{
+		if (!pRTI->IsDerivedFrom(RUNTIME_CLASS(CBCGPPrintPreviewView)))
+		{
+			TRACE0("BCGPPrintPreview: a custom runtime class should be derived from CBCGPPrintPreviewView.\n");
+			ASSERT(FALSE);
+			
+			pRTI = NULL;
+		}
+	}
+
+	if (pRTI == NULL)
+	{
+		pRTI = RUNTIME_CLASS(CBCGPPrintPreviewView);
+	}
+
+	if (!pView->DoPrintPreview (IDD_BCGBAR_RES_PRINT_PREVIEW, pView, pRTI, pState))
 	{
 		TRACE0("Error: OnFilePrintPreview failed.\n");
 		AfxMessageBox (AFX_IDP_COMMAND_FAILURE);
@@ -443,15 +458,16 @@ void CBCGPPrintPreviewView::SetToolbarSize ()
 //******************************************************************************
 BOOL CBCGPPrintPreviewView::OnEraseBkgnd(CDC* pDC) 
 {
-	ASSERT_VALID (pDC);
-
 	CRect rectClient;
-	GetClientRect (rectClient);
-
-	if (CBCGPVisualManager::GetInstance ()->OnEraseMDIClientArea (pDC, rectClient))
-	{
-		return TRUE;
-	}
-
-	return CPreviewView::OnEraseBkgnd(pDC);
+	GetClientRect(rectClient);
+	
+	CBrush brFill(CBCGPVisualManager::GetInstance ()->GetPrintPreviewBackgroundColor(this));
+	
+	pDC->FillRect(rectClient, &brFill);
+	return TRUE;
+}
+//******************************************************************************
+BOOL CBCGPPrintPreviewView::IsInternalScrollBarThemed() const
+{
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_PRINT_PREVIEW) != 0;
 }

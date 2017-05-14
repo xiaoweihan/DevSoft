@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,7 +28,6 @@
 #include "BCGPBaseTabWnd.h"
 #include "BCGPButton.h"
 #include "BCGPToolbar.h"
-#include "BCGPExCheckList.h"
 
 class CBCGPOutlookWnd;
 
@@ -79,10 +78,14 @@ class BCGCBPRODLLEXPORT CBCGPOutlookBarToolBar : public CBCGPToolBar
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPOutlookWnd window
 
+class CBCGPOutlookPopupButton;
+
 class BCGCBPRODLLEXPORT CBCGPOutlookWnd : public CBCGPBaseTabWnd
 {
 	friend class CBCGPOutlookOptionsDlg;
 	friend class CBCGPOutlookBarToolBar;
+	friend class CBCGPOutlookPopupButton;
+	friend class CBCGPOutlookPopupWnd;
 
 	DECLARE_DYNCREATE(CBCGPOutlookWnd)
 
@@ -126,6 +129,11 @@ public:
 	void EnableCaption(BOOL bEnable = TRUE)	 // Mode 2003 only!
 	{
 		m_bHasCaption = bEnable;
+		
+		if (!m_bHasCaption && IsCollapsed())
+		{
+			Expand();
+		}
 	}
 
 	BOOL HasCaption() const
@@ -153,6 +161,38 @@ public:
 		return m_bDrawBottomLine;
 	}
 
+	void EnableCollapseMode(BOOL bEnable = TRUE, LPCTSTR lpszMinimizeToolTip = NULL, LPCTSTR lpszExpandToolTip = NULL)
+	{
+		if (bEnable)
+		{
+			EnableCaption();
+
+			if (lpszMinimizeToolTip != NULL)
+			{
+				m_strMinimizeToolTip = lpszMinimizeToolTip;
+			}
+
+			if (lpszExpandToolTip != NULL)
+			{
+				m_strExpandToolTip = lpszExpandToolTip;
+			}
+		}
+
+		m_bCollapseMode = bEnable;
+	}
+
+	BOOL IsCollapseModeEnabled() const
+	{
+		return m_bCollapseMode;
+	}
+
+	BOOL IsCollapsed() const
+	{
+		return m_bIsCollapsed;
+	}
+
+	BOOL Expand(BOOL bExpand = TRUE);
+
 	virtual void OnShowMorePageButtons ();
 	virtual void OnShowFewerPageButtons ();
 	virtual BOOL CanShowMorePageButtons () const;
@@ -164,6 +204,15 @@ public:
 	BOOL SetToolbarImageList (UINT uiID, int cx, COLORREF clrTransp = RGB (255, 0, 255));
 
 	void UseAlphaBlendIcons (BOOL bAlphaBlend = TRUE, BOOL bRebuildIcons = FALSE);
+
+	void EnableToolbarCustomizeButton(BOOL bEnable = TRUE);
+	BOOL IsToolbarCustomizeButtonEnabled() const
+	{
+		return m_bToolbarCustomizeButton;
+	}
+
+	int GetCollapsedWidth() const;
+
 // Operations
 public:
 
@@ -194,6 +243,7 @@ public:
 	//{{AFX_VIRTUAL(CBCGPOutlookWnd)
 	public:
 	virtual BOOL Create(const CRect& rect, CWnd* pParentWnd, UINT nID);
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	protected:
 	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
 	//}}AFX_VIRTUAL
@@ -220,6 +270,10 @@ protected:
 	virtual void OnScrollDown () {}
 
 	virtual BOOL IsRestoreTabAttributes() const {	return !IsMode2003();	}
+	virtual void ApplyRestoreActiveTab();
+
+	void SetupPagePopupButton();
+	void AdjustTooltipRect(CBCGPTabInfo* pTab, BOOL bShowTooltip);
 
 	// Generated message map functions
 protected:
@@ -233,17 +287,26 @@ protected:
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnCancelMode();
+	afx_msg void OnDestroy();
 	//}}AFX_MSG
 	afx_msg void OnToolbarCommand (UINT id);
 	afx_msg void OnUpdateToolbarCommand (CCmdUI* pCmdUI);
 	afx_msg LRESULT OnPrintClient(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnMouseLeave(WPARAM,LPARAM);
+	afx_msg LRESULT OnBCGUpdateToolTips(WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 
 	CRect						m_rectWndArea;
 	CRect						m_rectCaption;
 	BOOL						m_bHasCaption;
+	BOOL						m_bCollapseMode;
+	BOOL						m_bIsCollapsed;
+	CWnd*						m_pAutoHideWindow;
+	BOOL						m_bPopupIsDisplayed;
+	int							m_cxParent;
 	BOOL						m_bDrawFrame;
 	BOOL						m_bDrawBottomLine;
+	BOOL						m_bToolbarCustomizeButton;
 	int							m_nBorderSize;
 	CRect						m_rectSplitter;
 	BOOL						m_bIsTracking;
@@ -255,11 +318,19 @@ protected:
 	BOOL						m_bScrollButtons;
 	CBCGPOutlookSrcrollButton	m_btnUp;
 	CBCGPOutlookSrcrollButton	m_btnDown;
+	CRect						m_rectCollapseButton;
+	CRect						m_rectPopupButton;
 	UINT						m_nPageButtonTextAlign;
 	CImageList					m_imagesToolbar;
 	CSize						m_sizeToolbarImage;
 	BOOL						m_bAlphaBlendIcons;
 	BOOL						m_bIsPrintingClient;
+	BOOL						m_bTracked;
+	CFont						m_FontVert;
+	CString						m_strMinimizeToolTip;
+	CString						m_strExpandToolTip;
+
+	CArray<CBCGPOutlookPopupButton*, CBCGPOutlookPopupButton*>	m_arPopupButtons;
 
 	static BOOL	m_bEnableAnimation;
 };

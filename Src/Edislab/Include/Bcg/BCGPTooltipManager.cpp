@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -215,7 +215,7 @@ CBCGPTooltipManager::~CBCGPTooltipManager()
 BOOL CBCGPTooltipManager::CreateToolTipObject (
 		CToolTipCtrl*& pToolTip, UINT nType)
 {
-	if (nType < 0 || nType >= BCGP_TOOLTIP_TYPES)
+	if (nType >= BCGP_TOOLTIP_TYPES)
 	{
 		ASSERT (FALSE);
 		return FALSE;

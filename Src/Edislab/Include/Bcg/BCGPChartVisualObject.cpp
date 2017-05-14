@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,7 @@
 #include "BCGPChartFormula.h"
 #include "BCGPGraphicsManagerGDI.h"
 #include "BCGPMath.h"
+#include "BCGPLocalResource.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -42,9 +43,10 @@ UINT BCGM_ON_CHART_AXIS_ZOOMED			= ::RegisterWindowMessage (_T("BCGM_ON_CHART_AX
 UINT BCGM_ON_CHART_AFTER_BEGIN_3DDRAW	= ::RegisterWindowMessage (_T("BCGM_ON_CHART_AFTER_BEGIN_3DDRAW"));
 UINT BCGM_ON_CHART_BEFORE_END_3DDRAW	= ::RegisterWindowMessage (_T("BCGM_ON_CHART_BEFORE_END_3DDRAW"));
 
-double CBCGPChartDiagram3D::BCGP_DEFAULT_X_ROTATION = 45.0;
-double CBCGPChartDiagram3D::BCGP_DEFAULT_Y_ROTATION = 20.0;
-double CBCGPChartDiagram3D::BCGP_DEFAULT_PERSPECTIVE = 0.1;
+double CBCGPChartDiagram3D::BCGP_DEFAULT_X_ROTATION = 15.0;
+double CBCGPChartDiagram3D::BCGP_DEFAULT_Y_ROTATION = 15.0;
+double CBCGPChartDiagram3D::BCGP_DEFAULT_PERSPECTIVE = 0.5;
+BOOL CBCGPChartDiagram3D::m_bSortTrianglesBySeries = TRUE;
 
 CList<CBCGPChartVisualObject*, CBCGPChartVisualObject*>	CBCGPChartVisualObject::m_lstCharts;
 
@@ -1418,6 +1420,7 @@ CBCGPChartVisualObject::CBCGPChartVisualObject(CBCGPVisualContainer* pContainer)
 
 	SetPlotAreaPadding(CBCGPRect (8, 4, 8, 4));
 	SetTitleAreaPadding(CBCGPSize (5, 5));
+	m_bAlwaysDrawPlotArea = FALSE;
 
 	SetLegendAreaPadding(CBCGPSize (6, 6));
 	SetLegendElementSpacing(CBCGPSize (6, 4));
@@ -1429,7 +1432,7 @@ CBCGPChartVisualObject::CBCGPChartVisualObject(CBCGPVisualContainer* pContainer)
 	m_chartLayout.m_legendPosition = BCGPChartLayout::LP_RIGHT;
 	m_chartLayout.m_bShowDataTable = FALSE;
 
-	m_titleAreaFormat.m_textFormat.Create(BCGPChartFormatLabel::m_strDefaultFontFamily, 18);
+	m_titleAreaFormat.m_textFormat.Create(BCGPChartFormatLabel::m_strDefaultFontFamily, BCGPChartFormatLabel::GetFontSize(18.0f));
 
 	m_nDefaultVisualSettingIndex = 0;
 
@@ -1601,6 +1604,40 @@ const CBCGPBrush& CBCGPChartVisualObject::GetDiagramFillColor() const
 {
 	ASSERT_VALID(this);
 	return m_plotAreaFormat.m_brFillColor;
+}
+//****************************************************************************************
+BOOL CBCGPChartVisualObject::IsDrawPlotArea() const
+{
+	ASSERT_VALID(this);
+
+	if (m_bAlwaysDrawPlotArea || m_Category == BCGPChartSurface3D)
+	{
+		return TRUE;
+	}
+
+	if (IsChart3D())
+	{
+		return FALSE;
+	}
+
+	switch (m_Category)
+	{
+	case BCGPChartPie:
+	case BCGPChartPie3D:
+	case BCGPChartPyramid:
+	case BCGPChartPyramid3D:
+	case BCGPChartFunnel:
+	case BCGPChartFunnel3D:
+	case BCGPChartDoughnut:
+	case BCGPChartDoughnutNested:
+	case BCGPChartDoughnut3D:
+	case BCGPChartTorus3D:
+	case BCGPChartPolar:
+	case BCGPChartTernary:
+		return FALSE;
+	}
+
+	return TRUE;
 }
 //****************************************************************************************
 void CBCGPChartVisualObject::SetLegendPosition(BCGPChartLayout::LegendPosition position, 
@@ -2484,10 +2521,23 @@ void CBCGPChartVisualObject::AdjustLayout(CBCGPGraphicsManager* pGM)
 	if (!bCustomTitleRect)
 	{
 		szTitle = CalcTitleSize(pGM);
+		
 		rectTitleArea.SetRect(rectChart.left + rectChart.Width() / 2 - szTitle.cx / 2, 
 			rectChart.top + szTitleAreaPadding.cx, 
 			rectChart.left + rectChart.Width() / 2 + szTitle.cx / 2,
 			rectChart.top + szTitleAreaPadding.cx + szTitle.cy);
+
+		if (m_titleAreaFormat.m_textFormat.GetTextAlignment() == CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_LEADING)
+		{
+			rectTitleArea.left = rectChart.left + szTitleAreaPadding.cx;
+			rectTitleArea.right = rectTitleArea.left + szTitle.cx;
+		}
+		else if (m_titleAreaFormat.m_textFormat.GetTextAlignment() == CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_TRAILING)
+		{
+			rectTitleArea.right = rectChart.right - szTitleAreaPadding.cx;
+			rectTitleArea.left = rectTitleArea.right - szTitle.cx;
+		}
+
 		m_rectTitleArea = rectTitleArea;
 	}
 	else
@@ -2530,9 +2580,14 @@ void CBCGPChartVisualObject::AdjustLayout(CBCGPGraphicsManager* pGM)
 	{
 		CBCGPChartSeries* pSeries = GetSeries(i, FALSE);
 
-		if (pSeries != NULL && pSeries->m_bVisible && !pSeries->IsFullStackedMinMaxSet())
+		if (pSeries != NULL && pSeries->m_bVisible)
 		{
-			pSeries->SetFullStackedMinMax();
+			if (!pSeries->IsFullStackedMinMaxSet())
+			{
+				pSeries->SetFullStackedMinMax();
+			}
+
+			pSeries->OnCalcSeriesNameSize(pGM);
 		}
 	}
 
@@ -2922,7 +2977,7 @@ void CBCGPChartVisualObject::AdjustLayout(CBCGPGraphicsManager* pGM)
 			m_rectDiagramArea.bottom -= dblMaxLabelSize / 4;
 			
 		}
-		else if (!pYSecondaryAxis->IsVertical() && !pXAxis->IsDisplayDataBetweenTickMarks())
+		else if (!pYAxis->IsVertical() && !pYAxis->IsDisplayDataBetweenTickMarks())
 		{
 			double dblMaxLabelSize = max(pYAxis->m_szMaxLabelSize.cx, pYSecondaryAxis->m_szMaxLabelSize.cx);
 
@@ -3961,6 +4016,8 @@ BOOL CBCGPChartVisualObject::OnGetToolTip(const CBCGPPoint& pt, CString& strTool
 			return TRUE;
 		}
 
+		CBCGPLocalResource localResource;
+
 		CString strAxisNameFormat;
 		strAxisNameFormat.LoadString(IDS_BCGBARRES_CHART_TOOLTIP_AXIS_NAME_FORMAT);
 		strToolTip.Format(strAxisNameFormat, pAxis->m_strAxisName);
@@ -4029,6 +4086,33 @@ BOOL CBCGPChartVisualObject::OnGetToolTip(const CBCGPPoint& pt, CString& strTool
 	return TRUE;
 }
 //****************************************************************************************
+BOOL CBCGPChartVisualObject::OnFormatDataPointTooltip(CString& /*strTooltip*/, CBCGPChartSeries* /*pSeries*/, int /*nDataPointIndex*/)
+{
+	return FALSE;	
+}
+//****************************************************************************************
+BOOL CBCGPChartVisualObject::OnFormatDataPointTooltipDescription(CString& /*strTooltipDescr*/, CBCGPChartSeries* /*pSeries*/, int /*nDataPointIndex*/, CBCGPChartAxis* /*pAxisX*/, CBCGPChartAxis* /*pAxisY*/, const CString& /*strLabelX*/, const CString& /*strLabelY*/)
+{
+	return FALSE;	
+}
+//****************************************************************************************
+COLORREF CBCGPChartVisualObject::GetInfoTipColor(const CBCGPPoint& pt, int nColor)
+{
+	switch (nColor)
+	{
+	case BCGP_INFOTIP_FILL_COLOR:
+		return (COLORREF)m_currentTheme.m_brPlotFillColor.GetColor();
+
+	case BCGP_INFOTIP_TEXT_COLOR:
+		return (COLORREF)m_currentTheme.m_brChartObjectTextColor.GetColor();
+
+	case BCGP_INFOTIP_BORDER_COLOR:
+		return (COLORREF)m_currentTheme.m_brPlotLineColor.GetColor();
+	}
+
+	return CBCGPBaseVisualObject::GetInfoTipColor(pt, nColor);
+}
+//****************************************************************************************
 BOOL CBCGPChartVisualObject::HitTest(const CBCGPPoint& pt, BCGPChartHitInfo* pHitInfo, DWORD dwHitInfoFlags)
 {
 	if (m_bIsThumbnailMode)
@@ -4058,7 +4142,7 @@ BOOL CBCGPChartVisualObject::HitTestInternal(const CBCGPPoint& pt, BCGPChartHitI
 	pHitInfo->m_nIndex1 = -1;
 	pHitInfo->m_nIndex2 = -1;
 
-	if (!m_rect.PtInRect(pt))
+	if (!m_rect.PtInRect(pt + m_ptScrollOffset))
 	{
 		pHitInfo->m_hitInfo = BCGPChartHitInfo::HIT_NONE;
 		return TRUE;
@@ -4129,8 +4213,8 @@ BOOL CBCGPChartVisualObject::HitTestInternal(const CBCGPPoint& pt, BCGPChartHitI
 							}
 						}
 						
-						nStart = pAxis->m_bReverseOrder ? (int)pAxis->m_arMajorGridLines.GetSize() - 1 : 0;
-						nFinish = pAxis->m_bReverseOrder ? 0 : (int)pAxis->m_arMajorGridLines.GetSize() - 1;
+						nStart = pAxis->m_bReverseOrder ? max(0, (int)pAxis->m_arMajorGridLines.GetSize() - 1) : 0;
+						nFinish = pAxis->m_bReverseOrder ? 0 : max(0, (int)pAxis->m_arMajorGridLines.GetSize() - 1);
 						
 						for (j = nStart; j != nFinish; j += offset)
 						{
@@ -5120,11 +5204,11 @@ void CBCGPChartVisualObject::OnDraw(CBCGPGraphicsManager* pGMSrc, const CBCGPRec
 		CalcScreenPositions(pGM, TRUE);
 	}
 
-	CBCGPColor clrClear = m_plotAreaFormat.m_brFillColor.GetColor();
+	CBCGPColor clrClear = IsDrawPlotArea() ? m_plotAreaFormat.m_brFillColor.GetColor() : m_chartAreaFormat.m_brFillColor.GetColor();
 
 	if (clrClear.IsNull())
 	{
-		clrClear = m_currentTheme.m_brPlotFillColor.GetColor();
+		clrClear = IsDrawPlotArea() ? m_currentTheme.m_brPlotFillColor.GetColor() : m_currentTheme.m_brChartFillColor.GetColor();
 	}
 
 	CBCGPChartDiagram3D* pDiagram3D = GetDiagram3D();
@@ -5155,7 +5239,15 @@ void CBCGPChartVisualObject::OnDraw(CBCGPGraphicsManager* pGMSrc, const CBCGPRec
 	CBCGPRect rectPlotArea;
 	OnGetPlotAreaRect(rectPlotArea);
 
-	OnDrawChartArea(pGM, m_rect);
+	CBCGPRect rectChartArea = m_rect;
+
+	if (pGM->GetType() != CBCGPGraphicsManager::BCGP_GRAPHICS_MANAGER_GDI)
+	{
+		rectChartArea.right -= 1.0;
+		rectChartArea.bottom -= 1.0;
+	}
+
+	OnDrawChartArea(pGM, rectChartArea);
 
 	if (m_rectDiagramArea.Width() > 2 && m_rectDiagramArea.Height() > 2)
 	{
@@ -5176,8 +5268,7 @@ void CBCGPChartVisualObject::OnDraw(CBCGPGraphicsManager* pGMSrc, const CBCGPRec
 		OnDrawChartTitle(pGM, m_strChartTitle, rectChartTitle, m_titleAreaFormat);
 
 		CBCGPRect rectLegend = m_rectLegendArea;
-		
-		OnDrawChartLegend(pGM, rectLegend, m_legendAreaFormat);
+
 		OnDrawChartObjects(pGM, TRUE);
 
 		if (pGM->GetType() == CBCGPGraphicsManager::BCGP_GRAPHICS_MANAGER_D2D)
@@ -5189,6 +5280,8 @@ void CBCGPChartVisualObject::OnDraw(CBCGPGraphicsManager* pGMSrc, const CBCGPRec
 		{
 			OnDrawChartDataTable(pGM, m_rectDataTableArea, m_dblDataTableHeaderColumnWidth);
 		}
+
+		OnDrawChartLegend(pGM, rectLegend, m_legendAreaFormat);
 	}
 
 	if (pGMMem != NULL)
@@ -5282,7 +5375,8 @@ void CBCGPChartVisualObject::ArrangeStackedSeries()
 		CBCGPBaseChartImpl* pChartImpl = pSeries->GetChartImpl();
 
 		// group stacked series by Group ID and non stacked by X axis
-		if (pChartImpl != NULL && pChartImpl->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl)))
+		if (pChartImpl != NULL && (pChartImpl->IsKindOf(RUNTIME_CLASS(CBCGPBarChartImpl)) ||
+			pChartImpl->IsKindOf(RUNTIME_CLASS(CBCGPBoxPlotChartImpl))))
 		{
 			if (pSeries->IsStakedSeries())
 			{
@@ -5334,10 +5428,17 @@ BOOL CBCGPChartVisualObject::CalcScreenPositions(CBCGPGraphicsManager* pGM, BOOL
 		}
 
 		CBCGPChartBarSeries* pBarSeries = DYNAMIC_DOWNCAST(CBCGPChartBarSeries, pSeries);
-
 		if (pBarSeries != NULL)
 		{
 			pBarSeries->CalcNumberOfSeriesOnAxis();
+		}
+		else
+		{
+			CBCGPChartBoxPlotSeries* pBoxPlotSeries = DYNAMIC_DOWNCAST(CBCGPChartBoxPlotSeries, pSeries);
+			if (pBoxPlotSeries != NULL)
+			{
+				pBoxPlotSeries->CalcNumberOfSeriesOnAxis();
+			}
 		}
 
 		CBCGPBaseChartImpl* pChartImpl = pSeries->GetChartImpl();
@@ -5448,12 +5549,18 @@ void CBCGPChartVisualObject::ArrangeDataLabels(CBCGPGraphicsManager* pGM)
 
 		BCGPChartCategory category = pSeries->GetChartCategory();
 
-		if (category == BCGPChartPie || category == BCGPChartPie3D)
+		switch (category)
 		{
+		case BCGPChartPie:
+		case BCGPChartPie3D:
+		case BCGPChartDoughnut:
+		case BCGPChartDoughnutNested:
+		case BCGPChartDoughnut3D:
+		case BCGPChartTorus3D:
 			return;
 		}
 
-		if ((category != BCGPChartColumn && category != BCGPChartBar))
+		if ((category != BCGPChartColumn && category != BCGPChartBar && category != BCGPChartBoxPlot))
 		{
 			bOnlyColumns = FALSE;
 			break;
@@ -5499,7 +5606,7 @@ void CBCGPChartVisualObject::ArrangeDataLabels(CBCGPGraphicsManager* pGM)
 
 			BCGPChartCategory category = pSeries->GetChartCategory();
 
-			if ((category == BCGPChartColumn || category == BCGPChartBar) && nStep == 1)
+			if ((category == BCGPChartColumn || category == BCGPChartBar || category == BCGPChartBoxPlot) && nStep == 1)
 			{
 				continue;
 			}
@@ -5538,7 +5645,7 @@ void CBCGPChartVisualObject::ArrangeDataLabels(CBCGPGraphicsManager* pGM)
 					
 					arRects.Add(rectMarker);
 					
-					if (category == BCGPChartColumn || category == BCGPChartBar)
+					if (category == BCGPChartColumn || category == BCGPChartBar || category == BCGPChartBoxPlot)
 					{
 						CRect rectLabel = pSeries->GetDataPointLabelRect(nDPIndex);
 
@@ -5699,12 +5806,36 @@ CRect CBCGPChartVisualObject::CalcSmartRect(const CBCGPPoint& ptCenter, const CS
 } 
 //****************************************************************************************
 void CBCGPChartVisualObject::OnDrawChartRect(CBCGPGraphicsManager* pGM, const CBCGPRect& rect, 
-							const CBCGPBrush* pBrFill, const CBCGPBrush* pBrLine, double dblLineWidth, 
+							const CBCGPBrush* pBrFill, const CBCGPBrush* pBrLineIn, double dblLineWidth, 
 							const CBCGPStrokeStyle* pStrokeStyle, BOOL bNoFill, BOOL bNoLine)
 {
+	BOOL bIsBevel = FALSE;
+
 	if (!bNoFill && pBrFill != NULL && !pBrFill->IsEmpty())
 	{
+		bIsBevel = pBrFill->GetGradientType() == CBCGPBrush::BCGP_GRADIENT_BEVEL;
+
+		double dblScale = GetScaleRatioMid();
+		int nBevelSaved = pBrFill->GetBevelSize();
+
+		if (bIsBevel && dblScale != 1.0)
+		{
+			int nScaledBevel = (int)(0.5 + dblScale * nBevelSaved);
+			if (nScaledBevel < 0)
+			{
+				double sizeRect = min(rect.Width(), rect.Height());
+				nScaledBevel = (int)(0.5 + sizeRect / 15);
+			}
+
+			((CBCGPBrush*)pBrFill)->SetBevelSize(nScaledBevel);
+		}
+
 		pGM->FillRectangle(rect, *pBrFill);
+
+		if (bIsBevel && dblScale != 1.0)
+		{
+			((CBCGPBrush*)pBrFill)->SetBevelSize(nBevelSaved);
+		}
 
 		if (pGM->IsDrawShadowMode())
 		{
@@ -5712,8 +5843,17 @@ void CBCGPChartVisualObject::OnDrawChartRect(CBCGPGraphicsManager* pGM, const CB
 		}
 	}
 
-	if (!bNoLine && pBrLine != NULL && !pBrLine->IsEmpty())
+	if (!bNoLine && pBrLineIn != NULL && !pBrLineIn->IsEmpty())
 	{
+		CBCGPBrush br = *pBrLineIn;
+
+		if (bIsBevel)
+		{
+			br.MakeDarker(0.2);
+		}
+
+		const CBCGPBrush* pBrLine = bIsBevel ? &br : pBrLineIn;
+
 		if ((pStrokeStyle == NULL || pStrokeStyle->IsEmpty()) &&
 			pBrLine->GetGradientType() == CBCGPBrush::BCGP_NO_GRADIENT &&
 			dblLineWidth == 1.)
@@ -6290,6 +6430,16 @@ void CBCGPChartVisualObject::OnDrawChartTitle(CBCGPGraphicsManager* pGM, CString
 	pGM->DrawText(strChartTitle, rectChartTitle, labelStyle.m_textFormat, brText);
 }
 //******************************************************************************************
+void CBCGPChartVisualObject::OnDrawChartSeriesName(CBCGPGraphicsManager* pGM, const CString& strName, const CBCGPRect& rectName, 
+									  BCGPChartFormatLabel& labelStyle, CBCGPChartSeries* /*pSeries*/)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pGM);
+
+	const CBCGPBrush& brText = labelStyle.m_brTextColor.IsEmpty() ? m_currentTheme.m_brTitleTextColor : labelStyle.m_brTextColor;
+	pGM->DrawText(strName, rectName, labelStyle.m_textFormat, brText);
+}
+//******************************************************************************************
 void CBCGPChartVisualObject::OnDrawChartLegend(CBCGPGraphicsManager* pGM, CBCGPRect& rectLegend, BCGPChartFormatArea& legendStyle)
 {
 	ASSERT_VALID(this);
@@ -6397,7 +6547,7 @@ void CBCGPChartVisualObject::OnDrawPlotArea (CBCGPGraphicsManager* pGM, const CB
 {
 	ASSERT_VALID(this);
 
-	if (rectPlotArea.Height() < 2 || rectPlotArea.Width() < 2)
+	if (rectPlotArea.Height() < 2 || rectPlotArea.Width() < 2 || !IsDrawPlotArea())
 	{
 		return;
 	}
@@ -6423,7 +6573,8 @@ void CBCGPChartVisualObject::OnDrawPlotArea (CBCGPGraphicsManager* pGM, const CB
 
 	OnDrawChartElement(pGM, rect, m_plotAreaFormat, CBCGPChartVisualObject::CE_PLOT_AREA, FALSE, TRUE);
 
-	BOOL bNeedReleaseClipArea = FALSE;
+	BOOL bClipped = FALSE;
+
 	CBCGPRect rectNormal = m_rectPlotArea;
 	rectNormal.Normalize();
 	rectNormal.bottom++;
@@ -6433,7 +6584,8 @@ void CBCGPChartVisualObject::OnDrawPlotArea (CBCGPGraphicsManager* pGM, const CB
 
 	if (bIsChart3D && pDiagram3D != NULL)
 	{
-		bNeedReleaseClipArea = TRUE;
+		bClipped = TRUE;
+
 		pGM->SetClipRect(rectNormal);
 
 		pDiagram3D->OnDraw(pGM, TRUE, FALSE);
@@ -6449,7 +6601,7 @@ void CBCGPChartVisualObject::OnDrawPlotArea (CBCGPGraphicsManager* pGM, const CB
 		pDiagram3D->OnDraw(pGM, FALSE, TRUE);
 	}
 
-	if (bNeedReleaseClipArea)
+	if (bClipped)
 	{
 		pGM->ReleaseClipArea();
 	}
@@ -6506,6 +6658,8 @@ void CBCGPChartVisualObject::OnDrawPlotAreaItems (CBCGPGraphicsManager* pGM, con
 		}
 
 		OnDrawDiagram(pGM, rectDiagramArea);
+
+	
 		
 		if (bDispayAxes && !pDiagram3D->IsThickWallsAndFloor())
 		{
@@ -6561,7 +6715,11 @@ void CBCGPChartVisualObject::OnDrawPlotAreaItems (CBCGPGraphicsManager* pGM, con
 	for (i = 0; i < 2; i++)
 	{
 		pGM->SetClipRect(rectNormal);
+
 		OnDrawDiagram(pGM, rectDiagramArea);
+
+		OnDrawDiagramErrorBars(pGM, rectDiagramArea);
+		
 		pGM->ReleaseClipArea();
 
 		if (!m_bIsThumbnailMode || (m_nThumbnailFlags & BCGP_CHART_THUMBNAIL_DRAW_MARKERS) == BCGP_CHART_THUMBNAIL_DRAW_MARKERS)
@@ -7084,12 +7242,26 @@ void CBCGPChartVisualObject::OnDrawDiagram(CBCGPGraphicsManager* pGM, const CBCG
 	ASSERT_VALID(pGM);
 
 	int i = 0;
+	BOOL bIsAnimation = FALSE;
 	
+	for (i = 0; i < m_arData.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeries = GetSeries(i, FALSE);
+		if (pSeries != NULL && pSeries->IsAnimated())
+		{
+			bIsAnimation = TRUE;
+			break;
+		}
+	}
+
 	BOOL bWasTransparency = CBCGPGraphicsManagerGDI::IsTransparencyEnabled();
 	CBCGPGraphicsManagerGDI::EnableTransparency();
 
-	OnCalcChartEffectsScreenPositions(pGM);
-	OnDrawChartEffects(pGM);
+	if (!bIsAnimation)
+	{
+		OnCalcChartEffectsScreenPositions(pGM);
+		OnDrawChartEffects(pGM);
+	}
 
 	if (IsChart3D())
 	{
@@ -7152,6 +7324,13 @@ void CBCGPChartVisualObject::OnDrawDiagram(CBCGPGraphicsManager* pGM, const CBCG
 					rectClip = pSeries->GetAxesBoundingRect();
 					if (!rectClip.IsRectEmpty())
 					{
+						CBCGPRect rectSeriesName = pSeries->GetSeriesNameRect();
+						if (!rectSeriesName.IsRectEmpty())
+						{
+							rectClip.top = min(rectClip.top, rectSeriesName.top);
+							rectClip.bottom = max(rectClip.bottom, rectSeriesName.bottom);
+						}
+
 						if (!pSeries->GetRelatedAxis(CBCGPChartSeries::AI_X)->IsZoomed() && 
 							!pSeries->GetRelatedAxis(CBCGPChartSeries::AI_Y)->IsZoomed())
 						{
@@ -7159,14 +7338,20 @@ void CBCGPChartVisualObject::OnDrawDiagram(CBCGPGraphicsManager* pGM, const CBCG
 						}
 
 						pGM->SetClipRect(rectClip);
+						pChartImpl->m_rectCurClip = rectClip;
 					}
 				}
 
-				if (pSeries->IsDisplayShadow() && !m_bIsThumbnailMode && !IsChart3D())
+				BOOL bIsAnimationFade = pSeries->IsAnimated() && pSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Fade;
+				if (!bIsAnimationFade && pSeries->IsDisplayShadow() && !m_bIsThumbnailMode && !IsChart3D())
 				{
+					int nShadowTransparencyPercent = pSeries->GetShadowTransparencyPercent();
+
 					pGM->SetDrawShadowMode(TRUE, 
-						pSeries->GetSeriesFormat().m_shadowType.m_color,
-						pSeries->GetShadowTransparencyPercent(),
+						GetColors().m_brChartFillColor.GetColor().IsDark() ?
+							pSeries->GetSeriesFormat().m_shadowType.m_colorDark :
+							pSeries->GetSeriesFormat().m_shadowType.m_color,
+						nShadowTransparencyPercent,
 						pSeries->GetShadowAngle(),
 						(int)(GetScaleRatioMid() * pSeries->GetSeriesFormat().m_shadowType.m_nDistance));
 
@@ -7177,9 +7362,16 @@ void CBCGPChartVisualObject::OnDrawDiagram(CBCGPGraphicsManager* pGM, const CBCG
 
 				pChartImpl->OnDrawDiagram(pGM, rectDiagramArea, pSeries);
 
-				if (m_bClipDiagramToAxes && !rectClip.IsRectEmpty())
+				if (pSeries->IsSeriesTiling())
+				{
+					OnDrawChartSeriesName(pGM, pSeries->m_strSeriesName, pSeries->GetSeriesNameRect(), 
+									  GetTitleLabelFormat(), pSeries);
+				}
+
+				if (!rectClip.IsRectEmpty())
 				{
 					pGM->ReleaseClipArea();
+					pChartImpl->m_rectCurClip.SetRectEmpty();
 				}
 			}
 
@@ -7211,26 +7403,69 @@ void CBCGPChartVisualObject::OnDrawDiagramMarkers(CBCGPGraphicsManager* pGM, con
 			continue;
 		}
 
+		CBCGPChartAnimationState animationState(pGM, pSeries, rectDiagram);
+		BOOL bReversedAnimation = pSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_SlideReversed;
+
 		CBCGPBaseChartImpl* pChartImpl = pSeries->GetChartImpl();
 		if (pChartImpl != NULL)
 		{
+			BOOL bClipped = FALSE;
+
 			if (pSeries->IsShownOnCustomOrResizedAxis() && !IsChart3D())
 			{
 				CBCGPRect rectBounds = pSeries->GetAxesBoundingRect();
+
+				if (animationState.IsClipped())
+				{
+					if (bReversedAnimation)
+					{
+						rectBounds.left = max(rectBounds.left, animationState.GetClipRect().left);
+					}
+					else
+					{
+						rectBounds.right = min(rectBounds.right, animationState.GetClipRect().right);
+					}
+				}
+
 				pGM->SetClipRect(rectBounds);
+				pChartImpl->m_rectCurClip = rectBounds;
+				bClipped = TRUE;
 			}
 			else if (IsChart3D())
 			{
 				CBCGPRect rectBounds = m_rectPlotArea;
 				rectBounds.InflateRect(10, 10);
+				
 				pGM->SetClipRect(rectBounds);
+				bClipped = TRUE;
+			}
+			else if (animationState.IsClipped())
+			{
+				CBCGPRect rectBounds = rectDiagram;
+
+				if (bReversedAnimation)
+				{
+					rectBounds.left = animationState.GetClipRect().left;
+				}
+				else
+				{
+					rectBounds.right = animationState.GetClipRect().right;
+				}
+				
+				pGM->SetClipRect(rectBounds);
+				bClipped = TRUE;
 			}
 
-			if (pSeries->GetSeriesFormat().m_shadowType.m_bDisplayShadow && !m_bIsThumbnailMode)
+			BOOL bIsAnimationFade = pSeries->IsAnimated() && pSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Fade;
+			if (!bIsAnimationFade && pSeries->GetSeriesFormat().m_shadowType.m_bDisplayShadow && !m_bIsThumbnailMode)
 			{
+				int nShadowTransparencyPercent = pSeries->GetShadowTransparencyPercent();
+
 				pGM->SetDrawShadowMode(TRUE, 
-					pSeries->GetSeriesFormat().m_shadowType.m_color,
-					pSeries->GetShadowTransparencyPercent(),
+					GetColors().m_brChartFillColor.GetColor().IsDark() ?
+						pSeries->GetSeriesFormat().m_shadowType.m_colorDark :
+						pSeries->GetSeriesFormat().m_shadowType.m_color,
+					nShadowTransparencyPercent,
 					pSeries->GetShadowAngle(),
 					(int)(GetScaleRatioMid() * pSeries->GetSeriesFormat().m_shadowType.m_nDistance));
 
@@ -7241,8 +7476,9 @@ void CBCGPChartVisualObject::OnDrawDiagramMarkers(CBCGPGraphicsManager* pGM, con
 
 			pChartImpl->OnDrawDiagramMarkers(pGM, pSeries, rectDiagram);
 
-			if (pSeries->IsShownOnCustomOrResizedAxis() || IsChart3D())
+			if (bClipped)
 			{
+				pChartImpl->m_rectCurClip.SetRectEmpty();
 				pGM->ReleaseClipArea();
 			}
 		}
@@ -7259,29 +7495,203 @@ void CBCGPChartVisualObject::OnDrawDiagramDataLabels(CBCGPGraphicsManager* pGM, 
 			continue;
 		}
 
+		if (pSeries->IsAnimated())
+		{
+			if (pSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Fade)
+			{
+				pGM->SetCurrentOpacity(pSeries->GetAnimatedValue());
+			}
+			else
+			{
+				continue;
+			}
+		}
+
 		CBCGPBaseChartImpl* pChartImpl = pSeries->GetChartImpl();
 		if (pChartImpl != NULL)
 		{
-			if (pSeries->IsShownOnCustomOrResizedAxis() && !IsChart3D())
+			BOOL bClipped = FALSE;
+
+			if (!m_dataLabelOptions.m_bOverlapsArea)
 			{
-				CBCGPRect rectBounds = pSeries->GetAxesBoundingRect();
-				pGM->SetClipRect(rectBounds);
-			}
-			else if (IsChart3D())
-			{
-				CBCGPRect rectBounds = m_rectPlotArea;
-				rectBounds.InflateRect(10, 10);
-				pGM->SetClipRect(rectBounds);
+				if (pSeries->IsShownOnCustomOrResizedAxis() && !IsChart3D())
+				{
+					CBCGPRect rectBounds = pSeries->GetAxesBoundingRect();
+					pGM->SetClipRect(rectBounds);
+
+					bClipped = TRUE;
+				}
+				else if (IsChart3D())
+				{
+					CBCGPRect rectBounds = m_rectPlotArea;
+					rectBounds.InflateRect(10, 10);
+
+					pGM->SetClipRect(rectBounds);
+
+					bClipped = TRUE;
+				}
 			}
 
 			pChartImpl->OnDrawDiagramDataLabels(pGM, pSeries);
 
-			if (pSeries->IsShownOnCustomOrResizedAxis() || IsChart3D())
+			if (bClipped)
 			{
 				pGM->ReleaseClipArea();
 			}
+
+			pGM->SetCurrentOpacity(-1.0);
 		}
 	}
+}
+//******************************************************************************************
+void CBCGPChartVisualObject::OnDrawDiagramErrorBars(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagramArea)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pGM);
+
+	int i = 0;
+	BOOL bIsAnimation = FALSE;
+	
+	for (i = 0; i < m_arData.GetSize(); i++)
+	{
+		CBCGPChartSeries* pSeries = GetSeries(i, FALSE);
+		if (pSeries != NULL && pSeries->IsAnimated())
+		{
+			bIsAnimation = TRUE;
+			break;
+		}
+	}
+
+	if (bIsAnimation)
+	{
+		return;
+	}
+
+	BOOL bWasTransparency = CBCGPGraphicsManagerGDI::IsTransparencyEnabled();
+	CBCGPGraphicsManagerGDI::EnableTransparency();
+
+	if (!bIsAnimation)
+	{
+		OnCalcChartEffectsScreenPositions(pGM);
+		OnDrawChartEffects(pGM);
+	}
+
+	if (IsChart3D())
+	{
+		for (i = 0; i < m_arData.GetSize(); i++)
+		{
+			CBCGPChartSeries* pSeries = GetSeries(i, FALSE);
+			if (pSeries == NULL || !pSeries->m_bVisible || !pSeries->HasErrorBars())
+			{
+				continue;
+			}
+
+			CBCGPBaseChartImpl* pChartImpl = pSeries->GetChartImpl();
+
+			if (pChartImpl == NULL)
+			{
+				continue;
+			}
+
+			// DRAWS all data points from all series according to Z order,
+			// therefore it's called only once with pSeries = NULL
+			pChartImpl->OnDrawDiagram(pGM, rectDiagramArea, NULL);
+			break;
+		}
+	}
+	else
+	{
+		ChartDrawOrder drawOrder = m_DrawOrder;
+		if (drawOrder == CBCGPChartVisualObject::CDO_IGNORE)
+		{
+			drawOrder = CBCGPChartVisualObject::CDO_BACKGROUND;
+		}
+
+		for (int j = 0; j < 2; j++)
+		{
+			for (i = 0; i < m_arData.GetSize(); i++)
+			{
+				CBCGPChartSeries* pSeries = GetSeries(i, FALSE);
+				if (pSeries == NULL || !pSeries->m_bVisible || !pSeries->HasErrorBars())
+				{
+					continue;
+				}
+
+				if ((drawOrder == CBCGPChartVisualObject::CDO_BACKGROUND && !pSeries->IsBackgroundOrder()) || 
+					(drawOrder == CBCGPChartVisualObject::CDO_NORMAL && pSeries->IsBackgroundOrder()))
+				{
+					continue;
+				}
+
+				CBCGPBaseChartImpl* pChartImpl = pSeries->GetChartImpl();
+
+				if (pChartImpl == NULL)
+				{
+					continue;
+				}
+
+				CBCGPRect rectClip;
+
+				if (m_bClipDiagramToAxes && GetChartCategory() != BCGPChartSurface3D)
+				{
+					rectClip = pSeries->GetAxesBoundingRect();
+					if (!rectClip.IsRectEmpty())
+					{
+						CBCGPRect rectSeriesName = pSeries->GetSeriesNameRect();
+						if (!rectSeriesName.IsRectEmpty())
+						{
+							rectClip.top = min(rectClip.top, rectSeriesName.top);
+							rectClip.bottom = max(rectClip.bottom, rectSeriesName.bottom);
+						}
+
+						if (!pSeries->GetRelatedAxis(CBCGPChartSeries::AI_X)->IsZoomed() && 
+							!pSeries->GetRelatedAxis(CBCGPChartSeries::AI_Y)->IsZoomed())
+						{
+							rectClip.InflateRect(1., 1., 1., 1.);
+						}
+
+						pGM->SetClipRect(rectClip);
+						pChartImpl->m_rectCurClip = rectClip;
+					}
+				}
+
+				BOOL bIsAnimationFade = pSeries->IsAnimated() && pSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Fade;
+				if (!bIsAnimationFade && pSeries->IsDisplayShadow() && !m_bIsThumbnailMode && !IsChart3D())
+				{
+					int nShadowTransparencyPercent = pSeries->GetShadowTransparencyPercent();
+
+					pGM->SetDrawShadowMode(TRUE, 
+						GetColors().m_brChartFillColor.GetColor().IsDark() ?
+							pSeries->GetSeriesFormat().m_shadowType.m_colorDark :
+							pSeries->GetSeriesFormat().m_shadowType.m_color,
+						nShadowTransparencyPercent,
+						pSeries->GetShadowAngle(),
+						(int)(GetScaleRatioMid() * pSeries->GetSeriesFormat().m_shadowType.m_nDistance));
+
+					pChartImpl->OnDrawDiagramErrorBars(pGM, rectDiagramArea, pSeries);
+
+					pGM->SetDrawShadowMode(FALSE);
+				}
+
+				pChartImpl->OnDrawDiagramErrorBars(pGM, rectDiagramArea, pSeries);
+
+				if (!rectClip.IsRectEmpty())
+				{
+					pGM->ReleaseClipArea();
+					pChartImpl->m_rectCurClip.SetRectEmpty();
+				}
+			}
+
+			if (m_DrawOrder != CBCGPChartVisualObject::CDO_IGNORE)
+			{
+				break;
+			}
+
+			drawOrder = CBCGPChartVisualObject::CDO_NORMAL;
+		}
+	}
+
+	CBCGPGraphicsManagerGDI::EnableTransparency(bWasTransparency);
 }
 //******************************************************************************************
 void CBCGPChartVisualObject::OnDrawChartLegendKey(CBCGPGraphicsManager* pGM, const CBCGPRect& rectLegendKey, 
@@ -7367,6 +7777,20 @@ void CBCGPChartVisualObject::OnDrawChartEffects(CBCGPGraphicsManager* pGM)
 //****************************************************************************************
 void CBCGPChartVisualObject::OnDrawChartObjects(CBCGPGraphicsManager* pGM, BOOL bForeground)
 {
+	// Check for animation:
+	for (int i = 0; i < GetSeriesCount(); i++)
+	{
+		CBCGPChartSeries* pSeries = GetSeries(i, FALSE);
+		if (pSeries != NULL && pSeries->IsAnimated())
+		{
+			if (bForeground)
+			{
+				return;
+			}
+			break;
+		}
+	}
+
 	for (POSITION pos = m_lstChartObjects.GetHeadPosition(); pos != NULL;)
 	{
 		CBCGPChartObject* pObject = m_lstChartObjects.GetNext(pos);
@@ -7374,6 +7798,7 @@ void CBCGPChartVisualObject::OnDrawChartObjects(CBCGPGraphicsManager* pGM, BOOL 
 		if (pObject != NULL)
 		{
 			ASSERT_VALID(pObject);
+
 			if (pObject->IsForeground() && bForeground || 
 				!pObject->IsForeground() && !bForeground)
 			{
@@ -7933,7 +8358,7 @@ CBCGPChartSeries* CBCGPChartVisualObject::OnCreateChartSeries(BCGPChartCategory 
 	{
 		pSeries = new CBCGPChartPieSeries(this, category);
 	}
-	else if (category == BCGPChartDoughnut || category == BCGPChartDoughnut3D)
+	else if (category == BCGPChartDoughnut || category == BCGPChartDoughnut3D || category == BCGPChartDoughnutNested)
 	{
 		pSeries = new CBCGPChartDoughnutSeries(this, category);
 	}
@@ -7986,6 +8411,10 @@ CBCGPChartSeries* CBCGPChartVisualObject::OnCreateChartSeries(BCGPChartCategory 
 	else if (category == BCGPChartStock)
 	{
 		pSeries = new CBCGPChartStockSeries(this, CBCGPBaseChartStockSeries::SST_CANDLE);
+	}
+	else if (category == BCGPChartBoxPlot)
+	{
+		pSeries = new CBCGPChartBoxPlotSeries(this);
 	}
 	else
 	{
@@ -8449,6 +8878,18 @@ CBCGPChartLegendVisualObject* CBCGPChartVisualObject::GetRelatedLegend(int nInde
 	return DYNAMIC_DOWNCAST(CBCGPChartLegendVisualObject, m_lstRelatedLegends.GetAt(pos));
 }
 //****************************************************************************************
+void CBCGPChartVisualObject::OnChangeVisualManager()
+{
+	ASSERT_VALID(this);	
+	
+	if (m_currentTheme.IsVisualManagerTheme())
+	{
+		CBCGPChartTheme::InitChartColors(m_currentTheme, CBCGPColor(), CBCGPColor());
+		Redraw();
+	}
+}
+
+//****************************************************************************************
 // End External Legend support
 //****************************************************************************************
 void CBCGPChartVisualObject::OnDrawTickMark(CBCGPGraphicsManager* pGM, CBCGPPoint& ptStart, CBCGPPoint& ptEnd, 
@@ -8560,14 +9001,28 @@ CBCGPPoint CBCGPChartVisualObject::ScreenPointFromChartData(const CBCGPChartData
 	}
 
 	CBCGPChartValue valX = chartData.GetValue(CBCGPChartData::CI_X);
+	BOOL bRecalcInAnimation = FALSE;
+
 	if (valX.IsEmpty())
 	{
 		valX = nDataPointIndex + 1;
+		bRecalcInAnimation = TRUE;
 	}
 
 	if (pXAxis->IsIndexedSeries())
 	{
 		valX = nDataPointIndex;
+		bRecalcInAnimation = TRUE;
+	}
+
+	if (bRecalcInAnimation && pSeries->IsAnimated() && IsChart3D() &&
+		(pSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_Slide ||
+		pSeries->GetAnimationStyle() == CBCGPChartSeries::BCGPChartAnimationStyle_SlideReversed))
+	{
+		double dblAnimatedValue = pSeries->GetAnimatedValue() * valX.GetValue();
+		double dblMinValue = pXAxis->GetMinDisplayedValue();
+		
+		valX.SetValue(max(dblMinValue, dblAnimatedValue));
 	}
 
 	NormalizeValueInAxis(pYAxis, valY);
@@ -9191,6 +9646,11 @@ void CBCGPChartVisualObject::UpdateSeriesColorIndexes(BOOL bRedraw)
 			{
 				nColorIndex++;
 			}
+
+			if (pSeries->IsSeriesTiling())
+			{
+				nColorIndex = 0;
+			}
 		}
 	}
 
@@ -9238,8 +9698,8 @@ BOOL CBCGPChartVisualObject::GetElementColors(const BCGPChartFormatArea& format,
 		return TRUE;
 
 	case CBCGPChartVisualObject::CE_LEGEND_ENTRY:	
-		colors.pBrFill = fmt.m_brFillColor.IsEmpty() ? &m_currentTheme.m_brLegendEntryFillColor : &fmt.m_brFillColor;
-		colors.pBrLine = fmt.m_outlineFormat.m_brLineColor.IsEmpty() ? &m_currentTheme.m_brLegendEntryLineColor : &fmt.m_outlineFormat.m_brLineColor;
+		colors.pBrFill = &fmt.m_brFillColor;
+		colors.pBrLine = &fmt.m_outlineFormat.m_brLineColor;
 		return TRUE;
 
 	case CBCGPChartVisualObject::CE_SELECTION:
@@ -9273,6 +9733,7 @@ void CBCGPChartVisualObject::SetSeriesShadow(BOOL bSet/* = TRUE*/)
 			
 			BCGPChartFormatSeries style = pSeries->GetSeriesFormat();
 			style.m_shadowType.m_bDisplayShadow = bSet;
+
 			pSeries->SetSeriesFormat(style);
 		}
 	}
@@ -9709,7 +10170,7 @@ void CBCGPChartVisualObject::OnDrawChartDataTable(CBCGPGraphicsManager* pGM, CBC
 	{
 		return;
 	}
-
+	
 	const CBCGPBrush& brGridLineHorz = m_dataTableAreaFormat.m_horizontalGridLinesFormat.m_brLineColor.IsEmpty() ?
 		m_currentTheme.m_brAxisMajorGridLineColor : m_dataTableAreaFormat.m_horizontalGridLinesFormat.m_brLineColor;
 	
@@ -9750,9 +10211,11 @@ void CBCGPChartVisualObject::OnDrawChartDataTable(CBCGPGraphicsManager* pGM, CBC
 	double yLineTop = m_rectDiagramArea.bottom;
 	double xLineRight = rectDataTable.right;
 
+	const BOOL bReverseOrder = pAxis->m_bReverseOrder;
+
 	if (pAxis->m_arMajorGridLines.GetSize() > 0)
 	{
-		int nIndex = pAxis->m_bReverseOrder ? 0 : (int)pAxis->m_arMajorGridLines.GetSize() - 1;
+		int nIndex = bReverseOrder ? 0 : (int)pAxis->m_arMajorGridLines.GetSize() - 1;
 		xLineRight = min(xLineRight, pAxis->m_arMajorGridLines[nIndex].CenterPoint().x);
 	}
 
@@ -9796,11 +10259,11 @@ void CBCGPChartVisualObject::OnDrawChartDataTable(CBCGPGraphicsManager* pGM, CBC
 		int nFirstIndex = -1;
 		CBCGPPoint ptFirst;
 
-		int nStart = pAxis->m_bReverseOrder ? max(0, pSeries->GetDataPointCount() - 1) : 0;
-		int nFinish = pAxis->m_bReverseOrder ? 0 : max(0, (int)pSeries->GetDataPointCount() - 1);
-		int offsetIndex = pAxis->m_bReverseOrder ? -pAxis->m_nValuesPerInterval : pAxis->m_nValuesPerInterval;
+		int nStart = bReverseOrder ? max(0, pSeries->GetDataPointCount() - 1) : 0;
+		int nFinish = bReverseOrder ? 0 : max(0, (int)pSeries->GetDataPointCount() - 1);
+		int offsetIndex = bReverseOrder ? -pAxis->m_nValuesPerInterval : pAxis->m_nValuesPerInterval;
 
-		int offset = pAxis->m_bReverseOrder ? -1 : 1;
+		int offset = bReverseOrder ? -1 : 1;
 
 		int j = 0;
 
@@ -9820,8 +10283,8 @@ void CBCGPChartVisualObject::OnDrawChartDataTable(CBCGPGraphicsManager* pGM, CBC
 			}
 		}
 
-		nStart = pAxis->m_bReverseOrder ? (int)pAxis->m_arMajorGridLines.GetSize() - 1 : 0;
-		nFinish = pAxis->m_bReverseOrder ? 0 : (int)pAxis->m_arMajorGridLines.GetSize() - 1;
+		nStart = bReverseOrder ? max(0, (int)pAxis->m_arMajorGridLines.GetSize() - 1) : 0;
+		nFinish = bReverseOrder ? 0 : max(0, (int)pAxis->m_arMajorGridLines.GetSize() - 1);
 
 		for (j = nStart; j != nFinish; j += offset)
 		{
@@ -10015,4 +10478,61 @@ void CBCGPChartVisualObject::OnDrawChartDataTableEntry(CBCGPGraphicsManager* pGM
 	{
 		pGM->DrawText(strDataLabel, rectLabel, tf, brText);
 	}
+}
+//***********************************************************************************************************
+BOOL CBCGPChartVisualObject::StartAnimation(double dblAnimationTime, 
+											CBCGPAnimationManager::BCGPAnimationType type,
+											CBCGPChartSeries::BCGPChartAnimationStyle animationStyle,
+											CBCGPChartSeries* pSeries, CBCGPChartData::ComponentIndex animationComponentIndex)
+{
+	ASSERT_VALID(this);
+
+	if (animationStyle == CBCGPChartSeries::BCGPChartAnimationStyle_None)
+	{
+		return FALSE;
+	}
+
+	if (pSeries != NULL)
+	{
+		ASSERT_VALID(pSeries);
+
+		if (pSeries->StartAnimationInternal(dblAnimationTime, animationStyle, type, animationComponentIndex))
+		{
+			pSeries->m_bIsLastAnimationSeries = TRUE;
+			SetDirty();
+			return TRUE;
+		}
+
+		return FALSE;
+	}
+	
+	CBCGPChartSeries* pLastSeries = NULL;
+
+	for (int i = 0; i < m_arData.GetSize(); i++)
+	{
+		pSeries = GetSeries(i, FALSE);
+
+		if (pSeries != NULL)
+		{
+			ASSERT_VALID(pSeries);
+
+			if (animationStyle == CBCGPChartSeries::BCGPChartAnimationStyle_Default)
+			{
+				animationStyle = pSeries->GetDefaultAnimationStyle();
+			}
+
+			if (pSeries->StartAnimationInternal(dblAnimationTime, animationStyle, type, animationComponentIndex))
+			{
+				pLastSeries = pSeries;
+			}
+		}
+	}
+
+	if (pLastSeries != NULL)
+	{
+		pLastSeries->m_bIsLastAnimationSeries = TRUE;
+	}
+
+	SetDirty();
+	return TRUE;
 }

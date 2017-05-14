@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -103,6 +103,8 @@ public:
 										 BOOL bEnabled,
 										 BOOL bPressed);
 
+	virtual COLORREF GetPopupMenuBackgroundColor() const { return m_clrMenuLight; }
+
 	virtual void OnHighlightMenuItem (CDC *pDC, CBCGPToolbarMenuButton* pButton,
 		CRect rect, COLORREF& clrText);
 	virtual void OnDrawMenuBorder (CDC* pDC, CBCGPPopupMenu* pMenu, CRect rect);
@@ -135,6 +137,7 @@ public:
 											BOOL bIsSysButton);
 
 	virtual void OnFillOutlookBarCaption (CDC* pDC, CRect rectCaption, COLORREF& clrText);
+	virtual COLORREF OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption);
 
 	virtual COLORREF OnFillListBoxItem (CDC* pDC, CBCGPListBox* pListBox, int nItem, CRect rect, BOOL bIsHighlihted, BOOL bIsSelected);
 
@@ -206,6 +209,9 @@ public:
 					CDC* pDC, 
 					CBCGPRibbonPaletteButton* pButton, 
 					CRect rectBorder);
+
+	virtual BOOL IsRibbonCaptionTextCentered(CBCGPRibbonBar* pBar);
+
 	virtual void OnDrawRibbonCaption (
 					CDC* pDC, CBCGPRibbonBar* pBar, CRect rectCaption,
 					CRect rectText);
@@ -225,6 +231,10 @@ public:
 					CDC* pDC, 
 					CBCGPRibbonTab* pTab, 
 					BOOL bIsActive);
+	
+	virtual COLORREF OnFillRibbonBackstageLeftPane(CDC* pDC, CRect rectPanel);
+	virtual COLORREF OnGetRibbonBackstageLeftPaneTextColor();
+
 	virtual COLORREF OnDrawRibbonPanel (
 					CDC* pDC,
 					CBCGPRibbonPanel* pPanel, 

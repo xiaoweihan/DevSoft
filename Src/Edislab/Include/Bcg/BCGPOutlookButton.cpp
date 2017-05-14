@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -149,9 +149,12 @@ void CBCGPOutlookButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarImages
 			FillInterior (pDC, rectBorder, bHighlight);
 		}
 
-		pImages->Draw (pDC, 
-			x + csOffset.cx, y + csOffset.cy, GetImage (), FALSE, 
-			(m_nStyle & TBBS_DISABLED));
+		CRect rectIcon(CPoint(x + csOffset.cx, y + csOffset.cy), csImage);
+
+		if (!m_pWndParentBar->OnDrawButtonImage(pDC, this, pImages, GetImage(), rectIcon))
+		{
+			pImages->Draw (pDC, rectIcon.left, rectIcon.top, GetImage (), FALSE, (m_nStyle & TBBS_DISABLED));
+		}
 	}
 	else
 	{

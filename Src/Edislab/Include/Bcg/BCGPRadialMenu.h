@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -62,11 +62,16 @@ protected:
 	BOOL					m_bIsDisabled;
 	BOOL					m_bIsChecked;
 	BOOL					m_bIsCenter;
+	BOOL					m_bIsDPIScale;
+	double					m_dblImageScale;
 };
 
-class BCGCBPRODLLEXPORT CBCGPRadialMenuObject : public CBCGPBaseVisualObject  
+class BCGCBPRODLLEXPORT CBCGPRadialMenuObject : public CBCGPBaseVisualObject,
+												public CBCGPAnimationManager
 {
 	friend class CBCGPRadialMenu;
+	
+	DECLARE_DYNCREATE(CBCGPRadialMenuObject)
 
 public:
 	enum ColorTheme
@@ -80,10 +85,18 @@ public:
 		BCGP_COLOR_THEME_LAST           = BCGP_COLOR_THEME_BLACK
 	};
 
+	enum BCGPRadialMenuAnimationStyle
+	{
+		BCGPRadialMenuAnimationStyle_None,
+		BCGPRadialMenuAnimationStyle_Grow,
+		BCGPRadialMenuAnimationStyle_Fade,
+		BCGPRadialMenuAnimationStyle_Slide,
+	};
+
 	CBCGPRadialMenuObject();
 	virtual ~CBCGPRadialMenuObject();
 
-	void SetImageList(UINT uiResID, int cx = 16);
+	void SetImageList(UINT uiResID, int cx = 16, BOOL bAutoScale = FALSE);
 
 	void AddCommand(UINT nCmdID);	// Icon will be automatically obtained from application toolbar/ribbon
 	void AddCommand(UINT nCmdID, HICON hIcon);
@@ -122,14 +135,18 @@ public:
 		m_bIsCloseOnInvoke = bIsCloseOnInvoke;
 	}
 
+	void SetParentCtrl(CBCGPRadialMenu* pParent);
+
 protected:
 	virtual int HitTestShape(const CBCGPPoint& pt);
 
+	virtual void OnAnimationValueChanged(double dblOldValue, double dblNewValue);
 	virtual void OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip, DWORD dwFlags = BCGP_DRAW_STATIC | BCGP_DRAW_DYNAMIC);
 	virtual void OnMouseMove(const CBCGPPoint& pt);
 	virtual void OnMouseLeave();
 	virtual BOOL OnMouseDown(int nButton, const CBCGPPoint& pt);
 	virtual void OnMouseUp(int nButton, const CBCGPPoint& pt);
+	virtual BOOL OnMouseDblClick(int nButton, const CBCGPPoint& pt);
 	virtual void OnCancelMode();
 	virtual BOOL OnGetToolTip(const CBCGPPoint& pt, CString& strToolTip, CString& strDescr);
 	virtual BOOL OnKeyboardDown(UINT nChar, UINT nRepCnt, UINT nFlags);
@@ -152,13 +169,23 @@ protected:
 		return hr;
 	}
 
+	virtual void OnChangeVisualManager()
+	{
+		if (m_bIsVisualManagerTheme)
+		{
+			SetColorTheme(CBCGPRadialMenuObject::BCGP_COLOR_THEME_VISUAL_MANAGER);
+		}
+	}
+
 protected:
 	CArray<CBCGPRadialMenuItem*, CBCGPRadialMenuItem*> m_arItems;
 
 	int						m_nHighlighted;
 	int						m_nPressed;
 	CBCGPImage				m_Icons;
+	BOOL					m_bAutoScaleIcons;
 	int						m_cxIcon;
+	int						m_cyIcon;
 	int						m_nLastClicked;
 	CBCGPRadialMenu*		m_pCtrl;
 	int						m_nAutoRepeatTimeDelay;
@@ -174,6 +201,8 @@ protected:
 	BOOL					m_bIsCloseOnInvoke;
 	int						m_nShadowDepth;
 	BOOL					m_bIsVisualManagerTheme;
+	
+	BCGPRadialMenuAnimationStyle	m_AnimationStyle;
 
 	static CMap<UINT,UINT,CBCGPRadialMenuObject*,CBCGPRadialMenuObject*>
 		m_mapAutorepeat;
@@ -191,7 +220,9 @@ class BCGCBPRODLLEXPORT CBCGPRadialMenu : public CBCGPVisualCtrl
 
 // Construction
 public:
-	CBCGPRadialMenu();
+	CBCGPRadialMenu(
+		CBCGPRadialMenuObject::BCGPRadialMenuAnimationStyle animationStyle = CBCGPRadialMenuObject::BCGPRadialMenuAnimationStyle_None,
+		double dblAnimationTime = 0.5 /* ms */);
 
 	BOOL CreatePopup(const CPoint& ptCenter,
 		BYTE nTransparency = 255 /* from 0 to 255 */, 
@@ -205,7 +236,7 @@ public:
 		if (m_pRadialMenuObject == NULL)
 		{
 			m_pRadialMenuObject = new CBCGPRadialMenuObject();
-			m_pRadialMenuObject->m_pCtrl = this;
+			m_pRadialMenuObject->SetParentCtrl(this);
 		}
 
 		return m_pRadialMenuObject;
@@ -240,13 +271,14 @@ protected:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	//}}AFX_MSG
 	afx_msg LRESULT OnIdleUpdateCmdUI(WPARAM wParam, LPARAM lParam);
-	afx_msg LRESULT OnChangeVisualManager(WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 
 	void SetRgn();
 
 protected:
-	CBCGPRadialMenuObject*	m_pRadialMenuObject;
+	CBCGPRadialMenuObject*								m_pRadialMenuObject;
+	CBCGPRadialMenuObject::BCGPRadialMenuAnimationStyle	m_AnimationStyle;
+	double												m_dblAnimationTime;
 };
 
 /////////////////////////////////////////////////////////////////////////////

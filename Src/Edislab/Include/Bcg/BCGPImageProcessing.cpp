@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,6 +18,7 @@
 #include "BCGPImageProcessing.h"
 #include "BCGPDrawManager.h"
 #include "BCGPMath.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -836,17 +837,16 @@ void CBCGPZoomKernel::Create(int sizeSrc, int sizeDst, int originSrc, int widthS
 
 	double width = dFilterWidth;
 	double scale = 1.0;
-	double correction = -0.25;
+
 	if (dScale < 1.0)
 	{
-		width /= dScale;
 		scale = dScale;
-		correction = -correction;
+		width /= dScale;
 	}
 
 	for (DWORD i = 0; i < m_Size; i++)
 	{
-		double center = i / dScale;
+		double center = ((double)i + 0.5) / dScale - 0.5;
 
 		int left  = (int)floor(center - width);
 		int right = (int)ceil(center + width);
@@ -854,24 +854,24 @@ void CBCGPZoomKernel::Create(int sizeSrc, int sizeDst, int originSrc, int widthS
 		const int c_Count = right - left + 1;
 
 		m_List[i].count = 0;
+		m_List[i].stat  = NULL;
 
 		if (c_Count == 0)
 		{
 			continue;
 		}
 
-		m_List[i].stat	= new XKernel[c_Count];
+        XKernel* pStat = new XKernel[c_Count];
+        m_List[i].stat = pStat;
 
-		BOOL bCross = FALSE;
-		DWORD index = 0;
+		BOOL bFirst      = TRUE;
+		BOOL bCross      = FALSE;
+		DWORD index      = 0;
 		double weightSum = 0.0;
 
-		XKernel* pStat = m_List[i].stat;
-
-		BOOL bFirst = TRUE;
 		for(int j = left; j <= right; j++)
 		{
-			double weight = lpFilterProc((center - (double)j + correction) * scale) * scale;
+			double weight = lpFilterProc((center - (double)j) * scale);
 			if(weight == 0.0)
 			{
 				if (!bFirst)
@@ -942,7 +942,7 @@ void CBCGPZoomKernel::Empty()
 	{
 		for(DWORD i = 0; i < m_Size; i++)
 		{
-			if (m_List[i].count > 0)
+			if (m_List[i].stat != NULL)
 			{
 				delete [] m_List[i].stat;
 			}
@@ -1320,21 +1320,7 @@ HBITMAP BCGPIconToBitmap32 (HICON hIcon)
 		return NULL;
 	}
 
-	ICONINFO ii;
-	::GetIconInfo (hIcon, &ii);
-
-	CSize size;
-	{
-		BITMAP bmp;
-		if (::GetObject (ii.hbmColor, sizeof (BITMAP), &bmp) == 0)
-		{
-			ASSERT (FALSE);
-			return NULL;
-		}
-
-		size.cx = bmp.bmWidth;
-		size.cy = bmp.bmHeight;
-	}
+	CSize size = globalUtils.GetIconSize(hIcon);
 
 	CMemoryDC dcColor;
 	dcColor.SetSize (size);
@@ -1390,9 +1376,6 @@ HBITMAP BCGPIconToBitmap32 (HICON hIcon)
 
 	HBITMAP bitmap = CBCGPDrawManager::CreateBitmap_32 (dcColor.GetBitmap ());
 	ASSERT (bitmap != NULL);
-
-	::DeleteObject (ii.hbmColor);
-	::DeleteObject (ii.hbmMask);
 
 	return bitmap;
 }
@@ -1906,3 +1889,165 @@ HBITMAP BCGPRotateBitmap(HBITMAP hBitmap, BOOL bCW)
 
 	return hBitmapDst;
 }
+
+BOOL BCGPModifyBitmapLuminosity(HBITMAP hBitmap, COLORREF clrTransparent, double dblRatio)
+{
+	if (dblRatio == 1.0)
+	{
+		return TRUE;	// Nothing to do
+	}
+
+	DIBSECTION ds;
+	if (::GetObject (hBitmap, sizeof (DIBSECTION), &ds) == 0)
+	{
+		ASSERT (FALSE);
+		return FALSE;
+	}
+	
+	if (ds.dsBm.bmBits != NULL)
+	{
+		if (ds.dsBm.bmBitsPixel < 24)
+		{
+			ASSERT (FALSE);
+			return FALSE;
+		}
+		
+		if (ds.dsBm.bmBitsPixel == 24)
+		{
+			DWORD dwPitch = ((ds.dsBm.bmWidth * 24 + 31) & ~31) / 8;
+			LPBYTE pBits = (LPBYTE)ds.dsBm.bmBits;
+			
+			for (int y = 0; y < ds.dsBm.bmHeight; y++)
+			{
+				LPBYTE pBitsRow = pBits;
+				for (int x = 0; x < ds.dsBm.bmWidth; x++)
+				{
+					COLORREF clrOrig = RGB (pBitsRow[2], pBitsRow[1], pBitsRow[0]);
+					if (clrOrig == clrTransparent)
+					{
+						pBitsRow += 3;
+						continue;
+					}
+					
+					COLORREF color = dblRatio > 1 ? 
+						CBCGPDrawManager::ColorMakeLighter(clrOrig, dblRatio - 1.0, TRUE) : 
+						CBCGPDrawManager::ColorMakeDarker(clrOrig, dblRatio, TRUE);
+					
+					pBitsRow[2] = (BYTE) (GetRValue (color));
+					pBitsRow[1] = (BYTE) (GetGValue (color));
+					pBitsRow[0] = (BYTE) (GetBValue (color));
+					
+					pBitsRow += 3;
+				}
+				
+				pBits += dwPitch;
+			}
+		}
+		else
+		{
+			RGBQUAD* pBits = (RGBQUAD*) ds.dsBm.bmBits;
+			for (int i = 0; i < ds.dsBm.bmWidth * ds.dsBm.bmHeight; i++)
+			{
+				RGBQUAD* pBit = pBits + i;
+				
+				if (pBit->rgbReserved == 0)
+				{
+					continue;
+				}
+
+				COLORREF clrOrig = RGB(pBit->rgbRed, pBit->rgbGreen, pBit->rgbBlue);
+				COLORREF color = dblRatio > 1 ? 
+					CBCGPDrawManager::ColorMakeLighter(clrOrig, dblRatio - 1.0, TRUE) : 
+					CBCGPDrawManager::ColorMakeDarker(clrOrig, dblRatio, TRUE);
+				
+				pBit->rgbRed = GetRValue(color);
+				pBit->rgbGreen = GetGValue(color);
+				pBit->rgbBlue = GetBValue(color);
+				
+				BCGPCorrectAlpha((LPBYTE)pBit, pBit->rgbReserved);
+			}
+		}
+
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+BOOL BCGPInvertBitmapColors(HBITMAP hBitmap, COLORREF clrTransparent)
+{
+	BITMAP bmp = {0};
+	if (::GetObject(hBitmap, sizeof(BITMAP), &bmp) != sizeof(BITMAP))
+	{
+		return FALSE;
+	}
+	
+	if (bmp.bmBitsPixel < 24)
+	{
+		return FALSE;
+	}
+
+	DIBSECTION ds;
+	if (::GetObject (hBitmap, sizeof (DIBSECTION), &ds) == 0)
+	{
+		ASSERT (FALSE);
+		return FALSE;
+	}
+
+	if (ds.dsBm.bmBits != NULL)
+	{
+		if (ds.dsBm.bmBitsPixel == 24)
+		{
+			DWORD dwPitch = ((ds.dsBm.bmWidth * 24 + 31) & ~31) / 8;
+			LPBYTE pBits = (LPBYTE)ds.dsBm.bmBits;
+			for (int y = 0; y < ds.dsBm.bmHeight; y++)
+			{
+				LPBYTE pBitsRow = pBits;
+				for (int x = 0; x < ds.dsBm.bmWidth; x++)
+				{
+					COLORREF clrOrig = RGB (pBitsRow[2], pBitsRow[1], pBitsRow[0]);
+					if (clrOrig == clrTransparent)
+					{
+						pBitsRow += 3;
+						continue;
+					}
+
+					COLORREF color = RGB(
+						255 - GetRValue(clrOrig),
+						255 - GetGValue(clrOrig),
+						255 - GetBValue(clrOrig));
+
+					pBitsRow[2] = (BYTE) (GetRValue (color));
+					pBitsRow[1] = (BYTE) (GetGValue (color));
+					pBitsRow[0] = (BYTE) (GetBValue (color));
+
+					pBitsRow += 3;
+				}
+
+				pBits += dwPitch;
+			}
+		}
+		else
+		{
+			RGBQUAD* pBits = (RGBQUAD*) ds.dsBm.bmBits;
+			for (int i = 0; i < ds.dsBm.bmWidth * ds.dsBm.bmHeight; i++)
+			{
+				RGBQUAD* pBit = pBits + i;
+
+				if (pBit->rgbReserved == 0)
+				{
+					continue;
+				}
+
+				pBit->rgbRed = 255 - pBit->rgbRed;
+				pBit->rgbGreen = 255 - pBit->rgbGreen;
+				pBit->rgbBlue = 255 - pBit->rgbBlue;
+
+				BCGPCorrectAlpha((LPBYTE)pBit, pBit->rgbReserved);
+			}
+		}
+	}
+
+	return TRUE;
+}
+

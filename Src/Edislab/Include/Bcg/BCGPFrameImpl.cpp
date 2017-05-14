@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -10,7 +10,7 @@
 // of the accompanying license agreement.
 //*******************************************************************************
 
-// BCGFrameImpl.cpp: implementation of the CBCGPFrameImpl class.
+// BCGPFrameImpl.cpp: implementation of the CBCGPFrameImpl class.
 //
 //////////////////////////////////////////////////////////////////////
 
@@ -48,6 +48,9 @@
 #include "BCGPGlobalUtils.h"
 #include "BCGPDropDownList.h"
 #include "BCGPRibbonBackstageView.h"
+#include "BCGPSplitterWnd.h"
+#include "BCGPPopupWindow.h"
+#include "BCGPWindowsNavigator.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -66,6 +69,7 @@ BOOL CBCGPFrameImpl::m_bControlBarExtraPixel = TRUE;
 CList<CFrameWnd*, CFrameWnd*> CBCGPFrameImpl::m_lstFrames;
 
 UINT BCGM_POSTSETPREVIEWFRAME = ::RegisterWindowMessage (_T("BCGM_POSTSETPREVIEWFRAME"));
+UINT BCGM_PRECLOSEFRAME = ::RegisterWindowMessage (_T("BCGM_PRECLOSEFRAME"));
 UINT BCGM_ONAFTERUPDATECAPTION = ::RegisterWindowMessage (_T("BCGM_ONAFTERUPDATECAPTION"));
 
 //////////////////////////////////////////////////////////////////////
@@ -100,7 +104,15 @@ CBCGPFrameImpl::CBCGPFrameImpl(CFrameWnd* pFrame) :
 	m_pBackstageView(NULL),
 	m_bDisableThemeCaption(FALSE),
 	m_InputMode(BCGP_MOUSE_INPUT),
-	m_pShadow(NULL)
+	m_pShadow(NULL),
+	m_hwndWindowsNavigator(NULL),
+	m_bIsWindowsNavigatorEnabled(FALSE),
+	m_nWindowsNextNavigationCmdID(0),
+	m_nWindowsPrevNavigationCmdID(0),
+	m_bIsPrevNavigation(FALSE),
+	m_bIsTearOffFrame(FALSE),
+	m_bIsPersistantFrame(TRUE),
+	m_bIsLoadingFrame(FALSE)
 {
 	ASSERT_VALID (m_pFrame);
 
@@ -108,6 +120,9 @@ CBCGPFrameImpl::CBCGPFrameImpl(CFrameWnd* pFrame) :
 	m_rectRedraw.SetRectEmpty ();
 
 	m_bIsMDIChildFrame = m_pFrame->IsKindOf (RUNTIME_CLASS (CMDIChildWnd));
+
+	m_bPrevVisualManagerOwnerDrawCaption = IsOwnerDrawCaption();
+	m_bPrevVisualManagerSmallSystemBorders = CBCGPVisualManager::GetInstance()->IsSmallSystemBorders();
 }
 
 #pragma warning (default : 4355)
@@ -152,6 +167,19 @@ CBCGPFrameImpl::~CBCGPFrameImpl()
 		delete m_pShadow;
 		m_pShadow = NULL;
 	}
+
+	if (m_hwndWindowsNavigator != NULL && ::IsWindow(m_hwndWindowsNavigator))
+	{
+		CWnd* pWndWindowsNavigator = CWnd::FromHandle(m_hwndWindowsNavigator);
+		pWndWindowsNavigator->DestroyWindow();
+
+		m_hwndWindowsNavigator = NULL;
+	}
+}
+//**************************************************************************************
+BOOL CBCGPFrameImpl::IsPersistantFrame()
+{
+	return !m_bIsTearOffFrame && m_bIsPersistantFrame;
 }
 //**************************************************************************************
 void CBCGPFrameImpl::OnCloseFrame()
@@ -164,26 +192,29 @@ void CBCGPFrameImpl::OnCloseFrame()
 		m_pBackstageView->SendMessage(WM_CLOSE);
 	}
 #endif
-	//----------------------------------------------------------------------
-	// Automatically load state and frame position if CBCGPWorkspace is used:
-	//----------------------------------------------------------------------
-	if (g_pWorkspace != NULL)
+
+	if (IsPersistantFrame())
 	{
-		
-		if (m_FullScreenMgr.IsFullScreen())
+		//----------------------------------------------------------------------
+		// Automatically load state and frame position if CBCGPWorkspace is used:
+		//----------------------------------------------------------------------
+		if (g_pWorkspace != NULL)
 		{
-			if(::IsWindow (m_pFrame->GetSafeHwnd ()))
+			if (m_FullScreenMgr.IsFullScreen())
 			{
-				m_FullScreenMgr.RestoreState(m_pFrame);
+				if(::IsWindow (m_pFrame->GetSafeHwnd ()))
+				{
+					m_FullScreenMgr.RestoreState(m_pFrame);
+				}
 			}
+
+			g_pWorkspace->OnClosingMainFrame (this);
+
+			//---------------------------
+			// Store the Windowplacement:
+			//---------------------------
+			StoreWindowPlacement ();
 		}
-
-		g_pWorkspace->OnClosingMainFrame (this);
-
-		//---------------------------
-		// Store the Windowplacement:
-		//---------------------------
-		StoreWindowPlacement ();
 	}
 }
 //**************************************************************************************
@@ -205,20 +236,34 @@ void CBCGPFrameImpl::StoreWindowPlacement ()
 				wp.showCmd = SW_SHOWNORMAL;
 			}
 
+			CRect rectWnd = wp.rcNormalPosition;
+
 			RECT rectDesktop;
-			SystemParametersInfo(SPI_GETWORKAREA,0,(PVOID)&rectDesktop,0);
-			OffsetRect(&wp.rcNormalPosition, rectDesktop.left, rectDesktop.top);
-  
-    		g_pWorkspace->StoreWindowPlacement (
-				wp.rcNormalPosition, wp.flags, wp.showCmd);
+			SystemParametersInfo(SPI_GETWORKAREA, 0, (PVOID)&rectDesktop, 0);
+			rectWnd.OffsetRect(rectDesktop.left, rectDesktop.top);
+
+			if (g_pWorkspace != NULL)
+			{
+				if (!m_pFrame->IsZoomed() && !m_pFrame->IsIconic() && g_pWorkspace->m_bIsAeroSnapPlacement)
+				{
+					// GetWindowPlacement doesn't work correctly in AeroSnap mode:
+					m_pFrame->GetWindowRect(rectWnd);
+				}
+			}
+
+    		g_pWorkspace->StoreWindowPlacement(rectWnd, wp.flags, wp.showCmd);
 		}
 	}
 }
 //**************************************************************************************
 void CBCGPFrameImpl::RestorePosition(CREATESTRUCT& cs)
 {
-	if (g_pWorkspace != NULL &&
-		cs.hInstance != NULL)	
+	if (!IsPersistantFrame())
+	{
+		return;
+	}
+
+	if (g_pWorkspace != NULL && cs.hInstance != NULL)	
 	{
 		CRect rectNormal (CPoint (cs.x, cs.y), CSize (cs.cx, cs.cy));
 		int nFlags = 0;
@@ -285,6 +330,11 @@ void CBCGPFrameImpl::OnLoadFrame()
 {
 	ASSERT_VALID (m_pFrame);
 
+	if (!IsPersistantFrame())
+	{
+		return;
+	}
+
 	//---------------------------------------------------
 	// Automatically load state if CBCGPWorkspace is used:
 	//---------------------------------------------------
@@ -315,6 +365,19 @@ void CBCGPFrameImpl::OnLoadFrame()
 	{
 		m_bDisableThemeCaption = TRUE;
 	}
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_pRibbonBar->GetSafeHwnd () != NULL && m_pRibbonBar->IsAutoStartPage())
+	{
+		if (m_pFrame->GetSafeHwnd() != NULL && !m_pFrame->IsWindowVisible())
+		{
+			m_pFrame->ShowWindow(SW_SHOW);
+			m_pFrame->UpdateWindow();
+		}
+
+		m_pRibbonBar->ShowStartPage();
+	}
+#endif
 }
 //**************************************************************************************
 void CBCGPFrameImpl::LoadUserToolbars ()
@@ -732,6 +795,17 @@ BOOL CBCGPFrameImpl::ProcessKeyboard (int nKey, BOOL* pbProcessAccel)
 {
 	ASSERT_VALID (m_pFrame);
 
+	if (nKey == 0)
+	{
+		return FALSE;
+	}
+
+	if (m_hwndWindowsNavigator != NULL && ::IsWindow(m_hwndWindowsNavigator))
+	{
+		CWnd::SendMessageToDescendants(m_hwndWindowsNavigator, WM_KEYDOWN, (WPARAM)nKey, 0, FALSE, FALSE);
+		return TRUE;
+	}
+
 	if (!m_pFrame->IsWindowEnabled ())
 	{
 		return FALSE;
@@ -773,7 +847,7 @@ BOOL CBCGPFrameImpl::ProcessKeyboard (int nKey, BOOL* pbProcessAccel)
 			return FALSE;
 		}
 
-		BOOL bIsDropList = pActivePopupMenu->GetMenuBar ()->IsDropDownListMode ();
+		BOOL bIsDropList = pActivePopupMenu->IsDropListMode();
 
 		pActivePopupMenu->SendMessage (WM_KEYDOWN, nKey);
 
@@ -782,10 +856,8 @@ BOOL CBCGPFrameImpl::ProcessKeyboard (int nKey, BOOL* pbProcessAccel)
 			return TRUE;
 		}
 
-		CBCGPDropDownList* pDropDownList = DYNAMIC_DOWNCAST(
-			CBCGPDropDownList, CBCGPPopupMenu::GetSafeActivePopupMenu());
-
-		return pDropDownList == NULL || !pDropDownList->IsEditFocused ();
+		pActivePopupMenu = CBCGPPopupMenu::GetSafeActivePopupMenu();
+		return pActivePopupMenu == NULL || !pActivePopupMenu->IsParentEditFocused();
 	}
 
 	//------------------------------------------
@@ -794,7 +866,7 @@ BOOL CBCGPFrameImpl::ProcessKeyboard (int nKey, BOOL* pbProcessAccel)
 	//------------------------------------------
 	if (m_pFrame->IsIconic ())
 	{
-		return TRUE;
+		return CBCGPMDIFrameWnd::GetActiveTearOffFrame() == NULL;
 	}
 
 	//----------------------------------------------------------
@@ -865,7 +937,7 @@ BOOL CBCGPFrameImpl::ProcessKeyboard (int nKey, BOOL* pbProcessAccel)
 	}
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL && m_pRibbonBar->IsWindowVisible () &&
+	if (m_pRibbonBar->GetSafeHwnd() != NULL && m_pRibbonBar->IsWindowVisible () &&
 		fVirt == FCONTROL && nKey == VK_F1 &&
 		m_pRibbonBar->GetActiveCategory () != NULL)
 	{
@@ -901,6 +973,15 @@ BOOL CBCGPFrameImpl::ProcessKeyboard (int nKey, BOOL* pbProcessAccel)
 		}
 	}
 
+	if (m_bIsWindowsNavigatorEnabled && m_nWindowsNextNavigationCmdID == 0 &&
+		(fVirt == FCONTROL || fVirt == (FCONTROL | FSHIFT)) && nKey == VK_TAB)
+	{
+		if (ShowWindowsNavigator(fVirt == (FCONTROL | FSHIFT)))
+		{
+			return TRUE;
+		}
+	}
+
 	if (bIsToolbarCtrlFocus && pbProcessAccel != NULL)
 	{
 		//---------------------------------------------
@@ -917,7 +998,7 @@ BOOL CBCGPFrameImpl::ProcessMouseClick (UINT uiMsg, POINT pt, HWND hwnd)
 	ASSERT_VALID (m_pFrame);
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL && m_pRibbonBar->IsWindowVisible ())
+	if (m_pRibbonBar->GetSafeHwnd() != NULL && m_pRibbonBar->IsWindowVisible ())
 	{
 		CRect rectRibbon;
 		m_pRibbonBar->GetWindowRect (rectRibbon);
@@ -1171,7 +1252,8 @@ BOOL CBCGPFrameImpl::ProcessMouseClick (UINT uiMsg, POINT pt, HWND hwnd)
 		}
 	}
 
-	if (uiMsg == WM_NCRBUTTONUP && hwnd == m_pFrame->GetSafeHwnd () && IsOwnerDrawCaption ())
+	if (uiMsg == WM_NCRBUTTONUP && hwnd == m_pFrame->GetSafeHwnd () && IsOwnerDrawCaption () &&
+		(m_pFrame->GetStyle() & WS_SYSMENU) != 0)
 	{
 		UINT nHit = OnNcHitTest (pt);
 
@@ -1226,6 +1308,11 @@ BOOL CBCGPFrameImpl::ProcessMouseMove (POINT pt)
 			{
 				return FALSE;	// Default processing
 			}
+		}
+
+		if (pActivePopupMenu->HasDroppedDown())
+		{
+			return FALSE;
 		}
 
 		CRect rectMenu;
@@ -1292,7 +1379,7 @@ BOOL CBCGPFrameImpl::ProcessMouseWheel (WPARAM wParam, LPARAM lParam)
 		return (BOOL) m_pBackstageView->SendMessage (WM_MOUSEWHEEL, wParam, lParam);
 	}
 
-	if (m_pRibbonBar != NULL && m_pRibbonBar->IsWindowVisible ())
+	if (m_pRibbonBar->GetSafeHwnd() != NULL && m_pRibbonBar->IsWindowVisible ())
 	{
 		return (BOOL) m_pRibbonBar->SendMessage (WM_MOUSEWHEEL,
 			wParam, lParam);
@@ -1426,7 +1513,7 @@ BOOL CBCGPFrameImpl::OnMenuChar (UINT nChar)
 	ASSERT_VALID (m_pFrame);
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL &&
+	if (m_pRibbonBar->GetSafeHwnd() != NULL &&
 		(m_pRibbonBar->GetStyle () & WS_VISIBLE) &&
 		m_pRibbonBar->TranslateChar (nChar))
 	{
@@ -1494,7 +1581,6 @@ void CBCGPFrameImpl::LoadDockState (LPCTSTR lpszSectionName)
 		m_pDockManager->LoadState (lpszSectionName, m_nIDDefaultResource);
 	}
 }
-
 //************************************************************************************
 void CBCGPFrameImpl::SetDockState(const CDockState& /*state*/)
 {
@@ -1528,7 +1614,7 @@ void CBCGPFrameImpl::DeactivateMenu ()
 	}
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL && m_pRibbonBar->IsWindowVisible ())
+	if (m_pRibbonBar->GetSafeHwnd() != NULL && m_pRibbonBar->IsWindowVisible ())
 	{
 		m_pRibbonBar->DeactivateKeyboardFocus (FALSE);
 	}
@@ -1984,65 +2070,8 @@ void CBCGPFrameImpl::OnGetMinMaxInfo (MINMAXINFO FAR* lpMMI)
 		(m_pFrame->GetStyle () & WS_BORDER) == 0 ||
 		bIsRibbonCaption)
 	{
-		CRect rectWindow;
-		m_pFrame->GetWindowRect (&rectWindow);
-
-		if (m_pFrame->IsIconic ())
-		{
-			WINDOWPLACEMENT wp;
-			wp.length = sizeof (WINDOWPLACEMENT);
-
-			m_pFrame->GetWindowPlacement (&wp);
-
-			rectWindow = wp.rcNormalPosition;
-		}
-
 		CRect rect (0, 0, 0, 0);
-
-		MONITORINFO mi;
-		mi.cbSize = sizeof (MONITORINFO);
-
-		if (GetMonitorInfo (MonitorFromPoint (rectWindow.CenterPoint (), MONITOR_DEFAULTTONEAREST),
-			&mi))
-		{
-			CRect rectWork = mi.rcWork;
-			CRect rectScreen = mi.rcMonitor;
-
-			rect.left = abs(rectWork.left - rectScreen.left);
-			rect.top = abs(rectWork.top - rectScreen.top);
-
-			rect.right = rect.left + rectWork.Width ();
-			rect.bottom = rect.top + rectWork.Height ();
-		}
-		else
-		{
-			::SystemParametersInfo (SPI_GETWORKAREA, 0, &rect, 0);
-		}
-
-		if (bIsRibbonCaption && CBCGPVisualManager::GetInstance()->IsDWMCaptionSupported ())
-		{
-			rect.OffsetRect (-rect.TopLeft ());
-		}
-
-		if (globalData.GetShellAutohideBars () & BCGP_AUTOHIDE_BOTTOM)
-		{
-			rect.bottom -= 2;
-		}
-
-		if (globalData.GetShellAutohideBars () & BCGP_AUTOHIDE_TOP)
-		{
-			rect.top += 2;
-		}
-
-		if (globalData.GetShellAutohideBars () & BCGP_AUTOHIDE_RIGHT)
-		{
-			rect.right -= 2;
-		}
-
-		if (globalData.GetShellAutohideBars () & BCGP_AUTOHIDE_LEFT)
-		{
-			rect.left += 2;
-		}
+		GetMonitorRect(rect);
 
 		lpMMI->ptMaxPosition.x = rect.left;
 		lpMMI->ptMaxPosition.y = rect.top;
@@ -2183,6 +2212,14 @@ void CBCGPFrameImpl::OnActivateApp (BOOL bActive)
 	{
 		m_pShadow->SetVisible(bActive && m_pFrame->IsWindowEnabled());
 	}
+
+	if (m_hwndWindowsNavigator != NULL && ::IsWindow(m_hwndWindowsNavigator))
+	{
+		CWnd* pWndWindowsNavigator = CWnd::FromHandle(m_hwndWindowsNavigator);
+		pWndWindowsNavigator->DestroyWindow();
+
+		m_hwndWindowsNavigator = NULL;
+	}
 }
 //********************************************************************************
 void CBCGPFrameImpl::OnSetText (LPCTSTR /*lpszText*/)
@@ -2190,7 +2227,7 @@ void CBCGPFrameImpl::OnSetText (LPCTSTR /*lpszText*/)
 	ASSERT_VALID (m_pFrame);
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL &&
+	if (m_pRibbonBar->GetSafeHwnd() != NULL &&
 		m_pRibbonBar->IsWindowVisible () &&
 		m_pRibbonBar->IsReplaceFrameCaption ())
 	{
@@ -2210,7 +2247,7 @@ BOOL CBCGPFrameImpl::OnNcActivate (BOOL bActive)
 
 #ifndef BCGP_EXCLUDE_RIBBON
 	if (!bActive &&
-		m_pRibbonBar != NULL &&
+		m_pRibbonBar->GetSafeHwnd() != NULL &&
 		m_pRibbonBar->IsWindowVisible ())
 	{
 		m_pRibbonBar->HideKeyTips ();
@@ -2220,6 +2257,11 @@ BOOL CBCGPFrameImpl::OnNcActivate (BOOL bActive)
 
 	if (!m_pFrame->IsWindowVisible ())
 	{
+		if (!m_bIsLoadingFrame)
+		{
+			CBCGPVisualManager::GetInstance()->ResetActivateFlag(m_pFrame);
+		}
+
 		return FALSE;
 	}
 
@@ -2227,7 +2269,7 @@ BOOL CBCGPFrameImpl::OnNcActivate (BOOL bActive)
 	BOOL bFrameIsRedrawn = FALSE;
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL &&
+	if (m_pRibbonBar->GetSafeHwnd() != NULL &&
 		m_pRibbonBar->IsWindowVisible () &&
 		m_pRibbonBar->IsReplaceFrameCaption ())
 	{
@@ -2290,10 +2332,11 @@ CRect CBCGPFrameImpl::GetCaptionRect ()
 	m_pFrame->GetWindowRect (&rectWnd);
 	m_pFrame->ScreenToClient (&rectWnd);
 
+	int cyCaption = ::GetSystemMetrics ((m_pFrame->GetExStyle () & WS_EX_TOOLWINDOW) == WS_EX_TOOLWINDOW ? SM_CYSMCAPTION : SM_CYCAPTION);
 	int cyOffset = szSystemBorder.cy;
 	if (!m_pFrame->IsIconic ())
 	{
-		cyOffset += ::GetSystemMetrics (SM_CYCAPTION);
+		cyOffset += cyCaption;
 	}
 
 	rectWnd.OffsetRect (szSystemBorder.cx, cyOffset);
@@ -2301,7 +2344,7 @@ CRect CBCGPFrameImpl::GetCaptionRect ()
 	CRect rectCaption (	rectWnd.left + szSystemBorder.cx, 
 						rectWnd.top + szSystemBorder.cy, 
 						rectWnd.right - szSystemBorder.cx, 
-						rectWnd.top + szSystemBorder.cy + ::GetSystemMetrics (SM_CYCAPTION));
+						rectWnd.top + szSystemBorder.cy + cyCaption);
 
 	if (m_pFrame->IsIconic ())
 	{
@@ -2365,16 +2408,18 @@ void CBCGPFrameImpl::UpdateCaption ()
 	    CSize sizeButton (CBCGPVisualManager::GetInstance ()->GetNcBtnSize (FALSE));
 		if (sizeButton == CSize(0, 0))
 		{
-			NONCLIENTMETRICS ncm;
-			globalData.GetNonClientMetrics  (ncm);
-
-			sizeButton = CSize(ncm.iCaptionWidth, ncm.iCaptionHeight);
+			sizeButton = globalUtils.GetCaptionButtonSize(m_pFrame);
 		}		
 
 	    sizeButton.cy = min (sizeButton.cy, rectCaption.Height () - 2);
 
 	    int x = rectCaption.right - sizeButton.cx;
-	    int y = rectCaption.top + max (0, (rectCaption.Height () - sizeButton.cy) / 2);
+	    int y = rectCaption.top;
+
+		if (!m_pFrame->IsZoomed())
+		{
+			y += max (0, (rectCaption.Height () - sizeButton.cy) / 2);
+		}
 
 	    for (POSITION pos = m_lstCaptionSysButtons.GetHeadPosition (); pos != NULL;)
 	    {
@@ -2432,7 +2477,7 @@ UINT CBCGPFrameImpl::OnNcHitTest (CPoint point)
 	ASSERT_VALID (m_pFrame);
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL &&
+	if (m_pRibbonBar->GetSafeHwnd() != NULL &&
 		m_pRibbonBar->IsWindowVisible () &&
 		m_pRibbonBar->IsReplaceFrameCaption () &&
 		m_pRibbonBar->IsTransparentCaption () &&
@@ -2467,7 +2512,7 @@ UINT CBCGPFrameImpl::OnNcHitTest (CPoint point)
 
 	if (!m_pFrame->IsIconic ())
 	{
-		cyOffset += ::GetSystemMetrics (SM_CYCAPTION);
+		cyOffset += ::GetSystemMetrics ((m_pFrame->GetExStyle() & WS_EX_TOOLWINDOW) == WS_EX_TOOLWINDOW ? SM_CYSMCAPTION : SM_CYCAPTION);
 	}
 
 	if (m_pFrame->IsZoomed ())
@@ -2493,11 +2538,19 @@ UINT CBCGPFrameImpl::OnNcHitTest (CPoint point)
 	CRect rectCaption = GetCaptionRect ();
 	if (rectCaption.PtInRect (point))
 	{
-		CRect rectSysMenu = rectCaption;
-		rectSysMenu.right = rectSysMenu.left + ::GetSystemMetrics (SM_CXSMICON) + 2 +
-			(m_pFrame->IsZoomed () ? szSystemBorder.cx : 0);
+		if ((m_pFrame->GetStyle() & WS_SYSMENU) != 0)
+		{
+			CRect rectSysMenu = rectCaption;
+			rectSysMenu.right = rectSysMenu.left + ::GetSystemMetrics (SM_CXSMICON) + 2 +
+				(m_pFrame->IsZoomed () ? szSystemBorder.cx : 0);
 
-		return rectSysMenu.PtInRect (point) ? HTSYSMENU : HTCAPTION;
+			if (rectSysMenu.PtInRect (point))
+			{
+				return HTSYSMENU;
+			}
+		}
+
+		return HTCAPTION;
 	}
 
 	return HTNOWHERE;
@@ -2575,6 +2628,11 @@ void CBCGPFrameImpl::OnLButtonUp(CPoint /*point*/)
 				case HTMINBUTTON_BCG:
 					nSysCmd = m_pFrame->IsIconic () ? SC_RESTORE : SC_MINIMIZE;
 					break;
+				}
+
+				if (nSysCmd == SC_CLOSE)
+				{
+					m_pFrame->SendMessageToDescendants(BCGM_PRECLOSEFRAME, 0, 0, TRUE, TRUE);
 				}
 
 				m_pFrame->PostMessage (WM_SYSCOMMAND, nSysCmd);
@@ -2736,7 +2794,7 @@ void CBCGPFrameImpl::OnChangeVisualManager ()
 
 	globalData.EnableWindowAero(m_pFrame->GetSafeHwnd(), CBCGPVisualManager::GetInstance()->IsDWMCaptionSupported());
 
-	if (CBCGPVisualManager::GetInstance ()->IsSmallSystemBorders() && !m_bIsMDIChildFrame && (m_pFrame->GetStyle() & WS_CHILD) == 0 && !m_bDisableThemeCaption && !m_bIsOleInPlaceActive)
+	if (CBCGPVisualManager::GetInstance ()->CanShowFrameShadows() && !m_bIsMDIChildFrame && (m_pFrame->GetStyle() & WS_CHILD) == 0 && !m_bDisableThemeCaption && !m_bIsOleInPlaceActive)
 	{
 		if (globalData.m_bShowFrameLayeredShadows)
 		{
@@ -2783,6 +2841,8 @@ void CBCGPFrameImpl::OnChangeVisualManager ()
 
 			if (CBCGPVisualManager::GetInstance()->IsDWMCaptionSupported ())
 			{
+				m_bPrevVisualManagerOwnerDrawCaption = IsOwnerDrawCaption();
+				m_bPrevVisualManagerSmallSystemBorders = CBCGPVisualManager::GetInstance()->IsSmallSystemBorders();
 				return;
 			}
 		}
@@ -2809,7 +2869,11 @@ void CBCGPFrameImpl::OnChangeVisualManager ()
 		m_bIsWindowRgn = CBCGPVisualManager::GetInstance ()->OnSetWindowRegion (
 			m_pFrame, rectWindow.Size ());
 
-		if (bZoomed && bChangeBorder && !m_bIsMDIChildFrame)
+		BOOL bChangeRibbonBorder = (bIsRibbonCaption && 
+			(!m_bPrevVisualManagerSmallSystemBorders && CBCGPVisualManager::GetInstance()->IsSmallSystemBorders()) ||
+			(!m_bPrevVisualManagerOwnerDrawCaption && IsOwnerDrawCaption()));
+
+		if (bZoomed && (bChangeBorder || bChangeRibbonBorder) && !m_bIsMDIChildFrame)
 		{
 			m_pFrame->ShowWindow (CBCGPVisualManager::GetInstance ()->IsSmallSystemBorders() ? SW_RESTORE : SW_MINIMIZE);
 			m_pFrame->ShowWindow (SW_MAXIMIZE);
@@ -2863,6 +2927,9 @@ void CBCGPFrameImpl::OnChangeVisualManager ()
 	}
 
 	UpdateCaption ();
+
+	m_bPrevVisualManagerOwnerDrawCaption = IsOwnerDrawCaption();
+	m_bPrevVisualManagerSmallSystemBorders = CBCGPVisualManager::GetInstance()->IsSmallSystemBorders();
 }
 //************************************************************************************
 BOOL CBCGPFrameImpl::IsPrintPreview ()
@@ -2873,7 +2940,7 @@ BOOL CBCGPFrameImpl::IsPrintPreview ()
 void CBCGPFrameImpl::OnDWMCompositionChanged ()
 {
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL &&
+	if (m_pRibbonBar->GetSafeHwnd() != NULL &&
 		m_pRibbonBar->IsWindowVisible () &&
 		m_pRibbonBar->IsReplaceFrameCaption ())
 	{
@@ -2904,7 +2971,7 @@ BOOL CBCGPFrameImpl::ProcessSysKeyUp(WPARAM wParam, LPARAM lParam)
 	ASSERT_VALID (m_pFrame);
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL && m_pRibbonBar->OnSysKeyUp (m_pFrame, wParam, lParam))
+	if (m_pRibbonBar->GetSafeHwnd() != NULL && m_pRibbonBar->OnSysKeyUp (m_pFrame, wParam, lParam))
 	{
 		return TRUE;
 	}
@@ -3079,12 +3146,12 @@ void CBCGPFrameImpl::SetInputMode(BCGP_INPUT_MODE mode)
 	m_InputMode = mode;
 
 #ifndef BCGP_EXCLUDE_RIBBON
-	if (m_pRibbonBar != NULL)
+	if (m_pRibbonBar->GetSafeHwnd() != NULL)
 	{
 		m_pRibbonBar->SetInputMode(mode);
 	}
 
-	if (m_pRibbonStatusBar != NULL)
+	if (m_pRibbonStatusBar->GetSafeHwnd() != NULL)
 	{
 		m_pRibbonStatusBar->SetInputMode(mode);
 	}
@@ -3096,5 +3163,404 @@ void CBCGPFrameImpl::AdjustShadow(BOOL bActive)
 	if (m_pShadow != NULL)
 	{
 		m_pShadow->SetVisible((bActive || (m_pFrame->m_nFlags & WF_STAYACTIVE) == WF_STAYACTIVE) && m_pFrame->IsWindowEnabled());
+	}
+}
+//********************************************************************************
+BOOL CBCGPFrameImpl::ProcessRibbonContextHelp()
+{
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_pRibbonBar->GetSafeHwnd() != NULL)
+	{
+		ASSERT_VALID(m_pRibbonBar);
+		ASSERT_VALID(m_pFrame);
+
+		int nCommandID = m_pRibbonBar->GetContextHelpActiveID();
+		if (nCommandID != 0)
+		{
+			m_pRibbonBar->PopTooltip();
+			m_pFrame->PostMessage(WM_COMMANDHELP, 0, HID_BASE_COMMAND + nCommandID);
+			return TRUE;
+		}
+	}
+#endif
+
+	return FALSE;
+}
+//********************************************************************************
+void CBCGPFrameImpl::GetMonitorRect(CRect& rect)
+{
+	rect.SetRectEmpty();
+
+	BOOL bIsRibbonCaption = FALSE;
+	
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_pRibbonBar->GetSafeHwnd () != NULL &&
+		((m_pRibbonBar->IsWindowVisible () || IsFullScreeen ()) || !m_pFrame->IsWindowVisible ()) &&
+		m_pRibbonBar->IsReplaceFrameCaption ())
+	{
+		bIsRibbonCaption = TRUE;
+	}
+#endif
+	
+	CRect rectWindow;
+	m_pFrame->GetWindowRect (&rectWindow);
+	
+	if (m_pFrame->IsIconic () || m_pFrame->IsZoomed ())
+	{
+		WINDOWPLACEMENT wp;
+		wp.length = sizeof (WINDOWPLACEMENT);
+		
+		m_pFrame->GetWindowPlacement (&wp);
+		
+		rectWindow = wp.rcNormalPosition;
+	}
+	
+	MONITORINFO mi;
+	mi.cbSize = sizeof (MONITORINFO);
+	
+	if (GetMonitorInfo (MonitorFromPoint (rectWindow.CenterPoint (), MONITOR_DEFAULTTONEAREST),
+		&mi))
+	{
+		CRect rectWork = mi.rcWork;
+		CRect rectScreen = mi.rcMonitor;
+		
+		rect.left = abs(rectWork.left - rectScreen.left);
+		rect.top = abs(rectWork.top - rectScreen.top);
+		
+		rect.right = rect.left + rectWork.Width ();
+		rect.bottom = rect.top + rectWork.Height ();
+	}
+	else
+	{
+		::SystemParametersInfo (SPI_GETWORKAREA, 0, &rect, 0);
+	}
+	
+	if (bIsRibbonCaption && CBCGPVisualManager::GetInstance()->IsDWMCaptionSupported ())
+	{
+		rect.OffsetRect (-rect.TopLeft ());
+	}
+	
+	if (globalData.GetShellAutohideBars () & BCGP_AUTOHIDE_BOTTOM)
+	{
+		rect.bottom -= 2;
+	}
+	
+	if (globalData.GetShellAutohideBars () & BCGP_AUTOHIDE_TOP)
+	{
+		rect.top += 2;
+	}
+	
+	if (globalData.GetShellAutohideBars () & BCGP_AUTOHIDE_RIGHT)
+	{
+		rect.right -= 2;
+	}
+	
+	if (globalData.GetShellAutohideBars () & BCGP_AUTOHIDE_LEFT)
+	{
+		rect.left += 2;
+	}
+}
+//********************************************************************************
+void CBCGPFrameImpl::AdjustMaximizedSize(int& cx, int& cy)
+{
+	BOOL bIsRibbonCaption = FALSE;
+	
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_pRibbonBar->GetSafeHwnd () != NULL &&
+		((m_pRibbonBar->IsWindowVisible () || IsFullScreeen ()) || !m_pFrame->IsWindowVisible ()) &&
+		m_pRibbonBar->IsReplaceFrameCaption ())
+	{
+		bIsRibbonCaption = TRUE;
+	}
+#endif
+	
+	if ((m_pFrame->GetStyle () & WS_CAPTION) == 0 ||
+		(m_pFrame->GetStyle () & WS_BORDER) == 0 ||
+		bIsRibbonCaption)
+	{
+		CRect rect;
+		GetMonitorRect(rect);
+
+		cx = min(cx, rect.Width());
+		cy = min(cy, rect.Height());
+	}
+}
+//********************************************************************************
+void CBCGPFrameImpl::OnSysCommand(UINT nID, LPARAM /*lParam*/)
+{
+	if (m_pShadow != NULL && ((nID & 0xFFF0) == SC_MINIMIZE))
+	{
+		m_pShadow->Show(FALSE);
+	}
+}
+//************************************************************************************
+BOOL CBCGPFrameImpl::ActivateNextPane(BOOL bPrev, CFrameWnd* pActiveFrame)
+{
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_pBackstageView->GetSafeHwnd() != NULL)
+	{
+		return TRUE;
+	}
+#endif
+
+	if (m_pDockManager == NULL)
+	{
+		return FALSE;
+	}
+
+	ASSERT_VALID(m_pDockManager);
+
+	CWnd* pFocus = CWnd::GetFocus();
+	if (pFocus->GetSafeHwnd() == NULL)
+	{
+		return FALSE;
+	}
+
+	POSITION pos = NULL;
+
+	CList<CWnd*, CWnd*> lstPanes;
+
+	if (pActiveFrame->GetSafeHwnd() != NULL)
+	{
+		CView* pView = pActiveFrame->GetActiveView();
+		if (pView->GetSafeHwnd() != NULL)
+		{
+			if (pView->IsChild(pFocus) || pFocus->GetSafeHwnd () == pView->GetSafeHwnd ())
+			{
+				CSplitterWnd* pSplitter = pView->GetParentSplitter(pView, FALSE);
+
+				CBCGPSplitterWnd* pBCGPSplitter = DYNAMIC_DOWNCAST(CBCGPSplitterWnd, pSplitter);
+				if (pBCGPSplitter != NULL)
+				{
+					pBCGPSplitter->m_bCyclicPaneActivation = FALSE;
+				}
+
+				if (pSplitter != NULL && pSplitter->CanActivateNext(bPrev))
+				{
+					return FALSE;
+				}
+			}
+
+			lstPanes.AddTail(pView);
+		}
+		else
+		{
+			lstPanes.AddTail(pActiveFrame);
+		}
+	}
+
+	CObList lstControlBars;
+	m_pDockManager->GetControlBarList(lstControlBars, FALSE, NULL, FALSE);
+	
+	for (pos = lstControlBars.GetTailPosition(); pos != NULL;)
+	{
+		CBCGPBaseControlBar* pBar = DYNAMIC_DOWNCAST(CBCGPBaseControlBar, lstControlBars.GetPrev(pos));
+		if (pBar->GetSafeHwnd() == NULL)
+		{
+			continue;
+		}
+
+		if (!pBar->IsWindowVisible() || !pBar->IsTabStop())
+		{
+			continue;
+		}
+
+		lstPanes.AddTail(pBar);
+	}
+
+	if (lstPanes.GetCount() < 2)
+	{
+		return FALSE;
+	}
+
+	CWnd* pNextFocused = NULL;
+	CWnd* pPrevPane = NULL;
+
+	for (pos = lstPanes.GetHeadPosition(); pos != NULL;)
+	{
+		CWnd* pWndPane = lstPanes.GetNext(pos);
+		ASSERT_VALID(pWndPane);
+
+		if (pWndPane->IsChild(pFocus) || pFocus->GetSafeHwnd () == pWndPane->GetSafeHwnd ())
+		{
+			if (bPrev)
+			{
+				pNextFocused = (pPrevPane == NULL) ? lstPanes.GetTail() : pPrevPane;
+			}
+			else
+			{
+				pNextFocused = (pos == NULL) ? lstPanes.GetHead() : lstPanes.GetNext(pos);
+			}
+			break;
+		}
+
+		pPrevPane = pWndPane;
+	}
+
+	if (pNextFocused == NULL)
+	{
+		return FALSE;
+	}
+
+	pNextFocused->SetFocus();
+
+	CView* pView = DYNAMIC_DOWNCAST(CView, pNextFocused);
+	if (pView != NULL)
+	{
+		ASSERT_VALID(pView);
+
+		CBCGPSplitterWnd* pSplitter = DYNAMIC_DOWNCAST(CBCGPSplitterWnd, pView->GetParentSplitter(pView, FALSE));
+		if (pSplitter != NULL)
+		{
+			if (bPrev)
+			{
+				pSplitter->ActivateLastPane();
+			}
+			else
+			{
+				pSplitter->ActivateFirstPane();
+			}
+		}
+	}
+
+	return TRUE;
+}
+//************************************************************************************
+BOOL CBCGPFrameImpl::ShowWindowsNavigator(BOOL bPrev)
+{
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+	CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, m_bIsTearOffFrame ? AfxGetMainWnd() : m_pFrame);
+
+	if (pMDIFrame != NULL)
+	{
+		ASSERT_VALID(pMDIFrame);
+
+		if (m_pMenuBar->GetSafeHwnd() != NULL && m_pMenuBar == CWnd::GetFocus ())
+		{
+			pMDIFrame->SetFocus();
+		}
+
+		if (m_hwndWindowsNavigator != NULL && ::IsWindow(m_hwndWindowsNavigator))
+		{
+			return TRUE;
+		}
+
+		CBCGPLocalResource lr;
+
+		m_bIsPrevNavigation = bPrev;
+		
+		CBCGPPopupWindow* pWindowsNavigator = new CBCGPPopupWindow;
+		
+		pWindowsNavigator->SetRoundedCorners(TRUE);
+		pWindowsNavigator->SetShadow(TRUE);
+		pWindowsNavigator->SetTransparency(255);
+		
+		pWindowsNavigator->SetAnimationType(CBCGPPopupMenu::NO_ANIMATION);
+		pWindowsNavigator->SetSmallCaption(FALSE, TRUE);
+		pWindowsNavigator->SetAutoCloseTime(0);
+		pWindowsNavigator->EnableCloseButton(FALSE);
+		
+		pWindowsNavigator->Create(m_pFrame, IDD_BCGBARRES_PANE_MANAGER_DLG, NULL, CPoint(-2, -2),
+			RUNTIME_CLASS(CBCGPWindowsNavigator), (LPARAM)&pMDIFrame->m_Impl);
+		
+		m_hwndWindowsNavigator = pWindowsNavigator->GetSafeHwnd();
+		
+		return TRUE;
+	}
+
+#endif
+
+	return FALSE;
+}
+//************************************************************************************
+void CBCGPFrameImpl::EnableWindowsNavigator(BOOL bEnable)
+{
+	m_bIsWindowsNavigatorEnabled = bEnable;
+
+	m_nWindowsNextNavigationCmdID = 0;
+	m_nWindowsPrevNavigationCmdID = 0;
+}
+//************************************************************************************
+void CBCGPFrameImpl::EnableWindowsNavigator(UINT nNextCmdID, UINT nPrevCmdID)
+{
+	if (nNextCmdID == 0 || nPrevCmdID == 0)
+	{
+		m_bIsWindowsNavigatorEnabled = FALSE;
+		
+		m_nWindowsNextNavigationCmdID = 0;
+		m_nWindowsPrevNavigationCmdID = 0;
+	}
+	else
+	{
+		m_bIsWindowsNavigatorEnabled = TRUE;
+	
+		m_nWindowsNextNavigationCmdID = nNextCmdID;
+		m_nWindowsPrevNavigationCmdID = nPrevCmdID;
+	}
+}
+//************************************************************************************
+BOOL CBCGPFrameImpl::IsMenuActive()
+{
+	if (CBCGPPopupMenu::GetActiveMenu() != NULL)
+	{
+		return TRUE;
+	}
+
+	CWnd* pCommandBar = (m_pMenuBar->GetSafeHwnd() != NULL && m_pMenuBar->IsWindowVisible()) ? m_pMenuBar : NULL;
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (pCommandBar == NULL && m_pRibbonBar->GetSafeHwnd () != NULL && m_pRibbonBar->IsWindowVisible())
+	{
+		pCommandBar = m_pRibbonBar;
+	}
+#endif
+
+	if (pCommandBar->GetSafeHwnd() != NULL && pCommandBar->GetSafeHwnd() == CWnd::GetFocus()->GetSafeHwnd())
+	{
+		return TRUE;
+	}
+
+	return FALSE;
+}
+//************************************************************************************
+HICON CBCGPFrameImpl::OnGetRecentFileIcon(CBCGPRecentFilesListBox* pWndListBox, const CString& strPath, int nIndex) const
+{
+	UNREFERENCED_PARAMETER(pWndListBox);
+	UNREFERENCED_PARAMETER(nIndex);
+
+	SHFILEINFO sfi;
+	if (::SHGetFileInfo(strPath, 0, &sfi, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SHELLICONSIZE | SHGFI_LARGEICON))
+	{
+		return sfi.hIcon;
+	}
+
+	return NULL;
+}
+//************************************************************************************
+void CBCGPFrameImpl::SendMessageToViews(UINT msg, WPARAM wp, LPARAM lp)
+{
+	ASSERT_VALID (m_pFrame);
+	
+	CView* pViewActive = m_pFrame->GetActiveView();
+	if (pViewActive->GetSafeHwnd() != NULL)
+	{
+		CDocument* pDoc = m_pFrame->GetActiveDocument();
+		if (pDoc != NULL)
+		{
+			ASSERT_VALID(pDoc);
+			
+			for (POSITION posView = pDoc->GetFirstViewPosition(); posView != NULL;)
+			{
+				CView* pView = pDoc->GetNextView(posView);
+				ASSERT_VALID(pView);
+				
+				if (pViewActive != pView)
+				{
+					pView->SendMessage(msg, wp, lp);
+				}
+			}
+		}
+		
+		pViewActive->SendMessage(msg, wp, lp);
 	}
 }

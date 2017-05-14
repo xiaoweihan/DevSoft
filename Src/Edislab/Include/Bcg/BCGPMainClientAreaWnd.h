@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -25,8 +25,11 @@
 
 #include "BCGCBPro.h"
 #include "BCGPTabWnd.h"
+#include "BCGPScrollBar.h"
 
 class CBCGPMDIFrameWnd;
+class CBCGPMDIChildDragWnd;
+class CBCGPDragRectWnd;
 
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_MOVETOTABGROUP;
 
@@ -55,15 +58,18 @@ public:
 	BOOL							m_bReuseRemovedTabGroups;
 	BOOL							m_bActiveTabBoldFont;
 	BOOL							m_bTabsCaptionFont;
+	BOOL							m_bTabMultipleSelection;
 };
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMainClientAreaWnd window
 
-class BCGCBPRODLLEXPORT CBCGPMainClientAreaWnd : public CWnd
+class BCGCBPRODLLEXPORT CBCGPMainClientAreaWnd : public TBCGPInternalScrollBarWrapperWnd<CWnd>
 {
 	DECLARE_DYNAMIC(CBCGPMainClientAreaWnd)
+
 	friend class CBCGPMDIFrameWnd;
+	friend class CBCGPMDIChildDragWnd;
 
 // Construction
 public:
@@ -83,7 +89,7 @@ protected:
 	BOOL						m_bLastActiveTab;
 
 	CImageList					m_TabIcons;
-	CMap<HICON,HICON,int,int>	m_mapIcons;	// Icons already loaded into the image list
+	CMap<UINT_PTR,UINT_PTR,int,int>	m_mapIcons;	// Icons already loaded into the image list
 
 	// ---- MDITabGroup+
 	enum GROUP_ALIGNMENT
@@ -96,7 +102,7 @@ protected:
 	CBCGPMDITabParams			m_mdiTabParams;
 	CObList						m_lstTabbedGroups;
 	
-	CMap<CWnd*, CWnd*, CImageList*, CImageList*> m_mapTabIcons;
+	CMap<UINT_PTR, UINT_PTR, CImageList*, CImageList*> m_mapTabIcons;
 	BOOL						m_bIsMDITabbedGroup;
 	CObList						m_lstRemovedTabbedGroups;
 	
@@ -114,6 +120,14 @@ protected:
 
 	BOOL						m_bActive;
 
+	BOOL						m_bEnableTearOffMDIChildren;
+	BOOL						m_bDetachMDIChildrenOnly;
+	CBCGPMDIChildDragWnd*		m_pWndMDIChildDrag;
+	CBCGPDragRectWnd*			m_pDragRectWnd;
+
+	static CString				m_strRegSectionFmt;
+
+	CObList						m_lstSerializedToBeDeleted;
 
 // Operations
 public:
@@ -153,8 +167,8 @@ public:
 	void RemoveTabGroup (CBCGPTabWnd* pTabWnd, BOOL bRecalcLayout = TRUE);
 	void CloseAllWindows (CBCGPTabWnd* pTabWnd);
 
-	BOOL SaveState (LPCTSTR lpszProfileName, UINT nFrameID);
-	BOOL LoadState (LPCTSTR lpszProfileName, UINT nFrameID);
+	BOOL SaveState (LPCTSTR lpszProfileName, UINT nFrameID, BOOL bSaveFramePosition = FALSE);
+	BOOL LoadState (LPCTSTR lpszProfileName, UINT nFrameID, BOOL bRestoreFramePosition = FALSE);
 	void Serialize (CArchive& ar);
 	// ---- MDITabGroup-
 
@@ -163,6 +177,10 @@ public:
 	CBCGPMDIChildWnd* FindNextRegisteredWithTaskbarMDIChild(CBCGPTabWnd* pTabCtrl, int iStartFrom = 0);
 	CBCGPMDIChildWnd* FindNextRegisteredWithTaskbarMDIChild(CBCGPMDIChildWnd* pOrgWnd);
 
+	CWnd* GetNextMDITab(BOOL bPrev = FALSE);
+
+	BOOL IsDragMDIChild() const;
+
 // Overrides
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPMainClientAreaWnd)
@@ -170,6 +188,8 @@ public:
 	virtual void CalcWindowRect(LPRECT lpClientRect, UINT nAdjustType = adjustBorder);
 	virtual void PreSubclassWindow();
 	//}}AFX_VIRTUAL
+
+	virtual BOOL IsInternalScrollBarThemed() const;
 
 // Implementation
 public:
@@ -180,6 +200,8 @@ protected:
 	//{{AFX_MSG(CBCGPMainClientAreaWnd)
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
 	afx_msg void OnStyleChanging (int nStyleType, LPSTYLESTRUCT lpStyleStruct);
+	afx_msg void OnNcPaint();
+	afx_msg BOOL OnNcActivate(BOOL bActive);
 	//}}AFX_MSG
 	afx_msg LRESULT OnSetMenu (WPARAM wp, LPARAM);
 	afx_msg LRESULT OnUpdateTabs (WPARAM, LPARAM);
@@ -198,7 +220,7 @@ protected:
 private:
 	CBCGPTabWnd* GetNextTabWnd (CBCGPTabWnd* pOrgTabWnd, BOOL bWithoutAsserts = FALSE);
 	void AdjustMDIChildren (CBCGPTabWnd* pTabWnd);
-	void DrawNewGroupRect (LPCRECT rectNew, LPCRECT rectOld);
+	void DrawNewGroupRect(LPCRECT rectNew);
 	CBCGPTabWnd* TabWndFromPoint (CPoint ptScreen);
 	CBCGPTabWnd* CreateNewTabGroup (CBCGPTabWnd* pTabWndAfter, CRect rectGroup, BOOL bVertical);
 	void ApplyParams (CBCGPTabWnd* pTabWnd);
@@ -206,9 +228,9 @@ private:
 	void SerializeOpenChildren (CArchive& ar);
 
 	BOOL IsKeepClientEdge ();
+
+	void OnDragForeignMDIChild(CBCGPMDIChildWnd* pMDIChildWnd);
 };
-
-
 
 /////////////////////////////////////////////////////////////////////////////
 

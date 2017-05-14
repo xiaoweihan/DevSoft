@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -32,9 +32,8 @@
 	#define CBCGPScrollBar CScrollBar
 #endif
 
+#pragma warning (push)
 #pragma warning (disable : 4100) 
-#pragma warning (disable : 4311)
-#pragma warning (disable : 4312)
 
 // UAT - undo action type
 #define UAT_TYPE		0x000000FF
@@ -330,7 +329,7 @@ public:
 		m_nLine = srcMarker.m_nLine;
 		m_dwMarkerType = srcMarker.m_dwMarkerType;
 		m_unPriority = srcMarker.m_unPriority;
-		CopyData ((DWORD) srcMarker.m_pData);
+		CopyData((DWORD_PTR)srcMarker.m_pData);
 	}
 
 	virtual CBCGPEditMarkerRange IsInRange (int nStartPos, int nEndPos) const
@@ -348,15 +347,20 @@ public:
 		return NOT_IN_RANGE;
 	}
 
-	virtual void UpdateMarkerForDeletedRange (int /*nStartPos*/, int /*nEndPos*/) {}
-	virtual void UpdateMarkerForDeletedRangeByOffset (int /*nStartPos*/, int /*nEndPos*/) {}
-
-	virtual bool CompareData (DWORD dwData) const
+	virtual void UpdateMarkerForDeletedRange (int nStartPos, int nEndPos) 
 	{
-		return ((DWORD) m_pData) == dwData;
+		UNREFERENCED_PARAMETER(nStartPos);
+		UNREFERENCED_PARAMETER(nEndPos);
 	}
 
-	virtual void CopyData (DWORD dwData) {}
+	virtual void UpdateMarkerForDeletedRangeByOffset (int /*nStartPos*/, int /*nEndPos*/) {}
+
+	virtual bool CompareData (DWORD_PTR dwData) const
+	{
+		return ((DWORD_PTR)m_pData) == dwData;
+	}
+
+	virtual void CopyData(DWORD_PTR dwData) {}
 	virtual void DestroyData () {}
 
 	virtual void Serialize (CArchive& ar)
@@ -382,21 +386,22 @@ public:
 	{
 		if (ar.IsLoading ())
 		{
-			DWORD dw = 0;
+			DWORD_PTR dw = 0;
 			ar >> dw;
 			m_pData = (LPVOID) dw;
 		}
 		else
 		{
-			ar << (DWORD) m_pData;
+			DWORD_PTR dw = (DWORD_PTR)m_pData;
+			ar << dw;
 		}
 	}
 
 public:	
-	int			m_nLine;
-	DWORD		m_dwMarkerType;
-	UINT		m_unPriority;
-	LPVOID		m_pData;
+	int		m_nLine;
+	DWORD	m_dwMarkerType;
+	UINT	m_unPriority;
+	LPVOID	m_pData;
 };
 
 class BCGCBPRODLLEXPORT CBCGPLineColorMarker : public CBCGPEditMarker
@@ -717,10 +722,10 @@ public:
 		m_rectTool.SetRectEmpty ();
 		m_nBlockType	= srcBlock.m_nBlockType;
 		m_dwFlags		= srcBlock.m_dwFlags;
-		CopyData ((DWORD) srcBlock.m_pData);
+		CopyData((DWORD_PTR)srcBlock.m_pData);
 	}
 	
-	virtual void CopyData (DWORD dwData) {}
+	virtual void CopyData(DWORD_PTR dwData) {}
 	virtual void DestroyData ()
 	{
 		m_pData = NULL;
@@ -758,13 +763,14 @@ public:
 	{
 		if (ar.IsLoading ())
 		{
-			DWORD dw = 0;
+			DWORD_PTR dw = 0;
 			ar >> dw;
 			m_pData = (LPVOID) dw;
 		}
 		else
 		{
-			ar << (DWORD) m_pData;
+			DWORD_PTR dw = (DWORD_PTR)m_pData;
+			ar << dw;
 		}
 	}
 
@@ -911,14 +917,20 @@ protected:
 	CBCGPEditCtrl*			m_pEditCtrl;
 
 public:
-	CBCGPOutlineNode(): CBCGPOutlineBaseNode (), m_pParentNode (NULL),
+	CBCGPOutlineNode(): 
+		CBCGPOutlineBaseNode(),
+		m_pParentNode (NULL),
 		m_pEditCtrl (NULL)
 	{
 	}
-	CBCGPOutlineNode(const CBCGPOutlineBaseNode& srcBlock)
-		: CBCGPOutlineBaseNode (srcBlock), m_pParentNode (NULL)
+	
+	CBCGPOutlineNode(const CBCGPOutlineBaseNode& srcBlock) : 
+		CBCGPOutlineBaseNode (srcBlock), 
+		m_pParentNode (NULL),
+		m_pEditCtrl (NULL)
 	{
 	}
+
 	virtual ~CBCGPOutlineNode () 
 	{
 		DeleteAllBlocks ();
@@ -1156,6 +1168,7 @@ public:
 	int			m_nLineVertSpacing;
 	int			m_nLeftMarginWidth;
 	int			m_nLineNumbersMarginWidth;
+	int			m_nLineNumbersMargin2Width;
 	int			m_nOutlineMarginWidth;
 	int			m_nIndentSize;
 	int			m_nTabSize;
@@ -1208,6 +1221,7 @@ protected:
 	int			m_nCurrOffset;
 	CPoint		m_ptCaret;
 	BOOL		m_bDisableSetCaret;
+	BOOL		m_bShowCaretInReadOnly;
 
 	int			m_iStartSel;
 	int			m_iEndSel;
@@ -1261,6 +1275,7 @@ protected:
 
 	int			m_nTabLogicalSize; // size of the tab in logical units
 	BOOL		m_bKeepTabs;
+	BOOL		m_bViewWhiteSpace;
 
 	CMap<TCHAR, TCHAR&, int, int> m_mapCharWidth;
 
@@ -1370,6 +1385,7 @@ public:
 	void SetTabSize (int nTabSize)
 	{
 		ASSERT (nTabSize > 0);
+		m_nIndentSize = nTabSize;
 		m_nTabSize = nTabSize;
 		m_mapCharWidth.RemoveAll ();
 	}
@@ -1379,14 +1395,22 @@ public:
 		return m_nLineHeight;
 	}
 
-	void SetReadOnly (BOOL bReadOnly = TRUE)
+	void SetReadOnly (BOOL bReadOnly = TRUE, BOOL bShowCaret = FALSE)
 	{
 		m_bReadOnly = bReadOnly;
+		m_bShowCaretInReadOnly = bShowCaret;
 	}
 
 	BOOL IsReadOnly () const
 	{
 		return m_bReadOnly;
+	}
+
+	void SetViewWhiteSpace (BOOL bViewWhiteSpace = TRUE);
+
+	BOOL IsViewWhiteSpace () const
+	{
+		return m_bViewWhiteSpace;
 	}
 
 	// ----------------
@@ -1457,7 +1481,7 @@ public:
 	virtual void FindWordStartFinish (int nCaretOffset, const CString& strBuffer,
 		                      int& nStartOffset, int& nEndOffset, BOOL bSkipSpaces = TRUE) const;
 	BOOL GetWordFromPoint (CPoint pt, CString& strWord);
-	BOOL GetWordFromOffset (int nOffset, CString& strWord);
+	BOOL GetWordFromOffset (int nOffset, CString& strWord) const;
 	
 	int HitTest (CPoint& pt, BOOL bNormalize = FALSE, BOOL bIgnoreTextBounds = FALSE);
 	BOOL OffsetToPoint (int nOffset, CPoint& pt, LPPOINT ptRowColumn = NULL,
@@ -1491,7 +1515,7 @@ public:
 	void SetColorBlockStrLenMax (int nValue);
 
 	void AddEscapeSequence (LPCTSTR lpszStr);
-	BOOL IsEscapeSequence (const CString& strBuffer, int nOffset, BOOL bDirForward = TRUE) const;
+	int IsEscapeSequence (const CString& strBuffer, int nOffset, BOOL bDirForward = TRUE, BOOL bScanBufferLeft = TRUE) const;
 
 	// -------------
 	// Intellisense:
@@ -1732,7 +1756,7 @@ public:
 		return m_nOutlineMarginWidth;
 	}
 
-	void SetLineNumbersMargin (BOOL bShow = TRUE, int nMarginWidth = 45);
+	void SetLineNumbersMargin (BOOL bShow = TRUE, int nMarginWidth = 45, int nExtraMarginWidth = 0);
 		
 	BOOL IsLineNumbersMarginVisible () const
 	{
@@ -2142,7 +2166,6 @@ protected:
 
 	void RedrawRestOfLine (int nOffset);
 	void RedrawRestOfText (int nOffset);
-	void DrawColorLine (CDC* pDC, int nRow, CRect rectRow);
 
 	BOOL CopyTextToClipboard (LPCTSTR lpszText, int nLen = -1);
 	HGLOBAL CopyTextToClipboardInternal (LPCTSTR lpszText, CLIPFORMAT cFormat, int nLen, BOOL bForceAnsi = FALSE);
@@ -2168,6 +2191,7 @@ protected:
 	BOOL IsIqual (const CString& strBuffer, int nOffset, BOOL bDirForward, const CString& str) const;
 	BOOL DoCompare (const CString& strBuffer, const int nLeft, const int nCount, const CString& strWith) const;
 
+	virtual void DrawColorLine (CDC* pDC, int nRow, CRect rectRow);
 	virtual int DrawString (CDC* pDC, LPCTSTR str, CRect rect, int nOrigin, 
 							COLORREF clrBack);
 	virtual CSize GetStringExtent (CDC* pDC, LPCTSTR lpszString, int nCount);
@@ -2254,6 +2278,7 @@ protected:
 	afx_msg LRESULT OnGetTextLength (WPARAM, LPARAM);
 	afx_msg LRESULT OnBCGUpdateToolTips(WPARAM, LPARAM);
 	afx_msg LRESULT OnPrintClient(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnPreCloseFrame(WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 };
 
@@ -2262,9 +2287,7 @@ protected:
 
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_EDITCHANGE;
 
-#pragma warning (default : 4100) 
-#pragma warning (default : 4311)
-#pragma warning (default : 4312)
+#pragma warning (pop)
 
 #endif // BCGP_EXCLUDE_EDIT_CTRL
 

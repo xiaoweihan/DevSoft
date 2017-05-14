@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -55,25 +55,26 @@ static const int iButtonMargin = 8;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPToolbarCustomize
 
-IMPLEMENT_DYNAMIC(CBCGPToolbarCustomize, CPropertySheet)
+IMPLEMENT_DYNAMIC(CBCGPToolbarCustomize, CBCGPPropertySheet)
 
 CBCGPToolbarCustomize::CBCGPToolbarCustomize(
 	CFrameWnd* pWndParentFrame,
 	BOOL bAutoSetFromMenus /* = FALSE */,
 	UINT uiFlags /* = 0xFFFF */,
 	CList<CRuntimeClass*,CRuntimeClass*>*	plistCustomPages /* = NULL */)
-	 : CPropertySheet(_T(""), pWndParentFrame),
+	 : CBCGPPropertySheet(_T(""), pWndParentFrame),
 	 m_bAutoSetFromMenus (bAutoSetFromMenus),
 	 m_uiFlags (uiFlags)
 {
+	EnableVisualManagerStyle (globalData.m_bUseVisualManagerInBuiltInDialogs, TRUE);
 
 	m_uiControlbarsMenuEntryID = 0;
 
 	if((m_uiFlags & BCGCUSTOMIZE_MENUAMPERS) == 0)
 	{
 		m_bSaveMenuAmps = FALSE;
-		
-	}else
+	}
+	else
 	{
 		m_bSaveMenuAmps = TRUE;
 	}
@@ -264,7 +265,7 @@ CBCGPToolbarCustomize::~CBCGPToolbarCustomize()
 	}
 }
 
-BEGIN_MESSAGE_MAP(CBCGPToolbarCustomize, CPropertySheet)
+BEGIN_MESSAGE_MAP(CBCGPToolbarCustomize, CBCGPPropertySheet)
 	//{{AFX_MSG_MAP(CBCGPToolbarCustomize)
 	ON_WM_CREATE()
 	ON_WM_HELPINFO()
@@ -278,7 +279,7 @@ END_MESSAGE_MAP()
 
 int CBCGPToolbarCustomize::OnCreate(LPCREATESTRUCT lpCreateStruct) 
 {
-	if (CPropertySheet::OnCreate(lpCreateStruct) == -1)
+	if (CBCGPPropertySheet::OnCreate(lpCreateStruct) == -1)
 	{
 		return -1;
 	}
@@ -297,7 +298,7 @@ void CBCGPToolbarCustomize::PostNcDestroy()
 	g_pWndCustomize = NULL;
 	SetFrameCustMode (FALSE);
 
-	CPropertySheet::PostNcDestroy();
+	CBCGPPropertySheet::PostNcDestroy();
 	delete this;
 }
 //**************************************************************************************
@@ -853,7 +854,7 @@ BOOL CBCGPToolbarCustomize::Create ()
 			dwExStyle |= WS_EX_LAYOUTRTL;
 		}
 
-		if (!CPropertySheet::Create (m_pParentFrame, (DWORD)-1, dwExStyle))
+		if (!CBCGPPropertySheet::Create (m_pParentFrame, (DWORD)-1, dwExStyle))
 		{
 			return FALSE;
 		}
@@ -870,7 +871,7 @@ void CBCGPToolbarCustomize::ShowToolBar (CBCGPToolBar* pToolBar, BOOL bShow)
 //*************************************************************************************
 BOOL CBCGPToolbarCustomize::OnInitDialog() 
 {
-	BOOL bResult = CPropertySheet::OnInitDialog();
+	BOOL bResult = CBCGPPropertySheet::OnInitDialog();
 	
 	CRect rectClient;	// Client area rectangle
 	GetClientRect (&rectClient);
@@ -897,10 +898,14 @@ BOOL CBCGPToolbarCustomize::OnInitDialog()
 	CRect rectWnd;
 	GetWindowRect(rectWnd);	
 
-	SetWindowPos(NULL, 0, 0,
-		rectWnd.Width (),
-		rectWnd.Height () + rectClientCancel.Height () + 2 * iButtonMargin,
-		SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+	int nNewHeight = rectWnd.Height () + rectClientCancel.Height () + 2 * iButtonMargin;
+
+	if (globalData.m_bUseVisualManagerInBuiltInDialogs && CBCGPVisualManager::GetInstance()->IsOwnerDrawCaption())
+	{
+		nNewHeight -= GetSystemMetrics(SM_CYSMCAPTION);
+	}
+
+	SetWindowPos(NULL, -1, -1, rectWnd.Width (), nNewHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
 	//-------------------------------------------------
 	// Move "Cancel" button to the right bottom corner:
@@ -939,8 +944,8 @@ BOOL CBCGPToolbarCustomize::OnInitDialog()
 	//------------------------
 	// Adjust the Help button:
 	//------------------------
-	CButton *pWndHelp = (CButton*) GetDlgItem (IDHELP);
-	if (pWndHelp == NULL)
+	CWnd* pWndHelp = GetDlgItem(IDHELP);
+	if (pWndHelp->GetSafeHwnd() == NULL)
 	{
 		return bResult;
 	}
@@ -952,27 +957,35 @@ BOOL CBCGPToolbarCustomize::OnInitDialog()
 	}
 	else
 	{
-		m_btnHelp.SubclassWindow (pWndHelp->GetSafeHwnd ());
-		m_btnHelp.ShowWindow (SW_SHOW);
-		m_btnHelp.EnableWindow ();
+		CBCGPButton* pButtonHelp = DYNAMIC_DOWNCAST(CBCGPButton, pWndHelp);
+		if (pButtonHelp == NULL)
+		{
+			// Not subclassed yet
+			m_btnHelp.SubclassWindow (pWndHelp->GetSafeHwnd());
+			pButtonHelp = &m_btnHelp;
+		}
+
+		pButtonHelp->ShowWindow (SW_SHOW);
+		pButtonHelp->EnableWindow ();
 
 		//-----------------------
 		// Set Help button image:
 		//-----------------------
+		pButtonHelp->SetImageAutoScale();
+
 		CBCGPLocalResource locaRes;
-		m_btnHelp.SetImage (globalData.Is32BitIcons () ? 
+		pButtonHelp->SetImage (globalData.Is32BitIcons () ? 
 			IDB_BCGBARRES_HELP32 : IDB_BCGBARRES_HELP);
 
-		m_btnHelp.SetWindowText (_T(""));
+		pButtonHelp->SetWindowText (_T(""));
 
 		//-------------------------------------------------
 		// Move "Help" button to the left bottom corner and
 		// adjust its size by the bitmap size:
 		//-------------------------------------------------
-		
-		CSize sizeHelp = m_btnHelp.SizeToContent (TRUE);
+		CSize sizeHelp = pButtonHelp->SizeToContent (TRUE);
 
-		m_btnHelp.SetWindowPos (NULL, 
+		pButtonHelp->SetWindowPos (NULL, 
 			rectClient.left + iButtonMargin,
 			rectClientCancel.top,
 			sizeHelp.cx, sizeHelp.cy,
@@ -1010,7 +1023,7 @@ BOOL CBCGPToolbarCustomize::OnCommand(WPARAM wParam, LPARAM lParam)
 		return TRUE;
 	}
 		
-	return CPropertySheet::OnCommand(wParam, lParam);
+	return CBCGPPropertySheet::OnCommand(wParam, lParam);
 }
 //************************************************************************************
 void CBCGPToolbarCustomize::EnableUserDefinedToolbars (BOOL bEnable)

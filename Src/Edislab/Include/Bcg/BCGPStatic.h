@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -49,6 +49,9 @@ public:
 	//{{AFX_VIRTUAL(CBCGPStatic)
 	//}}AFX_VIRTUAL
 
+protected:
+	virtual void DoPaint(CDC* pDC);
+
 // Implementation
 public:
 	virtual ~CBCGPStatic();
@@ -69,7 +72,6 @@ protected:
 	afx_msg LRESULT OnPrint(WPARAM wParam, LPARAM lp);
 	DECLARE_MESSAGE_MAP()
 
-	void DoPaint(CDC* pDC);
 	BOOL IsOwnerDrawSeparator(BOOL& bIsHorz);
 };
 

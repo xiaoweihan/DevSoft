@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -199,10 +199,7 @@ BOOL CBCGPBaseControlBar::CreateEx(DWORD dwStyleEx, LPCTSTR lpszClassName,
 			return FALSE;
 		}
 
-#pragma warning (disable : 4311)
-		SetClassLongPtr (m_hWnd, GCLP_HBRBACKGROUND, (LONG_PTR) ::GetSysColorBrush(COLOR_BTNFACE));
-#pragma warning (default : 4311)
-
+		SetClassLongPtr(m_hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)::GetSysColorBrush(COLOR_BTNFACE));
 		SetDlgCtrlID(nID);
 
 		CRect rect;
@@ -404,7 +401,7 @@ HDWP CBCGPBaseControlBar::SetWindowPos (const CWnd* pWndInsertAfter, int x, int 
 	HDWP hdwpNew = DeferWindowPos (hdwp, GetSafeHwnd (), NULL, x, y, cx, cy, nFlags);
 	if (hdwpNew == NULL)
 	{
-		TRACE1 ("DeferWindowPos failded, error code %d\n", GetLastError());
+		TRACE1 ("DeferWindowPos failed, error code %d\n", GetLastError());
 		SetWindowPos (NULL, x, y, cx, cy, nFlags);
 		return hdwp;
 	}

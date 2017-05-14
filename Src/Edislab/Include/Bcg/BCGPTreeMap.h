@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -41,10 +41,11 @@ class BCGCBPRODLLEXPORT CBCGPBaseTreeMapNode : public CObject
 
 // Construction
 protected:
-	CBCGPBaseTreeMapNode(LPCTSTR lpszLabel = NULL)
+	CBCGPBaseTreeMapNode(LPCTSTR lpszLabel = NULL, DWORD_PTR dwUserData = 0)
 	{
 		m_dblVal = 0.0;
 		m_strLabel = (lpszLabel == NULL) ? _T("") : lpszLabel;
+		m_dwUserData = dwUserData;
 		m_pParent = NULL;
 		m_pOwner = NULL;
 		m_sizeMargin = CBCGPSize(-1., -1.);
@@ -72,6 +73,16 @@ public:
 		return m_rect;
 	}
 
+	void SetUserData(DWORD_PTR dwUserData)
+	{
+		m_dwUserData = dwUserData;
+	}
+
+	DWORD_PTR GetUserData() const
+	{
+		return m_dwUserData;
+	}
+
 // Overrides:
 protected:
 	virtual void OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip, const CBCGPBrush& brBorder) = 0;
@@ -96,6 +107,7 @@ protected:
 protected:
 	double					m_dblVal;
 	CString					m_strLabel;
+	DWORD_PTR				m_dwUserData;
 	CBCGPRect				m_rect;
 	CBCGPBaseTreeMapNode*	m_pParent;
 	CBCGPTreeMap*			m_pOwner;
@@ -115,7 +127,7 @@ class BCGCBPRODLLEXPORT CBCGPTreeMapGroup : public CBCGPBaseTreeMapNode
 
 // Construction
 public:
-	CBCGPTreeMapGroup(const CBCGPBrush& brushFill, LPCTSTR lpszLabel = NULL, const CBCGPColor& colorText = CBCGPColor::White, CBCGPTextFormat* pTF = NULL);
+	CBCGPTreeMapGroup(const CBCGPBrush& brushFill, LPCTSTR lpszLabel = NULL, const CBCGPColor& colorText = CBCGPColor::White, CBCGPTextFormat* pTF = NULL, DWORD_PTR dwUserData = 0);
 	virtual ~CBCGPTreeMapGroup();
 
 protected:

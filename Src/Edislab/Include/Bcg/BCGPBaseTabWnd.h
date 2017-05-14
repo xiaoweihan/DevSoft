@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -34,6 +34,7 @@ extern BCGCBPRODLLEXPORT UINT BCGM_CHANGE_ACTIVE_TAB;
 extern BCGCBPRODLLEXPORT UINT BCGM_CHANGING_ACTIVE_TAB;
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_GET_TAB_TOOLTIP;
 extern BCGCBPRODLLEXPORT UINT BCGM_NEW_TAB;
+extern BCGCBPRODLLEXPORT UINT BCGM_CHANGE_TAB_SELECTION;
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPTabDropTarget command target
@@ -75,6 +76,8 @@ class BCGCBPRODLLEXPORT CBCGPTabInfo : public CObject
 	friend class CBCGPTabWnd;
 	friend class CBCGPBaseTabWnd;
 	friend class CBCGPOutlookWnd;
+	friend class CBCGPMDIChildDragWnd;
+	friend class CBCGPDockingControlBar;
 
 protected:
 
@@ -104,6 +107,8 @@ protected:
 		m_rectClose.SetRectEmpty();
 		m_bIsCloseHighlighted = FALSE;
 		m_bIsClosePressed = FALSE;
+
+		m_bIsSelected = FALSE;
 
 		if (m_pWnd != NULL)
 		{
@@ -157,6 +162,8 @@ protected:
 	BOOL		m_bIsCloseHighlighted;
 	BOOL		m_bIsClosePressed;
 
+	BOOL		m_bIsSelected;
+
 public:
 	CRect GetRect () const		{	return m_rect;	}
 	void SetRect (CRect rect)	{	m_rect = rect;	} 
@@ -186,6 +193,8 @@ class BCGCBPRODLLEXPORT CBCGPBaseTabWnd : public CBCGPWnd
 {
 	friend class CBCGPOutlookBar;
 	friend class CBCGPToolBox;
+	friend class CBCGPMDIChildDragWnd;
+	friend class CBCGPDockingControlBar;
 
 	DECLARE_DYNAMIC(CBCGPBaseTabWnd)
 
@@ -284,7 +293,11 @@ public:
 		return m_bIsAutoColor;
 	}
 
-	virtual void EnableNewTab(BOOL /*bEnable*/ = TRUE) {}
+	virtual void EnableNewTab(BOOL bEnable = TRUE) 
+	{
+		UNREFERENCED_PARAMETER(bEnable);
+	}
+
 	virtual BOOL IsNewTabEnabled() const
 	{
 		return FALSE;
@@ -335,7 +348,11 @@ public:
 
 	virtual int GetTabByID (int id) const;
 
-	virtual BOOL EnsureVisible (int /*iTab*/)	{	return FALSE;	}
+	virtual BOOL EnsureVisible (int iTab)	
+	{	
+		UNREFERENCED_PARAMETER(iTab);
+		return FALSE;	
+	}
 
 	// Active tab color operations:
 	virtual void SetActiveTabColor (COLORREF clr);
@@ -349,9 +366,32 @@ public:
 
 	virtual COLORREF GetActiveTabTextColor () const
 	{
-		return m_clrActiveTabFg == (COLORREF) -1 ?
-			globalData.clrWindowText : m_clrActiveTabFg;
+		return m_clrActiveTabFg == (COLORREF) -1 ? globalData.clrWindowText : m_clrActiveTabFg;
 	}
+
+	// Tab multiple selection support:
+	void EnableMultipleSelection(BOOL bEnable = TRUE);
+	BOOL IsMultipleSelection() const
+	{
+		return m_bMultipleSelection;
+	}
+
+	BOOL IsMultipleSelectionSupported() const
+	{
+		if (m_bIsAutoColor || IsColored())
+		{
+			return FALSE;
+		}
+
+		return (Is3DStyle() || IsFlatTab() || IsDotsStyle());
+	}
+
+	int GetSelectedTabs(CList<int, int>& lstTabs) const;
+	int GetSelectedTabsCount() const;
+	int ClearSelectedTabs();
+
+	BOOL IsTabSelected(int iTab) const;
+	BOOL ToggleTabSelectState(int iTab, BOOL bRedraw = TRUE);
 
 	virtual	CSize GetImageSize () const
 	{
@@ -411,16 +451,17 @@ public:
 	virtual void FireChangeActiveTab (int nNewTab);
 	virtual BOOL FireChangingActiveTab (int nNewTab);
 	virtual BOOL FireNewTab ();
+	virtual void FireChangeTabSelection();
 
 	virtual void OnClickCloseButton (CWnd* pWndActive);
 
 	void ResetImageList ();
 	BOOL IsIconAdded (HICON hIcon, int& iIcon) 
 	{
-		return (m_mapAddedIcons.Lookup (hIcon, iIcon));
+		return (m_mapAddedIcons.Lookup ((UINT_PTR)hIcon, iIcon));
 	}
 
-	void AddIcon (HICON hIcon, int iIcon) {m_mapAddedIcons.SetAt (hIcon, iIcon);}
+	void AddIcon (HICON hIcon, int iIcon) {m_mapAddedIcons.SetAt ((UINT_PTR)hIcon, iIcon);}
 	
 	BOOL EnableCustomToolTips (BOOL bEnable = TRUE);
 
@@ -433,6 +474,26 @@ public:
 	}
 
 	BOOL IsParentFocused() const { return m_bIsParentFocused; }
+
+	void EnableIconScaling(BOOL bEnable = TRUE)
+	{
+		m_bIconScaling = bEnable;
+	}
+
+	BOOL IsIconScaling() const
+	{
+		return m_bIconScaling;
+	}
+
+	void KeepHiddenTabInvisible(BOOL bSet = TRUE)
+	{
+		m_bKeepHiddenTabInvisible = bSet;
+	}
+
+	BOOL IsKeepHiddenTabInvisible() const
+	{
+		return m_bKeepHiddenTabInvisible;
+	}
 
 // Attributes
 public:
@@ -447,11 +508,12 @@ public:
 	virtual BOOL IsFlatTab () const		{return FALSE;}
 	virtual BOOL IsActiveTabCloseButton () const	{	return FALSE;	}
 	virtual BOOL IsTabCloseButton() const { return FALSE; }
-	virtual BOOL IsOneNoteStyle () const{return FALSE;}
+	virtual BOOL IsOneNoteStyle () const { return FALSE; }
 	virtual BOOL Is3DStyle () const{return FALSE;}
 	virtual BOOL IsVS2005Style () const	{return FALSE;}
 	virtual BOOL IsLeftRightRounded () const	{return FALSE;}
 	virtual BOOL IsPointerStyle() const	{return FALSE;}
+	virtual BOOL IsDotsStyle() const	{return FALSE;}
 	virtual BOOL IsFlatFrame () const	{return FALSE;}
 	virtual BOOL IsInPlaceEdit () const {return m_bIsInPlaceEdit;}
 	virtual int	GetFirstVisibleTabNum () const	{	return -1;	}
@@ -468,8 +530,18 @@ public:
 		return m_iHighlighted;
 	}
 
-	BOOL IsDialogControl () const
+	void SetDialogControl(BOOL bSet = TRUE)
 	{
+		m_bIsDlgControl = bSet;
+	}
+
+	BOOL IsDialogControl (BOOL bCheckForVisualManager = FALSE) const
+	{
+		if (bCheckForVisualManager)
+		{
+			return m_bIsDlgControl && !IsVisualManagerStyle();
+		}
+
 		return m_bIsDlgControl;
 	}
 
@@ -477,6 +549,8 @@ public:
 
 	BOOL IsMDITab () const { return m_bIsMDITab; }
 	BOOL IsPropertySheetTab() const { return m_bIsPropertySheetTab; }
+
+	virtual BOOL IsMDITabGroup () const { return FALSE; }
 
 	CToolTipCtrl& GetToolTipCtrl () const
 	{
@@ -499,6 +573,16 @@ public:
 	void SetDockingBarWrapperRTC (CRuntimeClass* pRTC) {m_pDockingBarWrapperRTC = pRTC;}
 	BOOL			m_bEnableWrapping;
 
+	void HideInactiveWindow (BOOL bHide = TRUE)
+	{
+		m_bHideInactiveWnd = bHide;
+	}
+	
+	BOOL IsHideInactiveWindow() const
+	{
+		return m_bHideInactiveWnd;
+	}
+	
 // Overrides
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPBaseTabWnd)
@@ -559,6 +643,7 @@ protected:
 		return m_bActivateOnBtnUp;
 	}
 
+	int GetAccChildIndex (long lVal);
 	virtual BOOL OnSetAccData (long lVal);
 	virtual HRESULT get_accChildCount(long *pcountChildren);
 	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
@@ -575,6 +660,9 @@ protected:
 	virtual int GetTextHeight(int& nTextMargin);
 
 	virtual void OnCustomFontChanged() {}
+	virtual void ApplyRestoreActiveTab();
+
+	BOOL MakeTabsMultipleSelection(int iClickedTab);
 
 protected:
 	int CBCGPBaseTabWnd::FindTabInfo (int nBarID, CBCGPTabInfo** ppTabInfo);
@@ -594,7 +682,7 @@ protected:
 
 	CSize			m_sizeImage;		// Tab image size
 
-	CMap<HICON,HICON,int,int> m_mapAddedIcons;	// Icons already loaded into the image list
+	CMap<UINT_PTR,const UINT_PTR&,int,int> m_mapAddedIcons;	// Icons already loaded into the image list
 
 	CToolTipCtrl*	m_pToolTip;
 	CToolTipCtrl*	m_pToolTipClose;			// Tooltip for active tab "close" button
@@ -609,6 +697,8 @@ protected:
 	BOOL			m_bAutoDestoyWindow;// Auto-destroy tab windows
 
 	BOOL			m_bHideInactiveWnd;	// Is inactive window should be invisible?
+	BOOL			m_bMultipleSelection;
+	BOOL			m_bDontClearSelection;
 
 	int				m_iHighlighted;		// Highlighted tab number
 	int				m_iPressed;			// Pressed tab number
@@ -621,7 +711,7 @@ protected:
 	BOOL			m_bHideSingleTab;	// Hide tabs when only one tab is available
 	BOOL			m_bSingleTabIsStatic;// When only one tab is available, make it "static"
 
-	COLORREF		m_clrActiveTabBk;	// Active tab backgound color
+	COLORREF		m_clrActiveTabBk;	// Active tab background color
 	COLORREF		m_clrActiveTabFg;	// Active tab foreground color
 
 	CBrush			m_brActiveTab;		// Active tab background brush
@@ -640,6 +730,10 @@ protected:
 	BOOL			m_bIsMDITab;		// Tab is created for switching MDI windows
 	BOOL			m_bIsPropertySheetTab;	// Tab is a property sheet tab
 	BOOL			m_bIsParentFocused;
+	BOOL			m_bIconScaling;
+	BOOL			m_bKeepHiddenTabInvisible;
+
+	BOOL			m_bForceDeleteNewTab;
 
 	// in-place editing
 	int				m_iEditedTab;
@@ -675,7 +769,7 @@ protected:
 	BOOL						m_bSetActiveTabFired;
 	BOOL						m_bSetActiveTabByMouseClick;
 
-	// needed to prevent unnesessary capturing during LButtonDown
+	// needed to prevent unnecessary capturing during LButtonDown
 	// in case tab activation leads to adjust layout and moving of tab window.
 	BOOL						m_bWindowPosChanged;
 

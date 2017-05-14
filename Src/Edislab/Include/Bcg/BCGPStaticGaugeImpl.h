@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -24,6 +24,15 @@
 #include "BCGPGaugeImpl.h"
 
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_GAUGE_CLICK;
+extern BCGCBPRODLLEXPORT UINT BCGM_ON_GAUGE_SCROLL_FINISHED;
+
+// Content scrolling flags:
+#define BCGPSTATICGAUGE_CONTENT_SCROLL_CYCLIC			0x0001
+#define BCGPSTATICGAUGE_CONTENT_SCROLL_PAUSE_ON_MOUSE	0x0002
+
+#define BCGPSTATICGAUGE_ANIMATION_NONE		0
+#define BCGPSTATICGAUGE_ANIMATION_FLASH		1
+#define BCGPSTATICGAUGE_ANIMATION_SCROLL	2
 
 class BCGCBPRODLLEXPORT CBCGPStaticGaugeImpl : public CBCGPGaugeImpl  
 {
@@ -37,21 +46,33 @@ public:
 
 // Operations:
 public:
+	// Flashing operations:
 	void StartFlashing(UINT nTime = 100 /* ms */);
 	void StopFlashing();
 
 	BOOL IsFlashing() const
 	{
-		return m_arData[0]->IsAnimated();
+		return m_arData[0]->IsAnimated() && m_nAnimationType == BCGPSTATICGAUGE_ANIMATION_FLASH;
+	}
+
+	// Ticker operations:
+	BOOL StartContentScrolling(double dblScrollTime = 2.0 /* sec */, double dblScrollDelay = 0.0 /* sec */,
+		BOOL bIsHorizontal = TRUE,
+		UINT nFlags = BCGPSTATICGAUGE_CONTENT_SCROLL_CYCLIC,
+		CBCGPAnimationManager::BCGPAnimationType type = CBCGPAnimationManager::BCGPANIMATION_Linear, 
+		CBCGPAnimationManagerOptions* pOptions = NULL);
+
+	void StopContentScrolling(BOOL bResetOffset = FALSE);
+
+	BOOL IsContentScrolling() const
+	{
+		return m_arData[0]->IsAnimated() && m_nAnimationType == BCGPSTATICGAUGE_ANIMATION_SCROLL;
 	}
 
 	virtual CWnd* SetOwner(CWnd* pWndOwner, BOOL bRedraw = FALSE);
 
-	virtual BOOL OnAnimation(UINT /*idEvent*/)
-	{
-		m_bOff = !m_bOff;
-		return FALSE;
-	}
+	virtual void OnAnimation(CBCGPVisualDataObject* pDataObject);
+	virtual void OnAnimationFinished(CBCGPVisualDataObject* pDataObject);
 
 	virtual void FireClickEvent(const CBCGPPoint& pt);
 
@@ -67,15 +88,21 @@ public:
 	DWORD GetDefaultDrawFlags() const { return m_DefaultDrawFlags; }
 	void SetDefaultDrawFlags(DWORD dwDrawFlags, BOOL bRedraw = TRUE);
 
+// Overrides:
 protected:
 	virtual BOOL OnMouseDown(int nButton, const CBCGPPoint& pt);
 	virtual void OnMouseUp(int nButton, const CBCGPPoint& pt);
 	virtual void OnMouseMove(const CBCGPPoint& pt);
+	virtual void OnMouseLeave();
 	virtual void OnCancelMode();
 
 	virtual BOOL OnSetMouseCursor(const CBCGPPoint& pt);
 
+	virtual CBCGPSize GetContentTotalSize(CBCGPGraphicsManager* /*pGM*/) { return CBCGPSize(0.0, 0.0); }
+
+// Attributes:
 protected:
+	int			m_nAnimationType;
 	UINT		m_nFlashTime;
 	BOOL		m_bOff;
 	BOOL		m_bIsPressed;
@@ -83,6 +110,18 @@ protected:
 	
 	CBCGPBrush	m_brFill;
 	CBCGPBrush	m_brOutline;
+
+	BOOL		m_bIsHorizontalScroll;
+	UINT		m_nScrollFlags;
+	double		m_dblScrollOffset;
+	double		m_dblScrollTime;
+	double		m_dblScrollDelay;
+	BOOL		m_bScrollInternal;
+	BOOL		m_bScrollStopped;
+	BOOL		m_bScrollPaused;
+
+	CBCGPAnimationManager::BCGPAnimationType	m_ScrollAnimationType;
+	CBCGPAnimationManagerOptions				m_ScrollAnimationOptions;
 
 	DWORD		m_DefaultDrawFlags;
 };

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -60,6 +60,8 @@
 #include "BCGPPlannerViewMulti.h"
 #include "BCGPPlannerViewMonth.h"
 #endif
+
+#include "BCGPWinUITiles.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -363,6 +365,8 @@ void CBCGPVisualManager2010::OnUpdateSystemColors ()
 
 	m_brCtrlBackground.DeleteObject();
 	m_brCtrlBackground.CreateSolidBrush(m_clrToolBarGradientLight);
+
+	m_clrSliderTic = globalData.clrBarShadow;
 
 	if (hinstResOld != NULL)
 	{
@@ -1063,7 +1067,7 @@ void CBCGPVisualManager2010::OnDrawRibbonMainButton (
 
 	CRect rect = pButton->GetRect ();
 
-	int index = 0;
+	int index = pButton->IsDisabled() ? 3 : 0;
 	if (bIsPressed)
 	{
 		if (bIsHighlighted)
@@ -1076,7 +1080,7 @@ void CBCGPVisualManager2010::OnDrawRibbonMainButton (
 		index = 1;
 	}
 
-	if (m_clrMainButton != (COLORREF)-1)
+	if (m_clrMainButton != (COLORREF)-1 && !pButton->IsDisabled())
 	{
 		if (!m_ctrlRibbonBtnMainColorized.IsValid())
 		{
@@ -1149,7 +1153,7 @@ void CBCGPVisualManager2010::OnDrawRibbonCaption (CDC* pDC, CBCGPRibbonBar* pBar
 		BOOL bExtra = !bHide && pBar->IsQuickAccessToolbarOnTop () &&
 					  rectQAT.left < rectQAT.right && !pBar->IsQATEmpty();
 
-		BOOL bDrawIcon = (bHide && !bExtra) || pBar->IsScenicLook ();
+		BOOL bDrawIcon = (bHide && !bExtra) || pBar->IsDrawSystemIcon();
 
 		if (bExtra)
 		{
@@ -1263,7 +1267,7 @@ void CBCGPVisualManager2010::OnDrawRibbonCaption (CDC* pDC, CBCGPRibbonBar* pBar
 	}
 
 	DrawNcText (pDC, rectText, strTitle, strDocument, bPrefix, bActive, 
-		bIsRTL, m_bNcTextCenter, bGlass, (pWnd->IsZoomed () && !globalData.bIsWindows7) ? 0 : 10, 
+		bIsRTL, IsRibbonCaptionTextCentered(pBar), bGlass, (pWnd->IsZoomed () && !globalData.bIsWindows7) ? 0 : 10, 
 		(pWnd->IsZoomed () && !globalData.bIsWindows7) ? RGB (255, 255, 255) : (COLORREF)-1);
 
 	pDC->SelectObject (pOldFont);
@@ -1898,6 +1902,17 @@ COLORREF CBCGPVisualManager2010::OnDrawRibbonCategoryTab (
 				? clrTextHighlighted
 				: clrText;
 }
+//****************************************************************************
+COLORREF CBCGPVisualManager2010::OnFillRibbonBackstageLeftPane(CDC* pDC, CRect rectPanel)
+{
+	if (!CanDrawImage ())
+	{
+		return CBCGPVisualManager2007::OnFillRibbonBackstageLeftPane(pDC, rectPanel);
+	}
+
+	m_ctrlRibbonBsPanelBack.Draw(pDC, rectPanel);
+	return OnGetRibbonBackstageLeftPaneTextColor();
+}
 //*****************************************************************************
 COLORREF CBCGPVisualManager2010::OnDrawRibbonPanel (
 		CDC* pDC,
@@ -1926,8 +1941,7 @@ COLORREF CBCGPVisualManager2010::OnDrawRibbonPanel (
 		}
 		else
 		{
-			rectPanel = ((CBCGPRibbonMainPanel*)pPanel)->GetCommandsFrame ();
-			m_ctrlRibbonBsPanelBack.Draw (pDC, rectPanel);
+			return OnFillRibbonBackstageLeftPane(pDC, ((CBCGPRibbonMainPanel*)pPanel)->GetCommandsFrame ());
 		}
 	}
 	else
@@ -2167,6 +2181,12 @@ void CBCGPVisualManager2010::OnDrawSeparator (CDC* pDC, CBCGPBaseControlBar* pBa
 
 		m_StatusBarPaneBorder.DrawEx (pDC, rect, 0, CBCGPToolBarImages::ImageAlignHorzRight, 
 			CBCGPToolBarImages::ImageAlignVertStretch);
+		return;
+	}
+
+	if (DYNAMIC_DOWNCAST(CBCGPRibbonBackstageView, pBar) != NULL)
+	{
+		DrawSeparator2(pDC, rectSeparator, !bHorz);
 		return;
 	}
 
@@ -2740,6 +2760,25 @@ COLORREF CBCGPVisualManager2010::OnFillGridItem (CBCGPGridCtrl* pCtrl, CDC* pDC,
 	return clrText;
 }
 //********************************************************************************
+COLORREF CBCGPVisualManager2010::GetGridTreeLineColor (CBCGPGridCtrl* pCtrl)
+{
+	if (!CanDrawImage() || !pCtrl->IsVisualManagerStyle())
+	{
+		return CBCGPVisualManager2007::GetGridTreeLineColor(pCtrl);
+	}
+	
+	if (m_Style == VS2010_Silver)
+	{
+		return globalData.clrBarShadow;
+	}
+	else if (m_Style == VS2010_Black)
+	{
+		return m_clrToolBarGradientDark;
+	}
+
+	return CBCGPVisualManager2007::GetGridTreeLineColor(pCtrl);
+}
+//********************************************************************************
 BOOL CBCGPVisualManager2010::OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_GRID_COLOR_DATA& theme)
 {
 	CBCGPVisualManager2007::OnSetGridColorTheme (pCtrl, theme);
@@ -2782,4 +2821,34 @@ COLORREF CBCGPVisualManager2010::GetTreeControlTextColor(CBCGPTreeCtrl* pTreeCtr
 	}
 
 	return globalData.clrBarText;
+}
+//*******************************************************************************
+COLORREF CBCGPVisualManager2010::GetIntelliSenseFillColor(CBCGPBaseIntelliSenseLB* pCtrl, BOOL bIsSelected)
+{
+	if (!CanDrawImage ())
+	{
+		return CBCGPVisualManager2003::GetIntelliSenseFillColor(pCtrl, bIsSelected);
+	}
+
+	return bIsSelected ? m_clrRibbonComboBtnHighlightedStart : m_clrToolBarGradientLight;
+}
+//**********************************************************************************
+void CBCGPVisualManager2010::GetWinUITilesColors(CBCGPWinUITilesColors& colors)
+{
+	CBCGPVisualManager2007::GetWinUITilesColors(colors);
+
+	if (!CanDrawImage ())
+	{
+		return;
+	}
+
+	if (CBCGPVisualManager2010::m_Style == CBCGPVisualManager2010::VS2010_Black)
+	{
+		colors.m_brTileFill = m_clrToolBarGradientLight;
+		colors.m_brFill = m_clrToolBarGradientDark;
+	}
+	else
+	{
+		colors.m_brFill = m_clrToolBarGradientLight;
+	}
 }

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -153,7 +153,7 @@ protected:
 public:
 	virtual void CreateFromMenu (HMENU hMenu, BOOL bDefaultMenu = FALSE,
 						BOOL bForceUpdate = FALSE);
-	void SetMaximizeMode (BOOL bMax, CWnd* pWnd = NULL, BOOL bRecalcLayout = TRUE);
+	virtual void SetMaximizeMode (BOOL bMax, CWnd* pWnd = NULL, BOOL bRecalcLayout = TRUE);
 
 	void SetDefaultMenuResId (UINT uiResId);
 	UINT GetDefaultMenuResId () const
@@ -186,7 +186,7 @@ public:
 	void AccNotifyObjectFocusEvent ();
 
 protected:
-	void RestoreMaximizeMode (BOOL bRecalcLayout = TRUE);
+	virtual void RestoreMaximizeMode (BOOL bRecalcLayout = TRUE);
 
 	static BOOL FindMenuItemText (HMENU hMenu, const UINT nID, CString& strText);
 
@@ -246,7 +246,11 @@ public:
 		return FALSE;	
 	}
 
-	virtual void OnDefaultMenuLoaded (HMENU) {};
+	virtual void OnDefaultMenuLoaded (HMENU hMenu) 
+	{
+		UNREFERENCED_PARAMETER(hMenu);
+	};
+
 	virtual BOOL RestoreOriginalstate ();
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 

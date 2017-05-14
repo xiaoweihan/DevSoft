@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -56,6 +56,9 @@ protected:
 
 	virtual CBCGPVisualInfo::XDiagramElement* CollectDiagramElement (const CBCGPDiagramVisualObject& element);
 	virtual void CollectBaseDiagramElement (const CBCGPDiagramVisualObject& element, CBCGPVisualInfo::XDiagramElement& info);
+
+	virtual CBCGPVisualInfo::XControlElement* CollectControlElement (const CBCGPWndHostVisualObject& element);
+	virtual void CollectBaseControlElement (const CBCGPWndHostVisualObject& element, CBCGPVisualInfo::XControlElement& info);
 
 	virtual void CollectContainer (const CBCGPVisualContainer& container, CBCGPVisualInfo::XContainer& info);
 	virtual void CollectImage (const CBCGPImage& image, CBCGPVisualInfo::XImage& info);

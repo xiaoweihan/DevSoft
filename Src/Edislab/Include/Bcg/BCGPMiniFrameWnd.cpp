@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -202,7 +202,7 @@ BOOL CBCGPMiniFrameWnd::CreateEx(DWORD dwStyleEx, LPCTSTR lpszWindowName,
 	{
 		if (DYNAMIC_DOWNCAST (CFrameWnd, pParentWnd) == NULL)
 		{
-			TRACE0 ("Minframe parent must be derived from CFrameWnd. Creation failed.\n");
+			TRACE0 ("Miniframe parent must be derived from CFrameWnd. Creation failed.\n");
 			return FALSE;
 		}
 
@@ -212,7 +212,7 @@ BOOL CBCGPMiniFrameWnd::CreateEx(DWORD dwStyleEx, LPCTSTR lpszWindowName,
 
 		if (pDockManager == NULL)
 		{
-			TRACE0 ("Minframe parent must be connected to dock manager. Creation failed.\n");
+			TRACE0 ("Miniframe parent must be connected to dock manager. Creation failed.\n");
 			return FALSE;
 		}
 
@@ -1382,7 +1382,11 @@ void CBCGPMiniFrameWnd::OnNcPaint()
 	CBCGPVisualManager::GetInstance ()->OnDrawControlBarCaptionText (pDC, DYNAMIC_DOWNCAST (CBCGPDockingControlBar, GetFirstVisibleBar ()), m_bActive && !m_bHostsToolbar, strCaption, rectText);
 
 	pDC->SelectObject (pOldFont);
-	pDC->SelectClipRgn (NULL);
+
+	if (rgn.GetSafeHandle() != NULL)
+	{
+		pDC->SelectClipRgn (NULL);
+	}
 
 	// Paint caption buttons:
 	OnDrawCaptionButtons (pDC);
@@ -1432,8 +1436,11 @@ void CBCGPMiniFrameWnd::OnDrawBorder (CDC* pDC)
 	GetWindowRect (&rectWnd);
 	ScreenToClient (&rectWnd);
 
-	CRect rectBorderSize;
-	CalcBorderSize (rectBorderSize);
+	CRect rectBorderSize (0, 0, 0, 0);
+	if (!IsMaximized())
+	{
+		CalcBorderSize (rectBorderSize);
+	}
 	
 	rectWnd.OffsetRect (rectBorderSize.left, m_nCaptionHeight + rectBorderSize.top);
 
@@ -1564,9 +1571,6 @@ BCGNcHitTestType CBCGPMiniFrameWnd::HitTest (CPoint point, BOOL bDetectCaption)
 		{
 			bEnableCornerArrows = FALSE;
 		}
-
-		// no corner arrows in sliding mode
-		bEnableCornerArrows = bEnableCornerArrows;
 
 		CRect rectBorder;
 
@@ -2795,8 +2799,11 @@ void CBCGPMiniFrameWnd::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
 	CRect rectWnd;
 	GetWindowRect (&rectWnd);
 
-	CRect rectBorderSize;
-	CalcBorderSize (rectBorderSize);
+	CRect rectBorderSize (0, 0, 0, 0);
+	if (!IsMaximized())
+	{
+		CalcBorderSize (rectBorderSize);
+	}
 
 	CRect rectCaption (rectWnd.left + rectBorderSize.left, rectWnd.top + rectBorderSize.top, 
 						 rectWnd.right - rectBorderSize.right, 
@@ -3056,7 +3063,18 @@ void CBCGPMiniFrameWnd::Serialize (CArchive& ar)
 		}
 
 		RECT rectDesktop;
-		SystemParametersInfo(SPI_GETWORKAREA,0,(PVOID)&rectDesktop,0);
+
+		MONITORINFO mi;
+		mi.cbSize = sizeof (MONITORINFO);
+		if (GetMonitorInfo (MonitorFromPoint (rect.TopLeft (), 
+			MONITOR_DEFAULTTONEAREST), &mi))
+		{
+			rectDesktop = mi.rcWork;
+		}
+		else
+		{
+			::SystemParametersInfo (SPI_GETWORKAREA, 0, &rectDesktop, 0);
+		}
 
         if (!rect.IntersectRect(rect, &rectDesktop))
         {
@@ -3500,6 +3518,11 @@ void CBCGPMiniFrameWnd::RemoveNonValidBars ()
 	}
 }
 //*********************************************************************************
+BOOL CBCGPMiniFrameWnd::HasSavedMaximizedState() const
+{
+	return FALSE;
+}
+//*********************************************************************************
 void CBCGPMiniFrameWnd::OnClose() 
 {
 	if (OnCloseMiniFrame ())
@@ -3638,6 +3661,8 @@ void CBCGPMiniFrameWnd::RecalcCaptionHeight ()
 	}
 
 	m_nCaptionHeight += CBCGPVisualManager::GetInstance ()->GetCaptionButtonExtraBorder ().cy;
+
+	m_nCaptionHeight = max(m_nCaptionHeight, (UINT)CBCGPCaptionButton::GetSize().cy);
 
 	m_sizeMinSize.cx = m_sizeMinSize.cy = m_nCaptionHeight + 15;
 }
@@ -4018,7 +4043,7 @@ void CBCGPMiniFrameWnd::OnShowWindow(BOOL bShow, UINT nStatus)
 //****************************************************************************
 BOOL CBCGPMiniFrameWnd::CreateShadow(BOOL bRepos)
 {
-	if (CBCGPVisualManager::GetInstance ()->IsSmallSystemBorders() && m_pShadow == NULL &&
+	if (CBCGPVisualManager::GetInstance ()->CanShowFrameShadows() && m_pShadow == NULL &&
 		globalData.m_bShowFrameLayeredShadows)
 	{
 		m_pShadow = new CBCGPShadowManager(this, TRUE);

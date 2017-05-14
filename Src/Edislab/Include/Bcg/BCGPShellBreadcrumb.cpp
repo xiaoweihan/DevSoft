@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -57,6 +57,7 @@ END_MESSAGE_MAP()
 CBCGPShellBreadcrumb::CBCGPShellBreadcrumb ()
 	: m_dwShellFlags      (SHCONTF_FOLDERS)
 	, m_pRelatedShellList (NULL)
+	, m_bSystemUserInput  (FALSE)
 {
 }
 
@@ -143,6 +144,25 @@ BOOL CBCGPShellBreadcrumb::SelectPath (const CString& strPath, TCHAR delimiter)
 	}
 
 	BOOL bRes = SelectShellItem (pidl);
+	pShellManager->FreeItem (pidl);
+
+	return bRes;
+}
+
+BOOL CBCGPShellBreadcrumb::Refresh()
+{
+	ASSERT_VALID (this);
+
+	CBCGPShellManager* pShellManager = GetShellManager();
+	ASSERT_VALID(pShellManager);
+
+	LPITEMIDLIST pidl;
+	if (FAILED (SHGetSpecialFolderLocation (NULL, CSIDL_DESKTOP, &pidl)))
+	{
+		return FALSE;
+	}
+
+	BOOL bRes = SelectShellItem(pidl);
 	pShellManager->FreeItem (pidl);
 
 	return bRes;
@@ -377,7 +397,7 @@ void CBCGPShellBreadcrumb::GetItemChildrenDynamic (HBREADCRUMBITEM hParentItem)
 	// Enumerate the items
 	LPENUMIDLIST pEnum;
 	
-	hr = pParentFolder->EnumObjects (NULL, m_dwShellFlags, &pEnum);
+	hr = pParentFolder->EnumObjects (m_bSystemUserInput ? GetSafeHwnd() : NULL, m_dwShellFlags, &pEnum);
 	if (FAILED (hr) || pEnum == NULL)
 	{
 		return;

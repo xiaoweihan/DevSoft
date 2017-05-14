@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -43,6 +43,10 @@ public:
 // Attributes
 public:
 	CBCGPEditCtrl* GetParentEditCtrl () {return m_pParentEditCtrl;}
+	CBCGPBaseIntelliSenseLB* GetListBox() {return m_pLstBoxData;}
+
+	static HWND	m_hwndActive;
+
 // Operations
 public:
 
@@ -60,6 +64,8 @@ protected:
 	// Generated message map functions
 	//{{AFX_MSG(CBCGPIntelliSenseWnd)
 	afx_msg void OnDestroy();
+	afx_msg void OnNcPaint();
+	afx_msg void OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR* lpncsp);
 	//}}AFX_MSG
 	afx_msg LRESULT DeleteItem (WPARAM, LPARAM);
 	afx_msg BCGNcHitTestType OnNcHitTest(CPoint point);

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,10 @@
 #include "BCGPLocalResource.h"
 #include "BCGPKeyboardManager.h"
 #include "BCGPRibbonCustomizePage.h"
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	#include "BCGPMessageBox.h"
+#endif
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -58,6 +62,7 @@ CBCGPRibbonCustomizeQATPage::CBCGPRibbonCustomizeQATPage(
 	m_psp.hInstance = AfxGetResourceHandle ();
 
 	m_bIsCustomizeKeyboard = TRUE;
+	m_bCanAdd = FALSE;
 }
 //**********************************************************************
 CBCGPRibbonCustomizeQATPage::~CBCGPRibbonCustomizeQATPage()
@@ -108,6 +113,8 @@ void CBCGPRibbonCustomizeQATPage::OnSelendokCategoryCombo()
 {
 	ASSERT_VALID (m_pRibbonBar);
 
+	int nCategoryPrev = m_nCategory;
+
 	UpdateData ();
 
 	DWORD_PTR dwData = m_wndCategoryCombo.GetItemData (m_nCategory);
@@ -120,6 +127,13 @@ void CBCGPRibbonCustomizeQATPage::OnSelendokCategoryCombo()
 		}
 
 		m_nCategory++;
+
+		if (m_nCategory == nCategoryPrev)
+		{
+			m_nCategory = max(0, nCategoryPrev - 2);
+		}
+
+		dwData = m_wndCategoryCombo.GetItemData(m_nCategory);
 		UpdateData (FALSE);
 	}
 
@@ -147,6 +161,17 @@ void CBCGPRibbonCustomizeQATPage::OnSelendokCategoryCombo()
 //**********************************************************************
 void CBCGPRibbonCustomizeQATPage::OnAdd() 
 {
+	if (!m_bCanAdd)
+	{
+		CBCGPLocalResource localRes;
+
+		CString strMsg;
+		strMsg.LoadString(IDS_BCGBARRES_RIBBON_QAT_DUPLICATED);
+		
+		BCGPShowMessageBox(IsVisualManagerStyle(), this, strMsg, NULL, MB_OK | MB_ICONWARNING);
+		return;
+	}
+
 	CBCGPBaseRibbonElement* pCmd = m_wndCommandsList.GetSelected ();
 	if (pCmd == NULL)
 	{
@@ -220,7 +245,7 @@ void CBCGPRibbonCustomizeQATPage::OnToolbarReset()
 		strPrompt.Remove (_T('\''));
 	}
 
-	if (MessageBox (strPrompt, NULL, MB_OKCANCEL | MB_ICONWARNING) != IDOK)
+	if (BCGPShowMessageBox(IsVisualManagerStyle(), this, strPrompt, NULL, MB_OKCANCEL | MB_ICONWARNING) != IDOK)
 	{
 		return;
 	}
@@ -229,6 +254,9 @@ void CBCGPRibbonCustomizeQATPage::OnToolbarReset()
 	m_pRibbonBar->m_QAToolbar.GetDefaultCommands (lstCmds);
 
 	m_wndQATList.FillFromIDs (lstCmds, FALSE);
+
+	OnSelchangeQATCommands();
+	OnSelchangeCommandsList();
 }
 //**********************************************************************
 void CBCGPRibbonCustomizeQATPage::OnSelchangeQATCommands() 
@@ -241,6 +269,9 @@ void CBCGPRibbonCustomizeQATPage::OnSelchangeQATCommands()
 BOOL CBCGPRibbonCustomizeQATPage::OnInitDialog() 
 {
 	CBCGPPropertyPage::OnInitDialog();
+
+	m_wndQATList.EnableItemHighlighting(IsVisualManagerStyle());
+	m_wndCommandsList.EnableItemHighlighting(IsVisualManagerStyle());
 	
 	ASSERT_VALID (m_pRibbonBar);
 
@@ -276,11 +307,11 @@ BOOL CBCGPRibbonCustomizeQATPage::OnInitDialog()
 
 	const CString strSeparator = _T("----------");
 
-	m_wndUp.SetStdImage (CBCGPMenuImages::IdArowUpLarge, CBCGPMenuImages::ImageBlack2, CBCGPMenuImages::IdArowUpLarge, CBCGPMenuImages::ImageLtGray);
+	m_wndUp.SetStdImage (CBCGPMenuImages::IdArowUpLarge, CBCGPMenuImages::ImageBlack2, CBCGPMenuImages::IdArowUpLarge, (globalData.m_bIsWhiteHighContrast ? CBCGPMenuImages::ImageGray : CBCGPMenuImages::ImageLtGray));
 	m_wndUp.SetWindowText(_T("Up"));
 	m_wndUp.SetDrawText(FALSE, FALSE);
 	
-	m_wndDown.SetStdImage (CBCGPMenuImages::IdArowDownLarge, CBCGPMenuImages::ImageBlack2, CBCGPMenuImages::IdArowDownLarge, CBCGPMenuImages::ImageLtGray);
+	m_wndDown.SetStdImage (CBCGPMenuImages::IdArowDownLarge, CBCGPMenuImages::ImageBlack2, CBCGPMenuImages::IdArowDownLarge, (globalData.m_bIsWhiteHighContrast ? CBCGPMenuImages::ImageGray : CBCGPMenuImages::ImageLtGray));
 	m_wndDown.SetWindowText(_T("Down"));
 	m_wndDown.SetDrawText(FALSE, FALSE);
 
@@ -325,6 +356,11 @@ BOOL CBCGPRibbonCustomizeQATPage::OnInitDialog()
 		CBCGPRibbonCategory* pCategory = m_pRibbonBar->GetCategory (i);
 		ASSERT_VALID (pCategory);
 
+		if (pCategory->IsHiddenInAppMode())
+		{
+			continue;
+		}
+
 		CString strCategoryName;
 		if (!m_pRibbonBar->m_CustomizationData.GetTabName(pCategory, strCategoryName))
 		{
@@ -353,6 +389,11 @@ BOOL CBCGPRibbonCustomizeQATPage::OnInitDialog()
 		{
 			CBCGPRibbonCategory* pCategory = m_pRibbonBar->GetCategory (i);
 			ASSERT_VALID (pCategory);
+
+			if (pCategory->IsHiddenInAppMode())
+			{
+				continue;
+			}
 
 			CString strCategoryName;
 			if (!m_pRibbonBar->m_CustomizationData.GetTabName(pCategory, strCategoryName))
@@ -396,6 +437,7 @@ BOOL CBCGPRibbonCustomizeQATPage::OnInitDialog()
 	m_wndQATList.FillFromIDs (lstQACommands, FALSE);
 
 	OnSelchangeQATCommands ();
+	OnSelchangeCommandsList();
 	
 	return TRUE;  // return TRUE unless you set the focus to a control
 	              // EXCEPTION: OCX Property Pages should return FALSE
@@ -456,12 +498,19 @@ void CBCGPRibbonCustomizeQATPage::OnCustomizeKeyboard()
 {
 	ASSERT_VALID (m_pRibbonBar);
 
-	CBCGPRibbonKeyboardCustomizeDlg dlg (m_pRibbonBar, this);
-	dlg.DoModal ();
+	CBCGPRibbonKeyboardCustomizeDlg dlg(m_pRibbonBar, this);
+	
+	if (IsVisualManagerStyle())
+	{
+		dlg.EnableVisualManagerStyle(TRUE, TRUE);
+	}
+
+	dlg.DoModal();
 }
 //**********************************************************************
 void CBCGPRibbonCustomizeQATPage::OnSelchangeCommandsList() 
 {
+	m_bCanAdd = FALSE;
 	BOOL bEnableAddButton = TRUE;
 
 	CBCGPBaseRibbonElement* pCmd = m_wndCommandsList.GetSelected ();
@@ -469,14 +518,17 @@ void CBCGPRibbonCustomizeQATPage::OnSelchangeCommandsList()
 	{
 		bEnableAddButton = FALSE;
 	}
+	else if (pCmd->IsSeparator() && m_wndQATList.GetCount() == 0)
+	{
+		bEnableAddButton = FALSE;
+	}
 	else
 	{
-		ASSERT_VALID (pCmd);
-		bEnableAddButton = 
-			pCmd->GetID () == 0 || m_wndQATList.GetCommandIndex (pCmd->GetID ()) < 0;
+		ASSERT_VALID(pCmd);
+		m_bCanAdd = pCmd->CanBeAddedToQAT() && (pCmd->GetID () == 0 || m_wndQATList.GetCommandIndex (pCmd->GetID ()) < 0);
 	}
 
-	m_wndAdd.EnableWindow (bEnableAddButton);
+	m_wndAdd.EnableWindow(bEnableAddButton);
 }
 //**********************************************************************
 void CBCGPRibbonCustomizeQATPage::AddCustomCategory (LPCTSTR lpszName,

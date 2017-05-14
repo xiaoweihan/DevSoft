@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -34,6 +34,7 @@
 #include "BCGPUserToolsManager.h"
 #include "BCGPTearOffManager.h"
 #include "BCGPUserTool.h"
+#include "BCGPGlobalUtils.h"
 #include "BCGPRegistry.h"
 #include "BCGPWorkspace.h"
 #include "BCGPVisualManager.h"
@@ -41,12 +42,15 @@
 
 #include "BCGPTabWnd.h"
 #include "BCGPDropDownList.h"
+#include "BCGPBreadcrumb.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
 static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
+
+#define MENU_BUTTON_TEXT_MARGIN globalUtils.ScaleByDPI(3)
 
 IMPLEMENT_SERIAL(CBCGPToolbarMenuButton, CBCGPToolbarButton, VERSIONABLE_SCHEMA | 1)
 
@@ -90,6 +94,7 @@ void CBCGPToolbarMenuButton::Initialize ()
 	m_bShowAtRightSide = FALSE;
 	m_rectArrow.SetRectEmpty ();
 	m_rectButton.SetRectEmpty ();
+	m_pRibbonElement = NULL;
 }
 //*****************************************************************************************
 void CBCGPToolbarMenuButton::Initialize (UINT uiID, HMENU hMenu, int iImage, LPCTSTR lpszText,
@@ -397,7 +402,7 @@ void CBCGPToolbarMenuButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolBarIm
 				m_pWndParent->GetParentFrame ()->GetSafeHwnd () != NULL &&
 				m_pWndParent->GetParentFrame ()->IsZoomed ();
 
-			if (bIsZoomed && CBCGPVisualManager::GetInstance ()->IsToolBarButtonDefaultBackground (this, 
+			if (bIsZoomed && !globalData.bIsWindows7 && CBCGPVisualManager::GetInstance ()->IsToolBarButtonDefaultBackground (this, 
 				(bHighlight || (m_nStyle & (TBBS_PRESSED | TBBS_CHECKED))) ? 
 					CBCGPVisualManager::ButtonsIsPressed : CBCGPVisualManager::ButtonsIsRegular))
 			{
@@ -476,7 +481,7 @@ SIZE CBCGPToolbarMenuButton::OnCalculateSize (CDC* pDC, const CSize& sizeDefault
 			}
 		}
 
-		nArrowSize += nSeparatorSize - TEXT_MARGIN - 1;
+		nArrowSize += nSeparatorSize - MENU_BUTTON_TEXT_MARGIN - 1;
 	}
 
 	//--------------------
@@ -487,7 +492,7 @@ SIZE CBCGPToolbarMenuButton::OnCalculateSize (CDC* pDC, const CSize& sizeDefault
 		(m_nID < 0xF000 || m_nID >= 0xF1F0))	// Not system.
 	{
 		//-----------------------------------
-		// Remove standard aceleration label:
+		// Remove standard acceleration label:
 		//-----------------------------------
 		int iTabOffset = m_strText.Find (_T('\t'));
 		if (iTabOffset >= 0)
@@ -496,7 +501,7 @@ SIZE CBCGPToolbarMenuButton::OnCalculateSize (CDC* pDC, const CSize& sizeDefault
 		}
 
 		//---------------------------------
-		// Add an actual accelartion label:
+		// Add an actual acceleration label:
 		//---------------------------------
 		CString strAccel;
 		if (GetKeyboardAccelerator(strAccel))
@@ -551,7 +556,7 @@ SIZE CBCGPToolbarMenuButton::OnCalculateSize (CDC* pDC, const CSize& sizeDefault
 
 	if (m_bMenuMode)
 	{
-		size.cx += sizeDefault.cx + 2 * TEXT_MARGIN;
+		size.cx += sizeDefault.cx + 2 * MENU_BUTTON_TEXT_MARGIN;
 	}
 
 	if (!m_bMenuMode)
@@ -911,6 +916,8 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 	ASSERT_VALID (pDC);
 	ASSERT_VALID (this);
 
+	m_bCustomImage = FALSE;
+
 	if (m_nID == nBCGPMenuGroupID)
 	{
 		COLORREF clrText = 
@@ -919,7 +926,7 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 		COLORREF clrTextOld = pDC->SetTextColor (clrText);
 
 		CRect rectText = rect;
-		rectText.DeflateRect (TEXT_MARGIN, 0);
+		rectText.DeflateRect (MENU_BUTTON_TEXT_MARGIN, 0);
 		rectText.bottom -= 2;
 
 		CFont* pOldFont = pDC->SelectObject (&globalData.fontBold);
@@ -1006,7 +1013,7 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 	}
 
 	HICON hDocIcon = CBCGPTabWnd::GetDocumentIcon (m_nID);
-
+	
 	CSize sizeImage = CBCGPMenuImages::Size ();
 
 	if (m_pPopupMenu != NULL && !m_bToBeClosed)
@@ -1207,12 +1214,6 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 				CPoint pt = rectImage.TopLeft ();
 				pt += ptImageOffset;
 
-				if (globalData.GetRibbonImageScale () != 1. && CBCGPToolBar::m_bDontScaleImages)
-				{
-					pt.x += max (0, (rectImage.Width () - pImages->GetImageSize ().cx) / 2);
-					pt.y += max (0, (rectImage.Width () - pImages->GetImageSize ().cy) / 2);
-				}
-
 				if (bDrawImageShadow)
 				{
 					pt.Offset (1, 1);
@@ -1252,19 +1253,23 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 			}
 			else
 			{
+				CPoint pt = rectImage.TopLeft ();
+				pt += ptImageOffset;
+
 				if (bDrawImageShadow)
 				{
-					rectImage.OffsetRect (1, 1);
+					pt.Offset (1, 1);
+
 					pImages->Draw (pDC, 
-						rectImage.left + ptImageOffset.x,
-						rectImage.top + ptImageOffset.y,
+						pt.x,
+						pt.y, 
 						GetImage (), FALSE, FALSE, FALSE, TRUE);
 
-					rectImage.OffsetRect (-2, -2);
+					pt.Offset (-2, -2);
 				}
 
 				pImages->Draw (pDC, 
-					rectImage.left + ptImageOffset.x, rectImage.top + ptImageOffset.y, 
+					pt.x, pt.y, 
 					GetImage (), FALSE, bDisabled && bGrayDisabledButtons,
 					FALSE, FALSE, bFadeImage);
 			}
@@ -1275,43 +1280,65 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 	
 	if (m_bAlwaysCallOwnerDraw || !bImageIsReady)
 	{
-		CFrameWnd* pParentFrame = m_pWndParent == NULL ?
-			DYNAMIC_DOWNCAST (CFrameWnd, AfxGetMainWnd ()) :
-			BCGCBProGetTopLevelFrame (m_pWndParent);
-
-		//------------------------------------
-		// Get chance to user draw menu image:
-		//------------------------------------
-		CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, pParentFrame);
-		if (pMainFrame != NULL)
+		CBCGPPopupMenuBar* pParentMenuBar = DYNAMIC_DOWNCAST (CBCGPPopupMenuBar, m_pWndParent);
+		if (pParentMenuBar != NULL)
 		{
-			bImageIsReady = pMainFrame->OnDrawMenuImage (pDC, this, rectImage);
-		}
-		else	// Maybe, SDI frame...
-		{
-			CBCGPFrameWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPFrameWnd, pParentFrame);
-			if (pFrame != NULL)
+			CBCGPPopupMenu* pParentMenu = DYNAMIC_DOWNCAST (CBCGPPopupMenu, pParentMenuBar->GetParent ());
+			if (pParentMenu != NULL)
 			{
-				bImageIsReady = pFrame->OnDrawMenuImage (pDC, this, rectImage);
+				CBCGPBreadcrumb* pBreadcrumb = DYNAMIC_DOWNCAST(CBCGPBreadcrumb, pParentMenu->GetSafeOwner());
+				if (pBreadcrumb != NULL)
+				{
+					bImageIsReady = pBreadcrumb->OnDrawMenuImage(pDC, this, rectImage);
+				}
 			}
-			else	// Maybe, OLE frame...
-			{
-				CBCGPOleIPFrameWnd* pOleFrame = 
-					DYNAMIC_DOWNCAST (CBCGPOleIPFrameWnd, pParentFrame);
-				if (pOleFrame != NULL)
-				{
-					bImageIsReady = pOleFrame->OnDrawMenuImage (pDC, this, rectImage);
-				}
-				else
-				{
-					CBCGPOleDocIPFrameWnd* pOleDocFrame = 
-						DYNAMIC_DOWNCAST (CBCGPOleDocIPFrameWnd, pParentFrame);
-					if (pOleDocFrame != NULL)
-					{
-						bImageIsReady = pOleDocFrame->OnDrawMenuImage (pDC, this, rectImage);
-					}
-				}
+		}
 
+		if (!bImageIsReady)
+		{
+			CFrameWnd* pParentFrame = m_pWndParent == NULL ?
+				DYNAMIC_DOWNCAST (CFrameWnd, AfxGetMainWnd ()) :
+				BCGCBProGetTopLevelFrame (m_pWndParent);
+
+			//------------------------------------
+			// Get chance to user draw menu image:
+			//------------------------------------
+			CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, pParentFrame);
+			if (pMainFrame != NULL)
+			{
+				bImageIsReady = pMainFrame->OnDrawMenuImage (pDC, this, rectImage);
+			}
+			else	// Maybe, SDI frame...
+			{
+				CBCGPFrameWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPFrameWnd, pParentFrame);
+				if (pFrame != NULL)
+				{
+					bImageIsReady = pFrame->OnDrawMenuImage (pDC, this, rectImage);
+				}
+				else	// Maybe, OLE frame...
+				{
+					CBCGPOleIPFrameWnd* pOleFrame = 
+						DYNAMIC_DOWNCAST (CBCGPOleIPFrameWnd, pParentFrame);
+					if (pOleFrame != NULL)
+					{
+						bImageIsReady = pOleFrame->OnDrawMenuImage (pDC, this, rectImage);
+					}
+					else
+					{
+						CBCGPOleDocIPFrameWnd* pOleDocFrame = 
+							DYNAMIC_DOWNCAST (CBCGPOleDocIPFrameWnd, pParentFrame);
+						if (pOleDocFrame != NULL)
+						{
+							bImageIsReady = pOleDocFrame->OnDrawMenuImage (pDC, this, rectImage);
+						}
+					}
+
+				}
+			}
+
+			if (bImageIsReady)
+			{
+				m_bCustomImage = TRUE;
 			}
 		}
 	}
@@ -1450,7 +1477,7 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 	//-----------
 	COLORREF clrTextOld = pDC->GetTextColor ();
 
-	rectText.left += TEXT_MARGIN;
+	rectText.left += MENU_BUTTON_TEXT_MARGIN;
 
 	if (!m_bWholeText)
 	{
@@ -1484,13 +1511,20 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 	pDC->SetTextColor (clrText);
 	pDC->DrawText (strText, &rectText, DT_SINGLELINE | DT_VCENTER);
 
+	const BOOL bHasRightArrow = (m_nID == (UINT) -1 || m_bDrawDownArrow || m_bMenuOnly);
+
 	//------------------------
 	// Draw accelerator label:
 	//------------------------
 	if (!strAccel.IsEmpty ())
 	{
 		CRect rectAccel = rectText;
-		rectAccel.right -= TEXT_MARGIN + sizeImage.cx;
+		rectAccel.right -= MENU_BUTTON_TEXT_MARGIN + sizeImage.cx;
+
+		if (bHasRightArrow)
+		{
+			rectAccel.right -= CBCGPMenuImages::Size().cx;
+		}
 
 		if (bDisabled && !bHighlight && CBCGPVisualManager::GetInstance ()->IsEmbossDisabledImage ())
 		{
@@ -1505,10 +1539,10 @@ void CBCGPToolbarMenuButton::DrawMenuItem (CDC* pDC, const CRect& rect, CBCGPToo
 		pDC->DrawText (strAccel, &rectAccel, DT_SINGLELINE | DT_RIGHT | DT_VCENTER);
 	}
 
-	//--------------------------------------------
-	// Draw triangle image for the cascade menues:
-	//--------------------------------------------
-	if (m_nID == (UINT) -1 || m_bDrawDownArrow || m_bMenuOnly)
+	//-------------------------------------------
+	// Draw triangle image for the cascade menus:
+	//-------------------------------------------
+	if (bHasRightArrow)
 	{
 		CFont* pRegFont = pDC->SelectObject (&globalData.fontMarlett);
 		ASSERT (pRegFont != NULL);
@@ -1634,7 +1668,7 @@ BOOL CBCGPToolbarMenuButton::OpenPopupMenu (CWnd* pWnd)
 
 	//---------------------------------------------------------------
 	// Define a new menu position. Place the menu in the right side
-	// of the current menu in the poup menu case or under the current 
+	// of the current menu in the popup menu case or under the current 
 	// item by default:
 	//---------------------------------------------------------------
 	CPoint point;
@@ -1794,7 +1828,7 @@ BOOL CBCGPToolbarMenuButton::OnBeforeDrag () const
 //*******************************************************************************************
 void CBCGPToolbarMenuButton::GetTextHorzOffsets (int& xOffsetLeft, int& xOffsetRight)
 {
-	xOffsetLeft = CBCGPToolBar::GetMenuImageSize ().cx / 2 + TEXT_MARGIN;
+	xOffsetLeft = CBCGPToolBar::GetMenuImageSize ().cx / 2 + MENU_BUTTON_TEXT_MARGIN;
 	xOffsetRight = CBCGPMenuImages::Size ().cx;
 }
 //*******************************************************************************************
@@ -1966,20 +2000,38 @@ BOOL CBCGPToolbarMenuButton::SetACCData (CWnd* pParent, CBCGPAccessibilityData& 
 		return FALSE;
 	}
 
-	data.m_nAccRole = ROLE_SYSTEM_MENUITEM;
-	data.m_bAccState = STATE_SYSTEM_FOCUSED |STATE_SYSTEM_FOCUSABLE;	
-	if (m_nStyle & TBBS_CHECKED)
+	CBCGPPopupMenuBar* pParentMenu = DYNAMIC_DOWNCAST (CBCGPPopupMenuBar, m_pWndParent);
+	if (pParentMenu != NULL && pParentMenu->IsDropDownListMode())
 	{
-		data.m_bAccState |= STATE_SYSTEM_CHECKED; 
+		data.m_nAccRole = ROLE_SYSTEM_LISTITEM;
+		data.m_bAccState = STATE_SYSTEM_FOCUSED | STATE_SYSTEM_FOCUSABLE;
+	
+		if (pParentMenu->GetHighlightedButton() == this)
+		{
+			data.m_bAccState |= STATE_SYSTEM_SELECTED;
+		}
+		
+		data.m_strAccHelp = L"BCGPToolbarMenuButton(list)";
+		data.m_strAccDefAction = L"Press"; 
 	}
-
-	if (m_nStyle & TBBS_DISABLED)
+	else
 	{
-		data.m_bAccState |= STATE_SYSTEM_UNAVAILABLE;
-	}
+		data.m_nAccRole = ROLE_SYSTEM_MENUITEM;
+		data.m_bAccState = STATE_SYSTEM_FOCUSED |STATE_SYSTEM_FOCUSABLE;
 
-	data.m_strAccHelp = L"BCGPToolbarMenuButton";
-	data.m_strAccDefAction = m_bMenuMode ? L"Execute" : L"Open"; 
+		if (m_nStyle & TBBS_CHECKED)
+		{
+			data.m_bAccState |= STATE_SYSTEM_CHECKED; 
+		}
+
+		if (m_nStyle & TBBS_DISABLED)
+		{
+			data.m_bAccState |= STATE_SYSTEM_UNAVAILABLE;
+		}
+
+		data.m_strAccHelp = L"BCGPToolbarMenuButton";
+		data.m_strAccDefAction = m_bMenuMode ? L"Execute" : L"Open"; 
+	}
 
 	return TRUE;
 }

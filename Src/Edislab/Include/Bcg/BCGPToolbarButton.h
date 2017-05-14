@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -53,7 +53,7 @@ public:
 public:
 
 	//--------------------
-	// Drag and drop stuf:
+	// Drag and drop stuff:
 	//--------------------
 	static CLIPFORMAT GetClipboardFormat ();
 	static CBCGPToolbarButton* CreateFromOleData (COleDataObject* pDataObject);
@@ -65,7 +65,7 @@ public:
 	//-----------------------------------------------------
 	static void SetClipboardFormatName (LPCTSTR lpszName);
 
-	virtual BOOL CanBeDropped (CBCGPToolBar* /*pToolbar*/)	{	return TRUE; }
+	virtual BOOL CanBeDropped(CBCGPToolBar* pToolbar)	{ UNREFERENCED_PARAMETER(pToolbar);  return TRUE; }
 
 	//-----------------------------------------------------------------
 	//	Protected commands support. 
@@ -84,10 +84,11 @@ public:
 						BOOL bDrawBorder = TRUE,
 						BOOL bGrayDisabledButtons = TRUE);
 	virtual SIZE OnCalculateSize (CDC* pDC, const CSize& sizeDefault, BOOL bHorz);
+
 	virtual BOOL OnClick (CWnd* pWnd, BOOL bDelay = TRUE)		
 	{	
-		pWnd;
-		bDelay;
+		UNREFERENCED_PARAMETER(pWnd);
+		UNREFERENCED_PARAMETER(bDelay);
 		return FALSE;
 	}
 	
@@ -96,13 +97,16 @@ public:
 	virtual void OnChangeParentWnd (CWnd* pWndParent);
 	virtual BOOL ExportToMenuButton (CBCGPToolbarMenuButton& menuButton) const;
 	virtual void OnMove ()								{}
-	virtual void OnSize (int /*iSize*/)					{}
+	virtual void OnSize(int iSize)					{ UNREFERENCED_PARAMETER(iSize); }
+
 	virtual HWND GetHwnd ()								{	return NULL;	}
 	virtual BOOL CanBeStretched () const				{	return FALSE;	}
-	virtual BOOL NotifyCommand (int /*iNotifyCode*/)	{	return FALSE;	}
+	virtual BOOL NotifyCommand(int iNotifyCode)	{ UNREFERENCED_PARAMETER(iNotifyCode);  return FALSE; }
+
 	virtual void OnAddToCustomizePage ()		{}
-	virtual HBRUSH OnCtlColor(CDC* /*pDC*/, UINT /*nCtlColor*/)	{	return NULL;	}
-	virtual void OnDblClick (CWnd* /*pWnd*/)			{}
+	virtual HBRUSH OnCtlColor(CDC* pDC, UINT nCtlColor)	{ UNREFERENCED_PARAMETER(pDC); UNREFERENCED_PARAMETER(nCtlColor);  return NULL; }
+	virtual void OnDblClick(CWnd* pWnd)			{ UNREFERENCED_PARAMETER(pWnd);  }
+
 	virtual BOOL CanBeStored () const					{	return TRUE;	}
 	virtual BOOL HaveHotBorder () const					{	return TRUE;	}
 	virtual void OnCancelMode ()						{}
@@ -113,7 +117,7 @@ public:
 				(m_lstProtectedCommands.Find (m_nID) == NULL);
 	}
 	
-	virtual BOOL OnContextHelp (CWnd* /* pWnd */)		{	return FALSE;	}
+	virtual BOOL OnContextHelp(CWnd* pWnd)		{ UNREFERENCED_PARAMETER(pWnd);  return FALSE; }
 	virtual BOOL OnCustomizeMenu (CMenu* /*pMenu*/)		{	return FALSE;	}
 
 	virtual int OnDrawOnCustomizeList (CDC* pDC, const CRect& rect, 
@@ -129,15 +133,16 @@ public:
 		return TRUE;	// Drag is possible
 	}
 
-	virtual BOOL OnBeforeDrop (CBCGPToolBar* /*pTarget*/)
+	virtual BOOL OnBeforeDrop (CBCGPToolBar* pTarget)
 	{
+		UNREFERENCED_PARAMETER(pTarget);
 		return TRUE;	// Drop is possible
 	}
 
 	virtual BOOL OnToolHitTest(const CWnd* pWnd, TOOLINFO* pTI);
 	virtual void SaveBarState () {}
 
-	virtual void OnShow (BOOL /*bShow*/)	{}
+	virtual void OnShow(BOOL bShow)	{ UNREFERENCED_PARAMETER(bShow);  }
 
 	virtual const CRect GetInvalidateRect () const
 	{
@@ -180,8 +185,9 @@ public:
 			(hwndBtn == ::GetFocus () || ::IsChild (hwndBtn, ::GetFocus ()));
 	}
 
-	virtual BOOL OnGetCustomToolTipText (CString& /*strToolTip*/)
+	virtual BOOL OnGetCustomToolTipText(CString& strToolTip)
 	{
+		UNREFERENCED_PARAMETER(strToolTip);
 		return FALSE;
 	}
 
@@ -202,6 +208,16 @@ public:
 	BOOL IsRibbonImage() const
 	{
 		return m_bRibbonImage;
+	}
+
+	BOOL IsCustomImage() const
+	{
+		return m_bCustomImage;
+	}
+	
+	virtual BOOL IsExplorerNavigationButton() const
+	{
+		return FALSE;
 	}
 
 	virtual BOOL GetKeyboardAccelerator(CString& strAccel) const;
@@ -328,7 +344,7 @@ public:
 	static BOOL	m_bWrapText;	// Is toolbar text may be multi-lined?
 	static BOOL	m_bUpdateImages;
 
-	DWORD	m_dwdItemData;	// User-defined data
+	DWORD_PTR	m_dwdItemData;	// User-defined data
 
 protected:
 	CRect	m_rect;			// Button location
@@ -351,6 +367,9 @@ protected:
 	CWnd*	m_pWndParent;	// Parent window
 	BOOL	m_bOnGlass;		// Located on "aero" toolbar
 	BOOL	m_bRibbonImage;	// Button image is provided by application Ribbon
+	BOOL	m_bCustomImage;	// Button image is a custom
+
+	BOOL	m_bIsDragged;
 
 // diagnostics:
 public:

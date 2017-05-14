@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,6 +21,7 @@
 #pragma once
 #endif // _MSC_VER > 1000
 
+#include "BCGCBPro.h"
 #include "BCGPToolBarImages.h"
 
 class CBCGPSmartDockingParams;
@@ -66,7 +67,7 @@ protected:
 	DECLARE_MESSAGE_MAP()
 };
 
-class CBCGPSmartDockingMarker : public CObject
+class BCGCBPRODLLEXPORT CBCGPSmartDockingMarker : public CObject
 {
 public:
 	enum SDMarkerPlace
@@ -261,13 +262,7 @@ protected:
 template <DWORD WndStyle>
 LPCTSTR GetSDWndClassName ()
 {
-	static CString strSDWndClassName;
-	if (strSDWndClassName.IsEmpty ())
-	{
-		strSDWndClassName = AfxRegisterWndClass (WndStyle);
-	}
-
-	return strSDWndClassName;
+	return AfxRegisterWndClass(WndStyle);
 }
 
 #endif // !defined(AFX_BCGPSMARTDOCKINGMARKER_H__320EA862_186F_4D9B_94C7_FF9D72E53492__INCLUDED_)

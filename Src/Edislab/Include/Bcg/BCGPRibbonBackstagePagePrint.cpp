@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "BCGPLocalResource.h"
 #include "MenuImages.h"
 #include "BCGPMath.h"
+#include "BCGPMDIFrameWnd.h"
 
 #include <winspool.h>
 #include <io.h>
@@ -210,6 +211,7 @@ CBCGPRibbonBackstagePagePrint::CBCGPRibbonBackstagePagePrint(UINT nIDTemplate/* 
 	: CBCGPDialog    (nIDTemplate == 0 ? CBCGPRibbonBackstagePagePrint::IDD : nIDTemplate, pParent)
 	, m_wndPreview   (NULL)
 	, m_pPrintView   (NULL)
+	, m_nMaxZoomLevel(100)
 {
 	m_bIsLocal = TRUE;
 
@@ -220,6 +222,9 @@ CBCGPRibbonBackstagePagePrint::CBCGPRibbonBackstagePagePrint(UINT nIDTemplate/* 
 	//}}AFX_DATA_INIT
 
 	EnableLayout();
+	
+	m_wndZoomSlider.EnableZoomButtons(TRUE, 200, 10);
+	m_wndZoomSlider.m_bDrawFocus = FALSE;
 
 #ifndef GetDefaultPrinter
     m_lpfnGetDefaultPrinterA = NULL;
@@ -352,13 +357,20 @@ BOOL CBCGPRibbonBackstagePagePrint::OnInitDialog()
 
 	CView* pView = NULL;
 	CFrameWnd* pFrame = DYNAMIC_DOWNCAST(CFrameWnd, AfxGetApp ()->GetMainWnd ());
+
+	CMDIFrameWnd* pMDIFrame = CBCGPMDIFrameWnd::GetActiveTearOffFrame();
+	if (pMDIFrame == NULL)
+	{
+		pMDIFrame = DYNAMIC_DOWNCAST(CMDIFrameWnd, pFrame);
+	}
+
+	if (pMDIFrame != NULL)
+	{
+		pFrame = pMDIFrame->GetActiveFrame();
+	}
+
 	if (pFrame != NULL)
 	{
-		if (pFrame->IsKindOf (RUNTIME_CLASS(CMDIFrameWnd)))
-		{
-			pFrame = ((CMDIFrameWnd*)pFrame)->GetActiveFrame ();
-		}
-
 		pView = pFrame->GetActiveView ();
 		bInitialized = pView != NULL;
 	}
@@ -390,6 +402,8 @@ BOOL CBCGPRibbonBackstagePagePrint::OnInitDialog()
 		{
 			m_wndPreview->m_bVisualManagerStyle = IsVisualManagerStyle();
 			m_wndPreview->m_bBackstageMode = IsBackstageMode();
+
+			m_wndPreview->SetMaxZoomLevel(m_nMaxZoomLevel);
 
 			m_wndPreview->SetNotifyPage (IDC_BCGBARRES_PRINT_PAGE_NUM);
 			m_wndPreview->SetNotifyZoom (IDC_BCGBARRES_PRINT_ZOOM_NUM);
@@ -452,20 +466,8 @@ void CBCGPRibbonBackstagePagePrint::OnInitPrintControls()
 {
 	CBCGPLocalResource localRes;
 
-	double dblScale = globalData.GetRibbonImageScale ();
-	if (dblScale != 1.0)
-	{
-		CBCGPToolBarImages image;
-		image.Load (IDB_BCGBARRES_PRINT_BUTTON);
-		image.SetSingleImage ();
-		image.SmoothResize (dblScale);
-
-		m_btnPrint.SetImage (image.GetImageWell (), 0, 0);
-	}
-	else
-	{
-		m_btnPrint.SetImage(IDB_BCGBARRES_PRINT_BUTTON);
-	}
+	m_btnPrint.SetImage(IDB_BCGBARRES_PRINT_BUTTON);
+	m_btnPrint.SetImageAutoScale();
 
 	m_btnPrint.m_bTopImage = TRUE;
 	m_btnPrint.m_bDrawFocus = FALSE;
@@ -473,15 +475,17 @@ void CBCGPRibbonBackstagePagePrint::OnInitPrintControls()
 	m_btnCopies.SetRange (1, 9999);
 
 	m_wndPrinterProperties.m_bDefaultClickProcess = TRUE;
+	m_wndPrinterProperties.m_bAlwaysUnderlineText = FALSE;
+	m_wndPrinterProperties.m_bDrawFocus = FALSE;
 	m_wndPrinterProperties.m_nAlignStyle = CBCGPButton::ALIGN_CENTER;
 
 	m_btnPrev.SetWindowText (_T(""));
-	m_btnPrev.SetStdImage (CBCGPMenuImages::IdArowLeftTab3d);
+	m_btnPrev.SetStdImage (CBCGPMenuImages::IdArowLeftTab3d, CBCGPMenuImages::ImageBlack, (CBCGPMenuImages::IMAGES_IDS)-1, (globalData.m_bIsWhiteHighContrast ? CBCGPMenuImages::ImageGray : CBCGPMenuImages::ImageLtGray));
 
 	m_btnNext.SetWindowText (_T(""));
-	m_btnNext.SetStdImage (CBCGPMenuImages::IdArowRightTab3d);
+	m_btnNext.SetStdImage (CBCGPMenuImages::IdArowRightTab3d, CBCGPMenuImages::ImageBlack, (CBCGPMenuImages::IMAGES_IDS)-1, (globalData.m_bIsWhiteHighContrast ? CBCGPMenuImages::ImageGray : CBCGPMenuImages::ImageLtGray));
 
-	m_wndZoomSlider.SetRange (10, 100);
+	m_wndZoomSlider.SetRange (10, m_nMaxZoomLevel);
 	m_wndZoomSlider.SetPos (10);
 
 	PRINTDLG* dlgPrint = GetPrintDlg();
@@ -1436,6 +1440,12 @@ void CBCGPRibbonBackstagePagePrint::UpdateLabels()
 		if (pWnd->GetSafeHwnd () != NULL)
 		{
 			pWnd->SetFont (&globalData.fontCaption);
+
+			CBCGPStatic* pLabel = DYNAMIC_DOWNCAST(CBCGPStatic, pWnd);
+			if (pLabel != NULL)
+			{
+				pLabel->m_clrText = CBCGPVisualManager::GetInstance()->GetRibbonBackstageInfoTextColor();
+			}
 		}
 	}
 }

@@ -1,6 +1,6 @@
 // BCGColorBar.cpp : implementation file
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -21,7 +21,9 @@
 #include "BCGPVisualManager.h"
 #include "BCGPPropList.h"
 #include "BCGPGridCtrl.h"
+#include "BCGPDrawManager.h"
 #include "BCGPRibbonColorButton.h"
+#include "BCGPPopupDlg.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -861,8 +863,24 @@ int CBCGPColorBar::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	m_BoxSize = GetMenuImageSize ();
 
-	m_BoxSize.cx ++;
-	m_BoxSize.cy ++;
+	if (m_hFont != NULL)
+	{
+		CClientDC dc(this);
+		CBCGPFontSelector fs(dc, CFont::FromHandle(m_hFont));
+
+		TEXTMETRIC tm;
+		dc.GetTextMetrics(&tm);
+
+		int nBoxSize = max(tm.tmAveCharWidth, tm.tmHeight);
+
+		m_BoxSize.cx = max(m_BoxSize.cx, nBoxSize);
+		m_BoxSize.cy = max(m_BoxSize.cy, nBoxSize);
+	}
+
+	int nPadding = globalUtils.ScaleByDPI(1);
+
+	m_BoxSize.cx += nPadding;
+	m_BoxSize.cy += nPadding;
 
 	m_bLeaveFocus = FALSE;
 	m_nRowHeight = m_BoxSize.cy * 3 / 2;
@@ -1099,6 +1117,8 @@ BOOL CBCGPColorBar::OnSendCommand (const CBCGPToolbarButton* pButton)
 				CBCGPPopupMenu::ActivatePopupMenu (
 					BCGCBProGetTopLevelFrame (this), NULL);
 			}
+
+			pParentMenu->NotifyParentDlg(FALSE);
 		}
 
 		HWND hwnd = GetSafeHwnd ();
@@ -1613,6 +1633,12 @@ void CBCGPColorBar::OnDestroy()
 	{
 		m_pParentBtn->m_pPopup = NULL;
 		m_pParentBtn->SetFocus ();
+		
+		CBCGPDlgPopupMenu* pMenu = DYNAMIC_DOWNCAST(CBCGPDlgPopupMenu, m_pParentBtn->GetParentFrame());
+		if (pMenu != NULL)
+		{
+			CBCGPPopupMenu::m_pActivePopupMenu = pMenu;
+		}
 	}
 #ifndef BCGP_EXCLUDE_PROP_LIST
 	else if (m_pWndPropList != NULL)
@@ -1737,7 +1763,6 @@ BOOL CBCGPColorBar::CreatePalette (const CArray<COLORREF, COLORREF>& arColors,
 		return FALSE;
 	}
 
-	ASSERT (nNumColours <= MAX_COLOURS);
 	if (nNumColours > MAX_COLOURS)
 	{
 		nNumColours = MAX_COLOURS;

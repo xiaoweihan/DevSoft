@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -51,6 +51,7 @@ public:
 	UINT			m_nDelayInitial;
 	UINT			m_nDelayReshow;
 	UINT			m_nDelayAutomatic;
+	HICON			m_hiconHelp;
 
 	CBCGPToolTipParams()
 	{
@@ -73,6 +74,7 @@ public:
 		m_nDelayInitial		= 0;
 		m_nDelayReshow		= 0;
 		m_nDelayAutomatic	= 0;
+		m_hiconHelp			= NULL;
 	}
 
 	CBCGPToolTipParams& operator= (CBCGPToolTipParams& src)
@@ -96,6 +98,7 @@ public:
 		m_nDelayInitial		= src.m_nDelayInitial;
 		m_nDelayReshow		= src.m_nDelayReshow;
 		m_nDelayAutomatic	= src.m_nDelayAutomatic;
+		m_hiconHelp			= src.m_hiconHelp;
 
 		return *this;
 	}
@@ -125,6 +128,7 @@ protected:
 	CBCGPToolBarImages* m_pToolBarImages;
 	CBCGPToolbarButton* m_pHotButton;
 	CBCGPRibbonButton*	m_pRibbonButton;
+	CString				m_strHelpPrompt;
 	int					m_nRibbonImageType;
 	CString				m_strDescription;
 	CSize				m_sizeImage;
@@ -134,6 +138,7 @@ protected:
 	int					m_nFixedWidthRegular;
 	int					m_nFixedWidthWithImage;
 	BOOL				m_bResetDelayTime;
+	BOOL				m_bIsOwnerDrawImage;
 
 	CBCGPToolTipParams	m_Params;
 
@@ -146,7 +151,7 @@ public:
 	}
 
 	void SetLocation (CPoint pt);
-	void SetHotRibbonButton (CBCGPRibbonButton* pRibbonButton);
+	void SetHotRibbonButton (CBCGPRibbonButton* pRibbonButton, LPCTSTR lpszHelpPrompt = NULL);
 
 // Overrides
 	// ClassWizard generated virtual function overrides
@@ -165,6 +170,7 @@ public:
 	virtual CSize OnDrawLabel (CDC* pDC, CRect rect, BOOL bCalcOnly);
 	virtual CSize OnDrawDescription (CDC* pDC, CRect rect, BOOL bCalcOnly);
 	virtual void OnDrawSeparator (CDC* pDC, int x1, int x2, int y);
+	virtual CSize OnDrawHelpPrompt (CDC* pDC, CRect rect, BOOL bCalcOnly);
 
 // Implementation
 public:
@@ -186,6 +192,9 @@ protected:
 
 	void AdjustDelayTime();
 };
+
+BCGCBPRODLLEXPORT extern UINT BCGM_GET_TOOLTIP_IMAGE_SIZE;
+BCGCBPRODLLEXPORT extern UINT BCGM_ON_DRAW_TOOLTIP_IMAGE;
 
 #define m_strDesrciption m_strDescription
 

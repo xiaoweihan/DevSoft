@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,6 +28,8 @@
 static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
+
+IMPLEMENT_DYNCREATE(CBCGPSmartDockingManager, CObject)
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -150,11 +152,10 @@ void CBCGPSmartDockingManager::Start (CWnd* pDockingWnd)
 				DYNAMIC_DOWNCAST (CBCGPDockingControlBar, pMiniFrame->GetFirstVisibleBar ());
 			if (pFisrtBar != NULL)
 			{
-				m_dwEnabledAlignment = pFisrtBar->GetEnabledAlignment ();
+				m_dwEnabledAlignment = pFisrtBar->GetEnabledAlignment();
 			}
 		}
 	}
-
 
 	CBCGPSmartDockingMarker::SDMarkerPlace i;
 	for (i = CBCGPSmartDockingMarker::sdLEFT; i <= CBCGPSmartDockingMarker::sdBOTTOM; ++reinterpret_cast<int&>(i))
@@ -342,6 +343,11 @@ void CBCGPSmartDockingManager::ShowTabbedPlaceAt (CRect rect, int nTabXOffset,
 void CBCGPSmartDockingManager::MoveCentralGroup (CRect rect, int nMiddleIsOn, 
 												 DWORD dwEnabledAlignment)
 {
+	if (nMiddleIsOn == 0 && dwEnabledAlignment == 0)
+	{
+		return;
+	}
+
 	if (m_bStarted && m_pCentralGroup != NULL)
 	{
 		CRect rectGroup;

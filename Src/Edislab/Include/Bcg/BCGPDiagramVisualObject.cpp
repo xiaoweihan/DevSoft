@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -131,6 +131,11 @@ void CBCGPDiagramVisualObject::OnDestroyWindow ()
 		m_pWndInPlace->DestroyWindow ();
 		delete m_pWndInPlace;
 		m_pWndInPlace = NULL;
+	}
+
+	if (m_fontInPlaceEdit.GetSafeHandle() != NULL)
+	{
+		m_fontInPlaceEdit.DeleteObject();
 	}
 }
 //*******************************************************************************
@@ -281,7 +286,7 @@ CBCGPDiagramAnchorPoint CBCGPDiagramVisualObject::UseConnectionPort (UINT nConne
 	return CBCGPDiagramAnchorPoint::NullAnchor (pt);
 }
 //*******************************************************************************
-UINT CBCGPDiagramVisualObject::HitTestConnectionPort(const CBCGPPoint& pt) const
+UINT CBCGPDiagramVisualObject::DoHitTestConnectionPort (const CBCGPPoint& pt) const
 {
 	for (POSITION pos = m_mapConnectionPorts.GetStartPosition (); pos != NULL;)
 	{
@@ -296,6 +301,18 @@ UINT CBCGPDiagramVisualObject::HitTestConnectionPort(const CBCGPPoint& pt) const
 		}
 	}
 
+	return HTNOWHERE;
+}
+//*******************************************************************************
+UINT CBCGPDiagramVisualObject::HitTestConnectionPort(const CBCGPPoint& pt) const
+{
+	UINT uiHitTest = DoHitTestConnectionPort (pt);
+
+	if (uiHitTest != HTNOWHERE)
+	{
+		return uiHitTest;
+	}
+
 	CBCGPRect rectObject = GetRect();
 	rectObject.Normalize();
 	
@@ -308,8 +325,14 @@ UINT CBCGPDiagramVisualObject::HitTestConnectionPort(const CBCGPPoint& pt) const
 }
 //*******************************************************************************
 void CBCGPDiagramVisualObject::DrawConnectionPorts(CBCGPGraphicsManager* pGM,
-								  const CBCGPBrush& brOutline, const CBCGPBrush& brFill)
+								  const CBCGPBrush& /*brOutline*/, const CBCGPBrush& /*brFill*/)
 {
+	CBCGPDiagramVisualContainer* pContainer = DYNAMIC_DOWNCAST(CBCGPDiagramVisualContainer, m_pParentContainer);
+	if (pContainer == NULL)
+	{
+		return;
+	}
+
 	for (POSITION pos = m_mapConnectionPorts.GetStartPosition (); pos != NULL;)
 	{
 		UINT uiConnectionPortID = 0;
@@ -317,12 +340,21 @@ void CBCGPDiagramVisualObject::DrawConnectionPorts(CBCGPGraphicsManager* pGM,
 		
 		m_mapConnectionPorts.GetNextAssoc (pos, uiConnectionPortID, pt);
 
-		if (HasConnectors (uiConnectionPortID))
+		if (HasConnectors (uiConnectionPortID) && uiConnectionPortID != CP_Center)
 		{
-			CBCGPRect rect = MakeTrackMarker (pt);
-			
-			pGM->FillEllipse(rect, brFill);
-			pGM->DrawEllipse(rect, brOutline);
+			CItemIDList lst;
+			if (GetConnectors(uiConnectionPortID, lst))
+			{
+				CBCGPDiagramConnector* pConnector = pContainer->GetConnector (lst.GetHead());
+				if (pConnector != NULL && !pConnector->IsSelected ())
+				{
+					CBCGPRect rect = MakeTrackMarker (pt);
+					rect.OffsetRect(-m_ptScrollOffset);
+					
+					pGM->FillEllipse(rect, pConnector->GetOutlineBrush());
+					pGM->DrawEllipse(rect, pConnector->GetOutlineBrush());
+				}
+			}
 		}
 	}
 }
@@ -376,6 +408,71 @@ void CBCGPDiagramVisualObject::OnScaleRatioChanged(const CBCGPSize& sizeScaleRat
 			pTextData->SetFontScale (m_sizeScaleRatio.cy);
 		}
 	}
+}
+//*******************************************************************************
+// BOOL CBCGPDiagramVisualObject::OnSetMouseCursor(const CBCGPPoint& pt)
+// {
+// 	CWnd* pWndInplaceEdit = GetInPlaceEditWnd ();
+// 	const CBCGPVisualContainer* pContainer = GetParentContainer ();
+// 	
+// 	if (pWndInplaceEdit->GetSafeHwnd () != NULL && pContainer != NULL)
+// 	{
+// 		ASSERT_VALID(pWndInplaceEdit);
+// 
+// 		CRect rect;
+// 		pWndInplaceEdit->GetWindowRect (rect);
+// 
+// 		CWnd* pWndParent = pContainer->GetParentWnd ();
+// 		if (pWndParent->GetSafeHwnd () != NULL)
+// 		{
+// 			pWndParent->ScreenToClient (rect);
+// 			
+// 			CBCGPPoint ptOffset = pContainer->GetRect ().TopLeft ();
+// 			rect.OffsetRect (- (CPoint) ptOffset);
+// 			
+// 			if (rect.PtInRect ((CPoint) pt))
+// 			{
+// 				SetCursor (AfxGetApp ()->LoadStandardCursor (IDC_IBEAM));
+// 				return TRUE;
+// 			}
+// 		}
+// 	}
+// 
+// 	return CBCGPBaseVisualObject::OnSetMouseCursor(pt);
+// }
+//*******************************************************************************
+void CBCGPDiagramVisualObject::OnMouseMove(const CBCGPPoint& pt)
+{
+	CWnd* pWndInplaceEdit = GetInPlaceEditWnd ();
+	const CBCGPVisualContainer* pContainer = GetParentContainer ();
+
+	if (pWndInplaceEdit->GetSafeHwnd () != NULL && pContainer != NULL)
+	{
+		ASSERT_VALID(pWndInplaceEdit);
+		
+		CRect rect;
+		pWndInplaceEdit->GetWindowRect (rect);
+
+		CWnd* pWndParent = pContainer->GetParentWnd ();
+		if (pWndParent->GetSafeHwnd () != NULL)
+		{
+			pWndParent->ScreenToClient (rect);
+
+ 			CBCGPPoint ptOffset = pContainer->GetRect ().TopLeft ();
+			rect.OffsetRect (- (CPoint) ptOffset);
+ 			
+			if (rect.PtInRect ((CPoint) pt))
+			{
+				SetCursor (AfxGetApp ()->LoadStandardCursor (IDC_IBEAM));
+			}
+			else
+			{
+				OnSetMouseCursor(pt);
+			}
+		}
+	}
+
+	CBCGPBaseVisualObject::OnMouseMove(pt);
 }
 //*******************************************************************************
 BOOL CBCGPDiagramVisualObject::HasConnectors (UINT nConnectionPortID) const
@@ -552,12 +649,30 @@ void CBCGPDiagramVisualObject::RemoveTextData (int nIndex, BOOL bRedraw)
 	}
 }
 //*******************************************************************************
-BOOL CBCGPDiagramVisualObject::OnEdit (const CBCGPPoint* /*ppt*/)
+UINT CBCGPDiagramVisualObject::HitTestPart (const CBCGPPoint& /*pt*/) const
+{
+	return P_Caption;
+}
+//*******************************************************************************
+BOOL CBCGPDiagramVisualObject::GetPartRect (UINT /*nPartID*/, CBCGPRect& rect) const
+{
+	rect = GetRect();
+	return TRUE;
+}
+//*******************************************************************************
+CBCGPDiagramTextDataObject* CBCGPDiagramVisualObject::GetPartTextData (UINT /*nPartID*/)
+{
+	return GetTextData (0);
+}
+//*******************************************************************************
+BOOL CBCGPDiagramVisualObject::OnEdit (const CBCGPPoint* ppt)
 {
 	ASSERT_VALID (this);
+	ASSERT(ppt != NULL);
 
-	int nDataIndex = 0;
-	CBCGPDiagramTextDataObject* pTextData = GetTextData (0);
+	UINT nPartID = HitTestPart (*ppt + m_ptScrollOffset);
+
+	CBCGPDiagramTextDataObject* pTextData = GetPartTextData (nPartID);
 	if (pTextData == NULL)
 	{
 		return FALSE;
@@ -565,9 +680,30 @@ BOOL CBCGPDiagramVisualObject::OnEdit (const CBCGPPoint* /*ppt*/)
 
 	ASSERT_VALID (pTextData);
 
-	CBCGPRect rectEdit = GetRect ();
+	CBCGPRect rectEdit;
+	if (!GetPartRect (nPartID, rectEdit))
+	{
+		return FALSE;
+	}
+
 	rectEdit.OffsetRect (-m_ptScrollOffset);
 	AdjustInPlaceEditRect (rectEdit);
+
+	double dblVertSpace = max (0.0, rectEdit.Height () - pTextData->GetSize ().Height ());
+
+	switch (pTextData->GetTextFormat ().GetTextVerticalAlignment ())
+	{
+	case CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_LEADING:
+		rectEdit.bottom -= dblVertSpace;
+		break;
+	case CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_CENTER:
+		rectEdit.top += dblVertSpace / 2;
+		rectEdit.bottom -= dblVertSpace / 2;
+		break;
+	case CBCGPTextFormat::BCGP_TEXT_ALIGNMENT_TRAILING:
+		rectEdit.top += dblVertSpace;
+		break;
+	}
 
 	BOOL bDefaultFormat = FALSE;
 	m_pWndInPlace = CreateInPlaceEdit (rectEdit, pTextData, bDefaultFormat);
@@ -579,10 +715,17 @@ BOOL CBCGPDiagramVisualObject::OnEdit (const CBCGPPoint* /*ppt*/)
 			m_pWndInPlace->SetWindowText (pTextData->ToString ());
 		}
 
+		m_nInPlaceEditIndex = nPartID;
+
 		SetInPlaceEditFont ();
 		m_pWndInPlace->SetFocus ();
 
-		m_nInPlaceEditIndex = nDataIndex;
+		CEdit* pEdit = DYNAMIC_DOWNCAST (CEdit, m_pWndInPlace);
+		if (pEdit != NULL)
+		{
+			pEdit->SendMessage (EM_SETSEL, (WPARAM)0, (LPARAM)-1);
+		}
+
 		return TRUE;
 	}
 
@@ -644,6 +787,7 @@ CWnd* CBCGPDiagramVisualObject::CreateInPlaceEdit (CRect rectEdit, CBCGPDiagramT
 void CBCGPDiagramVisualObject::AdjustInPlaceEditRect (CBCGPRect& rectEdit)
 {
 	rectEdit.DeflateRect (BCGP_DIAGRAM_TEXT_PADDING, BCGP_DIAGRAM_TEXT_PADDING);
+	rectEdit.OffsetRect(0.5, 1.0);
 }
 //*******************************************************************************
 void CBCGPDiagramVisualObject::SetInPlaceEditFont ()
@@ -655,9 +799,25 @@ void CBCGPDiagramVisualObject::SetInPlaceEditFont ()
 
 	ASSERT_VALID (m_pWndInPlace);
 	
-	if (GetOwner ()->GetSafeHwnd () != NULL)
+	if (m_fontInPlaceEdit.GetSafeHandle () != NULL)
 	{
-		m_pWndInPlace->SetFont (GetOwner ()->GetFont ());
+		m_fontInPlaceEdit.DeleteObject ();
+	}
+
+	CBCGPDiagramTextDataObject* pTextData = GetPartTextData (m_nInPlaceEditIndex);
+	if (pTextData != NULL)
+	{
+		ASSERT_VALID (pTextData);
+
+		LOGFONT lf;
+		memset (&lf, 0, sizeof (LOGFONT));
+
+		pTextData->GetTextFormat().ExportToLogFont(lf);
+
+		if (m_fontInPlaceEdit.CreateFontIndirect (&lf))
+		{
+			m_pWndInPlace->SetFont (&m_fontInPlaceEdit);
+		}
 	}
 }
 //*******************************************************************************
@@ -666,7 +826,7 @@ BOOL CBCGPDiagramVisualObject::ValidateInPlaceEdit ()
 	ASSERT_VALID (this);
 	ASSERT (IsInPlaceEdit ());
 
-	CBCGPDiagramTextDataObject* pTextData = GetTextData (m_nInPlaceEditIndex);
+	CBCGPDiagramTextDataObject* pTextData = GetPartTextData (m_nInPlaceEditIndex);
 	if (pTextData == NULL || m_pWndInPlace == NULL)
 	{
 		ASSERT(FALSE);
@@ -687,7 +847,7 @@ BOOL CBCGPDiagramVisualObject::UpdateData ()
 {
 	if (IsInPlaceEdit ())
 	{
-		CBCGPDiagramTextDataObject* pTextData = GetTextData (m_nInPlaceEditIndex);
+		CBCGPDiagramTextDataObject* pTextData = GetPartTextData (m_nInPlaceEditIndex);
 		if (pTextData == NULL || m_pWndInPlace == NULL)
 		{
 			ASSERT(FALSE);
@@ -1204,7 +1364,12 @@ int CBCGPDiagramConnector::HitTest(const CBCGPPoint& pt) const
 	for (i = 1; i < arPoints.GetSize (); i++)
 	{
 		const double TOLERANCE = 8;
-		if (bcg_pointInLine (arPoints[i - 1], arPoints[i], pt, TOLERANCE) > 0)
+
+		CBCGPRect rectSegment(arPoints[i - 1], arPoints[i]);
+		rectSegment.Normalize();
+		rectSegment.InflateRect(TOLERANCE, TOLERANCE);
+
+		if (rectSegment.PtInRect(pt) && bcg_pointInLine (arPoints[i - 1], arPoints[i], pt, TOLERANCE) > 0)
 		{
 			return (IsEditMode() && (m_uiEditFlags & BCGP_EDIT_NOMOVE) == 0) ? HTCAPTION : HTCLIENT;
 		}
@@ -1521,7 +1686,7 @@ CBCGPGeometry* CBCGPDiagramConnector::CreateArrowGeometry (const CBCGPDiagramCon
     case BCGP_ARROW_FILLEDCIRCLE:
         {
             CBCGPRect rect (arPoints[3], arPoints[3]);
-            rect.InflateRect (arrow.m_dLength / 2, arrow.m_dLength / 2);
+            rect.InflateRect (arrow.m_dLength / 2 * m_sizeScaleRatio.cx, arrow.m_dLength / 2 * m_sizeScaleRatio.cy);
             pGeometry = new CBCGPEllipseGeometry (rect);
         }
         break;
@@ -1795,10 +1960,12 @@ void CBCGPDiagramConnector::SetRect(const CBCGPRect& rect, BOOL bRedraw)
 	{
 		m_rect = rect;
 
-		if (m_sizeScaleRatio == CBCGPSize(1., 1.))
+		if (!m_bDontResetRect && m_sizeScaleRatio == CBCGPSize(1., 1.))
 		{
-			m_rectOriginal = m_rect;
+			m_rectOriginal = CBCGPRect(-1., -1., 0., 0.);
 		}
+
+		OnRectChanged(rectOld);
 
 		if (m_bIsSelected)
 		{
@@ -1891,6 +2058,11 @@ void CBCGPDiagramConnector::SetConnectionPorts()
 		m_mapConnectionPorts[CP_Begin] = pContainer->CalculatePoint (m_arPoints[0]);
 		m_mapConnectionPorts[CP_End] = pContainer->CalculatePoint (m_arPoints[m_arPoints.GetSize () - 1]);
 	}
+}
+//*******************************************************************************
+UINT CBCGPDiagramConnector::HitTestConnectionPort (const CBCGPPoint& pt) const
+{
+	return DoHitTestConnectionPort(pt);
 }
 //*******************************************************************************
 void CBCGPDiagramConnector::SetSelected(BOOL bSet)

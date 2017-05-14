@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -73,6 +73,7 @@ public:
 	// manipulating listbox items
 	void AddString(LPCTSTR lpszItem);
 	void ResetContent();
+	int FindString(int nStart, LPCTSTR lpszText);
 
 	void Track (CPoint point, CWnd *pWndOwner = NULL);
 
@@ -85,11 +86,19 @@ public:
 	virtual CSize OnGetItemSize (CDC* pDC, CBCGPToolbarMenuButton* pItem, CSize sizeDefault);
 	virtual void OnChooseItem (UINT uidCmdID);
 	virtual void OnChangeHot (int nHot);
+	virtual CFont* GetMenuFont();
 
 	virtual BOOL DefaultMouseClickOnClose () const
 	{
 		return m_pRibbonCombo == NULL;
 	}
+
+	virtual void GetMessageString(UINT /*nID*/, CString& rMessage) const
+	{
+		rMessage.Empty();
+	}
+
+	virtual BOOL IsParentEditFocused();
 
 // Implementation
 public:
@@ -110,6 +119,8 @@ protected:
 	CWnd*					m_pEditCtrl;
 	CBCGPRibbonComboBox*	m_pRibbonCombo;
 	int						m_nMinWidth;
+	CString					m_stTyping;
+	clock_t					m_nLastTypingTime;
 };
 
 /////////////////////////////////////////////////////////////////////////////

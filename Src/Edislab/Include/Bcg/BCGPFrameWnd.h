@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -43,6 +43,7 @@ class BCGCBPRODLLEXPORT CBCGPFrameWnd : public CFrameWnd
 	friend class CBCGPMiniFrameWnd;
 	friend class CBCGPGlobalUtils;
 	friend class CBCGPShadowManager;
+	friend class CBCGPRibbonBar;
 
 	DECLARE_DYNCREATE(CBCGPFrameWnd)
 
@@ -100,8 +101,9 @@ protected:
 	BOOL				m_bWasMaximized;
 	BOOL				m_bIsMinimized;
 	BOOL				m_bClosing;
+	BOOL				m_bAutoPaneActivation;
 
-	// workaround for Pront Preview bug in VS 7.1
+	// workaround for Print Preview bug in VS 7.1
 	CFrameWnd*				m_pPrintPreviewFrame;
 
 // Operations
@@ -131,7 +133,7 @@ public:
 	BOOL EnableDocking (DWORD dwDockStyle);	
 	BOOL EnableAutoHideBars (DWORD dwDockStyle, BOOL bActivateOnMouseClick = FALSE);
 
-	void EnableMaximizeFloatingBars(BOOL bEnable = TRUE, BOOL bMaximizeByDblClick = FALSE);
+	void EnableMaximizeFloatingBars(BOOL bEnable = TRUE, BOOL bMaximizeByDblClick = FALSE, BOOL bRestoreMaximizeFloatingBars = FALSE);
 	BOOL AreFloatingBarsCanBeMaximized() const;
 
 	CBCGPBaseControlBar* GetControlBar (UINT nID);
@@ -215,6 +217,11 @@ public:
 		m_Impl.SetControlbarsMenuId (uiViewToolbarsMenuEntryID, bViewMenuShowsToolbarsOnly);
 	}
 
+	BOOL ActivateNextPane(BOOL bPrev = FALSE)
+	{
+		return m_Impl.ActivateNextPane(bPrev, this);
+	}
+
 	void UpdateCaption ()
 	{
 		m_Impl.UpdateCaption ();
@@ -232,6 +239,9 @@ public:
 		ASSERT(GetSafeHwnd() == NULL);
 		m_Impl.m_bDisableThemeCaption = TRUE;
 	}
+
+	BOOL LoadDockingLayout(LPCTSTR lpszProfileName = _T("DefaultLayout"));
+	BOOL SaveDockingLayout(LPCTSTR lpszProfileName = _T("DefaultLayout"));
 
 	// Win 7 taskbar interaction:
 	BOOL SetTaskBarProgressValue(int nCompleted, int nTotal);
@@ -307,7 +317,7 @@ protected:
 	virtual COleClientItem*	GetInPlaceActiveItem ();
 
 public:
-	virtual BOOL OnShowPopupMenu (CBCGPPopupMenu* /*pMenuPopup*/);
+	virtual BOOL OnShowPopupMenu (CBCGPPopupMenu* pMenuPopup);
 
 	virtual BOOL OnShowCustomizePane(CBCGPPopupMenu* pMenuPane, UINT uiToolbarID)
 	{
@@ -321,13 +331,19 @@ public:
 									const CBCGPToolbarMenuButton* pMenuButton, 
 									const CRect& rectImage);
 
-	virtual BOOL OnMenuButtonToolHitTest (CBCGPToolbarButton* /*pButton*/, TOOLINFO* /*pTI*/)
+	virtual BOOL OnMenuButtonToolHitTest (CBCGPToolbarButton* pButton, TOOLINFO* pTI)
 	{
+		UNREFERENCED_PARAMETER(pButton);
+		UNREFERENCED_PARAMETER(pTI);
+
 		return FALSE;
 	}
 
-	virtual BOOL GetToolbarButtonToolTipText (CBCGPToolbarButton* /*pButton*/, CString& /*strTTText*/)
+	virtual BOOL GetToolbarButtonToolTipText (CBCGPToolbarButton* pButton, CString& strTTText)
 	{
+		UNREFERENCED_PARAMETER(pButton);
+		UNREFERENCED_PARAMETER(strTTText);
+
 		return FALSE;
 	}
 
@@ -373,6 +389,21 @@ public:
 		return m_Impl.m_pBackstageView != NULL;
 	}
 
+	void SetPersistantFrame(BOOL bSet)
+	{
+		m_Impl.m_bIsPersistantFrame = bSet;
+	}
+
+	BOOL IsPersistantFrame() const
+	{
+		return m_Impl.m_bIsPersistantFrame;
+	}
+
+	virtual HICON OnGetRecentFileIcon(CBCGPRecentFilesListBox* pWndListBox, const CString& strPath, int nIndex) const
+	{
+		return m_Impl.OnGetRecentFileIcon(pWndListBox, strPath, nIndex);
+	}
+
 	// Generated message map functions
 	//{{AFX_MSG(CBCGPFrameWnd)
 	afx_msg LRESULT OnMenuChar(UINT nChar, UINT nFlags, CMenu* pMenu);
@@ -392,6 +423,8 @@ public:
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnWindowPosChanging(WINDOWPOS FAR* lpwndpos);
+	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	//}}AFX_MSG
 	#if _MSC_VER >= 1300
 	afx_msg void OnActivateApp(BOOL bActive, DWORD dwThreadID);
@@ -413,6 +446,9 @@ public:
 	afx_msg LRESULT OnPostPreviewFrame (WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnDWMCompositionChanged(WPARAM,LPARAM);
 	afx_msg LRESULT OnPowerBroadcast(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnChangeBackstagePropHighlighting(WPARAM, LPARAM);
+	afx_msg LRESULT OnDPIChanged(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnThemeChanged(WPARAM wp, LPARAM lp);
 	DECLARE_MESSAGE_MAP()
 };
 

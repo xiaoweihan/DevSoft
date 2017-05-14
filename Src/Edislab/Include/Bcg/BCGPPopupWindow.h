@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -25,7 +25,10 @@
 
 #include "BCGPButton.h"
 #include "BCGPPopupDlg.h"
+
+#if (!defined _BCGSUITE_) && (!defined _BCGSUITE_INC_)
 #include "BCGPPopupMenu.h"
+#endif
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPPopupWndButton window
@@ -105,6 +108,8 @@ struct BCGCBPRODLLEXPORT CBCGPPopupWindowColors
 class BCGCBPRODLLEXPORT CBCGPPopupWindow : public CWnd
 {
 	friend CBCGPPopupDlg;
+	friend class CBCGPFrameWnd;
+	friend class CBCGPMDIFrameWnd;
 
 	DECLARE_DYNAMIC(CBCGPPopupWindow)
 
@@ -118,16 +123,40 @@ public:
 		BCGPPopupWindowTheme_Custom = 999,
 	};
 
+	enum BCGPPopupWindowStemLocation
+	{
+		BCGPPopupWindowStemLocation_None,
+		BCGPPopupWindowStemLocation_Left,
+		BCGPPopupWindowStemLocation_Right,
+		BCGPPopupWindowStemLocation_TopLeft,
+		BCGPPopupWindowStemLocation_TopCenter,
+		BCGPPopupWindowStemLocation_TopRight,
+		BCGPPopupWindowStemLocation_BottomLeft,
+		BCGPPopupWindowStemLocation_BottomCenter,
+		BCGPPopupWindowStemLocation_BottomRight,
+	};
+
 // Construction
 public:
 	CBCGPPopupWindow();
 
 // Attributes
 public:
+	BCGPPopupWindowStemLocation GetStemLocation() const
+	{
+		return m_StemLocation;
+	}
+
+	void SetStemLocation(BCGPPopupWindowStemLocation location, int nSize = -1, int nStemGap = 0);
 
 	BCGPPopupWindowTheme GetTheme() const
 	{
 		return m_Theme;
+	}
+
+	int GetStemSize() const
+	{
+		return m_nStemSize;
 	}
 
 	void SetTheme(BCGPPopupWindowTheme theme);
@@ -222,6 +251,16 @@ public:
 		return m_bHasPinButton;
 	}
 
+	void EnableCloseButton(BOOL bEnable = TRUE)
+	{
+		m_bHasCloseButton = bEnable;
+	}
+	
+	BOOL HasCloseButton() const
+	{
+		return m_bHasCloseButton;
+	}
+	
 	void SetRoundedCorners(BOOL bSet = TRUE)
 	{
 		m_nCornerRadius = bSet ? 7 : 0;
@@ -257,34 +296,43 @@ public:
 		return m_bIsPinned;
 	}
 
+	CWnd* GetOwnerWnd() const
+	{
+		return m_pWndOwner;
+	}
+
 protected:
-	BCGPPopupWindowTheme	m_Theme;
-	CBCGPPopupWindowColors	m_Colors;
-	CWnd*					m_pWndOwner;
-	BOOL					m_bIsActive;
-	UINT					m_uiDlgResID;
-	CBCGPPopupDlg*			m_pWndDlg;
-	BOOL					m_bHasCloseButton;
-	BOOL					m_bHasPinButton;
-	HMENU					m_hMenu;
-	int						m_nAutoCloseTime;	// ms
-	BOOL					m_bSmallCaption;
-	BOOL					m_bSmallCaptionGripper;
-	BOOL					m_bLargeCaptionFont;
-	BYTE					m_nTransparency;	// (0..255)
-	int						m_nCornerRadius;
-	BOOL					m_bIsPinned;
+	BCGPPopupWindowTheme		m_Theme;
+	BCGPPopupWindowStemLocation	m_StemLocation;
+	int							m_nStemSize;
+	int							m_nStemGap;
+	CBCGPPopupWindowColors		m_Colors;
+	CWnd*						m_pWndOwner;
+	BOOL						m_bIsActive;
+	BOOL						m_bDontChangeActiveStatus;
+	UINT						m_uiDlgResID;
+	CBCGPPopupDlg*				m_pWndDlg;
+	BOOL						m_bHasCloseButton;
+	BOOL						m_bHasPinButton;
+	HMENU						m_hMenu;
+	int							m_nAutoCloseTime;	// ms
+	BOOL						m_bSmallCaption;
+	BOOL						m_bSmallCaptionGripper;
+	BOOL						m_bLargeCaptionFont;
+	BYTE						m_nTransparency;	// (0..255)
+	int							m_nCornerRadius;
+	BOOL						m_bIsPinned;
 
-	CBCGPPopupWndButton		m_btnClose;
-	CBCGPPopupWndButton		m_btnPin;
-	CBCGPPopupWndButton		m_btnMenu;
+	CBCGPPopupWndButton			m_btnClose;
+	CBCGPPopupWndButton			m_btnPin;
+	CBCGPPopupWndButton			m_btnMenu;
 
-	int						m_nBtnMarginVert;
-	int						m_nBtnMarginHorz;
+	int							m_nBtnMarginVert;
+	int							m_nBtnMarginHorz;
 
-	CPoint					m_ptLastPos;
-	BOOL					m_bMoving;
-	CPoint					m_ptStartMove;
+	CPoint						m_ptLastPos;
+	BOOL						m_bMoving;
+	CPoint						m_ptStartMove;
 
 	CBCGPMenuImages::IMAGE_STATE m_btnImageState;
 
@@ -323,13 +371,18 @@ protected:
 // Operations
 public:
 	BOOL ProcessCommand (HWND hwnd);
+	BOOL UpdateContent(const CString& strText, const CPoint& ptScreen);
+
+	CRect GetCaptionRect();
+	void AdjustLocationByStem(CPoint& point, int nDelta = 0);
 
 protected:
-	CRect GetCaptionRect ();
 	void StartAnimation (BOOL bShow = TRUE);
 	void DrawAnimation (CDC* pPaintDC);
 
 	BOOL CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams = NULL);
+	int UpdateWindowRgn();
+	CRect GetStemPoints(POINT* points, BOOL bForDraw = FALSE);
 
 	void StartWindowMove ();
 
@@ -350,13 +403,13 @@ protected:
 		return m_AnimationType;
 	}
 
-
 // Overrides
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPPopupWindow)
 	public:
-	virtual BOOL Create(CWnd* pWndOwner, UINT uiDlgResID, HMENU hMenu = NULL, CPoint ptPos = CPoint (-1, -1), CRuntimeClass* pRTIDlgBar = RUNTIME_CLASS(CBCGPPopupDlg));
-	virtual BOOL Create(CWnd* pWndOwner, CBCGPPopupWndParams& params, HMENU hMenu = NULL, CPoint ptPos = CPoint (-1, -1));
+	virtual BOOL Create(CWnd* pWndOwner, UINT uiDlgResID, HMENU hMenu = NULL, 
+		CPoint ptPos = CPoint (-1, -1), CRuntimeClass* pRTIDlgBar = RUNTIME_CLASS(CBCGPPopupDlg), LPARAM lParam = 0);
+	virtual BOOL Create(CWnd* pWndOwner, CBCGPPopupWndParams& params, HMENU hMenu = NULL, CPoint ptPos = CPoint (-1, -1), LPARAM lParam = 0);
 	//}}AFX_VIRTUAL
 	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
 

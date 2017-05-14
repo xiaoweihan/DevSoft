@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -738,58 +738,66 @@ CBCGPGaugeScaleObject* CBCGPGaugeImpl::GetScale(int nScale) const
 //*******************************************************************************
 BOOL CBCGPGaugeImpl::OnMouseDown(int nButton, const CBCGPPoint& pt)
 {
-	if (m_bIsInteractiveMode)
+	if (m_bIsInteractiveMode && nButton == 0)
 	{
-		m_nTrackingScale = -1;
+		double dblVal = 0.;
+		m_nTrackingScale = 0;	// Temp!
 
-		if (nButton == 0)
+		if (m_nTrackingScale >= 0 && m_nTrackingScale < m_arData.GetSize())
 		{
-			double dblVal = 0.;
-			m_nTrackingScale = 0;	// Temp!
-
-			if (m_nTrackingScale >= 0 && m_nTrackingScale < m_arData.GetSize())
+			if (HitTestValue(pt, dblVal, m_nTrackingScale))
 			{
-				if (HitTestValue(pt, dblVal, m_nTrackingScale))
+				if (!FireTrackEvent(BCGM_ON_GAUGE_START_TRACK, dblVal, pt))
 				{
-					if (!FireTrackEvent(BCGM_ON_GAUGE_START_TRACK, dblVal, pt))
+					SetValue(dblVal, 0, 0, TRUE);
+
+					if (globalData.IsAccessibilitySupport())
 					{
-						SetValue(dblVal, 0, 0, TRUE);
-
-						if (globalData.IsAccessibilitySupport())
-						{
 #ifdef _BCGSUITE_
-							::NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, m_pWndOwner->GetSafeHwnd (), OBJID_CLIENT , CHILDID_SELF);
+						::NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, m_pWndOwner->GetSafeHwnd (), OBJID_CLIENT , CHILDID_SELF);
 #else
-							globalData.NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, m_pWndOwner->GetSafeHwnd (), OBJID_CLIENT , CHILDID_SELF);
+						globalData.NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, m_pWndOwner->GetSafeHwnd (), OBJID_CLIENT , CHILDID_SELF);
 #endif
-						}
 					}
+				}
 
-					return TRUE;
-				}
-				else
-				{
-					m_nTrackingScale = -1;
-				}
+				return TRUE;
 			}
 			else
 			{
 				m_nTrackingScale = -1;
 			}
 		}
+		else
+		{
+			m_nTrackingScale = -1;
+		}
 	}
 
 	return CBCGPBaseVisualObject::OnMouseDown(nButton, pt);
 }
 //*******************************************************************************
+void CBCGPGaugeImpl::ClampValueToScaleRange(double& dblVal, int nScale) const
+{
+	ASSERT_VALID(this);
+
+	CBCGPGaugeScaleObject* pScale = GetScale(nScale);
+	if (pScale != NULL)
+	{
+		ASSERT_VALID(pScale);
+		dblVal = bcg_clamp(dblVal, min(pScale->m_dblStart, pScale->m_dblFinish), max(pScale->m_dblStart, pScale->m_dblFinish));
+	}
+}
+//*******************************************************************************
 void CBCGPGaugeImpl::OnMouseUp(int nButton, const CBCGPPoint& pt)
 {
-	if (m_bIsInteractiveMode && m_nTrackingScale >= 0)
+	if (m_bIsInteractiveMode && m_nTrackingScale >= 0 && nButton == 0)
 	{
 		double dblVal = 0.;
 
 		if (HitTestValue(pt, dblVal, m_nTrackingScale, FALSE))
 		{
+			ClampValueToScaleRange(dblVal, m_nTrackingScale);
 			FireTrackEvent(BCGM_ON_GAUGE_FINISH_TRACK, dblVal, pt);
 
 			SetValue(dblVal, 0, 0, TRUE);
@@ -820,6 +828,7 @@ void CBCGPGaugeImpl::OnMouseMove(const CBCGPPoint& pt)
 
 		if (HitTestValue(pt, dblVal, m_nTrackingScale, FALSE))
 		{
+			ClampValueToScaleRange(dblVal, m_nTrackingScale);
 			FireTrackEvent(BCGM_ON_GAUGE_TRACK, dblVal, pt);
 
 			SetValue(dblVal, 0, 0, TRUE);

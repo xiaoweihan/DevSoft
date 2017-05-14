@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -149,6 +149,9 @@ public:
 	const CBCGPColor& GetHighlightedTextColor() const { return m_clrHighlightedText; }
 	void SetHighlightedTextColor(const CBCGPColor& clrHighlightedText);
 
+	BOOL IsUnderlineHighlighted() const { return m_bIsUnderlineHighlighted; }
+	void SetUnderlineHighlighted(BOOL bSet = TRUE);
+
 // Operations
 public:
 	void Add(CBCGPTagCloudElement* pTag);
@@ -231,6 +234,8 @@ protected:
 	CBCGPBrush											m_brFill;
 	CBCGPColor											m_clrText;
 	CBCGPColor											m_clrHighlightedText;
+
+	BOOL												m_bIsUnderlineHighlighted;
 };
 
 /////////////////////////////////////////////////////////////////////////////

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,6 +28,7 @@
 #include "BCGPToolbarImages.h"
 #include "BCGPWorkspace.h"
 #include "BCGPRibbonBar.h"
+#include "BCGPBaseInfo.h"
 
 extern CBCGPWorkspace*	g_pWorkspace;
 
@@ -70,10 +71,7 @@ CBCGPMDIChildWnd::CBCGPMDIChildWnd() :
 	m_bIsMinimized = FALSE;
 	m_rectOriginal.SetRectEmpty ();
 	m_bActivating = FALSE;
-
-	// ---- MDITabGroup+
 	m_pRelatedTabGroup = NULL;
-	// ---- MDITabGroup-
 
 	m_pTabbedControlBar = NULL;
 
@@ -109,6 +107,7 @@ BEGIN_MESSAGE_MAP(CBCGPMDIChildWnd, CMDIChildWnd)
 	ON_WM_SHOWWINDOW()
 	ON_WM_NCRBUTTONUP()
 	ON_WM_SYSCOMMAND()
+	ON_WM_CLOSE()
 	//}}AFX_MSG_MAP
 	ON_MESSAGE(WM_SETTEXT,OnSetText)
 	ON_MESSAGE(WM_SETICON,OnSetIcon)
@@ -199,6 +198,20 @@ int CBCGPMDIChildWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	}
 
 	return 0;
+}
+//*************************************************************************************
+void CBCGPMDIChildWnd::OnClose() 
+{
+	CBCGPMDIFrameWnd* pMDIFrame = DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, GetTopLevelFrame());
+	if (pMDIFrame != NULL && pMDIFrame->IsTearOff())
+	{
+		CPushRoutingFrame prf(pMDIFrame);
+		CMDIChildWnd::OnClose();
+	}
+	else
+	{
+		CMDIChildWnd::OnClose();
+	}
 }
 //*************************************************************************************
 void CBCGPMDIChildWnd::RegisterTaskbarTab(CBCGPMDIChildWnd* pWndBefore)
@@ -395,6 +408,21 @@ void CBCGPMDIChildWnd::OnMDIActivate(BOOL bActivate, CWnd* pActivateWnd, CWnd* p
 		}
 	}
 
+	if (bActivate && IsTabbedControlBar() && m_pMDIFrame != NULL)
+	{
+#ifndef BCGP_EXCLUDE_RIBBON
+		ASSERT_VALID(m_pMDIFrame);
+
+		CBCGPRibbonBar* pRibbonBar = m_pMDIFrame->GetRibbonBar();
+
+		if (pRibbonBar->GetSafeHwnd() != NULL && 
+			((pRibbonBar->GetStyle () & WS_VISIBLE) == WS_VISIBLE || m_pMDIFrame->IsFullScreen()))
+		{
+			pRibbonBar->SetActiveMDIChild(this);
+		}
+#endif
+	}
+
 	if (bActivate && !IsTaskbarTabsSupportEnabled() || !IsRegisteredWithTaskbarTabs())
 	{
 		SetTaskbarThumbnailClipRect(CRect(0, 0, 0, 0));
@@ -406,6 +434,15 @@ void CBCGPMDIChildWnd::OnMDIActivate(BOOL bActivate, CWnd* pActivateWnd, CWnd* p
 		PostMessage(WM_COMMAND, AFX_ID_PREVIEW_CLOSE);
 	}
 #endif
+
+	if (bActivate && CBCGPMDIFrameWnd::GetActiveTearOffFrame() == m_pMDIFrame)
+	{
+		CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, AfxGetMainWnd());
+		if (pMainFrame != NULL)
+		{
+			pMainFrame->PostMessage(BCGM_ON_ACTIVATE_MDI_TEAR_OFF_FRAME, TRUE, (LPARAM)m_pMDIFrame);
+		}
+	}
 }
 //*************************************************************************************
 void CBCGPMDIChildWnd::ActivateFrame(int nCmdShow) 
@@ -421,7 +458,7 @@ void CBCGPMDIChildWnd::ActivateFrame(int nCmdShow)
 			nCmdShow = SW_SHOWMAXIMIZED;
 		}
 
-		if (m_pMDIFrame != 0 && m_pMDIFrame->IsMDITabbedGroup ())
+		if (m_pMDIFrame != NULL && m_pMDIFrame->IsMDITabbedGroup ())
 		{
 			nCmdShow = SW_SHOWNORMAL;
 		}
@@ -566,7 +603,7 @@ void CBCGPMDIChildWnd::OnSize(UINT nType, int cx, int cy)
 
 	m_bIsMinimized = (nType == SIZE_MINIMIZED);
 
-	if (CBCGPVisualManager::GetInstance ()->IsOwnerDrawCaption ())
+	if (m_Impl.IsOwnerDrawCaption ())
 	{
 		if (m_pMDIFrame != NULL && !m_pMDIFrame->IsMDITabbedGroup ())
 		{
@@ -801,9 +838,9 @@ BOOL CBCGPMDIChildWnd::EnableAutoHideBars (DWORD dwDockStyle, BOOL bActivateOnMo
 	return m_dockManager.EnableAutoHideBars (dwDockStyle, bActivateOnMouseClick);
 }
 //****************************************************************************************
-void CBCGPMDIChildWnd::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeByDblClick)
+void CBCGPMDIChildWnd::EnableMaximizeFloatingBars(BOOL bEnable, BOOL bMaximizeByDblClick, BOOL bRestoreMaximizeFloatingBars)
 {
-	m_dockManager.EnableMaximizeFloatingBars(bEnable, bMaximizeByDblClick);
+	m_dockManager.EnableMaximizeFloatingBars(bEnable, bMaximizeByDblClick, bRestoreMaximizeFloatingBars);
 }
 //****************************************************************************************
 BOOL CBCGPMDIChildWnd::AreFloatingBarsCanBeMaximized() const
@@ -936,6 +973,11 @@ void CBCGPMDIChildWnd::OnDestroy()
 	if (m_pMDIFrame != NULL && m_pMDIFrame->IsPrintPreview ())
 	{
 		m_pMDIFrame->SendMessage (WM_CLOSE);
+	}
+
+	if (m_pMDIFrame != NULL && m_pMDIFrame->IsRibbonBackstageView())
+	{
+		OnCloseRibbonBackstageView(m_pMDIFrame);
 	}
 
 	if (m_pTabbedControlBar != NULL && CWnd::FromHandlePermanent (m_pTabbedControlBar->GetSafeHwnd ()) != NULL)
@@ -1160,8 +1202,7 @@ void CBCGPMDIChildWnd::OnNcPaint()
 {
 	BOOL bIsInMDITabbedGroup = m_pMDIFrame != NULL && m_pMDIFrame->IsMDITabbedGroup ();
 
-	if (bIsInMDITabbedGroup || IsZoomed () ||
-		!CBCGPVisualManager::GetInstance ()->IsOwnerDrawCaption ())
+	if (bIsInMDITabbedGroup || IsZoomed () || !m_Impl.IsOwnerDrawCaption ())
 	{
 		Default ();
 		return;
@@ -1224,12 +1265,7 @@ LRESULT CBCGPMDIChildWnd::OnChangeVisualManager (WPARAM wp, LPARAM lp)
 		}
 	}
 
-	CView* pViewActive = GetActiveView();
-	if (pViewActive->GetSafeHwnd() != NULL)
-	{
-		pViewActive->SendMessage(BCGM_CHANGEVISUALMANAGER, wp, lp);
-	}
-
+	m_Impl.SendMessageToViews(BCGM_CHANGEVISUALMANAGER, wp, lp);
 	return 0;
 }
 //***************************************************************************
@@ -1238,7 +1274,7 @@ void CBCGPMDIChildWnd::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR*
 	BOOL bIsInMDITabbedGroup = m_pMDIFrame != NULL && m_pMDIFrame->IsMDITabbedGroup ();
 
 	if (!bIsInMDITabbedGroup && !IsZoomed () &&
-		CBCGPVisualManager::GetInstance ()->IsOwnerDrawCaption () &&
+		m_Impl.IsOwnerDrawCaption () &&
 		(GetStyle () & WS_BORDER) == 0)
 	{
 		lpncsp->rgrc[0].top += ::GetSystemMetrics (SM_CYCAPTION);
@@ -1305,7 +1341,7 @@ void CBCGPMDIChildWnd::OnShowWindow(BOOL bShow, UINT nStatus)
 	BOOL bIsInMDITabbedGroup = m_pMDIFrame != NULL && m_pMDIFrame->IsMDITabbedGroup ();
 
 	if (bShow && !bIsInMDITabbedGroup && !IsZoomed () &&
-		CBCGPVisualManager::GetInstance ()->IsOwnerDrawCaption () &&
+		m_Impl.IsOwnerDrawCaption () &&
 		(GetStyle () & WS_BORDER) == 0 &&
 		GetActiveDocument () == NULL)
 	{
@@ -1476,6 +1512,55 @@ void CBCGPMDIChildWnd::OnSysCommand(UINT nID, LPARAM lParam)
 	}
 	
 	CMDIChildWnd::OnSysCommand(nID, lParam);
+}
+//***************************************************************************
+void CBCGPMDIChildWnd::GetPaneInfo(CString& strName, CString& strPath, HICON& hIcon, BOOL& bAutoDestroyIcon)
+{
+	GetWindowText(strName);
+	strPath.Empty();
+
+	CDocument* pDoc = GetActiveDocument();
+	if (pDoc != NULL)
+	{
+		ASSERT_VALID(pDoc);
+		strPath = pDoc->GetPathName();
+		
+		if (!strPath.IsEmpty())
+		{
+			CString strFile;
+			CString strExt;
+			
+			CBCGPBaseInfoWriter::ParseFileName(strPath, strFile, strExt);
+			
+			if (!strFile.IsEmpty())
+			{
+				strName = strFile + strExt;
+			}
+		}
+	}
+
+	hIcon = GetFrameIcon();
+	bAutoDestroyIcon = FALSE;
+}
+//***************************************************************************
+BOOL CBCGPMDIChildWnd::OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo) 
+{
+	CBCGPMDIFrameWnd* pWndDetachedMDIFrame = CBCGPMDIFrameWnd::GetActiveTearOffFrame();
+	if (pWndDetachedMDIFrame->GetSafeHwnd() != NULL && pWndDetachedMDIFrame->GetSafeHwnd() != m_pMDIFrame->GetSafeHwnd())
+	{
+		if (pWndDetachedMDIFrame->OnCmdMsg(nID, nCode, pExtra, pHandlerInfo))
+		{
+			return TRUE;
+		}
+	}
+	
+	return CMDIChildWnd::OnCmdMsg(nID, nCode, pExtra, pHandlerInfo);
+}
+//***************************************************************************
+void CBCGPMDIChildWnd::OnCloseRibbonBackstageView(CBCGPMDIFrameWnd* pMDIFrame)
+{
+	ASSERT_VALID(pMDIFrame);
+	pMDIFrame->CloseRibbonBackstageView();
 }
 
 //////////////////////////////////////////////////
@@ -1795,19 +1880,25 @@ LRESULT CBCGPMDITabProxyWnd::OnSendIconicLivePreviewBitmap(WPARAM wParam, LPARAM
 
 			if (!CBCGPVisualManager::GetInstance()->IsDWMCaptionSupported())
 			{
-				CSize szSystemBorder (globalUtils.GetSystemBorders(pTopLevelFrame));
-				if (CBCGPVisualManager::GetInstance()->IsSmallSystemBorders())
+				if (!pTopLevelFrame->IsZoomed())
 				{
-					szSystemBorder = CSize (3, 3);
+					CSize szSystemBorder (globalUtils.GetSystemBorders(pTopLevelFrame));
+					if (CBCGPVisualManager::GetInstance()->IsSmallSystemBorders())
+					{
+						szSystemBorder = CSize (3, 3);
+					}
+
+					ptClient.x += szSystemBorder.cx;
+					ptClient.y += szSystemBorder.cy;
 				}
 
-				ptClient.x += szSystemBorder.cx;
-				ptClient.y += szSystemBorder.cy;
-
-				if (pTopLevelFrame->GetRibbonBar() == NULL)
+#ifndef BCGP_EXCLUDE_RIBBON
+				CBCGPRibbonBar* pRibbonBar = pTopLevelFrame->GetRibbonBar();
+				if (pRibbonBar == NULL || (pRibbonBar != NULL && !((pRibbonBar->IsWindowVisible() || !pTopLevelFrame->IsWindowVisible()) && pRibbonBar->IsReplaceFrameCaption())))
 				{
 					ptClient.y += ::GetSystemMetrics (SM_CYCAPTION);
 				}
+#endif
 			}
 
 			hBitmap = GetClientBitmap(rectWnd.Width(), rectWnd.Height(), FALSE);

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,9 +20,11 @@
 
 #include "BCGCBPro.h"
 #include "bcgpdlgimpl.h"
+#include "BCGPButton.h"
 
 class CBCGPLocalResource;
 class CBCGPToolBarImages;
+class CBCGPClosePopupDialogImpl;
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPDialog dialog
@@ -40,6 +42,14 @@ class BCGCBPRODLLEXPORT CBCGPDialog : public CDialog
 	friend class CBCGPContextMenuManager;
 	friend class CBCGPRibbonBackstageViewItemForm;
 	friend class CBCGPDlgImpl;
+	friend class CBCGPVisualManager2007;
+	friend class CBCGPVisualManagerCarbon;
+	friend class CBCGPEdit;
+	friend class CBCGPGridPopupDlgItem;
+	friend class CBCGPRibbonButton;
+	friend class CBCGPRibbonBackstageViewPanel;
+	friend class CBCGPMenuButton;
+	friend class CBCGPGlobalUtils;
 
 	DECLARE_DYNAMIC(CBCGPDialog)
 
@@ -154,9 +164,10 @@ public:
 		m_Impl.UpdateCaptionButtons();
 	}
 
-	void EnableLoadWindowPlacement(BOOL bEnable = TRUE)
+	void EnableLoadWindowPlacement(BOOL bEnable = TRUE, LPCTSTR szWindowPlacementProfile = NULL)
 	{
 		m_Impl.m_bLoadWindowPlacement = bEnable;
+		m_Impl.m_strWindowPlacementProfile = szWindowPlacementProfile;
 	}
 
 	BOOL IsWindowPlacementEnabled() const
@@ -170,18 +181,49 @@ public:
 		return m_Impl.m_bIsWhiteBackground;
 	}
 
+	// Collapse/expand controls support:
+	void EnableExpand(UINT nExpandCheckBoxCtrlID, LPCTSTR lpszExpandLabel = NULL, LPCTSTR lszCollapseLabel = NULL);
+	void EnableExpand(HWND hwndExpandCheckBoxCtrl, LPCTSTR lpszExpandLabel = NULL, LPCTSTR lszCollapseLabel = NULL);
+	
+	BOOL Expand(BOOL bExpand = TRUE);
+	BOOL IsExpanded() const
+	{
+		return m_bIsExpanded;
+	}
+
+	void SetExpandAreaSpecialBackground(BOOL bSet, BOOL bRedraw = TRUE);
+	BOOL IsExpandAreaSpecialBackground() const
+	{
+		return m_bExpandAreaSpecialBackground;
+	}
+
+	virtual void OnBeforeExpand() {}
+	virtual void OnAfterExpand() {}
+
+	virtual void OnRTLChanged (BOOL bIsRTL);
+
 protected:
-	HBITMAP				m_hBkgrBitmap;
-	CSize				m_sizeBkgrBitmap;
-	CBrush				m_brBkgr;
-	BackgroundLocation	m_BkgrLocation;
-	BOOL				m_bAutoDestroyBmp;
-	BOOL				m_bWasMaximized;
-	CBCGPDlgImpl		m_Impl;
-	BOOL				m_bIsLocal;
-	CBCGPLocalResource*	m_pLocaRes;
-	CRect				m_rectBackstageWatermark;
-	CBCGPToolBarImages*	m_pBackstageWatermark;
+	CBrush						m_brBkgr;
+	BOOL						m_bWasMaximized;
+	CBCGPDlgImpl				m_Impl;
+	BOOL						m_bIsLocal;
+	CBCGPLocalResource*			m_pLocaRes;
+	CRect						m_rectBackstageWatermark;
+	CBCGPToolBarImages*			m_pBackstageWatermark;
+	CBCGPClosePopupDialogImpl*	m_pParentEdit;
+	BOOL						m_bParentClosePopupDlgNotified;
+	BOOL						m_bIsExpanded;
+	CList<HWND, HWND>			m_lstCtrlsInCollapseArea;
+	HWND						m_hwndExpandCheckBoxCtrl;
+	CBCGPButton					m_btnExpandCheckBox;
+	int							m_nExpandedAreaHeight;
+	int							m_nExpandedCheckBoxHeight;
+	CString						m_strExpandLabel;
+	CString						m_strCollapseLabel;
+	BOOL						m_bExpandAreaSpecialBackground;
+	BOOL						m_bIsRibbonStartPage;
+	BOOL						m_bCancelModeCapturedWindow;
+	BOOL						m_bDisableShadows;
 
 // Operations:
 public:
@@ -193,6 +235,16 @@ public:
 	BOOL SetBackgroundImage (UINT uiBmpResId,
 							BackgroundLocation location = BACKGR_TILE,
 							BOOL bRepaint = TRUE);
+
+	void ClosePopupDlg(LPCTSTR lpszEditValue = NULL, BOOL bOK = TRUE, DWORD_PTR dwUserData = 0);
+
+	void SetControlInfoTip(UINT nCtrlID, LPCTSTR lpszInfoTip, DWORD dwVertAlign = DT_TOP, BOOL bRedrawInfoTip = FALSE, CBCGPControlInfoTip::BCGPControlInfoTipStyle style = CBCGPControlInfoTip::BCGPINFOTIP_Info, BOOL bIsClickable = FALSE, const CPoint& ptOffset = CPoint(0, 0));
+	void SetControlInfoTip(CWnd* pWndCtrl, LPCTSTR lpszInfoTip, DWORD dwVertAlign = DT_TOP, BOOL bRedrawInfoTip = FALSE, CBCGPControlInfoTip::BCGPControlInfoTipStyle style = CBCGPControlInfoTip::BCGPINFOTIP_Info, BOOL bIsClickable = FALSE, const CPoint& ptOffset = CPoint(0, 0));
+
+	CWnd* GetInfoTipControl() const
+	{
+		return CWnd::FromHandle(m_Impl.m_hwndInfoTipCurr);
+	}
 
 // Overrides
 	// ClassWizard generated virtual function overrides
@@ -209,34 +261,18 @@ public:
 	BOOL Create(UINT nIDTemplate, CWnd* pParentWnd = NULL);
 	BOOL Create(LPCTSTR lpszTemplateName, CWnd* pParentWnd = NULL);
 
-	virtual void OnOK()
-	{
-		if (!IsBackstageMode())
-		{
-			CDialog::OnOK();
-		}
-	}
-
-	virtual void OnCancel()
-	{
-		if (!IsBackstageMode())
-		{
-			CDialog::OnCancel();
-		}
-		else
-		{
-			CWnd* pParent = GetParent();
-			if (pParent->GetSafeHwnd() != NULL)
-			{
-				pParent->SendMessage(WM_CLOSE);
-			}
-		}
-	}
+	virtual void OnOK();
+	virtual void OnCancel();
 
 	virtual BOOL OnSetPlacement(WINDOWPLACEMENT& wp);
 
 public:
 	virtual void OnDrawBackstageWatermark(CDC* /*pDC*/, CRect /*rect*/)	{}
+	virtual int GetRibbonStartPageLeftPaneWidth() { return 0; }
+
+#if (!defined _BCGSUITE_) && (!defined _BCGSUITE_INC_) && (!defined BCGP_EXCLUDE_RIBBON)
+	virtual void OnDrawRibbonBackgroundImage(CDC* pDC, CRect rect);
+#endif
 
 // Implementation
 protected:
@@ -263,11 +299,18 @@ protected:
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO FAR* lpMMI);
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
+	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
+	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
 	//}}AFX_MSG
+	afx_msg void OnStyleChanged(int nStyleType, LPSTYLESTRUCT lpStyleStruct);
 	afx_msg LRESULT OnDWMCompositionChanged(WPARAM,LPARAM);
 	afx_msg LRESULT OnChangeVisualManager (WPARAM, LPARAM);
 	afx_msg LRESULT OnSetText(WPARAM, LPARAM);
 	afx_msg LRESULT OnPowerBroadcast(WPARAM wp, LPARAM);
+	afx_msg LRESULT OnBCGUpdateToolTips (WPARAM, LPARAM);
+	afx_msg BOOL OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult);
+	afx_msg LRESULT OnDPIChanged(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnThemeChanged(WPARAM wp, LPARAM lp);
 	DECLARE_MESSAGE_MAP()
 
 	virtual void SetActiveMenu (CBCGPPopupMenu* pMenu);

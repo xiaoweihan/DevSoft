@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -1307,6 +1307,7 @@ void CBCGPChartLegendVisualObject::OnDraw(CBCGPGraphicsManager* pGM, const CBCGP
 	rectBounds.top += m_szTitleSize.cy;
 
 	pGM->SetClipRect(rectBounds);
+
 	OnDrawLegendEntries(pGM);
 	OnDrawLegendGridLines(pGM);
 
@@ -1659,7 +1660,7 @@ void CBCGPChartLegendVisualObject::SetLegendCellRTC(CRuntimeClass* pRTC)
 	if (pRTC != NULL && !pRTC->IsDerivedFrom(RUNTIME_CLASS(CBCGPChartLegendCell)))
 	{
 		ASSERT(FALSE);
-		TRACE0("CBCGPChartLegend::SetLegendCellRTC: Invalid runtine class specified for CBCGPChartLegendCell.");
+		TRACE0("CBCGPChartLegend::SetLegendCellRTC: Invalid runtime class specified for CBCGPChartLegendCell.");
 		return;
 	}
 

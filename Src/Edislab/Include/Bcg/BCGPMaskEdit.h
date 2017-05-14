@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -46,8 +46,7 @@ public:
 	void EnableSetMaskedCharsOnly(BOOL bEnable = TRUE) { m_bSetMaskedCharsOnly = bEnable; }
 	void EnableSelectByGroup(BOOL bEnable = TRUE) { m_bSelectByGroup = bEnable; }
 	
-	// Replace standard operations
-	// CWnd:	SetWindowText, GetWindowText
+	void GetEditText(CString& strString);
 
 protected:
 	virtual BOOL IsMaskedChar(TCHAR chChar, TCHAR chMaskChar) const;

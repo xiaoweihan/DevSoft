@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -35,7 +35,8 @@ struct BCGCBPRODLLEXPORT CBCGPCircularGaugeColors
 		BCGP_CIRCULAR_GAUGE_GOLD              = 2,
 		BCGP_CIRCULAR_GAUGE_BLACK             = 3,
 		BCGP_CIRCULAR_GAUGE_WHITE             = 4,
-		BCGP_CIRCULAR_GAUGE_COLOR_THEME_LAST  = BCGP_CIRCULAR_GAUGE_WHITE
+		BCGP_CIRCULAR_GAUGE_VISUAL_MANAGER    = 5,
+		BCGP_CIRCULAR_GAUGE_COLOR_THEME_LAST  = BCGP_CIRCULAR_GAUGE_VISUAL_MANAGER
 	};
 
 	CBCGPCircularGaugeColors(BCGP_CIRCULAR_GAUGE_COLOR_THEME theme = BCGP_CIRCULAR_GAUGE_BLUE)
@@ -63,9 +64,15 @@ struct BCGCBPRODLLEXPORT CBCGPCircularGaugeColors
 		m_brCapOutline = src.m_brCapOutline;
 		m_brTickMarkFill = src.m_brTickMarkFill;
 		m_brTickMarkOutline = src.m_brTickMarkOutline;
+		m_bIsVisualManagerTheme = src.m_bIsVisualManagerTheme;
 	}
 
 	void SetTheme(BCGP_CIRCULAR_GAUGE_COLOR_THEME theme);
+
+	BOOL IsVisualManagerTheme() const
+	{
+		return m_bIsVisualManagerTheme;
+	}
 
 	CBCGPBrush	m_brPointerFill;
 	CBCGPBrush	m_brPointerOutline;
@@ -86,6 +93,9 @@ struct BCGCBPRODLLEXPORT CBCGPCircularGaugeColors
 
 	CBCGPBrush	m_brTickMarkFill;
 	CBCGPBrush	m_brTickMarkOutline;
+
+protected:
+	BOOL		m_bIsVisualManagerTheme;
 };
 
 class BCGCBPRODLLEXPORT CBCGPCircularGaugeScale : public CBCGPGaugeScaleObject
@@ -419,6 +429,15 @@ public:
 		}
 		
 		return hr;
+	}
+
+	virtual void OnChangeVisualManager()
+	{
+		if (GetColors().IsVisualManagerTheme())
+		{
+			SetColors(CBCGPCircularGaugeColors::BCGP_CIRCULAR_GAUGE_VISUAL_MANAGER);
+			Redraw();
+		}
 	}
 
 protected:

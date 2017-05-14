@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -497,6 +497,8 @@ public:
 	virtual void SetRange(double dblStart, double dblFinish, int nScale = 0);
 	double GetStart(int nScale = 0) const;
 	double GetFinish(int nScale = 0) const;
+
+	void ClampValueToScaleRange(double& dblVal, int nScale = 0) const;
 
 	void SetTickMarkStyle(CBCGPGaugeScaleObject::BCGP_TICKMARK_STYLE style, BOOL bIsMajor, double dblSize = -1., int nScale = 0);
 	CBCGPGaugeScaleObject::BCGP_TICKMARK_STYLE GetTickMarkStyle(BOOL bIsMajor, int nScale = 0) const;

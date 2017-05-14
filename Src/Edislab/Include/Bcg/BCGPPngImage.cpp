@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -142,14 +142,14 @@ static void _png_cexcept_error(png_structp /*png_ptr*/, png_const_charp /*msg*/)
 
 static void _png_read_data(png_structp png_ptr, png_bytep data, png_size_t length)
 {
-	CFile* pFile = (CFile*)CVT_PTR(png_ptr->io_ptr);
+	CFile* pFile = (CFile*)(png_ptr->io_ptr);
 	ASSERT_VALID (pFile);
 
     png_size_t check = 0;
 
 #ifndef USE_FAR_KEYWORD
 
-    check = pFile->Read(data, length);
+    check = (png_size_t)pFile->Read(data, (UINT)length);
 
 #else
 
@@ -160,7 +160,7 @@ static void _png_read_data(png_structp png_ptr, png_bytep data, png_size_t lengt
 
     if ((png_bytep)near_data == data)
     {
-        check = pFile->Read(near_data, length);
+        check = (png_size_t)pFile->Read(near_data, (UINT)length);
     }
     else
     {
@@ -198,7 +198,7 @@ static void _png_read_data(png_structp png_ptr, png_bytep data, png_size_t lengt
 
 static void _png_write_data(png_structp png_ptr, png_bytep data, png_size_t length)
 {
-	CFile* pFile = (CFile*)CVT_PTR(png_ptr->io_ptr);
+	CFile* pFile = (CFile*)(png_ptr->io_ptr);
 	ASSERT_VALID (pFile);
 
     png_size_t check = 0;
@@ -206,7 +206,7 @@ static void _png_write_data(png_structp png_ptr, png_bytep data, png_size_t leng
 #ifndef USE_FAR_KEYWORD
 
     ULONGLONG position = pFile->GetPosition();
-    pFile->Write(data, length);
+    pFile->Write(data, (UINT)length);
     check = (png_size_t)(pFile->GetPosition() - position);
 
 #else
@@ -262,7 +262,7 @@ static void _png_write_data(png_structp png_ptr, png_bytep data, png_size_t leng
 
 static void _png_write_flush(png_structp png_ptr)
 {
-	CFile* pFile = (CFile*)CVT_PTR(png_ptr->io_ptr);
+	CFile* pFile = (CFile*)(png_ptr->io_ptr);
 	ASSERT_VALID (pFile);
 
 	pFile->Flush ();
@@ -507,8 +507,8 @@ static BOOL PngLoadImage (CFile* pFile, png_structp& png_ptr, png_infop& info_pt
         
         // row_bytes is the width x number of channels
         
-        ulRowBytes = png_get_rowbytes(png_ptr, info_ptr);
-        ulChannels = png_get_channels(png_ptr, info_ptr);
+        ulRowBytes = (png_uint_32)png_get_rowbytes(png_ptr, info_ptr);
+        ulChannels = (png_uint_32)png_get_channels(png_ptr, info_ptr);
         
         *piChannels = ulChannels;
         
@@ -728,7 +728,7 @@ BOOL CBCGPPngImage::LoadFromFile (LPCTSTR lpszPath)
 #endif // BCGP_EXCLUDE_PNG_SUPPORT
 }
 //*******************************************************************************
-BOOL CBCGPPngImage::LoadFromFile (CFile* pFile)
+BOOL CBCGPPngImage::LoadFromFile(CFile* pFile)
 {
 #ifdef BCGP_EXCLUDE_PNG_SUPPORT
 	UNREFERENCED_PARAMETER(pFile);
@@ -963,7 +963,7 @@ UINT CBCGPPngImage::SaveToBuffer (LPBYTE* lpBuffer)
 #endif // BCGP_EXCLUDE_PNG_SUPPORT
 }
 //*******************************************************************************
-BOOL CBCGPPngImage::SaveToFile (CFile* pFile)
+BOOL CBCGPPngImage::SaveToFile(CFile* pFile)
 {
 #ifdef BCGP_EXCLUDE_PNG_SUPPORT
 	UNREFERENCED_PARAMETER(pFile);

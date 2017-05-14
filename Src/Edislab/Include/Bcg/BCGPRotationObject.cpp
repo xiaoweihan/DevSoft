@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,6 +28,7 @@ static char THIS_FILE[]=__FILE__;
 #endif
 
 IMPLEMENT_DYNAMIC(CBCGPRotationCtrl, CBCGPRadialMenu)
+IMPLEMENT_DYNCREATE(CBCGPRotationObject, CBCGPRadialMenuObject)
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -66,6 +67,7 @@ CBCGPRotationObject::CBCGPRotationObject()
 	}
 
 	m_bHasCenterButton = TRUE;
+	m_bAutoScaleIcons = TRUE;
 	m_nNotifyCmdID = 0;
 	m_bIsCloseOnInvoke = FALSE;
 }
@@ -120,4 +122,12 @@ BOOL CBCGPRotationObject::IsPartEnabled(RotationElement id) const
 	}
 
 	return !m_arItems[i]->m_bIsDisabled;
+}
+//***************************************************************************************
+void CBCGPRotationObject::EnableFlatIcons(BOOL bEnable)
+{
+	CBCGPLocalResource locaRes;
+	
+	m_Icons.Load(bEnable ? IDB_BCGBARRES_ROTATE_BUTTONS_FLAT : IDB_BCGBARRES_ROTATE_BUTTONS);
+	Redraw();
 }

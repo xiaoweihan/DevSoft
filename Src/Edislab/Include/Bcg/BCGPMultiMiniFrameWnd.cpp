@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -109,7 +109,6 @@ BOOL CBCGPMultiMiniFrameWnd::DockFrame (CBCGPMiniFrameWnd* pDockedFrame,
 
 	if (dockMethod == BCGP_DM_MOUSE || dockMethod == BCGP_DM_STANDARD)
 	{
-		CBCGPGlobalUtils globalUtils;
 		if (!globalUtils.GetCBAndAlignFromPoint (m_barContainerManager, pt, 
 									&pTargetControlBar, dwAlignment, bTabArea, bCaption))
 		{
@@ -191,7 +190,6 @@ BOOL CBCGPMultiMiniFrameWnd::DockBar (CBCGPDockingControlBar* pDockedBar)
 	CBCGPDockingControlBar* pTargetControlBar = NULL;
 	DWORD dwAlignment = 0;
 
-	CBCGPGlobalUtils globalUtils;
 	if (!globalUtils.GetCBAndAlignFromPoint (m_barContainerManager, pt, 
 									&pTargetControlBar, dwAlignment, bTabArea, bCaption))
 	{
@@ -1203,7 +1201,6 @@ void CBCGPMultiMiniFrameWnd::CalcExpectedDockedRect (CWnd* pWndToDock, CPoint pt
 													 CRect& rectResult, BOOL& bDrawTab, 
 													 CBCGPDockingControlBar** ppTargetBar)
 {
-	CBCGPGlobalUtils globalUtils;	
 	if (m_bRolledUp)
 	{
 		// can't dock on rolled up miniframe
@@ -1284,6 +1281,53 @@ CWnd* CBCGPMultiMiniFrameWnd::GetControlBar () const
 void CBCGPMultiMiniFrameWnd::RemoveNonValidBars ()
 {
 	m_barContainerManager.RemoveNonValidBars ();
+}
+//*********************************************************************************
+BOOL CBCGPMultiMiniFrameWnd::HasSavedMaximizedState() const
+{
+	BOOL bRes = FALSE;
+	
+	const CObList& lstBars = m_barContainerManager.m_lstControlBars;
+	
+	for (POSITION pos = lstBars.GetHeadPosition (); pos != NULL;)
+	{
+		CBCGPControlBar* pBar = DYNAMIC_DOWNCAST (CBCGPControlBar, lstBars.GetNext(pos));
+		if (pBar != NULL)
+		{
+			ASSERT_VALID(pBar);
+			
+			CBCGPBaseTabbedBar* pTabbedBar = DYNAMIC_DOWNCAST(CBCGPBaseTabbedBar, pBar);
+			if (pTabbedBar != NULL)
+			{
+				ASSERT_VALID(pTabbedBar);
+
+				CObList lstTabs;
+				pTabbedBar->GetControlBarList(lstTabs);
+
+				for (POSITION posTab = lstTabs.GetHeadPosition(); posTab != NULL;)
+				{
+					CBCGPControlBar* pTab = DYNAMIC_DOWNCAST(CBCGPControlBar, lstTabs.GetNext(posTab));
+					if (pTab != NULL)
+					{
+						ASSERT_VALID(pTab);
+
+						if (pTab->m_bFloatingMaximized)
+						{
+							bRes = TRUE;
+							pTab->m_bFloatingMaximized = FALSE;
+						}
+					}
+				}
+			}
+			else if (pBar->m_bFloatingMaximized)
+			{
+				bRes = TRUE;
+				pBar->m_bFloatingMaximized = FALSE;
+			}
+		}
+	}
+
+	return bRes;
 }
 //********************************************************************************
 void CBCGPMultiMiniFrameWnd::OnSetFocus(CWnd* /*pOldWnd*/)

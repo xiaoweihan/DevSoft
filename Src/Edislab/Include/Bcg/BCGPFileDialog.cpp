@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -274,10 +274,6 @@ BEGIN_MESSAGE_MAP(CBCGPFileDialog, CFileDialog)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
-//-----------------------------------------------------
-// My "classic " trick - how I can access to protected
-// member m_pRecentFileList?
-//-----------------------------------------------------
 class CBCGApp : public CWinApp
 {
 	friend class CBCGPFileDialog;

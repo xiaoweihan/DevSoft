@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -102,6 +102,7 @@ CBCGPPopupMenuBar::CBCGPPopupMenuBar() :
 	m_bGutterLogo = FALSE;
 	m_nDropDownPageSize = 0;
 	m_ptCursorInit = CPoint (-1, -1);
+	m_nCurrTextHeight = -1;
 }
 
 CBCGPPopupMenuBar::~CBCGPPopupMenuBar()
@@ -149,11 +150,13 @@ BOOL CBCGPPopupMenuBar::OnSendCommand (const CBCGPToolbarButton* pButton)
 		return TRUE;
 	}
 
+#pragma warning (disable : 4296)
 	if ((pButton->m_nStyle & TBBS_DISABLED) != 0 ||
 		pButton->m_nID < 0 || pButton->m_nID == (UINT)-1)
 	{
 		return FALSE;
 	}
+#pragma warning (default : 4296)
 
 	CBCGPToolbarMenuButton* pMenuButton = 
 		DYNAMIC_DOWNCAST (CBCGPToolbarMenuButton, pButton);
@@ -346,6 +349,32 @@ void CBCGPPopupMenuBar::InvokeMenuCommand (UINT uiCmdId, const CBCGPToolbarButto
 	pParentFrame->DestroyWindow ();
 }
 //***************************************************************
+CFont* CBCGPPopupMenuBar::SelectDefaultFont(CDC* pDC)
+{
+	ASSERT_VALID(pDC);
+	
+	m_nCurrTextHeight = -1;
+
+	CBCGPPopupMenu* pParentMenu = DYNAMIC_DOWNCAST(CBCGPPopupMenu, GetParent());
+	if (pParentMenu != NULL)
+	{
+		CFont* pFont = pParentMenu->GetMenuFont();
+		if (pFont != NULL)
+		{
+			CFont* pOldFont = (CFont*)pDC->SelectObject(pFont);
+			ASSERT_VALID(pOldFont);
+
+			TEXTMETRIC tm;
+			pDC->GetTextMetrics (&tm);
+			m_nCurrTextHeight = tm.tmHeight + (tm.tmHeight < 15 ? 2 : 5);
+
+			return pOldFont;
+		}
+	}
+
+	return CBCGPToolBar::SelectDefaultFont(pDC);
+}
+//***************************************************************
 void CBCGPPopupMenuBar::AdjustLocations ()
 {
 	if (GetSafeHwnd () == NULL || !::IsWindow (m_hWnd) || m_bInUpdateShadow)
@@ -378,11 +407,24 @@ void CBCGPPopupMenuBar::AdjustLocations ()
 	CRect rectClient;	// Client area rectangle
 	GetClientRect (&rectClient);
 
-	CClientDC dc (this);
-	CFont* pOldFont = (CFont*) dc.SelectObject (&globalData.fontRegular);
+	CClientDC dc(this);
+
+	CFont* pOldFont = SelectDefaultFont(&dc);
 	ASSERT (pOldFont != NULL);
 
-	int y = rectClient.top + iVertMargin - m_iOffset * GetRowHeight ();
+	int nTextHeight = m_nCurrTextHeight > 0 ? m_nCurrTextHeight : globalData.GetTextHeight();
+	int nRowHeight = GetRowHeight();
+
+	if (m_bDropDownListMode)
+	{
+		CBCGPPopupMenu* pParentMenu = DYNAMIC_DOWNCAST (CBCGPPopupMenu, GetParent ());
+		if (pParentMenu != NULL)
+		{
+			nRowHeight = pParentMenu->GetMenuRowHeight();
+		}
+	}
+
+	int y = rectClient.top + iVertMargin - m_iOffset * nRowHeight;
 
 	/// support for the menu with breaks:
 	int origy = y;
@@ -397,8 +439,7 @@ void CBCGPPopupMenuBar::AdjustLocations ()
 	CSize sizeMenuButton = GetMenuImageSize ();
 	sizeMenuButton += CSize (2 * iHorzMargin, 2 * iVertMargin);
 
-	sizeMenuButton.cy = max (sizeMenuButton.cy, 
-							globalData.GetTextHeight ());
+	sizeMenuButton.cy = max (sizeMenuButton.cy, nTextHeight);
 
 	for (POSITION pos = m_Buttons.GetHeadPosition (); pos != NULL;)
 	{
@@ -440,6 +481,7 @@ void CBCGPPopupMenuBar::AdjustLocations ()
 	}
 
 	dc.SelectObject (pOldFont);
+	m_nCurrTextHeight = -1;
 
 	//--------------------------------------------------
 	// Something may changed, rebuild acceleration keys:
@@ -478,8 +520,11 @@ CSize CBCGPPopupMenuBar::CalcSize (BOOL /*bVertDock*/)
 	CSize size (0, 0);
 
 	CClientDC dc (this);
-	CFont* pOldFont = (CFont*) dc.SelectObject (&globalData.fontRegular);
+	
+	CFont* pOldFont = SelectDefaultFont(&dc);
 	ASSERT (pOldFont != NULL);
+
+	int nTextHeight = m_nCurrTextHeight > 0 ? m_nCurrTextHeight : globalData.GetTextHeight();
 
 	if (m_Buttons.IsEmpty ())
 	{
@@ -495,8 +540,7 @@ CSize CBCGPPopupMenuBar::CalcSize (BOOL /*bVertDock*/)
 		CSize sizeMenuButton = GetMenuImageSize ();
 		sizeMenuButton += CSize (2 * iHorzMargin, 2 * iVertMargin);
 
-		sizeMenuButton.cy = max (sizeMenuButton.cy,
-								globalData.GetTextHeight ());
+		sizeMenuButton.cy = max (sizeMenuButton.cy, nTextHeight);
 
 		for (POSITION pos = m_Buttons.GetHeadPosition (); pos != NULL;)
 		{
@@ -578,6 +622,8 @@ CSize CBCGPPopupMenuBar::CalcSize (BOOL /*bVertDock*/)
 	m_arColumns.Add (size.cx);
 
 	dc.SelectObject (pOldFont);
+	m_nCurrTextHeight = -1;
+
 	return size;
 }
 //***************************************************************************************
@@ -735,7 +781,6 @@ BOOL CBCGPPopupMenuBar::ImportFromMenu (HMENU hMenu, BOOL bShowAllCommands)
 		return FALSE;
 	}
 
-	//***** MSI START *****
 	// We need to update the menu items first (OnUpdate*** for the target message
 	// window need to be invoked:
 	CWnd* pMsgWindow = BCGCBProGetTopLevelFrame (this);
@@ -745,9 +790,11 @@ BOOL CBCGPPopupMenuBar::ImportFromMenu (HMENU hMenu, BOOL bShowAllCommands)
 		pMsgWindow = AfxGetMainWnd ();
 	}
 
+	CBCGPPopupMenu* pParentMenu = NULL;
+
 	if (GetSafeHwnd () != NULL)
 	{
-		CBCGPPopupMenu* pParentMenu = DYNAMIC_DOWNCAST (CBCGPPopupMenu, GetParent ());
+		pParentMenu = DYNAMIC_DOWNCAST (CBCGPPopupMenu, GetParent ());
 		if (pParentMenu != NULL && pParentMenu->GetMessageWnd () != NULL) 
 		{
 			pMsgWindow = pParentMenu->GetMessageWnd ();
@@ -763,11 +810,29 @@ BOOL CBCGPPopupMenuBar::ImportFromMenu (HMENU hMenu, BOOL bShowAllCommands)
 
     if (pMsgWindow != NULL)
 	{
+		int nParentIndex = 0;
+
+		// Find parent bar index:
+		if (pParentMenu != NULL)
+		{
+			ASSERT_VALID (pParentMenu);
+			
+			CBCGPToolbarMenuButton* pParentButton = pParentMenu->GetParentButton();
+			if (pParentButton != NULL)
+			{
+				CBCGPToolBar* pParentToolBar = DYNAMIC_DOWNCAST(CBCGPToolBar, pParentButton->GetParentWnd());
+				if (pParentToolBar != NULL)
+				{
+					ASSERT_VALID(pParentToolBar);
+					nParentIndex = pParentToolBar->ButtonToIndex(pParentButton);
+				}
+			}
+		}
+
 		WPARAM theMenu = WPARAM(hMenu);
-		LPARAM theItem = MAKELPARAM(m_iOffset, 0);
+		LPARAM theItem = MAKELPARAM(nParentIndex, 0);
 		pMsgWindow->SendMessage(WM_INITMENUPOPUP, theMenu, theItem);
 	}
-	//***** MSI END ******
 
 	int iCount = (int) pMenu->GetMenuItemCount ();
 	BOOL bPrevWasSeparator = FALSE;
@@ -799,7 +864,7 @@ BOOL CBCGPPopupMenuBar::ImportFromMenu (HMENU hMenu, BOOL bShowAllCommands)
 
         UINT uiCmd = mii.wID; 
 		UINT uiState = pMenu->GetMenuState (i, MF_BYPOSITION);
-		DWORD dwMenuItemData = (DWORD) mii.dwItemData;
+		DWORD_PTR dwMenuItemData = (DWORD_PTR) mii.dwItemData;
 
         if (mii.fType == MFT_SEPARATOR)
         {
@@ -901,10 +966,10 @@ BOOL CBCGPPopupMenuBar::ImportFromMenu (HMENU hMenu, BOOL bShowAllCommands)
 						pButton->m_nStyle |= TBBS_BREAK;
 					}
 					///////////////
-				}
 
-				bPrevWasSeparator = FALSE;
-				bFirstItem = FALSE;
+					bPrevWasSeparator = FALSE;
+					bFirstItem = FALSE;
+				}
 			}
 			else if (CBCGPToolBar::IsCommandRarelyUsed (uiCmd) &&
 				CBCGPToolBar::IsCommandPermitted (uiCmd))
@@ -1224,7 +1289,7 @@ BOOL CBCGPPopupMenuBar::OnKey(UINT nChar)
 		{
 			bProcessed = TRUE;
 
-			// Try to cascase a popup menu and, if failed 
+			// Try to cascade a popup menu and, if failed 
 			CBCGPToolbarMenuButton* pMenuButton = DYNAMIC_DOWNCAST (CBCGPToolbarMenuButton,
 							pOldSelButton);
 			if (pMenuButton != NULL &&
@@ -1242,7 +1307,7 @@ BOOL CBCGPPopupMenuBar::OnKey(UINT nChar)
 
 	case VK_DOWN:
 		//-----------------------------
-		// Find next "selecteble" item:
+		// Find next "selectable" item:
 		//-----------------------------
 		{
 			if (m_bDropDownListMode && posSelSaved == m_Buttons.GetTailPosition () &&
@@ -1315,7 +1380,7 @@ BOOL CBCGPPopupMenuBar::OnKey(UINT nChar)
 
 	case VK_UP:
 		//---------------------------------
-		// Find previous "selecteble" item:
+		// Find previous "selectable" item:
 		//---------------------------------
 		{
 			if (m_bDropDownListMode && posSelSaved == m_Buttons.GetHeadPosition () &&
@@ -1816,7 +1881,7 @@ CBCGPToolBar* CBCGPPopupMenuBar::FindDestBar (CPoint point)
 	CBCGPPopupMenu* pLastPopupMenu = pPopupMenu;
 
 	//-------------------------------
-	// Go up trougth all popup menus:
+	// Go up thought all popup menus:
 	//-------------------------------
 	while ((pPopupMenu = pPopupMenu->GetParentPopupMenu ()) != NULL)
 	{
@@ -1992,19 +2057,47 @@ INT_PTR CBCGPPopupMenuBar::OnToolHitTest(CPoint point, TOOLINFO* pTI) const
 				}
 
 				CString strDescr;
-				CFrameWnd* pParent = GetParentFrame ();
-				if (pParent->GetSafeHwnd () != NULL && pButton->m_nID != 0)
-				{
-					pParent->GetMessageString (pButton->m_nID, strDescr);
-				}
+				GetMessageString(pButton->m_nID, strDescr);
 
-				CBCGPTooltipManager::SetTooltipText (pTI,
-					m_pToolTip, BCGP_TOOLTIP_TYPE_TOOLBAR, strText, strDescr);
+				CBCGPTooltipManager::SetTooltipText (pTI, m_pToolTip, BCGP_TOOLTIP_TYPE_TOOLBAR, strText, strDescr);
 			}
 		}
 	}
 
 	return nHit;
+}
+//*************************************************************************************
+void CBCGPPopupMenuBar::GetMessageString(UINT nID, CString& strMessageString) const
+{
+	if (nID != 0 && nID != (UINT)-1)
+	{
+		CBCGPPopupMenu* pParentMenu = DYNAMIC_DOWNCAST (CBCGPPopupMenu, GetParent ());
+		CBCGPToolBar* pParentToolBar = NULL;
+
+		for (CBCGPPopupMenu* pMenu = pParentMenu; pMenu != NULL; pMenu = pMenu->GetParentPopupMenu())
+		{
+			CBCGPToolbarMenuButton* pParentButton = pMenu->GetParentButton();
+			if (pParentButton == NULL)
+			{
+				break;
+			}
+			
+			pParentToolBar = DYNAMIC_DOWNCAST (CBCGPToolBar, pParentButton->GetParentWnd ());
+		}
+		
+		if (pParentToolBar != NULL)
+		{
+			ASSERT_VALID(pParentToolBar);
+			pParentToolBar->GetMessageString(nID, strMessageString);
+			return;
+		}
+
+		CFrameWnd* pParent = BCGCBProGetTopLevelFrame(this);
+		if (pParent->GetSafeHwnd () != NULL)
+		{
+			pParent->GetMessageString(nID, strMessageString);
+		}
+	}
 }
 //**********************************************************************************
 int CBCGPPopupMenuBar::OnCreate(LPCREATESTRUCT lpCreateStruct) 
@@ -2105,6 +2198,15 @@ LRESULT CBCGPPopupMenuBar::OnIdleUpdateCmdUI(WPARAM, LPARAM)
 			if (pTarget->IsFrameWnd ())
 			{
 				bAutoMenuEnable = ((CFrameWnd*) pTarget)->m_bAutoMenuEnable;
+
+				if (!bAutoMenuEnable)
+				{
+					CBCGPPopupMenu* pParentMenu = DYNAMIC_DOWNCAST (CBCGPPopupMenu, GetParent ());
+					if (pParentMenu != NULL && pParentMenu->GetParentRibbonElement() != NULL)
+					{
+						bAutoMenuEnable = TRUE;
+					}
+				}
 			}
 
 			OnUpdateCmdUI (pTarget, bAutoMenuEnable);
@@ -2453,7 +2555,7 @@ HRESULT CBCGPPopupMenuBar::get_accRole(VARIANT varChild, VARIANT *pvarRole)
 	if (varChild.vt == VT_I4 && varChild.lVal == CHILDID_SELF)
 	{
 		pvarRole->vt = VT_I4;
-		pvarRole->lVal = ROLE_SYSTEM_TOOLBAR;
+		pvarRole->lVal = m_bDropDownListMode ? ROLE_SYSTEM_DROPLIST : ROLE_SYSTEM_TOOLBAR;
 		return S_OK;
 	}
 
@@ -2496,7 +2598,6 @@ HRESULT CBCGPPopupMenuBar::get_accParent(IDispatch **ppdispParent)
 	return AccessibleObjectFromWindow(pParentMenu->GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)ppdispParent);
 }
 //**************************************************************************
-
 HRESULT CBCGPPopupMenuBar::get_accName(VARIANT varChild, BSTR *pszName)
 {
 	if (pszName == NULL)
@@ -2513,7 +2614,7 @@ HRESULT CBCGPPopupMenuBar::get_accName(VARIANT varChild, BSTR *pszName)
 		}
 
 		CBCGPToolbarMenuButton* pMenuBtn = pParentMenu->GetParentButton();
-		CString strName = _T("Popup");
+		CString strName = m_bDropDownListMode ? _T("List") : _T("Popup");
 
 		if (pMenuBtn != NULL)
 		{
@@ -2521,6 +2622,7 @@ HRESULT CBCGPPopupMenuBar::get_accName(VARIANT varChild, BSTR *pszName)
 		}
 		else
 		{
+#ifndef BCGP_EXCLUDE_RIBBON
 			CBCGPBaseRibbonElement*	pParentRibbonElement =  pParentMenu->GetParentRibbonElement ();
 
 			if (pParentRibbonElement != NULL)
@@ -2534,6 +2636,7 @@ HRESULT CBCGPPopupMenuBar::get_accName(VARIANT varChild, BSTR *pszName)
 					strName = pParentRibbonElement->GetToolTipText(); 
 				}
 			}
+#endif
 		}
 
 		strName.Remove (_T('&'));

@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -55,6 +55,16 @@ public:
 
 	void SetFlags (DWORD dwFlags, BOOL bRefresh = TRUE);
 
+	void EnableSystemUserInput(BOOL bEnable = TRUE)
+	{
+		m_bSystemUserInput = bEnable;
+	}
+	
+	BOOL IsSystemUserInputEnabled() const
+	{
+		return m_bSystemUserInput;
+	}
+	
 // Operations
 public:
 	void Refresh ();
@@ -110,6 +120,7 @@ protected:
 
 	BOOL	m_bContextMenu;
 
+	BOOL	m_bSystemUserInput;
 	HWND	m_hwndRelatedList;
 	BOOL	m_bNoNotify;
 	DWORD	m_dwFlags;	// Flags for IShellFolder::EnumObjects

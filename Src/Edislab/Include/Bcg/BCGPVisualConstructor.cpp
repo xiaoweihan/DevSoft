@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -23,6 +23,7 @@
 #include "BCGPDiagramVisualObject.h"
 #include "BCGPDiagramVisualContainer.h"
 #include "BCGPWinUITiles.h"
+#include "BCGPChartVisualObject.h"
 #include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
@@ -89,6 +90,12 @@ CBCGPVisualConstructor::~CBCGPVisualConstructor()
 void CBCGPVisualConstructor::Construct (CBCGPVisualContainer& container) const
 {
 	const CBCGPVisualInfo::XContainer& infoContainer = GetInfo ().GetContainer ();
+
+	if (!infoContainer.m_ScrollBars.m_Enabled)
+	{
+		container.EnableScrollBars(TRUE, (CBCGPVisualScrollBarColorTheme*)(&infoContainer.m_ScrollBars.m_Colors), infoContainer.m_ScrollBars.m_Style);
+	}
+	container.EnableScrollBars(infoContainer.m_ScrollBars.m_Enabled, (CBCGPVisualScrollBarColorTheme*)(&infoContainer.m_ScrollBars.m_Colors), infoContainer.m_ScrollBars.m_Style);
 
 	if (container.IsKindOf (RUNTIME_CLASS(CBCGPDiagramVisualContainer)))
 	{
@@ -181,6 +188,11 @@ CBCGPBaseVisualObject* CBCGPVisualConstructor::CreateElement (const CBCGPVisualI
 		pElement = new CBCGPWinUITiles;
 		ConstructElement(*pElement, info);
 	}
+	else if (info.GetElementName ().Compare (CBCGPVisualInfo::s_szChart) == 0)
+	{
+		pElement = new CBCGPChartVisualObject;
+		ConstructElement(*pElement, info);
+	}
 	else if (info.GetElementName ().Compare (CBCGPVisualInfo::s_szCircularGauge) == 0 ||
 		info.GetElementName ().Compare (CBCGPVisualInfo::s_szKnob) == 0 ||
 		info.GetElementName ().Compare (CBCGPVisualInfo::s_szAnalogClock) == 0 ||
@@ -203,6 +215,12 @@ CBCGPBaseVisualObject* CBCGPVisualConstructor::CreateElement (const CBCGPVisualI
 		info.GetElementName ().Compare (CBCGPVisualInfo::s_szDiagramCustom) == 0)
 	{
 		pElement = CreateDiagramElement((const CBCGPVisualInfo::XDiagramElement&)info, container);
+	}
+	else if (info.GetElementName ().Compare (CBCGPVisualInfo::s_szControlHost) == 0 ||
+		info.GetElementName ().Compare (CBCGPVisualInfo::s_szControlEdit) == 0 ||
+		info.GetElementName ().Compare (CBCGPVisualInfo::s_szControlGrid) == 0)
+	{
+		pElement = CreateControlElement((const CBCGPVisualInfo::XControlElement&)info, container);
 	}
 
 	return pElement;
@@ -310,6 +328,54 @@ CBCGPDiagramVisualObject* CBCGPVisualConstructor::CreateDiagramElement(const CBC
 	if (pElement != NULL)
 	{
 		ConstructDiagramElement(*pElement, info);
+	}
+
+	return pElement;
+}
+
+CBCGPWndHostVisualObject* CBCGPVisualConstructor::CreateControlElement(const CBCGPVisualInfo::XControlElement& info, const CBCGPVisualContainer* /*container*/) const
+{
+	CBCGPWndHostVisualObject* pElement = NULL;
+
+	CRuntimeClass* pRTI = NULL;
+	if (!info.m_strRTIControl.IsEmpty())
+	{
+		pRTI = CBCGPGlobalUtils::RuntimeClassFromName(info.m_strRTIControl);
+	}
+
+	if (info.GetElementName ().Compare (CBCGPVisualInfo::s_szControlHost) == 0)
+	{
+		if (pRTI != NULL && !pRTI->IsDerivedFrom(RUNTIME_CLASS(CWnd)))
+		{
+			pRTI = NULL;
+		}
+
+		pElement = new CBCGPWndHostVisualObject(NULL, pRTI);
+	}
+	else if (info.GetElementName ().Compare (CBCGPVisualInfo::s_szControlEdit) == 0)
+	{
+		if (pRTI != NULL && !pRTI->IsDerivedFrom(RUNTIME_CLASS(CBCGPEdit)))
+		{
+			pRTI = NULL;
+		}
+
+		pElement = new CBCGPEditVisualObject(NULL, pRTI);
+	}
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+	else if (info.GetElementName ().Compare (CBCGPVisualInfo::s_szControlGrid) == 0)
+	{
+		if (pRTI != NULL && !pRTI->IsDerivedFrom(RUNTIME_CLASS(CBCGPGridCtrl)))
+		{
+			pRTI = NULL;
+		}
+
+		pElement = new CBCGPGridVisualObject(NULL, pRTI);
+	}
+#endif
+
+	if (pElement != NULL)
+	{
+		ConstructControlElement(*pElement, info);
 	}
 
 	return pElement;
@@ -519,6 +585,18 @@ void CBCGPVisualConstructor::ConstructElement (CBCGPBaseVisualObject& element, c
 			pTile->OnAfterLoad();
 		}
 	}
+	else if (info.GetElementName ().Compare (CBCGPVisualInfo::s_szChart) == 0)
+	{
+		ConstructBaseElement (element, info);
+
+		const CBCGPVisualInfo::XElementChart& infoElement = 
+			(const CBCGPVisualInfo::XElementChart&)info;
+
+		CBCGPChartVisualObject* pNewElement = (CBCGPChartVisualObject*)&element;
+
+		pNewElement->SetChartType(infoElement.m_Category, infoElement.m_Type, FALSE);
+		pNewElement->SetColors(CBCGPChartTheme(infoElement.m_Theme));
+	}
 	else if (DYNAMIC_DOWNCAST(CBCGPGaugeImpl, &element) != NULL)
 	{
 		ConstructGaugeElement((CBCGPGaugeImpl&)element, (const CBCGPVisualInfo::XGaugeElement&)info);
@@ -526,6 +604,10 @@ void CBCGPVisualConstructor::ConstructElement (CBCGPBaseVisualObject& element, c
 	else if (DYNAMIC_DOWNCAST(CBCGPDiagramVisualObject, &element) != NULL)
 	{
 		ConstructDiagramElement((CBCGPDiagramVisualObject&)element, (const CBCGPVisualInfo::XDiagramElement&)info);
+	}
+	else if (DYNAMIC_DOWNCAST(CBCGPWndHostVisualObject, &element) != NULL)
+	{
+		ConstructControlElement((CBCGPWndHostVisualObject&)element, (const CBCGPVisualInfo::XControlElement&)info);
 	}
 }
 
@@ -969,6 +1051,44 @@ void CBCGPVisualConstructor::ConstructDiagramElement(CBCGPDiagramVisualObject& e
 	}
 }
 
+void CBCGPVisualConstructor::ConstructControlElement(CBCGPWndHostVisualObject& element, const CBCGPVisualInfo::XControlElement& info) const
+{
+	ConstructBaseElement(element, info);
+
+	element.SetTextFormat(info.m_fmtText, FALSE);
+
+	if (element.IsKindOf (RUNTIME_CLASS (CBCGPEditVisualObject)))
+	{
+		const CBCGPVisualInfo::XElementControlEdit& infoElement = 
+			(const CBCGPVisualInfo::XElementControlEdit&)info;
+
+		CBCGPEditVisualObject* pNewElement = (CBCGPEditVisualObject*)&element;
+
+		pNewElement->SetColorTheme(infoElement.m_Colors);
+		pNewElement->SetInitialValue(infoElement.m_strText);
+	}
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPGridVisualObject)))
+	{
+		const CBCGPVisualInfo::XElementControlGrid& infoElement = 
+			(const CBCGPVisualInfo::XElementControlGrid&)info;
+
+		CBCGPGridVisualObject* pNewElement = (CBCGPGridVisualObject*)&element;
+
+		pNewElement->SetColorTheme(infoElement.m_Colors);
+	}
+#endif
+	else if (element.IsKindOf (RUNTIME_CLASS (CBCGPWndHostVisualObject)))
+	{
+		const CBCGPVisualInfo::XElementControlHost& infoElement = 
+			(const CBCGPVisualInfo::XElementControlHost&)info;
+
+		CBCGPWndHostVisualObject* pNewElement = (CBCGPWndHostVisualObject*)&element;
+
+		pNewElement->SetColorTheme(infoElement.m_Colors);
+	}
+}
+
 void CBCGPVisualConstructor::ConstructBaseElement (CBCGPBaseVisualObject& element, const CBCGPVisualInfo::XElement& info) const
 {
 	element.SetName (info.m_ID.m_Name);
@@ -976,6 +1096,7 @@ void CBCGPVisualConstructor::ConstructBaseElement (CBCGPBaseVisualObject& elemen
 	element.SetRect (info.m_Rect);
 	element.SetVisible (info.m_bIsVisible);
 	element.SetAutoDestroy(info.m_bIsAutoDestroy);
+	element.OnWndEnabled (info.m_bIsEnabled);
 }
 
 void CBCGPVisualConstructor::ConstructBaseWinUIElement (CBCGPWinUIBaseObject& element, const CBCGPVisualInfo::XWinUIBaseElement& info) const

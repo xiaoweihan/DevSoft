@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -55,6 +55,8 @@
 #include "BCGPPropertySheet.h"
 #include "BCGPOutlookButton.h"
 #include "BCGPShowAllButton.h"
+#include "BCGPSliderCtrl.h"
+#include "BCGPImageProcessing.h"
 
 #ifndef BCGP_EXCLUDE_RIBBON
 #include "BCGPRibbonBar.h"
@@ -82,6 +84,9 @@
 #include "BCGPGanttChart.h"
 #include "BCGPPropList.h"
 #include "BCGPURLLinkButton.h"
+
+#include "BCGPCircularGaugeImpl.h"
+#include "BCGPLinearGaugeImpl.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -390,6 +395,8 @@ void CBCGPVisualManagerCarbon::CleanUp ()
 	m_clrBaseMenuGutterLight = CLR_DEFAULT;
 	m_clrBaseMenuGutterDark = CLR_DEFAULT;
 
+	m_pCurrentNcWnd = NULL;
+
 	m_bLoaded = FALSE;
 }
 
@@ -458,6 +465,7 @@ void CBCGPVisualManagerCarbon::UpdateLinked ()
 
 		const int width  = dibSrc.dsBm.bmWidth;
 		const int height = dibSrc.dsBm.bmHeight;
+		const int bpp    = dibDst.dsBm.bmBitsPixel / 8;
 		const int pitch  = dibSrc.dsBm.bmWidthBytes;
 		LPBYTE pBitsSrc  = (LPBYTE)dibSrc.dsBm.bmBits;
 		LPBYTE pBitsDst  = (LPBYTE)dibDst.dsBm.bmBits;
@@ -474,18 +482,22 @@ void CBCGPVisualManagerCarbon::UpdateLinked ()
 					COLORREF clr = RGB (pRowSrc[2], pRowSrc[1], pRowSrc[0]);
 					UPDATE_COLOR (clr, m_dblHue, m_dblSaturation);
 
-					*pRowDst++ = GetBValue(clr);
-					*pRowDst++ = GetGValue(clr);
-					*pRowDst++ = GetRValue(clr);
-					pRowDst++;
+					pRowDst[0] = GetBValue(clr);
+					pRowDst[1] = GetGValue(clr);
+					pRowDst[2] = GetRValue(clr);
+					if (bpp == 4)
+					{
+						pRowDst[3] = pRowSrc[3];
+						BCGPCorrectAlpha(pRowDst, pRowDst[3]);
+					}
 				}
 				else
 				{
-					memcpy (pRowDst, pRowSrc, 4);
-					pRowDst += 4;
+					memcpy (pRowDst, pRowSrc, bpp);
 				}
 
-				pRowSrc += 4;
+				pRowSrc += bpp;
+				pRowDst += bpp;
 			}
 
 			pBitsSrc += pitch;
@@ -1351,8 +1363,6 @@ BOOL CBCGPVisualManagerCarbon::OnSetWindowRegion (CWnd* pWnd, CSize sizeWindow)
 
     CSize sz (0, 0);
 
-	BOOL bMainWnd = FALSE;
-
 #ifndef BCGP_EXCLUDE_RIBBON
 	if (DYNAMIC_DOWNCAST (CBCGPRibbonBar, pWnd) != NULL)
 	{
@@ -1368,29 +1378,44 @@ BOOL CBCGPVisualManagerCarbon::OnSetWindowRegion (CWnd* pWnd, CSize sizeWindow)
 		}
 
 		sz  = CSize (9, 9);
-
-		bMainWnd = TRUE;
 	}
 
 	if (sz != CSize (0, 0))
 	{
-        CRgn rgn;
-		BOOL bCreated = FALSE;
-
-		bCreated = rgn.CreateRoundRectRgn (0, 0, sizeWindow.cx + 1, sizeWindow.cy + 1, sz.cx, sz.cy);
-
-		if (bCreated)
+		BOOL bDialog = FALSE;
+		BOOL bCaption = TRUE;
+		if (pWnd->IsKindOf (RUNTIME_CLASS (CBCGPDialog)))
 		{
-			if (pWnd->IsKindOf (RUNTIME_CLASS (CMDIChildWnd)) ||
-				pWnd->IsKindOf (RUNTIME_CLASS (CBCGPDialog)) ||
-				pWnd->IsKindOf (RUNTIME_CLASS (CBCGPPropertySheet)))
-			{
-				CRgn rgnWinodw;
-				rgnWinodw.CreateRectRgn (0, sz.cy, sizeWindow.cx, sizeWindow.cy);
+			bCaption = ((CBCGPDialog*)pWnd)->m_Impl.m_bHasCaption;
+			bDialog = TRUE;
+		}
+		else if (pWnd->IsKindOf (RUNTIME_CLASS (CBCGPPropertySheet)))
+		{
+			bCaption = ((CBCGPPropertySheet*)pWnd)->m_Impl.m_bHasCaption;
+			bDialog = TRUE;
+		}
 
-				rgn.CombineRgn (&rgn, &rgnWinodw, RGN_OR);
+        CRgn rgn;
+		if (!bCaption)
+		{
+			rgn.CreateRectRgn (0, 0, sizeWindow.cx + 1, sizeWindow.cy + 1);
+		}
+		else if (rgn.CreateRoundRectRgn (0, 0, sizeWindow.cx + 1, sizeWindow.cy + 1, sz.cx, sz.cy))
+		{
+			if (pWnd->IsKindOf (RUNTIME_CLASS (CMDIChildWnd)) || bDialog)
+			{
+				CRgn rgnWindow;
+				rgnWindow.CreateRectRgn (0, sz.cy, sizeWindow.cx, sizeWindow.cy);
+
+				rgn.CombineRgn (&rgn, &rgnWindow, RGN_OR);
 			}
 
+			pWnd->SetWindowRgn ((HRGN)rgn.Detach (), TRUE);
+			return TRUE;
+		}
+
+		if (rgn.GetSafeHandle() != NULL)
+		{
 			pWnd->SetWindowRgn ((HRGN)rgn.Detach (), TRUE);
 			return TRUE;
 		}
@@ -1504,12 +1529,20 @@ void CBCGPVisualManagerCarbon::DrawNcCaption (CDC* pDC, CRect rectCaption,
     CBitmap memBmp;
     memBmp.CreateCompatibleBitmap (pDC, rectCaption.Width (), rectCaption.Height ());
     CBitmap* pBmpOld = memDC.SelectObject (&memBmp);
-	memDC.BitBlt (0, 0, rectCaption.Width (), rectCaption.Height (), pDC, 0, 0, SRCCOPY);
 
 	BOOL bMaximized = (dwStyle & WS_MAXIMIZE) == WS_MAXIMIZE;
 
 	BOOL bBorderOnly = (rectCaption.Height() - szSysBorder.cy) < nSysCaptionHeight;
 	int indexBorder = (m_ctrlMainBorderCaption.GetImageCount() > 1 && bBorderOnly) ? 1 : 0;
+
+	BOOL bDialog = FALSE;
+	if (m_ctrlAppBorderCaption.GetImageCount() > 2 && bBorderOnly &&
+		m_pCurrentNcWnd->GetSafeHwnd() != NULL &&
+		(m_pCurrentNcWnd->IsKindOf(RUNTIME_CLASS(CBCGPDialog)) || m_pCurrentNcWnd->IsKindOf(RUNTIME_CLASS(CBCGPPropertySheet))))
+	{
+		bDialog = TRUE;
+		indexBorder = 2;
+	}
 
 	CRect rectBorderCaption (rectCaption);
 	if (bMaximized)
@@ -1517,18 +1550,36 @@ void CBCGPVisualManagerCarbon::DrawNcCaption (CDC* pDC, CRect rectCaption,
 		rectBorderCaption.OffsetRect (-rectBorderCaption.TopLeft ());
 		rectBorderCaption.bottom -= szSysBorder.cy;
 	}
-	m_ctrlMainBorderCaption.Draw (&memDC, rectBorderCaption, indexBorder);
 
-	if ((dwStyle & WS_MINIMIZE) != WS_MINIMIZE)
+	if (bDialog && bBorderOnly)
 	{
-		CRect rectCaptionB (rectCaption);
-		rectCaptionB.DeflateRect ((bMaximized ? 0 : szSysBorder.cx) - 2, 0);
-		rectCaptionB.top = rectCaptionB.bottom - m_ctrlMainBorderTB.GetParams ().m_rectImage.Height ();
-		m_ctrlMainBorderTB.Draw (&memDC, rectCaptionB, 0);
+		CBCGPControlRendererParams& params = const_cast<CBCGPControlRendererParams&>(m_ctrlMainBorderCaption.GetParams());
+
+		CRect rectSides = params.m_rectSides;
+		params.m_rectSides = CRect(1, 1, 1, 0);
+		CRect rectCorners = params.m_rectCorners;
+		params.m_rectCorners = CRect(1, 1, 1, 0);
+
+		m_ctrlMainBorderCaption.DrawFrame (&memDC, rectBorderCaption, indexBorder);
+
+		params.m_rectSides = rectSides;
+		params.m_rectCorners = rectCorners;
+	}
+	else
+	{
+		m_ctrlMainBorderCaption.Draw (&memDC, rectBorderCaption, indexBorder);
 	}
 
 	if (!bBorderOnly)
 	{
+		if ((dwStyle & WS_MINIMIZE) != WS_MINIMIZE)
+		{
+			CRect rectCaptionB (rectCaption);
+			rectCaptionB.DeflateRect ((bMaximized ? 0 : szSysBorder.cx) - 2, 0);
+			rectCaptionB.top = rectCaptionB.bottom - m_ctrlMainBorderTB.GetParams ().m_rectImage.Height ();
+			m_ctrlMainBorderTB.Draw (&memDC, rectCaptionB, 0);
+		}
+
 		CRect rect (rectCaption);
 		rect.DeflateRect (szSysBorder.cx, szSysBorder.cy, szSysBorder.cx, 0);
 		rect.top = rect.bottom - nSysCaptionHeight - 1;
@@ -1548,8 +1599,7 @@ void CBCGPVisualManagerCarbon::DrawNcCaption (CDC* pDC, CRect rectCaption,
 		}
 		else
 		{
-			int xOffset = (bMaximized ? szSysBorder.cx : 0) + 2;
-			rect.left += xOffset;
+			rect.left += (bMaximized ? szSysBorder.cx : 0) + 2;
 		}
 
 		// Draw system buttons:
@@ -1604,7 +1654,7 @@ void CBCGPVisualManagerCarbon::DrawNcCaption (CDC* pDC, CRect rectCaption,
 
 			DrawNcBtn (&memDC, rectBtn, nButton, state, FALSE, bActive, FALSE, pButton->m_bEnabled);
 
-			xButtonsRight = min (xButtonsRight, pButton->GetRect ().left);
+			xButtonsRight = min (xButtonsRight, rectBtn.left);
 		}
 
 		// Draw text:
@@ -1620,6 +1670,13 @@ void CBCGPVisualManagerCarbon::DrawNcCaption (CDC* pDC, CRect rectCaption,
 
 			memDC.SelectObject (pOldFont);
 		}
+	}
+	else if (bDialog)
+	{
+		CRect rect (rectCaption);
+		rect.DeflateRect (1, 1, 1, 0);
+
+		memDC.FillRect (rect, &GetDlgBackBrush (m_pCurrentNcWnd));
 	}
 
     pDC->BitBlt (rectCaption.left, rectCaption.top, rectCaption.Width (), rectCaption.Height (),
@@ -1678,7 +1735,7 @@ BOOL CBCGPVisualManagerCarbon::OnNcPaint (CWnd* pWnd, const CObList& lstSysButto
 
 		const DWORD dwStyle = pWnd->GetStyle ();
 		CRect rectCaption (rtWindow);
-		CSize szSysBorder (globalUtils.GetSystemBorders (dwStyle));
+		CSize szSysBorder (globalUtils.GetSystemBorders (pWnd));
 
 		BOOL bDialog = pWnd->IsKindOf (RUNTIME_CLASS (CBCGPDialog)) || pWnd->IsKindOf (RUNTIME_CLASS (CBCGPPropertySheet));
 
@@ -1697,7 +1754,7 @@ BOOL CBCGPVisualManagerCarbon::OnNcPaint (CWnd* pWnd, const CObList& lstSysButto
 
 			if (!bIsIconic)
 			{
-				const int nSysCaptionHeight = bIsSmallCaption ? ::GetSystemMetrics (SM_CYSMCAPTION) : ::GetSystemMetrics (SM_CYCAPTION);
+				const int nSysCaptionHeight = ::GetSystemMetrics (bIsSmallCaption ? SM_CYSMCAPTION : SM_CYCAPTION);
 				rectCaption.bottom += nSysCaptionHeight;
 			}
 			else
@@ -1764,10 +1821,12 @@ BOOL CBCGPVisualManagerCarbon::OnNcPaint (CWnd* pWnd, const CObList& lstSysButto
 			{
 				rectCaption.InflateRect (szSysBorder.cx, szSysBorder.cy, szSysBorder.cx, 0);
 			}
-			
+
+			m_pCurrentNcWnd = pWnd;
 			DrawNcCaption (&dc, rectCaption, dwStyle, dwStyleEx, 
 							strTitle, strDocument, hIcon, bPrefix, bActive, m_bNcTextCenter,
 							lstSysButtons);
+			m_pCurrentNcWnd = NULL;
 
 			if (bDestroyIcon)
 			{
@@ -1777,6 +1836,11 @@ BOOL CBCGPVisualManagerCarbon::OnNcPaint (CWnd* pWnd, const CObList& lstSysButto
 
 			if (bMaximized)
 			{
+				if (rgn.GetSafeHandle() != NULL)
+				{
+					dc.SelectClipRgn (NULL);
+				}
+
 				return TRUE;
 			}
 		}
@@ -1785,6 +1849,11 @@ BOOL CBCGPVisualManagerCarbon::OnNcPaint (CWnd* pWnd, const CObList& lstSysButto
 		{
 			if (bMaximized)
 			{
+				if (rgn.GetSafeHandle() != NULL)
+				{
+					dc.SelectClipRgn (NULL);
+				}
+
 				return TRUE;
 			}
 
@@ -1898,7 +1967,10 @@ BOOL CBCGPVisualManagerCarbon::OnNcPaint (CWnd* pWnd, const CObList& lstSysButto
 			m_ctrlMainBorderTB.Draw (&dc, rectBottom, indexBorder + m_ctrlMainBorderTB.GetImageCount () / 2);
 		}
 
-		dc.SelectClipRgn (NULL);
+		if (rgn.GetSafeHandle() != NULL)
+		{
+			dc.SelectClipRgn (NULL);
+		}
 
 		return TRUE;
 	}
@@ -2292,6 +2364,12 @@ COLORREF CBCGPVisualManagerCarbon::GetTabTextColor (const CBCGPBaseTabWnd* pTabW
 		pTabWnd->GetTabBkColor (iTab) == (COLORREF)-1)
 	{
 		return m_clrTabTextActive;
+	}
+
+	if (!bIsActive && (pTabWnd->IsVS2005Style () || pTabWnd->IsLeftRightRounded ()) && 
+		pTabWnd->GetTabBkColor (iTab) == (COLORREF)-1 && pTabWnd->IsDialogControl())
+	{
+		return pTabWnd->IsDialogControl() ? m_clrSeparator : m_clrTabTextActive;
 	}
 
 	if (!bIsActive && (pTabWnd->IsOneNoteStyle () || pTabWnd->IsVS2005Style () || pTabWnd->IsLeftRightRounded () || pTabWnd->IsPointerStyle()) && 
@@ -2750,6 +2828,26 @@ void CBCGPVisualManagerCarbon::GetGridColorScaleBaseColors(CBCGPGridCtrl* pCtrl,
 	clrHigh = RGB (0, 100, 0);
 }
 
+COLORREF CBCGPVisualManagerCarbon::GetOutOffFilterTextColor(CBCGPGridCtrl* pCtrl)
+{
+	if (!CanDrawImage ())
+	{
+		return CBCGPVisualManager2003::GetOutOffFilterTextColor(pCtrl);
+	}
+
+	return RGB(197, 197, 197);
+}
+
+COLORREF CBCGPVisualManagerCarbon::GetGridDragHeaderTextColor(CBCGPGridCtrl* pCtrl)
+{
+	if (!CanDrawImage ())
+	{
+		return CBCGPVisualManager2003::GetGridDragHeaderTextColor(pCtrl);
+	}
+	
+	return RGB(0, 0, 0);
+}
+
 #endif // BCGP_EXCLUDE_GRID_CTRL
 
 void CBCGPVisualManagerCarbon::OnFillSpinButton (CDC* pDC, CBCGPSpinButtonCtrl* pSpinCtrl, CRect rect, BOOL bDisabled)
@@ -3169,6 +3267,19 @@ void CBCGPVisualManagerCarbon::OnDrawScrollButtons(CDC* pDC, const CRect& rect, 
 
 #ifndef BCGP_EXCLUDE_RIBBON
 
+COLORREF CBCGPVisualManagerCarbon::OnFillRibbonBackstageLeftPane(CDC* pDC, CRect rectPanel) 
+{ 
+	if (!CanDrawImage ())
+	{
+		return CBCGPVisualManager2007::OnFillRibbonBackstageLeftPane(pDC, rectPanel); 
+	}
+
+	CBCGPDrawManager dm (*pDC);
+	dm.FillGradient (rectPanel, m_clrMenuGutterDark, m_clrMenuGutterLight, TRUE, 35);
+
+	return m_clrRibbonBarBtnText;
+}
+
 COLORREF CBCGPVisualManagerCarbon::OnDrawRibbonPanel (CDC* pDC, CBCGPRibbonPanel* pPanel, CRect rectPanel, CRect rectCaption)
 {
 	if (!CanDrawImage ())
@@ -3417,3 +3528,27 @@ void CBCGPVisualManagerCarbon::GetGanttColors (const CBCGPGanttChart* pChart, BC
 }
 
 #endif // !defined (BCGP_EXCLUDE_GRID_CTRL) && !defined (BCGP_EXCLUDE_GANTT)
+
+void CBCGPVisualManagerCarbon::GetCircularGaugeColors(CBCGPCircularGaugeColors& colors)
+{
+	CBCGPVisualManager2007::GetCircularGaugeColors(colors);
+
+	if (!CanDrawImage ())
+	{
+		return;
+	}
+
+	colors.m_brFill.SetColors(m_clrDlgBackground, CBCGPDrawManager::ColorMakeLighter(m_clrDlgBackground, .5), CBCGPBrush::BCGP_GRADIENT_DIAGONAL_LEFT);
+}
+//*****************************************************************************
+void CBCGPVisualManagerCarbon::GetLinearGaugeColors(CBCGPLinearGaugeColors& colors)
+{
+	CBCGPVisualManager2007::GetLinearGaugeColors(colors);
+
+	if (!CanDrawImage ())
+	{
+		return;
+	}
+
+	colors.m_brFill.SetColors(m_clrDlgBackground, CBCGPDrawManager::ColorMakeLighter(m_clrDlgBackground, .5), CBCGPBrush::BCGP_GRADIENT_DIAGONAL_LEFT);
+}

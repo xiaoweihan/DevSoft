@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -43,6 +43,7 @@ static const int iHorzMargin = 1;
 
 BOOL CBCGPToolbarComboBoxButton::m_bFlat = TRUE;
 BOOL CBCGPToolbarComboBoxButton::m_bCenterVert = FALSE;
+BOOL CBCGPToolbarComboBoxButton::m_bIsDropListVisualManagerTheme = TRUE;
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -83,6 +84,8 @@ void CBCGPToolbarComboBoxButton::Initialize ()
 	m_bIsRibbonFloaty = FALSE;
 	m_bIsCtrl = FALSE;
 	m_clrPrompt = (COLORREF)-1;
+	m_pFont = NULL;
+	m_nTextHeight = -1;
 }
 //**************************************************************************************
 CBCGPToolbarComboBoxButton::~CBCGPToolbarComboBoxButton()
@@ -136,6 +139,9 @@ void CBCGPToolbarComboBoxButton::CopyFrom (const CBCGPToolbarButton& s)
 
 	m_strPrompt = src.m_strPrompt;
 	m_clrPrompt = src.m_clrPrompt;
+
+	m_pFont = src.m_pFont;
+	m_nTextHeight = src.m_nTextHeight;
 }
 //**************************************************************************************
 void CBCGPToolbarComboBoxButton::Serialize (CArchive& ar)
@@ -163,9 +169,22 @@ void CBCGPToolbarComboBoxButton::Serialize (CArchive& ar)
 
 		for (int i = 0; i < m_lstItems.GetCount (); i ++)
 		{
-			long lData;
-			ar >> lData;
-			m_lstItemData.AddTail ((DWORD_PTR) lData);
+#ifdef _WIN64
+			if (m_bIsDragged)
+			{
+				__int64 lData;
+				ar >> lData;
+
+				m_lstItemData.AddTail ((DWORD_PTR) lData);
+			}
+			else
+#endif
+			{
+				long lData;
+				ar >> lData;
+
+				m_lstItemData.AddTail ((DWORD_PTR) lData);
+			}
 		}
 
 		DuplicateData ();
@@ -213,7 +232,17 @@ void CBCGPToolbarComboBoxButton::Serialize (CArchive& ar)
 		for (POSITION pos = m_lstItemData.GetHeadPosition (); pos != NULL;)
 		{
 			DWORD_PTR dwData = m_lstItemData.GetNext (pos);
-			ar << (long) dwData;
+
+#ifdef _WIN64
+			if (m_bIsDragged)
+			{
+				ar << (__int64)dwData;
+			}
+			else
+#endif
+			{
+				ar << (long)dwData;
+			}
 		}
 
 		ASSERT (m_lstItemData.GetCount () == m_lstItems.GetCount ());
@@ -230,7 +259,6 @@ SIZE CBCGPToolbarComboBoxButton::OnCalculateSize (CDC* pDC, const CSize& sizeDef
 
 	if (!IsVisible())
 	{
-	
 		if (m_bFlat)
 		{
 			if (m_pWndEdit->GetSafeHwnd () != NULL &&
@@ -238,8 +266,6 @@ SIZE CBCGPToolbarComboBoxButton::OnCalculateSize (CDC* pDC, const CSize& sizeDef
 			{
 				m_pWndEdit->ShowWindow (SW_HIDE);
 			}
-
-		
 		}
 				
 		if (m_pWndCombo->GetSafeHwnd () != NULL &&
@@ -247,8 +273,6 @@ SIZE CBCGPToolbarComboBoxButton::OnCalculateSize (CDC* pDC, const CSize& sizeDef
 		{
 			m_pWndCombo->ShowWindow (SW_HIDE);
 		}
-			
-
 
 		return CSize(0,0);
 	}
@@ -289,6 +313,7 @@ SIZE CBCGPToolbarComboBoxButton::OnCalculateSize (CDC* pDC, const CSize& sizeDef
 			(m_pWndCombo->GetStyle () & WS_VISIBLE) == 0)
 		{
 			m_pWndEdit->ShowWindow (SW_SHOWNOACTIVATE);
+			cy = max (m_nTextHeight + 2, sizeDefault.cy);
 		}
 
 		return CSize (m_iWidth, cy + m_sizeText.cy);
@@ -395,7 +420,7 @@ void CBCGPToolbarComboBoxButton::OnChangeParentWnd (CWnd* pWndParent)
 			return;
 		}
 
-		m_pWndEdit->SetFont (&globalData.fontRegular);
+		m_pWndEdit->SetFont (m_pFont != NULL ? m_pFont : &globalData.fontRegular);
 		m_pWndEdit->SetOwner (m_pWndCombo->GetParent ()->GetOwner ());
 
 		if (m_pWndEdit != NULL && m_pWndEdit->GetSafeHwnd () != NULL)
@@ -407,7 +432,7 @@ void CBCGPToolbarComboBoxButton::OnChangeParentWnd (CWnd* pWndParent)
 
 	AdjustRect ();
 
-	m_pWndCombo->SetFont (&globalData.fontRegular);
+	m_pWndCombo->SetFont (m_pFont != NULL ? m_pFont : &globalData.fontRegular);
 
 	if (m_pWndCombo->GetCount () > 0)
 	{
@@ -582,6 +607,25 @@ INT_PTR CBCGPToolbarComboBoxButton::GetCount () const
 	return m_lstItems.GetCount ();
 }
 //**************************************************************************************
+CBCGPToolBar* CBCGPToolbarComboBoxButton::GetParentToolbar()
+{
+	if (m_pWndCombo->GetSafeHwnd() == NULL)
+	{
+		return NULL;
+	}
+
+	CBCGPToolBar* pParentBar = NULL;
+	CWnd* pNextBar = m_pWndCombo->GetParent ();
+	
+	while (pParentBar == NULL && pNextBar != NULL)
+	{
+		pParentBar = DYNAMIC_DOWNCAST (CBCGPToolBar, pNextBar);
+		pNextBar = pNextBar->GetParent ();
+	}
+
+	return pParentBar;
+}
+//**************************************************************************************
 void CBCGPToolbarComboBoxButton::AdjustRect ()
 {
 	if (m_pWndCombo->GetSafeHwnd () == NULL ||
@@ -594,19 +638,11 @@ void CBCGPToolbarComboBoxButton::AdjustRect ()
 
 	if (m_bCenterVert && (!m_bTextBelow || m_strText.IsEmpty ()))
 	{
-		CBCGPToolBar* pParentBar = NULL;
-		CWnd* pNextBar = m_pWndCombo->GetParent ();
-
-		while (pParentBar == NULL && pNextBar != NULL)
-		{
-			pParentBar = DYNAMIC_DOWNCAST (CBCGPToolBar, pNextBar);
-			pNextBar = pNextBar->GetParent ();
-		}
-
+		CBCGPToolBar* pParentBar = GetParentToolbar();
 		if (pParentBar != NULL)
 		{
 			const int nRowHeight = pParentBar->GetRowHeight ();
-			const int yOffset = max (0, (nRowHeight - m_rect.Height ()) / 2);
+			const int yOffset = max (0, (nRowHeight - m_rectCombo.Height ()) / 2);
 
 			m_rectButton.OffsetRect (0, yOffset);
 			m_rectCombo.OffsetRect (0, yOffset);
@@ -627,6 +663,21 @@ void CBCGPToolbarComboBoxButton::AdjustRect ()
 		m_pWndCombo->ScreenToClient (&m_rectCombo);
 		m_pWndCombo->MapWindowPoints (m_pWndCombo->GetParent (), &m_rectCombo);
 
+		if (CBCGPToolbarComboBoxButton::m_bIsDropListVisualManagerTheme && m_pWndEdit->GetSafeHwnd() != NULL)
+		{
+			int nMarginY = 2;
+			int nTextHeight = m_nTextHeight < 0 ? globalData.GetTextHeight() : m_nTextHeight;
+			int nEditHeight = nTextHeight + 2 * nMarginY;
+
+			CBCGPToolBar* pParentBar = GetParentToolbar();
+			if (pParentBar != NULL)
+			{
+				nEditHeight = max(nEditHeight, pParentBar->GetButtonSize(FALSE).cy);
+			}
+
+			m_rectCombo.top = m_rect.top;
+			m_rectCombo.bottom = m_rectCombo.top + nEditHeight;
+		}
 	}
 
 	if (m_bFlat)
@@ -959,7 +1010,7 @@ void CBCGPToolbarComboBoxButton::OnDraw (CDC* pDC, const CRect& rect, CBCGPToolB
 					const CString& strText = bDrawPrompt ? m_strPrompt : m_strEdit;
 
 					COLORREF cltTextOld = pDC->SetTextColor(clrText);
-					DrawButtonText (pDC, strText, &rectText, DT_VCENTER | DT_SINGLELINE, globalData.clrWindowText, (int)CBCGPVisualManager::ButtonsIsRegular);
+					DrawButtonText (pDC, strText, &rectText, DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX, globalData.clrWindowText, (int)CBCGPVisualManager::ButtonsIsRegular);
 					pDC->SetTextColor (cltTextOld);
 				}
 			}
@@ -1227,8 +1278,17 @@ int CBCGPToolbarComboBoxButton::OnDrawOnCustomizeList (
 //********************************************************************************************
 CComboBox* CBCGPToolbarComboBoxButton::CreateCombo (CWnd* pWndParent, const CRect& rect)
 {
-	CComboBox* pWndCombo = new CBCGPComboBox;
-	if (!pWndCombo->Create (m_dwStyle, rect, pWndParent, m_nID))
+	CBCGPComboBox* pWndCombo = new CBCGPComboBox;
+
+	DWORD dwStyle = m_dwStyle;
+	
+	if (m_bIsDropListVisualManagerTheme)
+	{
+		pWndCombo->m_bVisualManagerStyle = TRUE;
+		dwStyle |= CBS_OWNERDRAWFIXED | CBS_HASSTRINGS;
+	}
+
+	if (!pWndCombo->Create(dwStyle, rect, pWndParent, m_nID))
 	{
 		delete pWndCombo;
 		return NULL;
@@ -1306,6 +1366,40 @@ void CBCGPToolbarComboBoxButton::SetDropDownHeight (int nHeight)
 
 	m_nDropDownHeight = nHeight;
 	OnMove ();
+}
+//*********************************************************************************
+void CBCGPToolbarComboBoxButton::SetCustomFont(CFont* pFont)
+{
+	m_pFont = pFont;
+
+	if (m_pFont == NULL)
+	{
+		m_nTextHeight = -1;
+	}
+	else
+	{
+		CWindowDC dc (NULL);
+		
+		CFont* pOldFont = dc.SelectObject (m_pFont);
+		ASSERT (pOldFont != NULL);
+		
+		TEXTMETRIC tm;
+		dc.GetTextMetrics (&tm);
+		
+		m_nTextHeight = tm.tmHeight;
+		
+		dc.SelectObject (pOldFont);
+	}
+
+	if (m_pWndEdit->GetSafeHwnd () != NULL)
+	{
+		m_pWndEdit->SetFont(m_pFont != NULL ? m_pFont : &globalData.fontRegular);
+	}
+	
+	if (m_pWndCombo->GetSafeHwnd () != NULL)
+	{
+		m_pWndCombo->SetFont(m_pFont != NULL ? m_pFont : &globalData.fontRegular);
+	}
 }
 //*********************************************************************************
 void CBCGPToolbarComboBoxButton::SetText (LPCTSTR lpszText)
@@ -1846,12 +1940,12 @@ void CBCGPToolbarComboBoxButton::OnGlobalFontsChanged()
 
 	if (m_pWndEdit->GetSafeHwnd () != NULL)
 	{
-		m_pWndEdit->SetFont (&globalData.fontRegular);
+		m_pWndEdit->SetFont (m_pFont != NULL ? m_pFont : &globalData.fontRegular);
 	}
 
 	if (m_pWndCombo->GetSafeHwnd () != NULL)
 	{
-		m_pWndCombo->SetFont (&globalData.fontRegular);
+		m_pWndCombo->SetFont (m_pFont != NULL ? m_pFont : &globalData.fontRegular);
 	}
 }
 //*********************************************************************************
@@ -1974,10 +2068,10 @@ void CBCGPComboEdit::OnPaint()
 
 	CPaintDC dc (this);
 
-	CFont* pOldFont = dc.SelectObject (&globalData.fontRegular);
+	CFont* pOldFont = dc.SelectObject (m_combo.m_pFont != NULL ? m_combo.m_pFont : &globalData.fontRegular);
 	dc.SetBkMode (TRANSPARENT);
 
-	UINT uiTextFormat = DT_LEFT | DT_SINGLELINE | DT_VCENTER;
+	UINT uiTextFormat = DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX;
 
 	COLORREF clrText = globalData.clrWindowText;
 	COLORREF clrBk = globalData.clrWindow;

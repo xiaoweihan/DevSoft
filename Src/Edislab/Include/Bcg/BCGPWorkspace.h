@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -136,6 +136,9 @@ public:
 
 	virtual CString	GetRegSectionPath (LPCTSTR szSectionAdd = _T(""));
 
+	BOOL LoadDockingLayout(LPCTSTR lpszSectionName, CBCGPFrameImpl* pFrameImpl);
+	BOOL SaveDockingLayout(LPCTSTR lpszSectionName, CBCGPFrameImpl* pFrameImpl);
+
 	// These functions load and store values from the "Custom" subkey
 	// To use subkeys of the "Custom" subkey use GetSectionInt() etc.
 	// instead
@@ -205,6 +208,7 @@ public:
 
 public:
 	BOOL	m_bLoadUserToolbars;
+	BOOL	m_bIsAeroSnapPlacement;
 
 protected:
 	friend class CBCGPFrameImpl;
@@ -255,6 +259,7 @@ protected:
 	const BOOL	m_bResourceSmartUpdate;	// Automatic toolbars/menu resource update
 	BOOL	m_bForceImageReset;			// Force image reset every time when the frame is loaded
 	BOOL	m_bLoadWindowPlacement;
+	BOOL    m_bLoadWindowPlacementBeforeLoadState;
 
 	BOOL	m_bTaskBarInteraction;
 	BOOL	m_bMouseWheelInInactiveWindow;
@@ -338,6 +343,8 @@ class BCGCBPRODLLEXPORT CBCGPWinApp :	public CWinApp,
 {
 	DECLARE_DYNAMIC(CBCGPWinApp)
 
+	friend class CBCGPTasksPane;
+
 public:
 	enum BCGP_VISUAL_THEME
 	{
@@ -366,16 +373,20 @@ public:
 		BCGP_VISUAL_THEME_VS_2013_LIGHT,
 		BCGP_VISUAL_THEME_VS_2013_DARK,
 		BCGP_VISUAL_THEME_VS_2013_BLUE,
+		BCGP_VISUAL_THEME_OFFICE_2016_COLORFUL,
+		BCGP_VISUAL_THEME_OFFICE_2016_DARK_GRAY,
+		BCGP_VISUAL_THEME_OFFICE_2016_WHITE,
+		BCGP_VISUAL_THEME_OFFICE_2016_BLACK,
 		BCGP_VISUAL_THEME_CUSTOM = 9999,
 	};
 
 public:
-	CBCGPWinApp();
+	CBCGPWinApp(BOOL bResourceSmartUpdate = TRUE);
 
 	virtual BOOL InitInstance();
 	virtual int ExitInstance();
 
-	void SetVisualTheme(BCGP_VISUAL_THEME theme);
+	void SetVisualTheme(BCGP_VISUAL_THEME theme, CRuntimeClass* pRTICustom = NULL);
 	BCGP_VISUAL_THEME GetVisualTheme() const
 	{
 		return m_ActiveTheme;
@@ -383,7 +394,7 @@ public:
 
 	UINT GetVisualThemeCommandID(BCGP_VISUAL_THEME theme) const;
 
-	void AddVisualTheme(BCGP_VISUAL_THEME theme, UINT nCommandID, BOOL bActive = FALSE);
+	void AddVisualTheme(BCGP_VISUAL_THEME theme, UINT nCommandID, BOOL bActive = FALSE, CRuntimeClass* pRTICustom = NULL);
 
 	void SetToolbarOptions(const CBCGPToolbarOptions& options)
 	{
@@ -396,6 +407,16 @@ public:
 		return m_ToolbarOptions;
 	}
 
+	virtual int GetRecentFilesCount() const;
+	virtual CString GetRecentFilePath(int nIndex) const;
+	virtual BOOL GetRecentFileDisplayName(CString& strName, int nIndex,
+		LPCTSTR lpszCurDir, int nCurDir, BOOL bAtLeastName = TRUE) const;
+	
+	static int _GetRecentFilesCount();
+	static CString _GetRecentFilePath(int nIndex);
+	static BOOL _GetRecentFileDisplayName(CString& strName, int nIndex,
+		LPCTSTR lpszCurDir, int nCurDir, BOOL bAtLeastName = TRUE);
+
 // Overrides:
 public:
 	virtual BOOL OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo);
@@ -406,10 +427,23 @@ public:
 	BOOL LoadState (CBCGPOleIPFrameWnd* pFrame, LPCTSTR lpszSectionName = NULL) { return CBCGPWorkspace::LoadState(pFrame, lpszSectionName); }
 
 protected:
-	virtual void OnBeforeChangeVisualTheme(CBCGPAppOptions& /*appOptions*/, CWnd* /*pMainWnd*/) {}
-	virtual void OnAfterChangeVisualTheme(CWnd* /*pMainWnd*/) {}
+	virtual void OnBeforeChangeVisualTheme(CBCGPAppOptions& appOptions, CWnd* pMainWnd) 
+	{
+		UNREFERENCED_PARAMETER(appOptions);
+		UNREFERENCED_PARAMETER(pMainWnd);
+	}
+
+	virtual void OnAfterChangeVisualTheme(CWnd* pMainWnd) 
+	{
+		UNREFERENCED_PARAMETER(pMainWnd);
+	}
+
 	virtual BOOL OnCustomizeToolBars();
-	virtual void OnBeforeCreateCustomizationDlg(CBCGPToolbarCustomize* /*pDlgCust*/) {}
+
+	virtual void OnBeforeCreateCustomizationDlg(CBCGPToolbarCustomize* pDlgCust) 
+	{
+		UNREFERENCED_PARAMETER(pDlgCust);
+	}
 
 	virtual void PreSaveState();
 
@@ -426,7 +460,8 @@ protected:
 	BOOL				m_bReloadRecentTheme;
 	CString				m_strRecentThemeRegistry;
 
-	CMap<UINT, UINT, BCGP_VISUAL_THEME, BCGP_VISUAL_THEME>	m_mapVisualThemeCmds;
+	CMap<UINT, UINT, BCGP_VISUAL_THEME, BCGP_VISUAL_THEME>						m_mapVisualThemeCmds;
+	CMap<BCGP_VISUAL_THEME, BCGP_VISUAL_THEME, CRuntimeClass*, CRuntimeClass*>	m_mapCustomVisualManagers;
 
 	CBCGPToolBarImages	m_ToolbarCustomIcons;
 	CBCGPAppOptions		m_AppOptions;

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,6 +27,7 @@
 
 #include "BCGPVisualContainer.h"
 #include "BCGPVisualCtrl.h"
+#include "BCGPAnimationManager.h"
 
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_CLICK_WINUI_UI_TILE;
 extern BCGCBPRODLLEXPORT UINT BCGM_ON_CLICK_WINUI_GROUP_CAPTION;
@@ -123,7 +124,8 @@ protected:
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPWinUITile
 
-class BCGCBPRODLLEXPORT CBCGPWinUITile : public CBCGPWinUIBaseObject
+class BCGCBPRODLLEXPORT CBCGPWinUITile :	public CBCGPWinUIBaseObject,
+											public CBCGPAnimationManager
 {
 	DECLARE_DYNCREATE(CBCGPWinUITile)
 
@@ -155,6 +157,15 @@ public:
 		BCGP_ANIMATION_NONE           = BCGP_WINUI_IMAGE_EFFECT_FIRST,
 		BCGP_ANIMATION_FADE           = 1,
 		BCGP_WINUI_IMAGE_EFFECT_LAST  = BCGP_ANIMATION_FADE
+	};
+
+	enum BCGP_WINUI_IMAGE_ALIGNMENT
+	{
+		BCGP_WINUI_IMAGE_ALIGNMENT_FIRST    = 0,
+		BCGP_WINUI_IMAGE_ALIGNMENT_LEADING  = BCGP_WINUI_IMAGE_ALIGNMENT_FIRST,
+		BCGP_WINUI_IMAGE_ALIGNMENT_TRAILING = 1,
+		BCGP_WINUI_IMAGE_ALIGNMENT_CENTER   = 2,
+		BCGP_WINUI_IMAGE_ALIGNMENT_LAST     = BCGP_WINUI_IMAGE_ALIGNMENT_CENTER
 	};
 
 	enum BCGP_WINUI_TILE_TYPE
@@ -216,7 +227,11 @@ public:
 	
 	const CBCGPImage& GetImage() const { return m_Image; }
 	BOOL IsStretchImage() const { return m_bStretchImage; }
+
 	void SetImage(const CBCGPImage& image, BCGP_WINUI_IMAGE_EFFECT effect = BCGP_ANIMATION_NONE, int nAnimationTime = 1000 /* 1 sec */, BOOL bStretch = FALSE);
+
+	void SetImageVertAlign(BCGP_WINUI_IMAGE_ALIGNMENT align){ m_ImageVertAlign = align;	}
+	BCGP_WINUI_IMAGE_ALIGNMENT GetImageVertAlign() const	{ return m_ImageVertAlign;	}
 	
 	const CBCGPBrush& GetBackgroundBrush() const { return m_brushBackground; }
 	void SetBackgroundBrush(const CBCGPBrush& brush) { m_brushBackground = brush; m_brushBackgroundDark.Empty(); }
@@ -249,34 +264,29 @@ public:
 	virtual CBCGPSize GetImageSize(CBCGPGraphicsManager* pGM);
 
 protected:
-	static VOID CALLBACK AnimTimerProc (HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
-	virtual BOOL OnAnimation();
-	void StopAnimation();
+	virtual void OnAnimationValueChanged(double dblOldValue, double dblNewValue);
 
 protected:
-	CBCGPSize				m_sizePadding;
-	int						m_nBadgeNumber;
-	BCGP_WINUI_BADGE_GLYPH	m_BadgeGlyph;
-	int						m_nCustomBadgeIndex;
-	CString					m_strHeader;
-	CString					m_strText;
-	CBCGPImage				m_Image;
-	BOOL					m_bStretchImage;
-	double					m_dblImageOpacity;
-	double					m_dblImageOpacityDelta;
-	int						m_nGroup;
-	int						m_nImportance;
-	BOOL					m_bIsWide;			// Obsolete, use m_Type instead
-	BCGP_WINUI_TILE_TYPE	m_Type;
-	CBCGPBrush				m_brushBackground;
-	CBCGPBrush				m_brushBackgroundDark;
-	CBCGPColor				m_colorBorder;
-	CBCGPColor				m_colorBorderSel;
-	double					m_dblBorderWidth;
-	UINT					m_nAnimationID;
-
-	static CMap<UINT,UINT,CBCGPWinUITile*,CBCGPWinUITile*> m_mapAnimations;
-	static CCriticalSection g_cs;			// For multi-thread applications
+	CBCGPSize					m_sizePadding;
+	int							m_nBadgeNumber;
+	BCGP_WINUI_BADGE_GLYPH		m_BadgeGlyph;
+	int							m_nCustomBadgeIndex;
+	CString						m_strHeader;
+	CString						m_strText;
+	CBCGPImage					m_Image;
+	BCGP_WINUI_IMAGE_ALIGNMENT	m_ImageVertAlign;
+	BOOL						m_bStretchImage;
+	double						m_dblImageOpacity;
+	double						m_dblImageOpacityDelta;	// Obsolete
+	int							m_nGroup;
+	int							m_nImportance;
+	BOOL						m_bIsWide;			// Obsolete, use m_Type instead
+	BCGP_WINUI_TILE_TYPE		m_Type;
+	CBCGPBrush					m_brushBackground;
+	CBCGPBrush					m_brushBackgroundDark;
+	CBCGPColor					m_colorBorder;
+	CBCGPColor					m_colorBorderSel;
+	double						m_dblBorderWidth;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -302,6 +312,12 @@ public:
 
 // Attributes
 public:
+	void SetVisualManagerTheme(BOOL bSet = TRUE);
+	BOOL IsVisualManagerTheme() const { return m_bVisualManagerTheme; }
+
+	void EnableIconsScaleByDPI(BOOL bEnable = TRUE);
+	BOOL IsIconsScaleByDPIEnabled() const { return m_bIconsScaleByDPI; }
+
 	const CBCGPRect& GetTilesArea() const { return m_rectTiles; }
 
 	BOOL IsRoundedShapes() const { return m_bRoundedShapes; }
@@ -322,6 +338,9 @@ public:
 	const CBCGPBrush& GetFillBrush() const { return m_brFill; }
 	void SetFillBrush(const CBCGPBrush& brFill, BOOL bRedraw = TRUE);
 
+	const CBCGPBrush& GetBorderBrush() const { return m_brBorder; }
+	void SetBorderBrush(const CBCGPBrush& brBorder, BOOL bRedraw = TRUE);
+
 	const CBCGPColor& GetCaptionForegroundColor() const { return m_brCaptionForeground.GetColor(); }
 	void SetCaptionForegroundColor(const CBCGPColor& colorCaptionForeground, BOOL bRedraw = TRUE);
 
@@ -329,6 +348,10 @@ public:
 
 	const CBCGPBrush& GetTileBrush() const { return m_brTileFill; }
 	const CBCGPBrush& GetTileBrushDark() const { return m_brTileFillDark; }
+
+	const CBCGPColor& GetTileBorderColor() const { return m_colorTileBorder; }
+	const CBCGPColor& GetHighlightedTileBorderColor() const { return m_colorTileBorderDark; }
+	const CBCGPColor& GetSelectedTileBorderColor() const { return m_colorSelectedTileBorder; }
 
 	void SetCaption(const CString& strCaption, double dblCaptionExtraHeight = 0.0);
 	const CString& GetCaption() const { return m_strCaption; }
@@ -346,6 +369,12 @@ public:
 	const CBCGPTextFormat& GetHeaderTextFormat() const { return m_textFormatHeader; }
 	const CBCGPTextFormat& GetNameTextFormat() const { return m_textFormatName; }
 
+	void SetCaptionTextFormat(const CBCGPTextFormat& tf) { m_textFormatCaption = tf; }
+	void SetGroupCaptionTextFormat(const CBCGPTextFormat& tf) { m_textFormatGroupCaption = tf; }
+	void SetCaptionButtonTextFormat(const CBCGPTextFormat& tf) { m_textFormatCaptionButton = tf; }
+	void SetHeaderTextFormat(const CBCGPTextFormat& tf) { m_textFormatHeader = tf; }
+	void SetNameTextFormat(const CBCGPTextFormat& tf) { m_textFormatName = tf; }
+
 	// Custom images list must have 15x15 icons!
 	void SetCustomBadgeGlyphs(UINT nImageResID);
 	void SetCustomBadgeGlyphs(const CBCGPImage& customBadgeGlyphs);
@@ -354,6 +383,9 @@ public:
 
 	void SetScrollBarColorTheme(CBCGPVisualScrollBarColorTheme& theme);
 	const CBCGPVisualScrollBarColorTheme& GetScrollBarColorTheme() const { return m_ScrollBar.GetColorTheme(); }
+
+	void SetScrollBarStyle(CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE style);
+	CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE GetScrollBarStyle() const { return m_ScrollBar.GetStyle(); }
 
 	CWnd* GetCurrentView () const { return m_pWndCurrView; }
 	CBCGPWinUIBaseObject* GetViewParent() const { return m_pLastClicked; }
@@ -399,6 +431,7 @@ public:
 	virtual void OnDrawCaption(CBCGPGraphicsManager* pGM, const CBCGPRect& rectCaption);
 	virtual void OnDrawGroupCaption(CBCGPGraphicsManager* pGM, CBCGPWinUITilesGroupCaption* pCaption, BOOL bIsHighlighted, BOOL bIsPressed);
 	virtual void OnDrawCaptionButton(CBCGPGraphicsManager* pGM, CBCGPWinUITilesCaptionButton* pCaptionButton, BOOL bIsHighlighted, BOOL bIsPressed);
+	virtual void OnNcDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rect);
 	
 	virtual void SetRect(const CBCGPRect& rect, BOOL bRedraw = FALSE)
 	{
@@ -426,6 +459,7 @@ protected:
 	virtual BOOL OnSetMouseCursor(const CBCGPPoint& pt);
 	virtual void OnCancelMode();
 	virtual BOOL OnGetToolTip(const CBCGPPoint& pt, CString& strToolTip, CString& strDescr);
+	virtual void OnChangeVisualManager();
 
 	virtual BOOL GetGestureConfig(CBCGPGestureConfig& gestureConfig);
 	virtual BOOL OnGestureEventPan(const CBCGPPoint& ptFrom, const CBCGPPoint& ptTo, CBCGPSize& sizeOverPan);
@@ -486,6 +520,8 @@ public:
 protected:
 	BOOL										m_bIsHorizontalLayout;
 	BOOL										m_bRoundedShapes;
+	BOOL										m_bIconsScaleByDPI;
+	BOOL										m_bVisualManagerTheme;
 
 	CList<CBCGPWinUITile*, CBCGPWinUITile*>		m_lstTiles;
 	CList<CBCGPWinUITile*, CBCGPWinUITile*>		m_lstTilesSorted;
@@ -528,11 +564,15 @@ protected:
 	CString										m_strCaption;
 
 	CBCGPBrush									m_brFill;
+	CBCGPBrush									m_brBorder;
 	CBCGPBrush									m_brFocus;
 	CBCGPStrokeStyle							m_strokeFocus;
 	CBCGPBrush									m_brCaptionForeground;
 	CBCGPBrush									m_brTileFill;
 	CBCGPBrush									m_brTileFillDark;
+	CBCGPColor									m_colorTileBorder;
+	CBCGPColor									m_colorTileBorderDark;
+	CBCGPColor									m_colorSelectedTileBorder;
 	CBCGPColor									m_colorTileText;
 
 	CBCGPTextFormat								m_textFormatCaption;
@@ -560,6 +600,10 @@ protected:
 
 class BCGCBPRODLLEXPORT CBCGPWinUITilesCtrl : public CBCGPVisualCtrl
 {
+	friend class CBCGPWinUITiles;
+
+	DECLARE_DYNAMIC(CBCGPWinUITilesCtrl)
+
 	// Construction
 public:
 	CBCGPWinUITilesCtrl();
@@ -588,6 +632,16 @@ public:
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPWinUITilesCtrl)
 	//}}AFX_VIRTUAL
+
+	virtual void OnNcDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rect)
+	{
+		CBCGPWinUITiles* pTiles = GetWinUITiles();
+		if (pTiles != NULL)
+		{
+			ASSERT_VALID(pTiles);
+			pTiles->OnNcDraw(pGM, rect);
+		}
+	}
 	
 	// Implementation
 public:
@@ -687,6 +741,22 @@ class BCGCBPRODLLEXPORT CBCGPWinUITilesNavigationButton : public CBCGPWinUITiles
 	virtual void DoDraw(CBCGPWinUITiles* pOwner, CBCGPGraphicsManager* pGM, BOOL bIsPressed, BOOL bIsHighlighted);
 	virtual CBCGPSize GetSize(CBCGPGraphicsManager* pGM);
 	virtual BOOL IsRightAligned() const { return FALSE; }
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPWinUITilesColors
+
+struct BCGCBPRODLLEXPORT CBCGPWinUITilesColors
+{
+	CBCGPBrush	m_brFill;
+	CBCGPBrush	m_brBorder;
+	CBCGPBrush	m_brTileFill;
+	CBCGPColor	m_colorTileBorder;
+	CBCGPColor	m_colorTileBorderHighlighted;
+	CBCGPColor	m_colorSelectedTileBorder;
+	CBCGPBrush	m_brTileFillHighlighted;
+	CBCGPColor	m_colorTileText;
+	CBCGPColor	m_colorCaptionText;
 };
 
 #endif // !defined(AFX_BCGPWINUIUITILES_H__1274D27C_573D_4BC5_986D_A63658C8B32E__INCLUDED_)

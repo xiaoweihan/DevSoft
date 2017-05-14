@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -23,6 +23,7 @@
 #include "BCGPMiniFrameWnd.h"
 
 #include "BCGPBarContainerManager.h"
+#include "BCGPDockManager.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -145,6 +146,7 @@ void CBCGPBarContainer::GetWindowRect (CRect& rect, BOOL bIgnoreVisibility) cons
 	if (m_pBarLeftTop != NULL && (m_pBarLeftTop->IsBarVisible () || bIgnoreVisibility || bAutoHideMode))
 	{
 		m_pBarLeftTop->GetWindowRect (rectLeft);
+
 		if (rectLeft.IsRectEmpty ())
 		{
 			CSize sz; 
@@ -159,13 +161,22 @@ void CBCGPBarContainer::GetWindowRect (CRect& rect, BOOL bIgnoreVisibility) cons
 			{
 				rectLeft.InflateRect (0, 0, 0, sz.cy);
 			}
+		}
+		else if (CBCGPDockManager::m_bKeepBarSizeOnFloating && m_pBarLeftTop->IsFloating())
+		{
+			rectLeft.bottom += m_pBarLeftTop->CalcGripperHeight() + CBCGPVisualManager::GetInstance ()->GetDockingBarCaptionExtraHeight() + CBCGPVisualManager::GetInstance ()->GetCaptionButtonExtraBorder ().cy + 2 * m_pBarLeftTop->m_nBorderSize;
+		}
 
+		if (!bAutoHideMode && m_pBarLeftTop->m_bOnShow)
+		{
+			rectLeft.SetRectEmpty();
 		}
 	}
 
 	if (m_pBarRightBottom != NULL && (m_pBarRightBottom->IsBarVisible () || bIgnoreVisibility || bAutoHideMode))
 	{
 		m_pBarRightBottom->GetWindowRect (rectRight);
+
 		if (rectRight.IsRectEmpty ())
 		{
 			CSize sz; 
@@ -180,6 +191,15 @@ void CBCGPBarContainer::GetWindowRect (CRect& rect, BOOL bIgnoreVisibility) cons
 			{
 				rectRight.InflateRect (0, 0, 0, sz.cy);
 			}
+		}
+		else if (CBCGPDockManager::m_bKeepBarSizeOnFloating && m_pBarRightBottom->IsFloating())
+		{
+			rectRight.top -= m_pBarRightBottom->CalcGripperHeight() + CBCGPVisualManager::GetInstance ()->GetDockingBarCaptionExtraHeight() + CBCGPVisualManager::GetInstance ()->GetCaptionButtonExtraBorder ().cy + 2 * m_pBarRightBottom->m_nBorderSize;
+		}
+
+		if (!bAutoHideMode && m_pBarRightBottom->m_bOnShow)
+		{
+			rectRight.SetRectEmpty();
 		}
 	}
 
@@ -597,8 +617,8 @@ CBCGPDockingControlBar* CBCGPBarContainer::AddControlBar (CBCGPDockingControlBar
 
 	if (bExpandParentContainer)
 	{
-		// find the first parent container that has non-empty rectangly and
-		// whose left/right bar/containre should be expanded
+		// find the first parent container that has non-empty rectangle and
+		// whose left/right bar/container should be expanded
 
 		if (pNextContainer != NULL)
 		{
@@ -782,7 +802,7 @@ BOOL CBCGPBarContainer::AddSubContainer (CBCGPBarContainer* pContainer, BOOL bRi
 
 	CBCGPBarContainer* pExistingContainer = NULL;
 	// one of the nodes (control bars) is always new, e.g is being docked.
-	// find a container that contains a node with an exisisting control bar
+	// find a container that contains a node with an existing control bar
 	// the incoming control bar is being docked to.
 	const CBCGPControlBar* pBarToFind = bRightNodeNew ? pContainer->GetLeftBar () : pContainer->GetRightBar ();
 	ASSERT_VALID (pBarToFind);	
@@ -808,7 +828,8 @@ BOOL CBCGPBarContainer::AddSubContainer (CBCGPBarContainer* pContainer, BOOL bRi
 void CBCGPBarContainer::AddNode (CBCGPBarContainer* pContainer)
 {
 	ASSERT_VALID (this);
-	// onr of the bars must be the same
+	
+	// one of the bars must be the same
 	ASSERT (m_pBarLeftTop == pContainer->GetLeftBar () ||
 			m_pBarLeftTop == pContainer->GetRightBar () ||
 			m_pBarRightBottom == pContainer->GetLeftBar () ||
@@ -1036,8 +1057,8 @@ void CBCGPBarContainer::DeleteControlBar (CBCGPDockingControlBar* pBar,
 
 	if (bNeedToExpandParentContainer)
 	{
-		// find the first parent container that has non-empty rectangly and
-		// whose left/right bar/containre should be expanded
+		// find the first parent container that has non-empty rectangle and
+		// whose left/right bar/container should be expanded
 		CBCGPBarContainer* pNextContainer = m_pParentContainer;
 		while (pNextContainer != NULL)
 		{
@@ -1884,7 +1905,7 @@ int CBCGPBarContainer::StretchContainer (int nOffset, BOOL bStretchHorz, BOOL bL
 	ASSERT_VALID (this);
 
 	
-	if ((AfxGetMainWnd ()->GetExStyle () & WS_EX_LAYOUTRTL) && bStretchHorz)
+	if (AfxGetMainWnd()->GetSafeHwnd() != NULL && (AfxGetMainWnd()->GetExStyle () & WS_EX_LAYOUTRTL) && bStretchHorz)
 	{
 		nOffset = -nOffset;
 	}
@@ -2099,7 +2120,7 @@ void CBCGPBarContainer::ResizeBar (int nOffset, CBCGPControlBar* pBar,
 	}
 	else if (pContainer != NULL)
 	{
-		// the container will be stretched by "foregn" slider, threfore
+		// the container will be stretched by "foreign" slider, therefore
 		// if the native bar's slider is horizontal, a container
 		// will be stretched vertically
 		pContainer->StretchContainer (nOffset, bHorz, bLeftBar, TRUE, hdwp);

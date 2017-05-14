@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -24,13 +24,14 @@
 #include "BCGCBPro.h"
 #include "BCGPWnd.h"
 #include "BCGPControlRenderer.h"
+#include "BCGPScrollBar.h"
 
 class CPreviewDC;
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPPrintPreviewCtrl window
 
-class BCGCBPRODLLEXPORT CBCGPPrintPreviewCtrl : public CBCGPWnd
+class BCGCBPRODLLEXPORT CBCGPPrintPreviewCtrl : public TBCGPInternalScrollBarWrapperWnd<CBCGPWnd>
 {
 	friend class CBCGPRibbonBackstagePagePrint;
 
@@ -42,6 +43,11 @@ public:
 
 // Attributes
 public:
+	void SetMaxZoomLevel(int nLevel);
+	int GetMaxZoomLevel() const
+	{
+		return m_nMaxZoomLevel;
+	}
 
 // Operations
 public:
@@ -112,6 +118,8 @@ public:
 	}
 	void EnableDrawFocus(BOOL bEnable = TRUE);
 
+	virtual BOOL IsInternalScrollBarThemed() const;
+
 protected:
 	virtual BOOL PrepareSettings();
 	void PrepareBackDC();
@@ -169,6 +177,8 @@ protected:
 
 	int             m_nZoomType;
 	double			m_dZoom;
+
+	int				m_nMaxZoomLevel;
 
 	UINT			m_nNotifyZoom;
 	BOOL			m_bNotifyZoomPost;

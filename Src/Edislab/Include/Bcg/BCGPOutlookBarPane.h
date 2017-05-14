@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -41,6 +41,11 @@ public:
 
 // Attributes
 public:
+	void SetLocalImages(BOOL bSet = TRUE);
+	BOOL IsLocalImages() const
+	{
+		return m_bIsLocalImages;
+	}
 
 // Operations
 public:
@@ -50,7 +55,7 @@ public:
 
 	BOOL AddButton (UINT uiImage, LPCTSTR lpszLabel, UINT iIdCommand, int iInsertAt = -1);
 	BOOL AddButton (UINT uiImage, UINT uiLabel, UINT iIdCommand, int iInsertAt = -1);
-	BOOL AddButton (LPCTSTR szBmpFileName, LPCTSTR szLabel, UINT iIdCommand, int iInsertAt = -1);
+	BOOL AddButton (LPCTSTR szBmpFileName, LPCTSTR lpszLabel, UINT iIdCommand, int iInsertAt = -1);
 
 	BOOL AddButton (HBITMAP hBmp, LPCTSTR lpszLabel, UINT iIdCommand, int iInsertAt = -1);
 	BOOL AddButton (HICON hIcon, LPCTSTR lpszLabel, UINT iIdCommand, int iInsertAt = -1, BOOL bAlphaBlend = FALSE);
@@ -69,7 +74,7 @@ public:
 	void SetBackImage (UINT uiImageID);
 	void SetBackColor (COLORREF color);
 
-	void SetExtraSpace (int nSpace)	// Set extra space betwen buttons
+	void SetExtraSpace (int nSpace)	// Set extra space between buttons
 	{
 		m_nExtraSpace = nSpace;
 	}
@@ -133,6 +138,9 @@ protected:
 
 	virtual BOOL OnGestureEventPan(const CPoint& ptFrom, const CPoint& ptTo, CSize& sizeOverPan);
 	virtual BOOL InternalScroll(int nDelta, CSize& sizeOverPan);
+
+	virtual BOOL OnDrawButtonImage(CDC* /*pDC*/, CBCGPOutlookButton* /*pButton*/, CBCGPToolBarImages* /*pImages*/, 
+		int /*iImageIndex*/, CRect /*rectIcon*/)	{ return FALSE; }
 
 public:
 	virtual BOOL Create(CWnd* pParentWnd,
@@ -204,6 +212,10 @@ protected:
 
 	static CSize				m_csImage;
 	static CBCGPToolBarImages	m_Images;
+
+	BOOL				m_bIsLocalImages;
+	CSize				m_csImageLocal;
+	CBCGPToolBarImages	m_ImagesLocal;
 
 	BOOL				m_bDrawShadedHighlight;
 

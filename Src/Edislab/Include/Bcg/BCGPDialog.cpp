@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,11 +18,18 @@
 #include "BCGPPopupMenu.h"
 #include "BCGPToolbarMenuButton.h"
 #include "BCGPPngImage.h"
+#include "BCGPMDIFrameWnd.h"
+#include "BCGPFrameWnd.h"
+#include "BCGPRibbonBar.h"
+#include "BCGPTooltipManager.h"
 #endif
 
 #include "BCGPVisualManager.h"
 #include "BCGPLocalResource.h"
 #include "BCGPGestureManager.h"
+#include "BCGPDrawManager.h"
+#include "BCGPGlobalUtils.h"
+#include "BCGPEdit.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -30,10 +37,12 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
-IMPLEMENT_DYNAMIC(CBCGPDialog, CDialog)
+#define EXPAND_MARGIN_VERT globalUtils.ScaleByDPI(8)
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPDialog dialog
+
+IMPLEMENT_DYNAMIC(CBCGPDialog, CDialog)
 
 #pragma warning (disable : 4355)
 
@@ -62,15 +71,31 @@ CBCGPDialog::CBCGPDialog (LPCTSTR lpszTemplateName, CWnd *pParentWnd/*= NULL*/) 
 //*************************************************************************************
 void CBCGPDialog::CommonConstruct ()
 {
-	m_hBkgrBitmap = NULL;
-	m_sizeBkgrBitmap = CSize (0, 0);
-	m_BkgrLocation = (BackgroundLocation) -1;
-	m_bAutoDestroyBmp = FALSE;
+	m_bDisableShadows = FALSE;
 	m_bIsLocal = FALSE;
 	m_pLocaRes = NULL;
 	m_bWasMaximized = FALSE;
 	m_rectBackstageWatermark.SetRectEmpty();
 	m_pBackstageWatermark = NULL;
+	m_pParentEdit = NULL;
+	m_bParentClosePopupDlgNotified = FALSE;
+	m_nExpandedAreaHeight = -1;
+	m_nExpandedCheckBoxHeight = -1;
+	m_hwndExpandCheckBoxCtrl = NULL;
+	m_bExpandAreaSpecialBackground = TRUE;
+	m_bIsRibbonStartPage = FALSE;
+	m_bIsExpanded = TRUE;
+	m_bCancelModeCapturedWindow = FALSE;
+}
+//*************************************************************************************
+void CBCGPDialog::SetControlInfoTip(UINT nCtrlID, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	m_Impl.SetControlInfoTip(nCtrlID, lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
+}
+//*************************************************************************************
+void CBCGPDialog::SetControlInfoTip(CWnd* pWndCtrl, LPCTSTR lpszInfoTip, DWORD dwVertAlign, BOOL bRedrawInfoTip, CBCGPControlInfoTip::BCGPControlInfoTipStyle style, BOOL bIsClickable, const CPoint& ptOffset)
+{
+	m_Impl.SetControlInfoTip(pWndCtrl, lpszInfoTip, dwVertAlign, bRedrawInfoTip, style, bIsClickable, ptOffset);
 }
 //*************************************************************************************
 void CBCGPDialog::SetBackgroundColor (COLORREF color, BOOL bRepaint)
@@ -97,31 +122,29 @@ void CBCGPDialog::SetBackgroundImage (HBITMAP hBitmap,
 								BOOL bAutoDestroy,
 								BOOL bRepaint)
 {
-	if (m_bAutoDestroyBmp && m_hBkgrBitmap != NULL)
-	{
-		::DeleteObject (m_hBkgrBitmap);
-	}
-
-	m_hBkgrBitmap = hBitmap;
-	m_BkgrLocation = location;
-	m_bAutoDestroyBmp = bAutoDestroy;
+	m_Impl.m_Background.Clear();
 
 	if (hBitmap != NULL)
 	{
-		BITMAP bmp;
-		::GetObject (hBitmap, sizeof (BITMAP), (LPVOID) &bmp);
+		m_Impl.m_Background.SetMapTo3DColors(FALSE);
+		m_Impl.m_Background.AddImage(hBitmap, TRUE);
 
-		m_sizeBkgrBitmap = CSize (bmp.bmWidth, bmp.bmHeight);
+#ifndef _BCGSUITE_
+		m_Impl.m_Background.SetSingleImage(FALSE);
+#else
+		m_Impl.m_Background.SetSingleImage();
+#endif
+		if (bAutoDestroy)
+		{
+			::DeleteObject(hBitmap);
+		}
 	}
-	else
-	{
-		m_sizeBkgrBitmap = CSize (0, 0);
-	}
+
+	m_Impl.m_BkgrLocation = (int)location;
 
 	if (bRepaint && GetSafeHwnd () != NULL)
 	{
-		Invalidate ();
-		UpdateWindow ();
+		RedrawWindow();
 	}
 }
 //*************************************************************************************
@@ -129,32 +152,30 @@ BOOL CBCGPDialog::SetBackgroundImage (UINT uiBmpResId,
 									BackgroundLocation location,
 									BOOL bRepaint)
 {
-	HBITMAP hBitmap = NULL;
+	BOOL bRes = TRUE;
 
+	m_Impl.m_Background.Clear();
+	
 	if (uiBmpResId != 0)
 	{
-		//-----------------------------
-		// Try to load PNG image first:
-		//-----------------------------
-		CBCGPPngImage pngImage;
-		if (pngImage.Load (MAKEINTRESOURCE (uiBmpResId)))
-		{
-			hBitmap = (HBITMAP) pngImage.Detach ();
-		}
-		else
-		{
-			hBitmap = ::LoadBitmap (AfxGetResourceHandle (), MAKEINTRESOURCE (uiBmpResId));
-		}
+		m_Impl.m_Background.SetMapTo3DColors(FALSE);
+		bRes = m_Impl.m_Background.Load(uiBmpResId);
 
-		if (hBitmap == NULL)
-		{
-			ASSERT (FALSE);
-			return FALSE;
-		}
+#ifndef _BCGSUITE_
+		m_Impl.m_Background.SetSingleImage(FALSE);
+#else
+		m_Impl.m_Background.SetSingleImage();
+#endif
+	}
+	
+	m_Impl.m_BkgrLocation = (int)location;
+	
+	if (bRepaint && GetSafeHwnd () != NULL)
+	{
+		RedrawWindow();
 	}
 
-	SetBackgroundImage (hBitmap, location, TRUE /* Autodestroy */, bRepaint);
-	return TRUE;
+	return bRes;
 }
 
 BEGIN_MESSAGE_MAP(CBCGPDialog, CDialog)
@@ -179,16 +200,48 @@ BEGIN_MESSAGE_MAP(CBCGPDialog, CDialog)
 	ON_WM_GETMINMAXINFO()
 	ON_WM_CREATE()
 	ON_WM_SHOWWINDOW()
+	ON_WM_SYSCOMMAND()
+	ON_WM_SETCURSOR()
 	//}}AFX_MSG_MAP
+	ON_WM_STYLECHANGED()
 	ON_MESSAGE(WM_DWMCOMPOSITIONCHANGED, OnDWMCompositionChanged)
 	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 	ON_MESSAGE(WM_SETTEXT, OnSetText)
 	ON_MESSAGE(WM_POWERBROADCAST, OnPowerBroadcast)
+	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
+	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnNeedTipText)
+	ON_MESSAGE(WM_DPICHANGED, OnDPIChanged)
+	ON_MESSAGE(WM_THEMECHANGED, OnThemeChanged)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPDialog message handlers
 
+void CBCGPDialog::OnStyleChanged(int nStyleType, LPSTYLESTRUCT lpStyleStruct)
+{
+	CDialog::OnStyleChanged(nStyleType, lpStyleStruct);
+	
+	if (nStyleType == GWL_EXSTYLE)
+	{
+		if (((lpStyleStruct->styleOld & WS_EX_LAYOUTRTL) != 0 && 
+			(lpStyleStruct->styleNew & WS_EX_LAYOUTRTL) == 0 ||
+			(lpStyleStruct->styleOld & WS_EX_LAYOUTRTL) == 0 && 
+			(lpStyleStruct->styleNew & WS_EX_LAYOUTRTL) != 0))
+		{
+			OnRTLChanged ((lpStyleStruct->styleNew & WS_EX_LAYOUTRTL) != 0);
+		}
+	}
+}
+//*****************************************************************************
+void CBCGPDialog::OnRTLChanged (BOOL bIsRTL)
+{
+	if (AfxGetMainWnd() == this)
+	{
+		globalData.m_bIsRTL = bIsRTL;
+		CBCGPToolBarImages::EnableRTL(globalData.m_bIsRTL);
+	}
+}
+//**************************************************************************
 void CBCGPDialog::OnActivate(UINT nState, CWnd *pWndOther, BOOL /*bMinimized*/) 
 {
 	Default();
@@ -221,19 +274,43 @@ BOOL CBCGPDialog::OnEraseBkgnd(CDC* pDC)
 {
 	BOOL bRes = TRUE;
 
-	if (m_brBkgr.GetSafeHandle () == NULL && m_hBkgrBitmap == NULL &&
-		!IsVisualManagerStyle ())
+	CRect rectBottom;
+	rectBottom.SetRectEmpty();
+
+	CRect rectClient;
+	GetClientRect (rectClient);
+
+	if (m_nExpandedAreaHeight > 0 && m_nExpandedCheckBoxHeight > 0 && m_bExpandAreaSpecialBackground)
+	{
+		int nBottomHeight = m_nExpandedCheckBoxHeight + 2 * EXPAND_MARGIN_VERT;
+		if (IsExpanded())
+		{
+			nBottomHeight += m_nExpandedAreaHeight;
+		}
+		
+		rectBottom = rectClient;
+		rectBottom.top = rectBottom.bottom - nBottomHeight;
+	}
+
+	if (m_brBkgr.GetSafeHandle () == NULL && !m_Impl.m_Background.IsValid() && !IsVisualManagerStyle ())
 	{
 		bRes = CDialog::OnEraseBkgnd (pDC);
+
+		if (!rectBottom.IsRectEmpty() && !globalData.IsHighContastMode())
+		{
+			COLORREF clrLine = CBCGPDrawManager::ColorMakeDarker(::GetSysColor(COLOR_BTNFACE), .1);
+			COLORREF clrLine1 = CBCGPDrawManager::ColorMakeLighter(::GetSysColor(COLOR_BTNFACE), .1);
+
+			CBCGPDrawManager dm(*pDC);
+			dm.DrawLine(rectBottom.left, rectBottom.top, rectBottom.right, rectBottom.top, clrLine);
+			dm.DrawLine(rectBottom.left, rectBottom.top + 1, rectBottom.right, rectBottom.top + 1, clrLine1);
+		}
 	}
 	else
 	{
 		ASSERT_VALID (pDC);
 
-		CRect rectClient;
-		GetClientRect (rectClient);
-
-		if (m_BkgrLocation != BACKGR_TILE || m_hBkgrBitmap == NULL)
+		if (m_Impl.m_BkgrLocation != 0 /* BACKGR_TILE */ || !m_Impl.m_Background.IsValid())
 		{
 			if (m_brBkgr.GetSafeHandle () != NULL)
 			{
@@ -249,6 +326,22 @@ BOOL CBCGPDialog::OnEraseBkgnd(CDC* pDC)
 
 					CBCGPVisualManager::GetInstance ()->OnFillRibbonBackstageForm(pDCMem, this, rectClient);
 
+#ifndef BCGP_EXCLUDE_RIBBON
+					if (m_bIsRibbonStartPage)
+					{
+						// Syncronize the ribbon background image with the dialog background:
+						OnDrawRibbonBackgroundImage(pDCMem, rectClient);
+
+						int nLeftPaneWidth = GetRibbonStartPageLeftPaneWidth();
+						if (nLeftPaneWidth > 0)
+						{
+							CRect rectLeftPane = rectClient;
+							rectLeftPane.right = rectLeftPane.left + nLeftPaneWidth;
+
+							CBCGPVisualManager::GetInstance()->OnFillRibbonBackstageLeftPane(pDCMem, rectLeftPane);
+						}
+					}
+#endif
 					if (!m_rectBackstageWatermark.IsRectEmpty() && !globalData.IsHighContastMode())
 					{
 						if (m_pBackstageWatermark != NULL)
@@ -283,70 +376,42 @@ BOOL CBCGPDialog::OnEraseBkgnd(CDC* pDC)
 			}
 		}
 
-		if (m_hBkgrBitmap != NULL)
+		if (!rectBottom.IsRectEmpty())
 		{
-			ASSERT (m_sizeBkgrBitmap != CSize (0, 0));
-
-			if (m_BkgrLocation != BACKGR_TILE)
-			{
-				CPoint ptImage = rectClient.TopLeft ();
-
-				switch (m_BkgrLocation)
-				{
-				case BACKGR_TOPLEFT:
-					break;
-
-				case BACKGR_TOPRIGHT:
-					ptImage.x = rectClient.right - m_sizeBkgrBitmap.cx;
-					break;
-
-				case BACKGR_BOTTOMLEFT:
-					ptImage.y = rectClient.bottom - m_sizeBkgrBitmap.cy;
-					break;
-
-				case BACKGR_BOTTOMRIGHT:
-					ptImage.x = rectClient.right - m_sizeBkgrBitmap.cx;
-					ptImage.y = rectClient.bottom - m_sizeBkgrBitmap.cy;
-					break;
-				}
-
-				pDC->DrawState (ptImage, m_sizeBkgrBitmap, m_hBkgrBitmap, DSS_NORMAL);
-			}
-			else
-			{
-				// Tile background image:
-				for (int x = rectClient.left; x < rectClient.Width (); x += m_sizeBkgrBitmap.cx)
-				{
-					for (int y = rectClient.top; y < rectClient.Height (); y += m_sizeBkgrBitmap.cy)
-					{
-						pDC->DrawState (CPoint (x, y), m_sizeBkgrBitmap, m_hBkgrBitmap, DSS_NORMAL);
-					}
-				}
-			}
+			CBCGPVisualManager::GetInstance()->OnDrawDlgExpandedArea(pDC, this, rectBottom);
 		}
+
+		m_Impl.DrawBackgroundImage(pDC, rectClient);
 	}
 
 	m_Impl.DrawResizeBox(pDC);
 	m_Impl.ClearAeroAreas (pDC);
+	m_Impl.DrawControlInfoTips(pDC);
+
 	return bRes;
 }
 //**********************************************************************************
 void CBCGPDialog::OnDestroy() 
 {
-	if (m_bAutoDestroyBmp && m_hBkgrBitmap != NULL)
+	if (m_pParentEdit != NULL)
 	{
-		::DeleteObject (m_hBkgrBitmap);
-		m_hBkgrBitmap = NULL;
+		if (!m_bParentClosePopupDlgNotified)
+		{
+			m_pParentEdit->ClosePopupDlg(NULL, FALSE);
+			m_bParentClosePopupDlgNotified = TRUE;
+		}
+
+		delete m_pParentEdit;
+		m_pParentEdit = NULL;
 	}
 
 	m_Impl.OnDestroy ();
-
 	CDialog::OnDestroy();
 }
 //***************************************************************************************
 HBRUSH CBCGPDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor) 
 {
-	if (m_brBkgr.GetSafeHandle () != NULL || m_hBkgrBitmap != NULL ||
+	if (m_brBkgr.GetSafeHandle () != NULL || m_Impl.m_Background.IsValid() ||
 		IsVisualManagerStyle ())
 	{
 		HBRUSH hbr = m_Impl.OnCtlColor (pDC, pWnd, nCtlColor);
@@ -376,6 +441,12 @@ void CBCGPDialog::SetActiveMenu (CBCGPPopupMenu* pMenu)
 //*************************************************************************************
 BOOL CBCGPDialog::OnCommand(WPARAM wParam, LPARAM lParam) 
 {
+	if (m_hwndExpandCheckBoxCtrl != NULL && lParam == (LPARAM)m_hwndExpandCheckBoxCtrl && HIWORD(wParam) == BN_CLICKED)
+	{
+		Expand(!IsExpanded());
+		return TRUE;
+	}
+
 	if (m_Impl.OnCommand (wParam, lParam))
 	{
 		return TRUE;
@@ -410,6 +481,7 @@ void CBCGPDialog::OnSysColorChange()
 	if (AfxGetMainWnd() == this)
 	{
 		globalData.UpdateSysColors ();
+		CBCGPVisualManager::GetInstance ()->OnUpdateSystemColors ();
 	}
 }
 //*************************************************************************************
@@ -437,16 +509,38 @@ void CBCGPDialog::EnableVisualManagerStyle (BOOL bEnable, BOOL bNCArea, const CL
 //*************************************************************************************
 BOOL CBCGPDialog::OnInitDialog() 
 {
+#ifndef _BCGSUITE_
+	CBCGPPopupMenu* pActivePopupMenu = CBCGPPopupMenu::GetSafeActivePopupMenu();
+	if (pActivePopupMenu != NULL)
+	{
+		ASSERT_VALID(pActivePopupMenu);
+		
+		if (pActivePopupMenu->IsFloaty())
+		{
+			pActivePopupMenu->SendMessage(WM_CLOSE);
+		}
+	}
+#endif
+
 	if (AfxGetMainWnd() == this)
 	{
 		globalData.m_bIsRTL = (GetExStyle() & WS_EX_LAYOUTRTL);
 		CBCGPToolBarImages::EnableRTL(globalData.m_bIsRTL);
 	}
 
+	if (m_bCancelModeCapturedWindow)
+	{
+		HWND hWndCapture = ::GetCapture();
+		if (hWndCapture != NULL && ::IsWindow(hWndCapture))
+		{
+			::SendMessage(hWndCapture, WM_CANCELMODE, 0, 0);
+		}
+	}
+
 	CDialog::OnInitDialog();
-	
-	m_Impl.m_bHasBorder = (GetStyle () & WS_BORDER) != 0;
-	m_Impl.m_bHasCaption = (GetStyle() & WS_CAPTION) != 0;
+
+	m_Impl.m_bHasBorder = (GetStyle () & WS_BORDER) == WS_BORDER;
+	m_Impl.m_bHasCaption = (GetStyle() & WS_CAPTION) == WS_CAPTION;
 
 	if (IsVisualManagerStyle ())
 	{
@@ -462,7 +556,14 @@ BOOL CBCGPDialog::OnInitDialog()
 	{
 		m_Impl.EnableBackstageMode();
 	}
-	
+
+	if (m_Impl.IsOwnerDrawCaption() && (!m_Impl.m_bHasBorder || !m_Impl.m_bHasCaption))
+	{
+		SetWindowPos(NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+	}
+
+	m_Impl.CreateTooltipInfo();
+
 	return TRUE;  // return TRUE unless you set the focus to a control
 	              // EXCEPTION: OCX Property Pages should return FALSE
 }
@@ -503,6 +604,7 @@ void CBCGPDialog::OnSize(UINT nType, int cx, int cy)
 	}
 
 	m_Impl.UpdateCaption ();
+	m_Impl.UpdateToolTipsRect();
 
 	if (!bIsMinimized && nType != SIZE_MAXIMIZED && !m_bWasMaximized)
 	{
@@ -565,6 +667,7 @@ void CBCGPDialog::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS FAR* lpnc
 void CBCGPDialog::OnMouseMove(UINT nFlags, CPoint point) 
 {
 	m_Impl.OnMouseMove (point);
+
 	CDialog::OnMouseMove(nFlags, point);
 }
 //**************************************************************************
@@ -611,11 +714,13 @@ LRESULT CBCGPDialog::OnSetText(WPARAM, LPARAM)
 //****************************************************************************
 int CBCGPDialog::OnCreate(LPCREATESTRUCT lpCreateStruct) 
 {
+	m_Impl.m_bDisableShadows = m_bDisableShadows;
+
 	if (CDialog::OnCreate(lpCreateStruct) == -1)
 	{
 		return -1;
 	}
-
+	
     return m_Impl.OnCreate();
 }
 //****************************************************************************
@@ -684,4 +789,301 @@ BOOL CBCGPDialog::Create(LPCTSTR lpszTemplateName, CWnd* pParentWnd)
 	}
 	
 	return CDialog::Create(lpszTemplateName, pParentWnd);
+}
+//***************************************************************************
+void CBCGPDialog::OnOK()
+{
+	if (m_pParentEdit != NULL && !m_bParentClosePopupDlgNotified)
+	{
+		m_pParentEdit->ClosePopupDlg(NULL, TRUE);
+		m_bParentClosePopupDlgNotified = TRUE;
+		return;
+	}
+
+	if (!IsBackstageMode())
+	{
+		CDialog::OnOK();
+	}
+}
+//***************************************************************************
+void CBCGPDialog::OnCancel()
+{
+	if (m_Impl.m_pToolTipInfo->GetSafeHwnd () != NULL)
+	{
+		m_Impl.m_pToolTipInfo->Pop();
+	}
+
+	if (m_pParentEdit != NULL && !m_bParentClosePopupDlgNotified)
+	{
+		m_pParentEdit->ClosePopupDlg(NULL, FALSE);
+		m_bParentClosePopupDlgNotified = TRUE;
+		return;
+	}
+
+	if (!IsBackstageMode())
+	{
+		CDialog::OnCancel();
+	}
+	else
+	{
+		CWnd* pParent = GetParent();
+		if (pParent->GetSafeHwnd() != NULL)
+		{
+			pParent->SendMessage(WM_CLOSE);
+		}
+	}
+}
+//***************************************************************************
+void CBCGPDialog::ClosePopupDlg(LPCTSTR lpszEditValue, BOOL bOK, DWORD_PTR dwUserData)
+{
+	if (m_pParentEdit == NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	if (!m_bParentClosePopupDlgNotified)
+	{
+		m_pParentEdit->ClosePopupDlg(lpszEditValue, bOK, dwUserData);
+		m_bParentClosePopupDlgNotified = TRUE;
+	}
+}
+//***************************************************************************
+void CBCGPDialog::OnSysCommand(UINT nID, LPARAM lParam)
+{
+	m_Impl.OnSysCommand(nID, lParam);
+	CDialog::OnSysCommand(nID, lParam);
+}
+//***************************************************************************
+void CBCGPDialog::EnableExpand(UINT nExpandCheckBoxCtrlID, LPCTSTR lpszExpandLabel, LPCTSTR lszCollapseLabel)
+{
+	EnableExpand(GetDlgItem(nExpandCheckBoxCtrlID)->GetSafeHwnd(), lpszExpandLabel, lszCollapseLabel);
+}
+//***************************************************************************
+void CBCGPDialog::EnableExpand(HWND hwndExpandCheckBoxCtrl, LPCTSTR lpszExpandLabel, LPCTSTR lszCollapseLabel)
+{
+	ASSERT(GetSafeHwnd() != NULL);
+
+	if (GetLayout() != NULL)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	if (!m_bIsExpanded)
+	{
+		Expand();
+	}
+
+	m_strExpandLabel = lpszExpandLabel == NULL ? _T("") : lpszExpandLabel;
+	m_strCollapseLabel = lszCollapseLabel == NULL ? _T("") : lszCollapseLabel;
+
+	m_lstCtrlsInCollapseArea.RemoveAll();
+	m_nExpandedAreaHeight = -1;
+	m_nExpandedCheckBoxHeight = -1;
+
+	m_hwndExpandCheckBoxCtrl = hwndExpandCheckBoxCtrl;
+
+	if (hwndExpandCheckBoxCtrl == NULL)
+	{
+		return;
+	}
+
+	BOOL bIsCollapsedArea = FALSE;
+
+	for (CWnd* pWndChild = GetWindow(GW_CHILD); pWndChild != NULL; pWndChild = pWndChild->GetWindow(GW_HWNDNEXT))
+	{
+		HWND hwndChild = pWndChild->GetSafeHwnd();
+
+		if (bIsCollapsedArea)
+		{
+			m_lstCtrlsInCollapseArea.AddTail(hwndChild);
+		}
+		else if (hwndChild == hwndExpandCheckBoxCtrl)
+		{
+			CBCGPButton* pButton = DYNAMIC_DOWNCAST(CBCGPButton, FromHandlePermanent(hwndExpandCheckBoxCtrl));
+			if (pButton->GetSafeHwnd() == NULL)
+			{
+				m_btnExpandCheckBox.SubclassWindow(hwndExpandCheckBoxCtrl);
+				pButton = &m_btnExpandCheckBox;
+			}
+
+			if (pButton->GetSafeHwnd() != NULL)
+			{
+				if (!m_strCollapseLabel.IsEmpty())
+				{
+					pButton->SetWindowText(m_strCollapseLabel);
+				}
+
+				pButton->m_bCheckBoxExpandCollapseMode = TRUE;
+				pButton->SetMouseCursorHand();
+				pButton->SizeToContent();
+				pButton->SetCheck(1);
+
+				CRect rectExpand;
+				pButton->GetWindowRect(rectExpand);
+				ScreenToClient(rectExpand);
+				
+				CRect rectClient;
+				GetClientRect(rectClient);
+				
+				m_nExpandedAreaHeight = rectClient.bottom - rectExpand.bottom - EXPAND_MARGIN_VERT;
+				m_nExpandedCheckBoxHeight = rectExpand.Height();
+			}
+
+			bIsCollapsedArea = TRUE;
+		}
+	}
+}
+//***************************************************************************
+void CBCGPDialog::SetExpandAreaSpecialBackground(BOOL bSet, BOOL bRedraw)
+{
+	m_bExpandAreaSpecialBackground = bSet;
+
+	if (bRedraw && GetSafeHwnd() != NULL)
+	{
+		RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+	}
+}
+//***************************************************************************
+BOOL CBCGPDialog::Expand(BOOL bExpand)
+{
+	ASSERT(GetSafeHwnd() != NULL);
+
+	if (m_lstCtrlsInCollapseArea.IsEmpty() || m_nExpandedAreaHeight <= 0)
+	{
+		return FALSE;
+	}
+
+	if (m_bIsExpanded == bExpand)
+	{
+		return TRUE;
+	}
+
+	OnBeforeExpand();
+
+	CRect rectWindow;
+	GetWindowRect(rectWindow);
+
+	int dy = bExpand ? m_nExpandedAreaHeight : -m_nExpandedAreaHeight;
+
+	SetWindowPos(NULL, -1, -1, rectWindow.Width(), rectWindow.Height() + dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+	for (POSITION pos = m_lstCtrlsInCollapseArea.GetHeadPosition(); pos != NULL;)
+	{
+		CWnd* pCtrl = CWnd::FromHandle(m_lstCtrlsInCollapseArea.GetNext(pos));
+
+		if (!bExpand && GetFocus()->GetSafeHwnd() == pCtrl->GetSafeHwnd() && m_hwndExpandCheckBoxCtrl != NULL)
+		{
+			::SetFocus(m_hwndExpandCheckBoxCtrl);
+		}
+
+		pCtrl->ShowWindow(bExpand ? SW_SHOWNOACTIVATE : SW_HIDE);
+	}
+
+	m_bIsExpanded = bExpand;
+
+	CString strLabel = m_bIsExpanded ? m_strCollapseLabel : m_strExpandLabel;
+
+	CBCGPButton* pButton = DYNAMIC_DOWNCAST(CBCGPButton, CWnd::FromHandlePermanent(m_hwndExpandCheckBoxCtrl));
+	ASSERT_VALID(pButton);
+
+	pButton->SetCheck(m_bIsExpanded);
+
+	if (!strLabel.IsEmpty())
+	{
+		pButton->SetWindowText(strLabel);
+		pButton->SizeToContent();
+	}
+
+	RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+
+	OnAfterExpand();
+	return TRUE;
+}
+
+#if (!defined _BCGSUITE_) && (!defined BCGP_EXCLUDE_RIBBON)
+
+void CBCGPDialog::OnDrawRibbonBackgroundImage(CDC* pDC, CRect rect)
+{
+	CFrameWnd* pTopFrame = GetTopLevelFrame();
+	CBCGPRibbonBar* pRibbonBar = NULL;
+
+	CBCGPMDIFrameWnd* pMainFrame = DYNAMIC_DOWNCAST (CBCGPMDIFrameWnd, pTopFrame);
+	if (pMainFrame != NULL)
+	{
+		pRibbonBar = pMainFrame->GetRibbonBar();
+	}
+	else	// Maybe, SDI frame...
+	{
+		CBCGPFrameWnd* pFrame = DYNAMIC_DOWNCAST (CBCGPFrameWnd, pTopFrame);
+		if (pFrame != NULL)
+		{
+			pRibbonBar = pFrame->GetRibbonBar();
+		}
+	}
+
+	if (pRibbonBar != NULL)
+	{
+		ASSERT_VALID(pRibbonBar);
+
+		const CBCGPToolBarImages& image = pRibbonBar->GetBackgroundImage();
+
+		if (!globalData.IsHighContastMode() && CBCGPVisualManager::GetInstance ()->IsRibbonBackgroundImage() && image.GetCount() > 0)
+		{
+			CRect rectRibbon;
+			pRibbonBar->GetClientRect(rectRibbon);
+			pRibbonBar->MapWindowPoints(this, &rectRibbon);
+			
+			rectRibbon.bottom = rectRibbon.top + rect.Height();
+
+			((CBCGPToolBarImages&)image).DrawEx(pDC, rectRibbon, 0, CBCGPToolBarImages::ImageAlignHorzRight, CBCGPToolBarImages::ImageAlignVertTop);
+		}
+	}
+}
+
+#endif
+
+BOOL CBCGPDialog::OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult)
+{
+	return m_Impl.OnNeedTipText(id, pNMH, pResult);
+}
+//**************************************************************************
+LRESULT CBCGPDialog::OnBCGUpdateToolTips (WPARAM wp, LPARAM)
+{
+	UINT nTypes = (UINT) wp;
+
+	if (nTypes & BCGP_TOOLTIP_TYPE_DEFAULT)
+	{
+		m_Impl.CreateTooltipInfo();
+	}
+
+	return 0;
+}
+//**************************************************************************
+BOOL CBCGPDialog::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message) 
+{
+	if (m_Impl.OnSetCursor())
+	{
+		return TRUE;
+	}
+	
+	return CDialog::OnSetCursor(pWnd, nHitTest, message);
+}
+//*****************************************************************************************
+LRESULT CBCGPDialog::OnDPIChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+	
+	OnChangeVisualManager(0, 0);
+	return lRes;
+}
+//*****************************************************************************************
+LRESULT CBCGPDialog::OnThemeChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+	
+	CBCGPVisualManager::GetInstance()->OnUpdateSystemColors();
+	OnChangeVisualManager(0, 0);
+	return lRes;
 }

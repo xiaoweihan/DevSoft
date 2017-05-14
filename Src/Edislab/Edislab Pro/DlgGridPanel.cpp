@@ -4,8 +4,8 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "DlgGridPanel.h"
-#include "GridControlFactory.h"
-
+//#include "GridControlFactory.h"
+#include "CustomGrid.h"
 // CDlgGridPanel 对话框
 
 IMPLEMENT_DYNAMIC(CDlgGridPanel, CBaseDialog)
@@ -51,9 +51,6 @@ END_MESSAGE_MAP()
 void CDlgGridPanel::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
 {
 	CBaseDialog::OnActivate(nState, pWndOther, bMinimized);
-
-	// TODO: 在此处添加消息处理程序代码
-	TRACE("[CDlgGridPanel] OnActivate!\r\n");
 }
 
 BOOL CDlgGridPanel::OnInitDialog()
@@ -76,6 +73,7 @@ void CDlgGridPanel::OnSize(UINT nType, int cx, int cy)
 	AdjustPanelLayout(cx,cy);
 }
 
+#if 0
 void CDlgGridPanel::CreatePanel( void )
 {
 	CWnd* pWnd = m_Grid.AddGridCtrl(this);
@@ -85,26 +83,38 @@ void CDlgGridPanel::CreatePanel( void )
 	GetClientRect(&rc);
 	m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
 }
+#endif
+
+//添加新的想
 void CDlgGridPanel::addPanel()
 {
 #if 0
-	if(m_vecPanel.size()>=MAX_WIDGET_NUM)
+	CWnd* pWnd = m_Grid.AddGridCtrl(this);
+	m_vecPanel.push_back(pWnd);
+#endif
+	CCustomGrid* pGrid = new CCustomGrid;
+	if (nullptr == pGrid)
 	{
 		return;
 	}
-#endif
-	CWnd* pWnd = m_Grid.AddGridCtrl(this);
-	m_vecPanel.push_back(pWnd);
-	m_WidgetLayout.AddWidget(pWnd);
+	std::vector<HEADRER_INFO> HeaderInfoArray;
+
+	HEADRER_INFO TempInfo;
+	TempInfo.strHeadName = _T("当前");
+	TempInfo.ContainColumnIndexArray.push_back(_T("X"));
+	TempInfo.ContainColumnIndexArray.push_back(_T("Y"));
+	HeaderInfoArray.push_back(TempInfo);
+	pGrid->SetHeaderInfoArray(HeaderInfoArray);
+	pGrid->Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
+	pGrid->FillData();
+	m_WidgetLayout.AddWidget(pGrid);
 	CRect rc;
 	GetClientRect(&rc);
 	m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
-
 }
 void CDlgGridPanel::delPanel(CWnd* pDlg)
 {
-#if 1
-	if(pDlg)
+	if(nullptr != pDlg)
 	{
 		m_WidgetLayout.DelWidget(pDlg);
 		CRect rc;
@@ -113,25 +123,24 @@ void CDlgGridPanel::delPanel(CWnd* pDlg)
 		for(std::vector<CWnd*>::iterator itr = m_vecPanel.begin();
 			itr!=m_vecPanel.end(); ++itr)
 		{
-			if(pDlg==*itr)
+			if(pDlg == *itr)
 			{
 				if (pDlg->GetSafeHwnd() != NULL)
 				{
 					pDlg->DestroyWindow();
-
-
 				}
 				m_vecPanel.erase(itr);
 				break;
 			}
 		}
 		
-		m_Grid.RemoveGridCtrl(pDlg);
+		//m_Grid.RemoveGridCtrl(pDlg);
 		delete pDlg;
-		pDlg = NULL;
+		pDlg = nullptr;
 	}
-#endif
 }
+
+#if 0
 void CDlgGridPanel::DestroyPanel( void )
 {
 #if 1
@@ -147,6 +156,7 @@ void CDlgGridPanel::DestroyPanel( void )
 	}
 #endif
 }
+#endif
 
 void CDlgGridPanel::AdjustPanelLayout( int nWidth,int nHeight )
 {

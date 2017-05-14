@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -34,6 +34,8 @@ class CBCGPTabbedControlBar;
 class CBCGPSlider;
 class CBCGPDockingControlBar;
 class CBCGPOleCntrFrameWnd;
+
+extern BCGCBPRODLLEXPORT UINT BCGM_ON_MOVE_DOCK_BAR;
 
 struct BCGP_DOCKBAR_INFO
 {
@@ -102,18 +104,19 @@ public:
 
 	void CopyTo (CBCGPSmartDockingParams& params);
 
-	CSize		m_sizeTotal;			// Smart docking group bounds dimension
-	int			m_nCentralGroupOffset;
-	COLORREF	m_clrTransparent;
-	COLORREF	m_clrToneSrc;
-	COLORREF	m_clrToneDest;
-	UINT		m_uiMarkerBmpResID [BCGP_SD_MARKERS_NUM];
-	UINT		m_uiMarkerLightBmpResID [BCGP_SD_MARKERS_NUM];
-	UINT		m_uiBaseBmpResID;
-	COLORREF	m_clrBaseBackground;
-	COLORREF	m_clrBaseBorder;
-	BOOL		m_bUseThemeColorInShading;
-	BOOL		m_bIsAlphaMarkers;
+	CSize			m_sizeTotal;			// Smart docking group bounds dimension
+	int				m_nCentralGroupOffset;
+	COLORREF		m_clrTransparent;
+	COLORREF		m_clrToneSrc;
+	COLORREF		m_clrToneDest;
+	UINT			m_uiMarkerBmpResID [BCGP_SD_MARKERS_NUM];
+	UINT			m_uiMarkerLightBmpResID [BCGP_SD_MARKERS_NUM];
+	UINT			m_uiBaseBmpResID;
+	COLORREF		m_clrBaseBackground;
+	COLORREF		m_clrBaseBorder;
+	BOOL			m_bUseThemeColorInShading;
+	BOOL			m_bIsAlphaMarkers;
+	CRuntimeClass*	m_pRTI; // Default is NULL, the custom class should be derived from CBCGPSmartDockingManager
 };
 
 class BCGCBPRODLLEXPORT CBCGPDockManager : public CObject
@@ -142,7 +145,7 @@ public:
 	BOOL EnableDocking (DWORD dwStyle);
 	BOOL EnableAutoHideBars (DWORD dwStyle, BOOL bActivateOnMouseClick = FALSE);
 	
-	void EnableMaximizeFloatingBars(BOOL bEnable = TRUE, BOOL bMaximizeByDblClick = FALSE);
+	void EnableMaximizeFloatingBars(BOOL bEnable = TRUE, BOOL bMaximizeByDblClick = FALSE, BOOL bRestoreMaximizeFloatingBars = FALSE);
 	BOOL AreFloatingBarsCanBeMaximized() const
 	{
 		return m_bMaximizeFloatingBars;
@@ -288,7 +291,16 @@ public:
         // m_pParentWnd must already exist
         if (m_pSDManager == NULL)
         {
-            m_pSDManager = new CBCGPSmartDockingManager;
+			if (m_SDParams.m_pRTI != NULL)
+			{
+				m_pSDManager = DYNAMIC_DOWNCAST(CBCGPSmartDockingManager, m_SDParams.m_pRTI->CreateObject());
+				ASSERT_VALID(m_pSDManager);
+			}
+			else
+			{
+				m_pSDManager = new CBCGPSmartDockingManager;
+			}
+
             m_pSDManager->Create (m_pParentWnd);
         }
 
@@ -388,6 +400,8 @@ public:
 	static BOOL				m_bIgnoreEnabledAlignment;
 	static CRuntimeClass*	m_pAutoHideToolbarRTC;
 
+	static BOOL				m_bKeepBarSizeOnFloating;
+
 protected:
 	static BCGP_DOCK_TYPE	m_dockModeGlobal;
 
@@ -420,6 +434,7 @@ protected:
 
 	BOOL		m_bMaximizeFloatingBars;
 	BOOL		m_bMaximizeFloatingBarsByDblClick;
+	BOOL		m_bRestoreMaximizeFloatingBars;
 
 	CBCGPBaseControlBar*	m_pLastTargetBar;
 	CBCGPMultiMiniFrameWnd* m_pLastMultiMiniFrame;

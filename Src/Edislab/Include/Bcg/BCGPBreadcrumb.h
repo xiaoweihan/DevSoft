@@ -5,7 +5,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,7 @@
 #include "BCGPBreadcrumbControlImpl.h"
 
 class CBCGPBreadcrumbImpl;
+class CBCGPToolbarMenuButton;
 
 class BCGCBPRODLLEXPORT CBCGPBreadcrumb : public CEdit
 {
@@ -93,8 +94,14 @@ public:
 	{
 		return m_bOnGlass;
 	}
+	
+	void SetProgress(int nPercent);
+	int GetProgress() const;
 
 // Overridables
+public:
+	virtual BOOL OnDrawMenuImage (CDC* pDC, const CBCGPToolbarMenuButton* pMenuButton, const CRect& rectImage);
+
 protected:
 	virtual void OnInitRoot();
 	virtual BOOL OnKeyDown(UINT nVKey, UINT uFlags);
@@ -119,7 +126,7 @@ protected:
 	afx_msg void OnInitRootReflect(NMHDR* pNmhdr, LRESULT* pResult);
 	afx_msg BOOL OnKeyDownReflect(NMHDR* pNmhdr, LRESULT* pResult);
 	afx_msg void OnReturnKeyReflect(NMHDR* pNmhdr, LRESULT* pResult);
-	afx_msg void OnSelectionChangeReflect(NMHDR* pNmhdr, LRESULT* pResult);
+	afx_msg BOOL OnSelectionChangeReflect(NMHDR* pNmhdr, LRESULT* pResult);
 	afx_msg void OnLClickReflect(NMHDR* pNmhdr, LRESULT* pResult);
 	afx_msg void OnRClickReflect(NMHDR* pNmhdr, LRESULT* pResult);
 	afx_msg void OnBeginInplaceEditingReflect(NMHDR* pNmhdr, LRESULT* pResult);

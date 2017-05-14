@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,6 +20,8 @@
 #include "BCGPPropertyPage.h"
 #include "BCGPWorkspace.h"
 #include "BCGPRibbonComboBox.h"
+#include "BCGPRibbonBar.h"
+#include "BCGPKeyboardManager.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -77,6 +79,8 @@ void CBCGPDropDownList::CommonInit ()
 	m_nMinWidth = -1;
 	m_bDisableAnimation = TRUE;
 
+	m_nLastTypingTime = 0;
+
 	SetAutoDestroy (FALSE);
 }
 //***************************************************************************
@@ -90,18 +94,45 @@ BEGIN_MESSAGE_MAP(CBCGPDropDownList, CBCGPPopupMenu)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
+CFont* CBCGPDropDownList::GetMenuFont()
+{
+	CFont* pFont = CBCGPPopupMenu::GetMenuFont();
+
+#ifndef BCGP_EXCLUDE_RIBBON
+	if (m_pRibbonCombo != NULL)
+	{
+		ASSERT_VALID(m_pRibbonCombo);
+		
+		CBCGPRibbonBar* pTopLevelRibbon = m_pRibbonCombo->GetTopLevelRibbonBar();
+		if (pTopLevelRibbon != NULL)
+		{
+			ASSERT_VALID(pTopLevelRibbon);
+
+			CFont* pRibbonFont = pTopLevelRibbon->GetFont();
+			if (pRibbonFont->GetSafeHandle() != globalData.fontRegular.GetSafeHandle())
+			{
+				pFont = pTopLevelRibbon->GetFont();
+			}
+		}
+	}
+#endif
+	return pFont;
+}
 
 void CBCGPDropDownList::Track (CPoint point, CWnd *pWndOwner)
 {
+	CBCGPPopupMenuBar* pMenuBar = GetMenuBar ();
+	ASSERT_VALID (pMenuBar);
+	
+	pMenuBar->m_bDropDownListMode = TRUE;
+	pMenuBar->m_iMinWidth = m_nMinWidth;
+	
 	if (!Create (pWndOwner, point.x, point.y, m_Menu, FALSE, TRUE))
 	{
 		return;
 	}
 
-	CBCGPPopupMenuBar* pMenuBar = GetMenuBar ();
-	ASSERT_VALID (pMenuBar);
-
-	pMenuBar->m_iMinWidth = m_nMinWidth;
+	pMenuBar->AdjustLocations();
 	pMenuBar->m_bDisableSideBarInXPMode = TRUE;
 
 	HighlightItem (m_nCurSel);
@@ -196,6 +227,14 @@ int CBCGPDropDownList::SetCurSel(int nSelect)
 	CBCGPPopupMenuBar* pMenuBar = ((CBCGPDropDownList*) this)->GetMenuBar ();
 	ASSERT_VALID (pMenuBar);
 
+	if (nSelect < 0)
+	{
+		pMenuBar->m_iHighlighted = -1;
+		pMenuBar->RedrawWindow();
+
+		return -1;
+	}
+
 	int nIndex = 0;
 
 	for (int i = 0; i < pMenuBar->GetCount (); i++)
@@ -284,8 +323,49 @@ void CBCGPDropDownList::HighlightItem (int nIndex)
 
 		m_wndScrollBarVert.SetScrollPos (iOffset);
 		AdjustScroll ();
-		
 	}
+	else
+	{
+		pMenuBar->RedrawWindow();
+	}
+}
+//****************************************************************************
+int CBCGPDropDownList::FindString(int nStart, LPCTSTR lpszText)
+{
+	ASSERT_VALID (this);
+	ASSERT(lpszText != NULL);
+
+	CString strIn = lpszText;
+	strIn.MakeUpper();
+	
+	CBCGPPopupMenuBar* pMenuBar = ((CBCGPDropDownList*) this)->GetMenuBar ();
+	ASSERT_VALID (pMenuBar);
+	
+	int nCurrIndex = 0;
+	
+	for (int i = 0; i < pMenuBar->GetCount (); i++)
+	{
+		CBCGPToolbarButton* pItem = pMenuBar->GetButton (i);
+		ASSERT_VALID (pItem);
+		
+		if (!(pItem->m_nStyle & TBBS_SEPARATOR))
+		{
+			if (nCurrIndex > nStart)
+			{
+				CString strCurr = pItem->m_strText;
+				strCurr.MakeUpper();
+
+				if (strCurr.Find(strIn) == 0)
+				{
+					return nCurrIndex;
+				}
+			}
+			
+			nCurrIndex++;
+		}
+	}
+	
+	return -1;
 }
 //****************************************************************************
 CBCGPToolbarButton* CBCGPDropDownList::GetItem (int nIndex) const
@@ -324,17 +404,16 @@ void CBCGPDropDownList::OnDrawItem (CDC* pDC, CBCGPToolbarMenuButton* pItem,
 	ASSERT_VALID (pItem);
 
 	CRect rectText = pItem->Rect ();
-	rectText.DeflateRect (2 * TEXT_MARGIN, 0);
+	rectText.DeflateRect (2 * globalUtils.ScaleByDPI(TEXT_MARGIN), 0);
 
 #ifndef BCGP_EXCLUDE_RIBBON
 	if (m_pRibbonCombo != NULL)
 	{
-		ASSERT_VALID (m_pRibbonCombo);
+		ASSERT_VALID(m_pRibbonCombo);
 
 		int nIndex = (int) idStart - pItem->m_nID;
 
-		if (m_pRibbonCombo->OnDrawDropListItem (pDC, nIndex,
-			pItem, bHighlight))
+		if (m_pRibbonCombo->OnDrawDropListItem (pDC, nIndex, pItem, bHighlight))
 		{
 			return;
 		}
@@ -350,6 +429,8 @@ CSize CBCGPDropDownList::OnGetItemSize (CDC* pDC,
 										CBCGPToolbarMenuButton* pItem, CSize sizeDefault)
 {
 	ASSERT_VALID (this);
+
+	sizeDefault.cx += GetSystemMetrics(SM_CXVSCROLL);
 
 #ifndef BCGP_EXCLUDE_RIBBON
 	if (m_pRibbonCombo != NULL)
@@ -377,21 +458,110 @@ void CBCGPDropDownList::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
 	ASSERT_VALID (this);
 
+	switch (nChar)
+	{
+	case VK_UP:
+	case VK_DOWN:
+	case VK_PRIOR:
+	case VK_NEXT:
+	case VK_ESCAPE:
+	case VK_RETURN:
+	case VK_BACK:
+	case VK_DELETE:
+		CBCGPPopupMenu::OnKeyDown(nChar, nRepCnt, nFlags);
+		return;
+	}
+		
 	if (m_pEditCtrl->GetSafeHwnd () != NULL)
 	{
-		switch (nChar)
+		m_pEditCtrl->SendMessage (WM_KEYDOWN, nChar, MAKELPARAM (nRepCnt, nFlags));
+		return;
+	}
+	else
+	{
+		if (CBCGPKeyboardManager::IsKeyPrintable(nChar))
 		{
-		case VK_UP:
-		case VK_DOWN:
-		case VK_PRIOR:
-		case VK_NEXT:
-		case VK_ESCAPE:
-		case VK_RETURN:
-			break;
+			CString strText;
 
-		default:
-			m_pEditCtrl->SendMessage (WM_KEYDOWN, nChar, MAKELPARAM (nRepCnt, nFlags));
-			return;
+			BYTE lpKeyState [256];
+			::GetKeyboardState (lpKeyState);
+			
+#ifndef _UNICODE
+			WORD wChar = 0;
+			if (::ToAsciiEx (nChar,
+				MapVirtualKey (nChar, 0),
+				lpKeyState,
+				&wChar,
+				0,
+				::GetKeyboardLayout (AfxGetThread()->m_nThreadID)) > 0)
+			{
+				strText = (TCHAR)wChar;
+			}
+			
+#else
+			TCHAR szChar [2];
+			memset (szChar, 0, sizeof (TCHAR) * 2);
+			
+			if (::ToUnicodeEx (nChar,
+				MapVirtualKey (nChar, 0),
+				lpKeyState,
+				szChar,
+				2,
+				0,
+				::GetKeyboardLayout (AfxGetThread()->m_nThreadID)) > 0)
+			{
+				strText = szChar;
+			}
+
+#endif // _UNICODE
+
+			if (strText.IsEmpty())
+			{
+				CBCGPPopupMenu::OnKeyDown(nChar, nRepCnt, nFlags);
+				return;
+			}
+
+			int nCurrSel = GetCurSel();
+			BOOL bNewSearch = FALSE;
+			
+			clock_t nCurrTypingTime = clock();
+			
+			if (nCurrTypingTime - m_nLastTypingTime > 1000)
+			{
+				m_stTyping.Empty();
+				bNewSearch = TRUE;
+			}
+			
+			m_stTyping += strText;
+			m_nLastTypingTime = nCurrTypingTime;
+			
+			int nNewSel = bNewSearch ? FindString(nCurrSel, m_stTyping) : -1;
+			if (nNewSel < 0)
+			{
+				nNewSel = FindString(-1, m_stTyping);
+
+				if (nNewSel < 0 && m_stTyping.GetLength() == 2 && m_stTyping[0] == m_stTyping[1])
+				{
+					m_stTyping = m_stTyping.Left(1);
+					
+					nNewSel = FindString(nCurrSel, m_stTyping);
+					if (nNewSel < 0)
+					{
+						nNewSel = FindString(-1, m_stTyping);
+					}
+				}
+			}
+			
+			if (nCurrSel != nNewSel && nNewSel >= 0)
+			{
+				HighlightItem(nNewSel);
+
+				CBCGPPopupMenuBar* pMenuBar = GetMenuBar ();
+				ASSERT_VALID (pMenuBar);
+
+				pMenuBar->RedrawWindow ();
+				return;
+			}
 		}
 	}
 	
@@ -432,4 +602,9 @@ void CBCGPDropDownList::OnChangeHot (int nHot)
 #else
 	UNREFERENCED_PARAMETER(nHot);
 #endif
+}
+//****************************************************************************
+BOOL CBCGPDropDownList::IsParentEditFocused()
+{
+	return IsEditFocused();
 }

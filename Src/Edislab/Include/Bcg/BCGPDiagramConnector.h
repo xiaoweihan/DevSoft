@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -71,7 +71,7 @@ public:
 	enum Orientation
 	{
 		Orientation_First = 0,
-		Auto              = Orientation_First,	// Width >= Heght -- Horizontal, otherwise -- Vertical
+		Auto              = Orientation_First,	// Width >= Height -- Horizontal, otherwise -- Vertical
 		Horizontal        = 1,
 		Vertical          = 2,
 		Orientation_Last  = Vertical

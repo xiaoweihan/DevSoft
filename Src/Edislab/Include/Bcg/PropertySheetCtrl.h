@@ -2,7 +2,7 @@
 #define AFX_PROPERTYSHEETCTRL_H__FFE5BC0C_9181_4E1A_AF3D_24389930E42C__INCLUDED_
 
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified

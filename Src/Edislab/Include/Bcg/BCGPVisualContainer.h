@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,21 +29,27 @@
 #include "BCGPWnd.h"
 #include "BCGPGraphicsManager.h"
 #include "BCGPGestureManager.h"
+#include "BCGPAnimationManager.h"
 
 #ifndef _BCGPCHART_STANDALONE
 #include "BCGPLayout.h"
+#include "BCGPEdit.h"
 #endif
 
 // Object Drawing flags
-#define BCGP_DRAW_STATIC	0x0001
-#define BCGP_DRAW_DYNAMIC	0x0002
+#define BCGP_DRAW_STATIC						0x0001
+#define BCGP_DRAW_DYNAMIC						0x0002
 
 // Object Editing flags
-#define BCGP_EDIT_NOMOVE					0x0001
-#define BCGP_EDIT_NOSIZE					0x0002
-#define BCGP_EDIT_SIZE_LOCK_ASPECT_RATIO	0x0004
-#define BCGP_EDIT_NO_NORMALIZE_RECT			0x0008
-#define BCGP_EDIT_NO_KEYBOARD				0x0010
+#define BCGP_EDIT_NOMOVE						0x0001
+#define BCGP_EDIT_NOSIZE						0x0002
+#define BCGP_EDIT_SIZE_LOCK_ASPECT_RATIO		0x0004
+#define BCGP_EDIT_NO_NORMALIZE_RECT				0x0008
+#define BCGP_EDIT_NO_KEYBOARD					0x0010
+#define BCGP_EDIT_SIZE_NO_LEFT					0x0020
+#define BCGP_EDIT_SIZE_NO_RIGHT					0x0040
+#define BCGP_EDIT_SIZE_NO_TOP					0x0080
+#define BCGP_EDIT_SIZE_NO_BOTTOM				0x0100
 
 // Container Editing flags
 #define BCGP_CONTAINER_SINGLE_SEL				0x0001
@@ -51,6 +57,14 @@
 #define BCGP_CONTAINER_ENABLE_KEYBOARD			0x0004
 #define BCGP_CONTAINER_DISABLE_KEYBOARD_OBJECT	0x0008
 #define BCGP_CONTAINER_ENABLE_COPY				0x0010
+#define	BCGP_CONTAINER_SNAP_TO_GRID				0x0020
+
+// InfoTip custom colors
+#define BCGP_INFOTIP_FILL_COLOR					1
+#define BCGP_INFOTIP_TEXT_COLOR					2
+#define BCGP_INFOTIP_BORDER_COLOR				3
+
+// Object size markers
 
 ////////////////////////////////////////////////////////////////
 // CBCGPVisualDataObject
@@ -58,7 +72,8 @@
 class CBCGPBaseVisualObject;
 class CBCGPVisualScrollBar;
 
-class BCGCBPRODLLEXPORT CBCGPVisualDataObject : public CObject
+class BCGCBPRODLLEXPORT CBCGPVisualDataObject : public CObject,
+												public CBCGPAnimationManager
 {
 	DECLARE_DYNAMIC(CBCGPVisualDataObject)
 	friend class CBCGPBaseVisualObject;
@@ -68,9 +83,6 @@ public:
 	CBCGPVisualDataObject()
 	{
 		m_dblValue = 0.;
-		m_dblAnimatedValue = 0.;
-		m_dblAnimationStep = 0.;
-		m_nAnimTimerID = 0;
 		m_pParentVisual = NULL;
 	}
 
@@ -98,9 +110,6 @@ public:
 	virtual void CopyFrom(const CBCGPVisualDataObject & src)
 	{
 		m_dblValue = src.m_dblValue;
-		m_dblAnimatedValue = src.m_dblAnimatedValue;
-		m_dblAnimationStep = src.m_dblAnimationStep;
-		m_nAnimTimerID = src.m_nAnimTimerID;
 		m_pParentVisual = src.m_pParentVisual;
 	}
 
@@ -120,53 +129,17 @@ public:
 		m_dblValue = dblValue;
 	}
 
-	BOOL IsAnimated() const
-	{
-		return m_nAnimTimerID != 0;
-	}
-
-	UINT GetAnimationID() const
-	{
-		return m_nAnimTimerID;
-	}
-
-	void SetAnimationID(UINT id)
-	{
-		m_nAnimTimerID = id;
-	}
-
-	double GetAnimatedValue() const
-	{
-		return m_dblAnimatedValue;
-	}
-
-	void SetAnimatedValue(double dblValue)
-	{
-		m_dblAnimatedValue = dblValue;
-	}
-
-	double GetAnimationStep() const
-	{
-		return m_dblAnimationStep;
-	}
-
-	void SetAnimationStep(double dblStep)
-	{
-		m_dblAnimationStep = dblStep;
-	}
-
 protected:
 	void SetParentVisual(CBCGPBaseVisualObject* pParentVisual)
 	{
 		m_pParentVisual = pParentVisual;
 	}
+
+	virtual void OnAnimationValueChanged(double dblOldValue, double dblNewValue);
+	virtual void OnAnimationFinished();
 	
 protected:
 	double					m_dblValue;
-	double					m_dblAnimatedValue;
-	UINT					m_nAnimTimerID;
-	double					m_dblAnimationStep;
-
 	CBCGPBaseVisualObject*	m_pParentVisual;
 };
 
@@ -179,6 +152,7 @@ class BCGCBPRODLLEXPORT CBCGPBaseVisualObject : public CBCGPBaseAccessibleObject
 
 	friend class CBCGPVisualContainer;
 	friend class CBCGPBaseVisualCtrl;
+	friend class CBCGPVisualDataObject;
 
 public:
 	CBCGPBaseVisualObject(CBCGPVisualContainer* pContainer = NULL);
@@ -261,6 +235,11 @@ public:
 		}
 	}
 
+	BOOL IsEnabled() const
+	{
+		return m_bIsEnabled;
+	}
+
 	// Data attributes:
 	int GetDataCount() const
 	{
@@ -279,6 +258,16 @@ public:
 
 	virtual BOOL SetValue(double dblVal, int nIndex = 0, UINT uiAnimationTime = 100 /* Ms, 0 - no animation */, BOOL bRedraw = FALSE);
 	double GetValue(int nIndex = 0) const;
+
+	void EnableRedraw(BOOL enable = TRUE)
+	{
+		m_bIsRedrawEnabled = enable;
+	}
+
+	BOOL IsRedrawEnabled() const
+	{
+		return m_bIsRedrawEnabled;
+	}
 
 	virtual void SetDirty(BOOL bSet = TRUE, BOOL bRedraw = FALSE)
 	{
@@ -412,6 +401,7 @@ public:
 	virtual BOOL OnSetMouseCursor(const CBCGPPoint& pt);
 	virtual void OnCancelMode()											{}
 	virtual BOOL OnGetToolTip(const CBCGPPoint& /*pt*/, CString& /*strToolTip*/, CString& /*strDescr*/)	{	return FALSE;	}
+	virtual COLORREF GetInfoTipColor(const CBCGPPoint& /*pt*/, int /*nColor*/) { return (COLORREF)-1; }
 
 	virtual BOOL GetGestureConfig(CBCGPGestureConfig& /*gestureConfig*/)					{	return FALSE;	}
 
@@ -445,16 +435,29 @@ public:
 		m_ptScrollOffset = ptScrollOffset;
 	}
 
+	const CBCGPPoint& GetScrollOffset() const
+	{
+		return m_ptScrollOffset;
+	}
+
+	virtual void OnAfterCreateWnd() {}
+	virtual void OnBeforeDestroyWnd() {}
+
+	virtual void OnChangeVisualManager() {}
+
+	virtual void OnWndEnabled(BOOL bEnable);
+
+	virtual BOOL IsSnapTpGridAvailable() const
+	{
+		return TRUE;
+	}
+
 protected:
 	int AddData(CBCGPVisualDataObject* pObject);
 	void RemoveAllData();
 
-	static VOID CALLBACK AnimTimerProc (HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
-
-	void StopAnimation(UINT idEvent, BOOL bRedraw);
-	virtual BOOL OnAnimation(UINT idEvent);
-
-	CBCGPVisualDataObject* GetAnimated(UINT uiID) const;
+	virtual void OnAnimation(CBCGPVisualDataObject* /*pDataObject*/) {}
+	virtual void OnAnimationFinished(CBCGPVisualDataObject* /*pDataObject*/) {}
 
 	virtual double GetAnimationRange(int /*nIndex*/)
 	{
@@ -465,6 +468,9 @@ protected:
 
 	CBCGPRect MakeTrackMarker(double x, double y) const;
 	CBCGPRect MakeTrackMarker(const CBCGPPoint& pt) const;
+
+	virtual void OnRectChanged(const CBCGPRect& /*rectOld*/) {}
+	virtual void OnAddToContainer(CBCGPVisualContainer* /*pContainer*/) {}
 
 // MSAA support:
 public:
@@ -496,11 +502,13 @@ protected:
 	CBCGPRect				m_rectTrack;
 	CWnd*					m_pWndOwner;
 	BOOL					m_bIsInteractiveMode;
+	BOOL					m_bIsEnabled;
 
 	CBCGPVisualContainer*	m_pParentContainer;
 	BOOL					m_bIsAutoDestroy;
 
 	BOOL					m_bIsDirty;
+	BOOL					m_bIsRedrawEnabled;
 	BOOL					m_bCacheImage;
 	BOOL					m_bIsSelected;
 	UINT					m_uiEditFlags;
@@ -516,9 +524,6 @@ protected:
 
 	CArray<CBCGPVisualDataObject*, CBCGPVisualDataObject*>	m_arData;
 	CMap<UINT, UINT, CBCGPRect, const CBCGPRect&>			m_mapTrackRects;
-
-	static CMap<UINT,UINT,CBCGPBaseVisualObject*,CBCGPBaseVisualObject*> m_mapAnimations;
-	static CCriticalSection g_cs;			// For multi-thread applications
 
 #if _MSC_VER < 1300
 	IAccessible*			m_pStdObject;
@@ -556,10 +561,12 @@ protected:
 
 
 /////////////////////////////////////////////////////////////////////////////
-// CBCGPVisualScrollBar
+// CBCGPVisualScrollBarColorTheme
 
 class BCGCBPRODLLEXPORT CBCGPVisualScrollBarColorTheme
 {
+	friend class CBCGPVisualScrollBar;
+
 public:
 	CBCGPVisualScrollBarColorTheme(const CBCGPColor& color = CBCGPColor());
 
@@ -568,27 +575,76 @@ public:
 		CopyFrom(src);
 		return *this;
 	}
+
+	virtual ~CBCGPVisualScrollBarColorTheme()
+	{
+	}
 	
 	virtual void CopyFrom(const CBCGPVisualScrollBarColorTheme & src)
 	{
 		m_brFace = src.m_brFace;
 		m_brBorder = src.m_brBorder;
 		m_brButton = src.m_brButton;
+		m_brButtonPressed = src.m_brButtonPressed;
+
+		if (m_brButtonPressed.IsEmpty() && !m_brButton.IsEmpty())
+		{
+			m_brButtonPressed = m_brButton;
+
+			if (m_brButton.GetColor().IsDark())
+			{
+				m_brButtonPressed.MakeLighter();
+			}
+			else
+			{
+				m_brButtonPressed.MakeDarker();
+			}
+		}
+
+		CleanUp3dColors();
 	}
 
 	CBCGPBrush	m_brFace;
 	CBCGPBrush	m_brBorder;
 	CBCGPBrush	m_brButton;
+	CBCGPBrush	m_brButtonPressed;
+
+protected:
+	void CleanUp3dColors()
+	{
+		m_brFace3D.Empty();
+		m_brButton3D.Empty();
+		m_brButtonPressed3D.Empty();
+	}
+
+	CBCGPBrush	m_brFace3D;
+	CBCGPBrush	m_brButton3D;
+	CBCGPBrush	m_brButtonPressed3D;
 };
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPVisualScrollBar
 
 class BCGCBPRODLLEXPORT CBCGPVisualScrollBar : public CObject
 {
 // Construction
 public:
 	CBCGPVisualScrollBar();
+	virtual ~CBCGPVisualScrollBar();
 
 // Attributes
 public:
+	enum BCGP_VISUAL_SCROLLBAR_STYLE
+	{
+		BCGP_VISUAL_SCROLLBAR_STYLE_FIRST		= 0,
+		BCGP_VISUAL_SCROLLBAR_FLAT				= BCGP_VISUAL_SCROLLBAR_STYLE_FIRST,
+		BCGP_VISUAL_SCROLLBAR_FLAT_ROUNDED		= 1,
+		BCGP_VISUAL_SCROLLBAR_3D				= 2,
+		BCGP_VISUAL_SCROLLBAR_3D_ROUNDED		= 3,
+		BCGP_VISUAL_SCROLLBAR_VISUAL_MANAGER	= 4,
+		BCGP_VISUAL_SCROLLBAR_STYLE_LAST		= BCGP_VISUAL_SCROLLBAR_VISUAL_MANAGER
+	};
+
 	void SetParentVisualObject(CBCGPBaseVisualObject* pOwner);
 	void SetParentVisualContainer(CBCGPVisualContainer* pOwnerContainer);
 
@@ -616,6 +672,9 @@ public:
 	void SetColorTheme(CBCGPVisualScrollBarColorTheme& theme) { m_ColorTheme = theme; }
 	const CBCGPVisualScrollBarColorTheme& GetColorTheme() const { return m_ColorTheme; }
 
+	void SetStyle(BCGP_VISUAL_SCROLLBAR_STYLE style);
+	BCGP_VISUAL_SCROLLBAR_STYLE GetStyle() const { return m_Style; }
+
 // Overrides
 public:
 	virtual void DoDraw(CBCGPGraphicsManager* pGM);
@@ -626,8 +685,14 @@ public:
 
 // Operations:
 public:
+	void Redraw();
 	void Reset();
 	void ReposThumb();
+
+	BOOL IsInAction() const
+	{
+		return m_bIsDraggingThumb || m_bPrevIsClicked || m_bNextIsClicked;
+	}
 
 protected:
 	BOOL					m_bIsHorizontal;
@@ -640,10 +705,14 @@ protected:
 	CBCGPRect				m_rectNext;
 	CBCGPPoint				m_ptDragThumbLast;
 	BOOL					m_bIsDraggingThumb;
+	BOOL					m_bPrevIsClicked;
+	BOOL					m_bNextIsClicked;
 	double					m_dblTotal;
 	double					m_dblOffset;
 	double					m_dblStep;
+	HBITMAP					m_hBitmap;
 	
+	BCGP_VISUAL_SCROLLBAR_STYLE		m_Style;
 	CBCGPVisualScrollBarColorTheme	m_ColorTheme;
 };
 
@@ -655,10 +724,23 @@ class CBCGPVisualDataObject;
 class BCGCBPRODLLEXPORT CBCGPVisualContainer : public CBCGPBaseAccessibleObject  
 {
 	friend class CBCGPBaseVisualCtrl;
+	friend class CBCGPWndHostVisualObject;
+	friend class CBCGPVisualContainerCtrl;
+	friend class CBCGPVisualCollector;
 
 	DECLARE_DYNCREATE(CBCGPVisualContainer)
 
 public:
+	enum BCGP_VISUAL_CONTAINER_GRID_STYLE
+	{
+		BCGP_VISUAL_CONTAINER_GRID_STYLE_FIRST		= -1,
+		BCGP_VISUAL_CONTAINER_GRID_STYLE_CURRENT	= BCGP_VISUAL_CONTAINER_GRID_STYLE_FIRST,
+		BCGP_VISUAL_CONTAINER_GRID_LINES			= 0,
+		BCGP_VISUAL_CONTAINER_GRID_DOTS				= 1,
+		BCGP_VISUAL_CONTAINER_GRID_STYLE_LAST		= BCGP_VISUAL_CONTAINER_GRID_DOTS
+	};
+
+	
 // Construction
 	CBCGPVisualContainer(CWnd* pWndOwner = NULL);
 	virtual ~CBCGPVisualContainer();
@@ -700,12 +782,30 @@ public:
 		return m_bCacheImage;
 	}
 
-	void EnableScrollBars(BOOL bEnable = TRUE, CBCGPVisualScrollBarColorTheme* pColorTheme = NULL);
+	void EnableScrollBars(BOOL bEnable = TRUE, CBCGPVisualScrollBarColorTheme* pColorTheme = NULL, CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE style = CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_FLAT);
 	BOOL HasScrollBars() const { return m_bScrollBars; }
+	const CBCGPPoint& GetScrollOffset() const
+	{
+		return m_ptScrollOffset;
+	}
 
 	void SetOutlineBrush(const CBCGPBrush& br);
 	void SetFillBrush(const CBCGPBrush& br);
-	void SetGridBrush(const CBCGPBrush& br);
+	
+	void SetGridBrush(const CBCGPBrush& br, BCGP_VISUAL_CONTAINER_GRID_STYLE style = BCGP_VISUAL_CONTAINER_GRID_STYLE_CURRENT);
+
+	void SetGridSize(const CBCGPSize& size);
+	void SetGridStyle(BCGP_VISUAL_CONTAINER_GRID_STYLE style);
+
+	const CBCGPSize& GetGridSize() const
+	{
+		return m_sizeGrid;
+	}
+
+	BCGP_VISUAL_CONTAINER_GRID_STYLE GetGridStyle() const
+	{
+		return m_styleGrid;
+	}
 
 	const CBCGPBrush& GetOutlineBrush() const
 	{
@@ -717,9 +817,14 @@ public:
 		return m_brFill;
 	}
 
-	const CBCGPBrush& GetGridBrush() const
+	const CBCGPBrush& GetGridBrush(BCGP_VISUAL_CONTAINER_GRID_STYLE style = BCGP_VISUAL_CONTAINER_GRID_STYLE_CURRENT) const
 	{
-		return m_brGrid;
+		if (style == BCGP_VISUAL_CONTAINER_GRID_STYLE_CURRENT)
+		{
+			style = m_styleGrid;
+		}
+
+		return (style == BCGP_VISUAL_CONTAINER_GRID_LINES) ? m_brGrid : m_brGridDots;
 	}
 
 	void SetDrawDynamicObjectsOnTop(BOOL bSet = TRUE);
@@ -733,6 +838,7 @@ public:
 	{
 		return m_sizeScaleRatio;
 	}
+
 	double GetScaleRatioMid() const
 	{
 		if (m_sizeScaleRatio.cx == m_sizeScaleRatio.cy)
@@ -744,6 +850,7 @@ public:
 	}
 
 	void SetScaleRatio(const CBCGPSize& sizeScaleRatio);
+	void EnableScalingByMouseWheel(BOOL bEnable = TRUE, double dblMinScaleRatio = 0.1, double dblMaxScaleRatio = 4.0);
 
 	UINT GetClickAndHoldID() const;
 	CBCGPRect GetClickAndHoldRect();
@@ -755,6 +862,9 @@ public:
 public:
 	virtual void OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip);
 	virtual void Redraw();
+	virtual void RedrawRect(const CBCGPRect& rect);
+	
+	virtual void OnChangeVisualManager();
 
 	virtual void OnFillBackground(CBCGPGraphicsManager* pGM);
 	virtual void OnDrawBorder(CBCGPGraphicsManager* pGM);
@@ -769,6 +879,7 @@ public:
 	virtual BOOL OnMouseWheel(const CBCGPPoint& pt, short zDelta);
 	virtual void OnCancelMode();
 	virtual BOOL OnGetToolTip(const CBCGPPoint& pt, CString& strToolTip, CString& strDescr);
+	virtual COLORREF GetInfoTipColor(const CBCGPPoint& pt, int nColor);
 	virtual BOOL OnKeyboardDown(UINT nChar, UINT nRepCnt, UINT nFlags);
 	virtual BOOL OnKeyboardUp(UINT nChar, UINT nRepCnt, UINT nFlags);
 
@@ -785,7 +896,30 @@ public:
 	virtual void OnClickAndHoldEvent(UINT nID, const CBCGPPoint& point);
 	virtual void OnScroll(CBCGPVisualScrollBar* pScrollBar, double dblDelta);
 
-	// MSAA support:	
+	virtual void OnCalcBorderSize(CBCGPRect& rectNCArea);
+	virtual void OnNcDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rect);
+	virtual BOOL OnNcMouseDown(int nButton, const CBCGPPoint& pt);
+	virtual void OnNcMouseUp(int nButton, const CBCGPPoint& pt);
+
+	virtual void OnAfterCreateWnd() {}
+	virtual void OnBeforeDestroyWnd() {}
+	virtual void OnWndEnabled(BOOL bEnable);
+	virtual void OnGridSelChanged(UINT /*nID*/) {}
+
+	virtual BOOL OnCreateCustomControl(CBCGPWndHostVisualObject* pVisualObject, CWnd* pWnd, const CRect& rect, int nID, CWnd* pParent)
+	{
+		UNUSED_ALWAYS(pVisualObject);
+		UNUSED_ALWAYS(pWnd);
+		UNUSED_ALWAYS(rect);
+		UNUSED_ALWAYS(nID);
+		UNUSED_ALWAYS(pParent);
+
+		// This method should be implemented in CBCGPVisualContainer-derived class.
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+// MSAA support:	
 public:
 	CBCGPBaseVisualObject* GetAccChild(int nIndex);
 	long GetAccChildIndex(CBCGPBaseVisualObject* pObject);
@@ -816,6 +950,7 @@ public:
 	BOOL Remove(int nIndex);
 	BOOL Remove(CBCGPBaseVisualObject* pObject);
 	virtual void RemoveAll();
+	void RemoveSelected();
 
 	int GetCount() const;
 	CBCGPBaseVisualObject* GetAt(int nIndex);
@@ -893,9 +1028,10 @@ public:
 	virtual void DrawSelectedArea(CBCGPGraphicsManager* pGM, const CBCGPRect& rectSel);
 
 	virtual void FireSelectionChangedEvent();
+	virtual void FireObjectMoveEvent(BOOL bAfter, BOOL bHasMoved);
 
-	void AdjustLayout();
-	void AdjustScrollBars();
+	virtual void AdjustLayout();
+	virtual void AdjustScrollBars(BOOL bRedraw = TRUE);
 
 	// Serialization:
 #ifndef _BCGPCHART_STANDALONE
@@ -914,13 +1050,15 @@ public:
 	BOOL CopyToClipboard(CBCGPGraphicsManager* pGM, BOOL bFullImage = FALSE);
 	BOOL ExportToFile(const CString& strFilePath, CBCGPGraphicsManager* pGM, BOOL bFullImage = FALSE);
 
+	BOOL SnapToGrid(CBCGPRect& rect);
+
 // Implementation:
 protected:
 	virtual void MoveTrackingRects(CBCGPPoint pt);
 	virtual void OnRemove (CBCGPBaseVisualObject* pObject);
 	virtual void OnAdd (CBCGPBaseVisualObject* pObject);
 	virtual BOOL OnCopyObject(CBCGPBaseVisualObject* pObject, const CBCGPRect& rectNew);
-	
+
 #if _MSC_VER < 1300
 	DECLARE_OLECREATE(CBCGPVisualContainer)
 #endif
@@ -950,6 +1088,7 @@ protected:
 
 	CBCGPPoint				m_ptDragStart;
 	CBCGPPoint				m_ptDragFinish;
+	CBCGPPoint				m_ptClick;
 	CBCGPSize				m_szDrag;
 
 	CBCGPBaseVisualObject*	m_pNewObject;
@@ -958,8 +1097,11 @@ protected:
 	CBCGPBrush				m_brSelFill;
 	CBCGPBrush				m_brSelOutline;
 	CBCGPBrush				m_brGrid;
+	CBCGPBrush				m_brGridDots;
 
 	CBCGPSize				m_sizeGrid;
+	BCGP_VISUAL_CONTAINER_GRID_STYLE
+							m_styleGrid;
 
 	UINT					m_nDragMode;
 
@@ -969,6 +1111,7 @@ protected:
 	CBCGPVisualScrollBar	m_ScrollBarHorz;
 	CBCGPRect				m_rectBottomRight;
 	BOOL					m_bDrawScrollBars;
+	BOOL					m_bNCScrollBars;
 
 	CBCGPPoint				m_ptScrollOffset;
 	CBCGPSize				m_sizeScrollTotal;
@@ -976,13 +1119,199 @@ protected:
 	UINT					m_nClickAndHoldID;
 	CBCGPRect				m_rectClickAndHold;
 
+	BOOL					m_bScaleByMouseWheel;
+	double					m_dblMinScaleRatio;
+	double					m_dblMaxScaleRatio;
+
 #if _MSC_VER < 1300
 	IAccessible*			m_pStdObject;
 	virtual void OnSetIAccessible(IAccessible* pIAccessible) { m_pStdObject = pIAccessible; }
 #endif
 };
 
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPWndHostColors
+
+struct BCGCBPRODLLEXPORT CBCGPWndHostColors
+{
+	CBCGPWndHostColors()
+	{
+		m_clrBackground = (COLORREF)-1;
+		m_clrText = (COLORREF)-1;
+		m_clrBorder = (COLORREF)-1;
+		m_clrHighlighted = (COLORREF)-1;
+		m_clrHighlightedText = (COLORREF)-1;
+	}
+	
+	CBCGPWndHostColors(const CBCGPWndHostColors& src)
+	{
+		CopyFrom(src);
+	}
+	
+	void CopyFrom(const CBCGPWndHostColors& src)
+	{
+		m_clrBackground = src.m_clrBackground;
+		m_clrText = src.m_clrText;
+		m_clrBorder = src.m_clrBorder;
+		m_clrHighlighted = src.m_clrHighlighted;
+		m_clrHighlightedText = src.m_clrHighlighted;
+	}
+	
+	COLORREF	m_clrBackground;
+	COLORREF	m_clrText;
+	COLORREF	m_clrBorder;
+	COLORREF	m_clrHighlighted;
+	COLORREF	m_clrHighlightedText;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPWndHostVisualObject
+
+class BCGCBPRODLLEXPORT CBCGPWndHostVisualObject  : public CBCGPBaseVisualObject
+{
+	DECLARE_DYNAMIC(CBCGPWndHostVisualObject)
+		
+// Construction
+public:
+	CBCGPWndHostVisualObject(CBCGPVisualContainer* pContainer = NULL, CRuntimeClass* pRTI = NULL);
+	virtual ~CBCGPWndHostVisualObject();
+
+// Attributes:
+public:
+	CWnd* GetWnd();
+	
+	const CBCGPTextFormat& GetTextFormat() const
+	{
+		return m_textFormat;
+	}
+	
+	void SetTextFormat(const CBCGPTextFormat& textFormat, BOOL bRedraw = TRUE);
+
+	void SetColorTheme(const CBCGPWndHostColors& colors);
+	const CBCGPWndHostColors& GetColorTheme() const { return m_Colors; }
+
+// Overrides:
+public:
+	virtual CWnd* CreateWnd(const CRect& rect, UINT nID, CWnd* pParent);
+
+	virtual void SetDirty(BOOL bSet = TRUE, BOOL bRedraw = FALSE)
+	{
+		BOOL bChanged = m_bIsDirty != bSet;
+
+		if (bChanged)
+		{
+			m_ImageCache.Destroy();
+		}
+
+		CBCGPBaseVisualObject::SetDirty(bSet, bRedraw);
+
+		if (bChanged)
+		{
+			ReposWnd();
+		}
+	}
+	
+	virtual void OnRectChanged(const CBCGPRect& rectOld) 
+	{
+		CBCGPBaseVisualObject::OnRectChanged(rectOld);
+		ReposWnd();
+	}
+
+	virtual void OnAddToContainer(CBCGPVisualContainer* pContainer)
+	{
+		CBCGPBaseVisualObject::OnAddToContainer(pContainer);
+		ReposWnd();
+	}
+
+	virtual void SetScrollOffset(const CBCGPPoint& ptScrollOffset)
+	{
+		CBCGPBaseVisualObject::SetScrollOffset(ptScrollOffset);
+		ReposWnd();
+	}
+
+	virtual void ReposWnd();
+	virtual void OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip, DWORD dwFlags = BCGP_DRAW_STATIC | BCGP_DRAW_DYNAMIC);
+	
+protected:
+	CBCGPImage			m_ImageCache;
+	CBCGPTextFormat		m_textFormat;
+	CWnd*				m_pWnd;
+	CFont				m_Font;
+	CRuntimeClass*		m_pRTI;
+	CBCGPWndHostColors	m_Colors;
+};
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPGridVisualObject
+
+class CBCGPGridColors;
+class CBCGPGridCtrl;
+
+class BCGCBPRODLLEXPORT CBCGPGridVisualObject  : public CBCGPWndHostVisualObject
+{
+	DECLARE_DYNCREATE(CBCGPGridVisualObject)
+
+// Construction
+public:
+	CBCGPGridVisualObject(CBCGPVisualContainer* pContainer = NULL, CRuntimeClass* pRTI = NULL);
+	virtual ~CBCGPGridVisualObject();
+
+// Attributes:
+public:
+	CBCGPGridCtrl* GetGridCtrl();
+	
+	void SetColorTheme(const CBCGPGridColors& colors);
+	const CBCGPGridColors& GetColorTheme() const { return *m_pColorTheme; }
+
+// Overrides:
+protected:
+	virtual CWnd* CreateWnd(const CRect& rect, UINT nID, CWnd* pParent);
+	virtual void OnScaleRatioChanged(const CBCGPSize& sizeScaleRatioOld);
+
+protected:
+	CBCGPGridColors* m_pColorTheme;
+};
+
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPEditVisualObject
+
+class BCGCBPRODLLEXPORT CBCGPEditVisualObject  : public CBCGPWndHostVisualObject
+{
+	DECLARE_DYNCREATE(CBCGPEditVisualObject)
+
+// Construction
+public:
+	CBCGPEditVisualObject(CBCGPVisualContainer* pContainer = NULL, CRuntimeClass* pRTI = NULL);
+	virtual ~CBCGPEditVisualObject();
+
+// Attributes:
+public:
+	CBCGPEdit* GetEditCtrl();
+
+	void SetInitialValue(const CString& strVal);
+	const CString& GetInitialValue() const { return m_strInitialValue; }
+
+	void SetColorTheme(const CBCGPEditColors& colors);
+	const CBCGPEditColors& GetColorTheme() const { return m_ColorTheme; }
+
+// Overrides:
+protected:
+	virtual CWnd* CreateWnd(const CRect& rect, UINT nID, CWnd* pParent);
+	virtual void ReposWnd();
+
+protected:
+	CString			m_strInitialValue;
+	CBCGPEditColors	m_ColorTheme;
+};
+
 BCGCBPRODLLEXPORT extern UINT BCGM_POSTREDRAW;
 BCGCBPRODLLEXPORT extern UINT BCGM_CONTAINER_SELCHANGED;
+BCGCBPRODLLEXPORT extern UINT BCGM_CONTAINER_SCALE_CHANGED;
+BCGCBPRODLLEXPORT extern UINT BCGM_CONTAINER_OBJECT_MOVED;
+BCGCBPRODLLEXPORT extern UINT BCGM_CONTAINER_BEFORE_OBJECT_MOVE;
 
 #endif // !defined(AFX_BCGPVISUALCONTAINER_H__F3037CD5_27F5_47A1_9D7E_189F956D2CB9__INCLUDED_)

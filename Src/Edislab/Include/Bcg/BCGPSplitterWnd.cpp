@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -31,6 +31,7 @@ IMPLEMENT_DYNAMIC(CBCGPSplitterWnd, CSplitterWnd)
 
 CBCGPSplitterWnd::CBCGPSplitterWnd()
 {
+	m_bCyclicPaneActivation = TRUE;
 }
 
 CBCGPSplitterWnd::~CBCGPSplitterWnd()
@@ -97,5 +98,63 @@ void CBCGPSplitterWnd::RecalcLayout()
 	}
 
 	CSplitterWnd::RecalcLayout();
+}
+
+BOOL CBCGPSplitterWnd::CanActivateNext(BOOL bPrev)
+{
+	ASSERT_VALID(this);
+
+	if (!m_bCyclicPaneActivation)
+	{
+		int row = 0;
+		int col = 0;
+
+		if (GetActivePane(&row, &col) == NULL)
+		{
+			TRACE0("Warning: Cannot go to next pane - there is no current view.\n");
+			return FALSE;
+		}
+
+		if (bPrev)
+		{
+			if (row == 0 && col == 0)
+			{
+				return FALSE;
+			}
+		}
+		else
+		{
+			if (col == m_nCols - 1 && row == m_nRows - 1)
+			{
+				return FALSE;
+			}
+		}
+	}
+
+	return CSplitterWnd::CanActivateNext(bPrev);
+}
+
+BOOL CBCGPSplitterWnd::ActivateFirstPane()
+{
+	if (GetActivePane() == NULL)
+	{
+		TRACE0("Warning: Can't go to next pane - there is no current pane.\n");
+		return FALSE;
+	}
+
+	SetActivePane(0, 0);
+	return TRUE;
+}
+
+BOOL CBCGPSplitterWnd::ActivateLastPane()
+{
+	if (GetActivePane() == NULL)
+	{
+		TRACE0("Warning: Can't go to next pane - there is no current pane.\n");
+		return FALSE;
+	}
+
+	SetActivePane(m_nRows - 1, m_nCols - 1);
+	return TRUE;
 }
 

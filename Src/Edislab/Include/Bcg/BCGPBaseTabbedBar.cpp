@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -146,8 +146,8 @@ BOOL CBCGPBaseTabbedBar::AddTab (CWnd* pNewBar, BOOL bVisible, BOOL bSetActive,
 				DYNAMIC_DOWNCAST (CBCGPDockingControlBar, pWnd);
 			if (pDockingBar != NULL)
 			{
-				pDockingBar->m_recentDockInfo.SetInfo (bSetInfoForSlider, 
-														pTabbedControlBar->m_recentDockInfo);
+				pDockingBar->m_recentDockInfo.SetInfo (bSetInfoForSlider, pTabbedControlBar->m_recentDockInfo);
+				pDockingBar->UpdateTabLabel(FALSE);
 			}
 		}
 
@@ -181,7 +181,23 @@ BOOL CBCGPBaseTabbedBar::AddTab (CWnd* pNewBar, BOOL bVisible, BOOL bSetActive,
 		CString strText; 
 		pNewBar->GetWindowText (strText);
 
-		m_pTabWnd->AddTab (pNewBar, strText, bSetActive, bDetachable);
+		BOOL bHideInactiveTab = m_pTabWnd->IsHideInactiveWindow();
+		if (bSetActive && bVisible)
+		{
+			m_pTabWnd->HideInactiveWindow(FALSE);
+		}
+
+		m_pTabWnd->AddTab (pNewBar, strText, /*bSetActive*/(UINT)-1, bDetachable);
+
+		if (pNewBar->IsKindOf (RUNTIME_CLASS (CBCGPDockingControlBar)))
+		{
+			((CBCGPDockingControlBar*) pNewBar)->UpdateTabLabel(FALSE);
+		}
+
+		if (bSetActive && bVisible)
+		{
+			m_pTabWnd->HideInactiveWindow(bHideInactiveTab);
+		}
 
 		int iTab = m_pTabWnd->GetTabsNum () - 1;
 		m_pTabWnd->SetTabHicon (iTab, pNewBar->GetIcon (FALSE));
@@ -322,7 +338,9 @@ BOOL CBCGPBaseTabbedBar::ShowTab (CWnd* pBar, BOOL bShow, BOOL bDelay, BOOL bAct
 		m_pTabWnd->ShowWindow (SW_SHOW);
 	}
 
+    m_bDisableOnShow = TRUE;
 	CBCGPDockingControlBar::ShowControlBar (bNowVisible, bDelay, bActivate);
+    m_bDisableOnShow = FALSE;
 	return bResult;
 }
 //*******************************************************************************
@@ -385,13 +403,26 @@ BOOL CBCGPBaseTabbedBar::FloatTab (CWnd* pBar, int nTabID,
 
 	if (pBar->IsKindOf (RUNTIME_CLASS (CBCGPControlBar)))
 	{
-		CBCGPControlBar* pControlBar = 
-			DYNAMIC_DOWNCAST (CBCGPControlBar, pBar);
+		CBCGPControlBar* pControlBar = DYNAMIC_DOWNCAST (CBCGPControlBar, pBar);
 		ASSERT_VALID (pControlBar);
-		pControlBar->FloatControlBar (pControlBar->m_recentDockInfo.m_rectRecentFloatingRect, 
-									  dockMethod, !bHide);
+
+		CRect rectFloat = pControlBar->m_recentDockInfo.m_rectRecentFloatingRect;
+
+		if (dockMethod == BCGP_DM_MOUSE && CBCGPDockManager::m_bKeepBarSizeOnFloating)
+		{
+			GetWindowRect(rectFloat);
+
+			CBCGPDockingControlBar* pBar = DYNAMIC_DOWNCAST (CBCGPDockingControlBar, pControlBar);
+			if (pBar != NULL)
+			{
+				rectFloat.InflateRect(pBar->m_nBorderSize + 1, pBar->m_nBorderSize + 1);
+			}
+		}
+
+		pControlBar->FloatControlBar (rectFloat, dockMethod, !bHide);
 		return TRUE;
 	}
+
 	return FALSE;
 }
 //**************************************************************************************
@@ -613,15 +644,15 @@ CBCGPAutoHideToolBar* CBCGPBaseTabbedBar::SetAutoHideMode (BOOL bMode, DWORD dwA
 	int nNonDetachedCount = 0;
 	for (int nNextTab = nTabsNum - 1; nNextTab >= 0; nNextTab--)
 	{
-		CBCGPDockingControlBar* pBar = DYNAMIC_DOWNCAST (CBCGPDockingControlBar, 
-													m_pTabWnd->GetTabWnd (nNextTab));
-		ASSERT_VALID (pBar);
+		CBCGPDockingControlBar* pBar = DYNAMIC_DOWNCAST (CBCGPDockingControlBar, m_pTabWnd->GetTabWnd (nNextTab));
 
 		BOOL bIsVisible = m_pTabWnd->IsTabVisible (nNextTab);
 		BOOL bDetachable = m_pTabWnd->IsTabDetachable (nNextTab);
 	
 		if (pBar != NULL && bIsVisible && bDetachable)
 		{
+			ASSERT_VALID (pBar);
+
 			m_pTabWnd->RemoveTab (nNextTab, FALSE);
 			pBar->EnableGripper (TRUE);
 
@@ -741,9 +772,14 @@ LRESULT CBCGPBaseTabbedBar::OnChangeActiveTab (WPARAM wp, LPARAM)
 	int iTabNum = (int) wp;
 
 	CString strLabel;
-	if (m_pTabWnd != NULL && m_pTabWnd->GetTabLabel (iTabNum, strLabel) &&
-		m_bSetCaptionTextToTabName)
+	if (m_pTabWnd != NULL && m_pTabWnd->GetTabLabel(iTabNum, strLabel) && m_bSetCaptionTextToTabName)
 	{
+		CBCGPDockingControlBar* pPane = DYNAMIC_DOWNCAST(CBCGPDockingControlBar, m_pTabWnd->GetTabWnd(iTabNum));
+		if (pPane != NULL && !pPane->GetTabCustomLabel().IsEmpty())
+		{
+			pPane->GetWindowText(strLabel);
+		}
+
 		SetWindowText (strLabel);
 	}
 
@@ -810,15 +846,15 @@ BOOL CBCGPBaseTabbedBar::Dock (CBCGPBaseControlBar* pTargetBar, LPCRECT lpRect,
 	int nNonDetachedCount = 0;
 	for (int nNextTab = nTabsNum - 1; nNextTab >= 0; nNextTab--)
 	{
-		CBCGPDockingControlBar* pBar = DYNAMIC_DOWNCAST (CBCGPDockingControlBar, 
-													m_pTabWnd->GetTabWnd (nNextTab));
-		ASSERT_VALID (pBar);
+		CBCGPDockingControlBar* pBar = DYNAMIC_DOWNCAST (CBCGPDockingControlBar, m_pTabWnd->GetTabWnd (nNextTab));
 
 		BOOL bIsVisible = m_pTabWnd->IsTabVisible (nNextTab);
 		BOOL bDetachable = m_pTabWnd->IsTabDetachable (nNextTab);
 	
 		if (pBar != NULL && bIsVisible && bDetachable)
 		{
+			ASSERT_VALID (pBar);
+
 			m_pTabWnd->RemoveTab (nNextTab, FALSE);
 			pBar->EnableGripper (TRUE);
 

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -57,7 +57,7 @@ CBCGPAppBarWnd::CBCGPAppBarWnd()
 	m_abs.m_rcFloat.SetRectEmpty ();
 
 	m_bDisableAnimation = FALSE;
-	m_nCaptionHeight = globalData.GetTextHeight () + 4;
+	m_nCaptionHeight = globalData.GetTextHeight () + globalUtils.ScaleByDPI(4);
 	m_hEmbeddedBar	 = NULL;
 	m_dwFlags = ABF_ALLOWANYWHERE | ABF_ALLOWAUTOHIDE | ABF_ALLOWALWAYSONTOP;
 
@@ -97,6 +97,8 @@ BEGIN_MESSAGE_MAP(CBCGPAppBarWnd, CWnd)
 	ON_MESSAGE(WM_IDLEUPDATECMDUI, OnIdleUpdateCmdUI)
 	ON_MESSAGE (WM_ENTERSIZEMOVE, OnEnterSizeMove)
 	ON_MESSAGE (WM_EXITSIZEMOVE, OnExitSizeMove)
+	ON_MESSAGE(WM_THEMECHANGED, OnThemeChanged)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 END_MESSAGE_MAP()
 
 BOOL CBCGPAppBarWnd::Create (LPCTSTR lpszWindowName, CRect rect, CWnd* pParentWnd)
@@ -867,13 +869,11 @@ void CBCGPAppBarWnd::GetScreenRect (CRect &rectScreen) const
 // Retrieves a pointer to the APPBARSTATE structure stored in the window's extra bytes.
 //      hwnd    - Handle of the window to retrieve the pointer from.
 //      Returns a pointer to an APPBARSTATE struct
-#pragma warning (disable : 4312)
+
 CBCGPAppBarWnd::PAPPBARSTATE CBCGPAppBarWnd::GetAppbarState(HWND hwnd)
 {
-	return (PAPPBARSTATE)(PVOID)GetWindowLong(hwnd, 0);
+	return (PAPPBARSTATE)(PVOID)GetWindowLongPtr(hwnd, 0);
 }
-#pragma warning (default : 4312)
-
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPAppBarWnd message handlers
@@ -2031,4 +2031,26 @@ void CBCGPAppBarWnd::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
 	
 	UINT uSide = GetSide ();
 	SetSide (uSide);
+}
+//*****************************************************************************************
+LRESULT CBCGPAppBarWnd::OnThemeChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+	
+	CBCGPVisualManager::GetInstance()->OnUpdateSystemColors();
+	RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+	return lRes;
+}
+//*****************************************************************************************
+LRESULT CBCGPAppBarWnd::OnChangeVisualManager (WPARAM wp, LPARAM lp)
+{
+	m_nCaptionHeight = CBCGPVisualManager::GetInstance()->UseLargeCaptionFontInDockingCaptions() ? globalData.GetCaptionTextHeight() : globalData.GetTextHeight();
+	m_nCaptionHeight += globalUtils.ScaleByDPI(4);
+
+	SetWindowPos (NULL, -1, -1, -1, -1, SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+	SendMessageToDescendants(BCGM_CHANGEVISUALMANAGER, wp, lp, TRUE, FALSE);
+
+	RedrawWindow (NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+	return 0;
 }

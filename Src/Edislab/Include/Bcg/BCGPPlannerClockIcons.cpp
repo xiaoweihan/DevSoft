@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,12 @@
 
 #include "BCGPLocalResource.h"
 
+#ifndef _BCGSUITE_
+#include "Bcgglobals.h"
+#include "BCGPGlobalUtils.h"
+#include "BCGPToolBarImages.h"
+#endif
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
@@ -38,8 +44,9 @@ static char THIS_FILE[] = __FILE__;
 IMPLEMENT_DYNCREATE(CBCGPPlannerClockIcons, CObject)
 
 CBCGPPlannerClockIcons::CBCGPPlannerClockIcons()
-	:	m_szSize       (0, 0)
-	,	m_bInitialized (FALSE)
+	: m_szSize       (0, 0)
+	, m_bInitialized (FALSE)
+	, m_bAutoScale   (TRUE)
 {
 }
 
@@ -147,11 +154,43 @@ BOOL CBCGPPlannerClockIcons::Initialize ()
 
 	if (bmp.GetSafeHandle () != NULL)
 	{
+		COLORREF clrTransparent = RGB(255, 255, 255);
+
+#ifndef _BCGSUITE_
+
+		if (m_bAutoScale && globalData.GetRibbonImageScale() != 1.0)
+		{
+			CBCGPToolBarImages images;
+			images.SetPreMultiplyAutoCheck(TRUE);
+			images.SetMapTo3DColors(FALSE);
+			images.SetTransparentColor(clrTransparent);
+			images.SetImageSize(szSize);
+			images.AddImage((HBITMAP)bmp.GetSafeHandle (), TRUE);
+
+			if (images.GetBitsPerPixel() < 32)
+			{
+				images.ConvertTo32Bits(clrTransparent);
+			}
+
+			globalUtils.ScaleByDPI(images);
+
+			if (images.ExportToImageList(m_ilClockIcons))
+			{
+				szSize = images.GetImageSize();
+			}
+		}
+
+#endif
+
 		m_szSize = szSize;
 
-		m_ilClockIcons.Create (m_szSize.cx, m_szSize.cy, ILC_COLOR | ILC_MASK, 
-			24 * 12, 0);
-		m_ilClockIcons.Add (&bmp, RGB (255, 255, 255));
+		if (m_ilClockIcons.GetSafeHandle() == NULL)
+		{
+			m_ilClockIcons.Create (m_szSize.cx, m_szSize.cy, ILC_COLOR | ILC_MASK, 
+				24 * 12, 0);
+			m_ilClockIcons.Add (&bmp, clrTransparent);
+		}
+		
 		m_bInitialized = TRUE;
 	}
 

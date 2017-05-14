@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -69,6 +69,8 @@ public:
 	{
 		return -2;
 	}
+
+	virtual BOOL IsOutlookBarCaptionTopEdge(CBCGPOutlookWnd* /*pWnd*/) { return FALSE; }
 
 #ifndef BCGP_EXCLUDE_PROP_LIST
 	virtual COLORREF GetPropListGroupColor (CBCGPPropList* pPropList);

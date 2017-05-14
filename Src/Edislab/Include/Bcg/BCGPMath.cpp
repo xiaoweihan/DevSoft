@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -1224,4 +1224,55 @@ double bcg_double_precision(double value, int precision)
     }
 	
     return value + fract;
+}
+
+double bcg_get_tile_size(const CBCGPSize& size, int nTiles)
+{
+	if (nTiles <= 0 || size.cx * size.cy < nTiles)
+	{
+		return 0.0;
+	}
+
+	if (nTiles == 1)
+	{
+		return min(size.cx, size.cy);
+	}
+
+    const double dblAspect = size.cy / size.cx;
+    double dx = sqrt((double)nTiles / dblAspect);
+    double dy = dx * dblAspect;
+
+    double x = max(1.0, floor(dx));
+    double y = max(1.0, floor(dy));
+
+    dx = floor((double)size.cx / x);
+    dy = floor((double)size.cy / y);
+
+    double dblTileSize = min(dx, dy);
+	
+    x = floor(size.cx / dblTileSize);
+    y = floor(size.cy / dblTileSize);
+    
+	if ((x * y) < nTiles)
+    {
+        if (((x + 1.0) * y < nTiles) && (x * (y + 1.0) < nTiles))
+        {
+            dx = floor(size.cx / (x + 1.0));
+            dy = floor(size.cy / (y + 1.0));
+
+            dblTileSize = min(dx, dy);
+        }
+        else
+        {
+            double x1 = ceil((double)nTiles / y);
+            double y1 = ceil((double)nTiles / x);
+
+            dx = min(floor(size.cx / x1), floor(size.cy / y));
+            dy = min(floor(size.cx / x), floor(size.cy / y1));
+
+            dblTileSize = max(dx, dy);
+        }
+    }
+	
+    return dblTileSize;
 }

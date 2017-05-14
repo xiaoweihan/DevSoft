@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,7 @@
 
 #ifndef BCGP_EXCLUDE_GRID_CTRL
 
+#pragma warning (push)
 #pragma warning (disable : 4995)
 
 /////////////////////////////////////////////////////////////////////////////
@@ -106,6 +107,8 @@ protected:
 	DECLARE_MESSAGE_MAP()
 };
 
+#pragma warning (pop)
+
 #endif // BCGP_EXCLUDE_GRID_CTRL
 
 #endif // !_WIN64
@@ -114,7 +117,5 @@ protected:
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
-
-#pragma warning (default : 4995)
 
 #endif // !defined(AFX_BCGPDAOGRIDCTRL_H__64742711_1718_4369_BEF8_5F1BDA411AE1__INCLUDED_)

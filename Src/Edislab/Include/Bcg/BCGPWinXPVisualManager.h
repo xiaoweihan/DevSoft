@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -64,6 +64,9 @@ public:
 	virtual COLORREF OnDrawControlBarCaption (CDC* pDC, CBCGPDockingControlBar* pBar, 
 		BOOL bActive, CRect rectCaption, CRect rectButtons);
 
+	// Caption bar:
+	virtual COLORREF GetCaptionBarTextColor (CBCGPCaptionBar* pBar);
+	virtual void OnDrawCaptionBarBorder (CDC* pDC, CBCGPCaptionBar* pBar, CRect rect, COLORREF clrBarBorder, BOOL bFlatBorder);
 	virtual void OnDrawCaptionButtonIcon (CDC* pDC, 
 											CBCGPCaptionButton* pButton,
 											CBCGPMenuImages::IMAGES_IDS id,
@@ -84,6 +87,12 @@ public:
 	virtual void OnDrawMenuBorder (CDC* pDC, CBCGPPopupMenu* pMenu, CRect rect);
 	virtual void OnDrawMenuResizeBar (CDC* pDC, CRect rect, int nResizeFlags);
 	virtual void OnFillPopupMenuBackground (CDC* pDC, CRect rect);
+	
+	virtual COLORREF GetPopupMenuBackgroundColor() const
+	{
+		return ::GetSysColor(COLOR_MENU);
+	}
+
 	virtual void OnDrawComboDropButton (CDC* pDC, CRect rect,
 										BOOL bDisabled,
 										BOOL bIsDropped,
@@ -156,7 +165,11 @@ public:
 		return globalData.bIsWindowsVista ? 0 : 3;
 	}
 
-	// Outlook bar page buttons:
+	// Outlook bar:
+	virtual BOOL IsOutlookBarCaptionTopEdge(CBCGPOutlookWnd* /*pWnd*/) { return FALSE; }
+	virtual void OnFillOutlookBarCaption (CDC* pDC, CRect rectCaption, COLORREF& clrText);
+	virtual COLORREF OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption);
+
 	virtual void OnFillOutlookPageButton (	CDC* pDC, const CRect& rect,
 										BOOL bIsHighlighted, BOOL bIsPressed,
 										COLORREF& clrText);
@@ -216,11 +229,6 @@ public:
 		return m_bOfficeStyleMenus;
 	}
 
-	virtual BOOL DrawPushButtonWinXP (CDC* pDC, CRect rect, CBCGPButton* pButton, UINT uiState)
-	{	
-		return DrawPushButton (pDC, rect, pButton, uiState);
-	}
-
 	virtual BOOL DrawComboDropButtonWinXP (CDC* pDC, CRect rect,
 										BOOL bDisabled,
 										BOOL bIsDropped,
@@ -258,6 +266,7 @@ public:
 	virtual void OnDrawPopupWindowButtonBorder (CDC* pDC, CRect rectClient, CBCGPPopupWndButton* pButton);
 	virtual BOOL IsDefaultWinXPPopupButton (CBCGPPopupWndButton* pButton) const;
 	virtual COLORREF GetPopupWindowCaptionTextColor(CBCGPPopupWindow* pPopupWnd, BOOL bButton);
+	virtual COLORREF OnDrawPopupWindowCaption (CDC* pDC, CRect rectCaption, CBCGPPopupWindow* pPopupWnd);
 #endif
 
 	// Grid control:
@@ -305,6 +314,17 @@ public:
 	virtual void OnDrawRibbonPaletteButton (
 		CDC* pDC,
 		CBCGPRibbonPaletteIcon* pButton);
+
+	virtual void OnDrawRibbonDefaultPaneButton (
+		CDC* pDC, 
+		CBCGPRibbonButton* pButton);
+
+	virtual void GetRibbonSliderColors (CBCGPRibbonSlider* pSlider, 
+		BOOL bIsHighlighted, 
+		BOOL bIsPressed,
+		BOOL bIsDisabled,
+		COLORREF& clrLine,
+		COLORREF& clrFill);
 #endif
 
 #ifndef BCGP_EXCLUDE_PROP_LIST
@@ -316,6 +336,9 @@ public:
 
 	virtual COLORREF OnFillListBoxItem (CDC* pDC, CBCGPListBox* pListBox, int nItem, CRect rect, BOOL bIsHighlihted, BOOL bIsSelected);
 	virtual COLORREF OnFillComboBoxItem(CDC* pDC, CBCGPComboBox* pComboBox, int nIndex, CRect rect, BOOL bIsHighlihted, BOOL bIsSelected);
+
+	// WinUITiles:
+	virtual void GetWinUITilesColors(CBCGPWinUITilesColors& colors);
 
 protected:
 	BOOL		m_bOfficeStyleMenus;

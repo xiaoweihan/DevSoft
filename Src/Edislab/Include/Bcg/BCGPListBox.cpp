@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,12 @@
 #include "TrackMouse.h"
 #include "BCGPLocalResource.h"
 #include "bcgprores.h"
+#include "BCGPGlobalUtils.h"
+
+#ifndef _BCGSUITE_
+	#include "BCGPMultiDocTemplate.h"
+	#include "BCGPTooltipManager.h"
+#endif
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -38,6 +44,11 @@ public:
 	BOOL		m_bIsPinned;
 	BOOL		m_bIsEnabled;
 	int			m_nImageIndex;
+	HICON		m_hIcon;
+	CString		m_strToolTip;
+	CString		m_strToolTipDescription;
+	COLORREF	m_clrBar;
+	BOOL		m_nCheckEnabled;
 	
 	BCGP_LB_ITEM_DATA()
 		: m_nCheck(BST_UNCHECKED)
@@ -45,21 +56,28 @@ public:
 		, m_bIsPinned(FALSE)
 		, m_bIsEnabled(TRUE)
 		, m_nImageIndex(-1)
+		, m_hIcon(NULL)
+		, m_clrBar((COLORREF)-1)
+		, m_nCheckEnabled(TRUE)
 	{
+	}
+
+	~BCGP_LB_ITEM_DATA()
+	{
+		if (m_hIcon != NULL)
+		{
+			::DestroyIcon(m_hIcon);
+		}
 	}
 };
 
 IMPLEMENT_DYNAMIC(CBCGPListBox, CListBox)
 
-#ifndef _BCGSUITE_
-#define PIN_AREA_WIDTH	(CBCGPVisualManager::GetInstance ()->GetPinSize(TRUE).cx + 10)
-#else
-#define PIN_AREA_WIDTH	(CMenuImages::Size().cx + 10)
-#endif
-
+#define PIN_AREA_WIDTH	(CBCGPVisualManager::GetInstance ()->GetPinSize(TRUE).cx + globalUtils.ScaleByDPI(10))
 #define BCGP_DEFAULT_TABS_STOP	32
 
 UINT BCGM_ON_CLICK_LISTBOX_PIN = ::RegisterWindowMessage (_T("BCGM_ON_CLICK_LISTBOX_PIN"));
+UINT BCGM_ON_CHANGE_BACKSTAGE_PROP_HIGHLIGHTING = ::RegisterWindowMessage (_T("BCGM_ON_CHANGE_BACKSTAGE_PROP_HIGHLIGHTING"));
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPListBox
@@ -69,6 +87,7 @@ CBCGPListBox::CBCGPListBox()
 	m_bVisualManagerStyle = FALSE;
 	m_bOnGlass = FALSE;
 	m_nHighlightedItem = -1;
+	m_bHighlightedWasChanged = FALSE;
 	m_bItemHighlighting = TRUE;
 	m_bTracked = FALSE;
 	m_hImageList = NULL;
@@ -80,17 +99,25 @@ CBCGPListBox::CBCGPListBox()
 	m_bIsCheckHighlighted = FALSE;
 	m_bHasCheckBoxes = FALSE;
 	m_bHasDescriptions = FALSE;
+	m_bHasColorBars = FALSE;
 	m_nDescrRows = 0;
 	m_nClickedItem = -1;
 	m_hFont	= NULL;
 	m_nTextHeight = -1;
 	m_bInAddingCaption = FALSE;
+	m_pToolTip = NULL;
+	m_bRebuildTooltips = FALSE;
+	m_nLastScrollPos = -1;
+	m_nItemExtraHeight = 0;
+	m_nVMExtraHeight = 0;
+	m_nIconCount = 0;
 
 	m_arTabStops.Add(BCGP_DEFAULT_TABS_STOP);
 }
 
 CBCGPListBox::~CBCGPListBox()
 {
+	CBCGPTooltipManager::DeleteToolTip(m_pToolTip);
 }
 
 BEGIN_MESSAGE_MAP(CBCGPListBox, CListBox)
@@ -111,15 +138,20 @@ BEGIN_MESSAGE_MAP(CBCGPListBox, CListBox)
 	ON_MESSAGE(LB_GETITEMDATA, OnLBGetItemData)
 	ON_MESSAGE(LB_INSERTSTRING, OnLBInsertString)
 	ON_MESSAGE(LB_SETITEMDATA, OnLBSetItemData)
+	ON_WM_SIZE()
 	//}}AFX_MSG_MAP
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLAERO, OnBCGSetControlAero)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLBACKSTAGEMODE, OnBCGSetControlBackStageMode)
+	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnBCGChangeVisualManager)
 	ON_MESSAGE(WM_MOUSELEAVE, OnMouseLeave)
 	ON_CONTROL_REFLECT_EX(LBN_SELCHANGE, OnSelchange)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
 	ON_MESSAGE(WM_SETFONT, OnSetFont)
 	ON_MESSAGE(LB_SETTABSTOPS, OnLBSetTabstops)
+	ON_MESSAGE(LB_SETCURSEL, OnLBSetCurSel)
+	ON_NOTIFY_EX_RANGE(TTN_NEEDTEXT, 0, 0xFFFF, OnTTNeedTipText)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -129,10 +161,13 @@ const BCGP_LB_ITEM_DATA* CBCGPListBox::_GetItemData(int nItem) const
 {
 	const BCGP_LB_ITEM_DATA* pState = NULL;
 
-	LRESULT lResult = ((CBCGPListBox*)this)->DefWindowProc(LB_GETITEMDATA, nItem, 0);
-	if (lResult != LB_ERR)
+	if (GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED))
 	{
-		pState = (const BCGP_LB_ITEM_DATA*)lResult;
+		LRESULT lResult = ((CBCGPListBox*)this)->DefWindowProc(LB_GETITEMDATA, nItem, 0);
+		if (lResult != LB_ERR)
+		{
+			pState = (const BCGP_LB_ITEM_DATA*)lResult;
+		}
 	}
 
 	return pState;
@@ -142,17 +177,20 @@ BCGP_LB_ITEM_DATA* CBCGPListBox::_GetAllocItemData(int nItem)
 {
 	BCGP_LB_ITEM_DATA* pState = NULL;
 	
-	LRESULT lResult = DefWindowProc(LB_GETITEMDATA, nItem, 0);
-	if (lResult != LB_ERR)
+	if (GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED))
 	{
-		pState = (BCGP_LB_ITEM_DATA*)lResult;
-		if (pState == NULL)
+		LRESULT lResult = DefWindowProc(LB_GETITEMDATA, nItem, 0);
+		if (lResult != LB_ERR)
 		{
-			pState = new BCGP_LB_ITEM_DATA;
-			VERIFY(DefWindowProc(LB_SETITEMDATA, nItem, (LPARAM)pState) != LB_ERR);
+			pState = (BCGP_LB_ITEM_DATA*)lResult;
+			if (pState == NULL)
+			{
+				pState = new BCGP_LB_ITEM_DATA;
+				VERIFY(DefWindowProc(LB_SETITEMDATA, nItem, (LPARAM)pState) != LB_ERR);
+			}
 		}
 	}
-	
+
 	return pState;
 }
 //**************************************************************************
@@ -166,6 +204,36 @@ LRESULT CBCGPListBox::OnBCGSetControlAero (WPARAM wp, LPARAM)
 {
 	m_bOnGlass = (BOOL) wp;
 	return 0;
+}
+//**************************************************************************
+CRect CBCGPListBox::GetCheckBoxRect(const CRect& rectItem) const
+{
+	int nHorzMargin = globalUtils.ScaleByDPI(4);
+	const int nTextRowHeight = m_nTextHeight == -1 ? globalData.GetTextHeight() : m_nTextHeight;
+
+	CSize sizeCheckBox = m_bVisualManagerStyle ? 
+		CBCGPVisualManager::GetInstance ()->GetCheckRadioDefaultSize() :
+		CBCGPVisualManager::GetInstance ()->CBCGPVisualManager::GetCheckRadioDefaultSize();
+	
+	CRect rectCheck = rectItem;
+	rectCheck.right = rectCheck.left + sizeCheckBox.cx + nHorzMargin;
+	
+	if (m_nDescrRows > 0)
+	{
+		rectCheck.DeflateRect(0, nTextRowHeight / 2);
+		rectCheck.bottom = rectCheck.top + sizeCheckBox.cy;
+	}
+	
+	int dx = max(0, (rectCheck.Width() - sizeCheckBox.cx) / 2);
+	int dy = max(0, (rectCheck.Height() - sizeCheckBox.cy) / 2);
+	
+	rectCheck.DeflateRect(dx, dy);
+	return rectCheck;
+}
+//**************************************************************************
+int CBCGPListBox::GetColorBarWidth() const
+{
+	return m_bHasColorBars ? globalUtils.ScaleByDPI(6) : 0;
 }
 //**************************************************************************
 int CBCGPListBox::HitTest(CPoint pt, BOOL* pbPin, BOOL* pbCheck)
@@ -204,9 +272,17 @@ int CBCGPListBox::HitTest(CPoint pt, BOOL* pbPin, BOOL* pbCheck)
 				*pbPin = (pt.x > rectItem.right - PIN_AREA_WIDTH);
 			}
 
-			if (pbCheck != NULL && m_bHasCheckBoxes && bIsEnabled)
+			if (pbCheck != NULL && m_bHasCheckBoxes && bIsEnabled && IsCheckEnabled(i))
 			{
-				*pbCheck = (pt.x < rectItem.left + rectItem.Height());
+				if (pt.x < rectItem.left + rectItem.Height())
+				{
+					rectItem.left += GetColorBarWidth();
+
+					CRect rectCheck = GetCheckBoxRect(rectItem);
+					rectCheck.DeflateRect(1, 1);
+
+					*pbCheck =  rectCheck.PtInRect(pt);
+				}
 			}
 
 			return i;
@@ -230,7 +306,10 @@ void CBCGPListBox::OnMouseMove(UINT nFlags, CPoint point)
 	BOOL bIsPinHighlighted = FALSE;
 	BOOL bIsCheckHighlighted = FALSE;
 
+	BOOL bItemHighlighting = (m_bItemHighlighting && m_bVisualManagerStyle) || (nFlags & MK_LBUTTON);
+
 	int nHighlightedItem = HitTest(point, &bIsPinHighlighted, &bIsCheckHighlighted);
+	BOOL bIsMouseEnter = FALSE;
 
 	if (!m_bTracked)
 	{
@@ -242,29 +321,45 @@ void CBCGPListBox::OnMouseMove(UINT nFlags, CPoint point)
 		trackmouseevent.hwndTrack = GetSafeHwnd();
 		trackmouseevent.dwHoverTime = HOVER_DEFAULT;
 		BCGPTrackMouse (&trackmouseevent);
+
+		bIsMouseEnter = TRUE;
 	}
 
 	if (nHighlightedItem != m_nHighlightedItem || m_bIsPinHighlighted != bIsPinHighlighted || m_bIsCheckHighlighted != bIsCheckHighlighted)
 	{
 		CRect rectItem;
 
-		if (m_nHighlightedItem >= 0 && nHighlightedItem != m_nHighlightedItem)
+		if (bItemHighlighting && m_nHighlightedItem >= 0 && nHighlightedItem != m_nHighlightedItem)
 		{
 			GetItemRect (m_nHighlightedItem, rectItem);
 			InvalidateRect (rectItem);
 		}
 
 		m_nHighlightedItem = nHighlightedItem;
+		m_bHighlightedWasChanged = TRUE;
+
 		m_bIsPinHighlighted = bIsPinHighlighted;
 		m_bIsCheckHighlighted = bIsCheckHighlighted;
 
-		if (m_nHighlightedItem >= 0)
+		if (bItemHighlighting && m_nHighlightedItem >= 0)
 		{
 			GetItemRect (m_nHighlightedItem, rectItem);
 			InvalidateRect (rectItem);
 		}
 
-		UpdateWindow ();
+		if (bItemHighlighting)
+		{
+			UpdateWindow();
+		}
+	}
+
+	if (IsBackstagePageSelector() && bIsMouseEnter)
+	{
+		CWnd* pWndTopLevel = GetTopLevelParent();
+		if (pWndTopLevel->GetSafeHwnd() != NULL)
+		{
+			pWndTopLevel->SendMessage(BCGM_ON_CHANGE_BACKSTAGE_PROP_HIGHLIGHTING);
+		}
 	}
 }
 //***********************************************************************************************	
@@ -281,40 +376,78 @@ LRESULT CBCGPListBox::OnMouseLeave(WPARAM,LPARAM)
 
 		m_nHighlightedItem = -1;
 
-		RedrawWindow (rectItem);
+		if (m_bItemHighlighting && m_bVisualManagerStyle)
+		{
+			RedrawWindow (rectItem);
+		}
 	}
 
 	return 0;
 }
 //***********************************************************************************************	
-void CBCGPListBox::DrawItem(LPDRAWITEMSTRUCT /*lpDIS*/) 
+void CBCGPListBox::DrawItem(LPDRAWITEMSTRUCT /*lpDIS*/)
 {
 }
 //***********************************************************************************************	
-void CBCGPListBox::MeasureItem(LPMEASUREITEMSTRUCT lpMeasureItemStruct) 
+void CBCGPListBox::MeasureItem(LPMEASUREITEMSTRUCT lpMIS) 
 {
-	lpMeasureItemStruct->itemHeight = GetItemMinHeight();
+	lpMIS->itemHeight = GetItemMinHeight();
 
-	if ((GetStyle() & LBS_OWNERDRAWVARIABLE) == LBS_OWNERDRAWVARIABLE)
+	if ((GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_HASSTRINGS)) == (LBS_OWNERDRAWVARIABLE | LBS_HASSTRINGS))
 	{
-		POSITION pos = m_lstCaptionIndexes.Find(lpMeasureItemStruct->itemID);
+		POSITION pos = m_lstCaptionIndexes.Find(lpMIS->itemID);
 		if (pos != NULL || m_bInAddingCaption)
 		{
 			const int nSeparatorHeight = 10;
 
 			CString strText;
-			GetText(lpMeasureItemStruct->itemID, strText);
+			GetText(lpMIS->itemID, strText);
 
 			if (strText.IsEmpty())
 			{
-				lpMeasureItemStruct->itemHeight = nSeparatorHeight;
+				lpMIS->itemHeight = nSeparatorHeight;
 			}
 			else
 			{
-				lpMeasureItemStruct->itemHeight += nSeparatorHeight;
+				lpMIS->itemHeight += nSeparatorHeight;
 			}
 		}
 	}
+}
+//***********************************************************************************************	
+CSize CBCGPListBox::GetItemImageSize(int nIndex) const
+{
+	ASSERT_VALID(this);
+
+	HICON hIcon = GetItemIcon(nIndex);
+	if (hIcon != NULL)
+	{
+		return globalUtils.GetIconSize(hIcon);
+	}
+
+	CSize sizeImage = m_sizeImage;
+	
+	if (sizeImage == CSize(0, 0) && m_nIconCount > 0)
+	{
+		sizeImage = globalData.m_sizeSmallIcon;
+	}
+
+	return sizeImage;
+}
+//***********************************************************************************************	
+COLORREF CBCGPListBox::GetCaptionTextColor(int nIndex)
+{
+	ASSERT_VALID(this);
+	return CBCGPVisualManager::GetInstance()->GetListBoxCaptionTextColor(this, nIndex);
+}
+//***********************************************************************************************	
+void CBCGPListBox::OnDrawItemColorBar(CDC* pDC, CRect rect, int /*nIndex*/, COLORREF color)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pDC);
+
+	CBrush br(color);
+	pDC->FillRect(rect, &br);
 }
 //***********************************************************************************************	
 void CBCGPListBox::OnDrawItemContent(CDC* pDC, CRect rect, int nIndex)
@@ -326,73 +459,94 @@ void CBCGPListBox::OnDrawItemContent(CDC* pDC, CRect rect, int nIndex)
 
 	CFont* pOldFont = NULL;
 
-	int nHorzMargin = 4;
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		nHorzMargin = (int)(0.5 + globalData.GetRibbonImageScale() * nHorzMargin);
-	}
+	int nHorzMargin = globalUtils.ScaleByDPI(4);
 
 	const int nTextRowHeight = m_nTextHeight == -1 ? globalData.GetTextHeight() : m_nTextHeight;
 	const int xStart = rect.left;
+
+	if (m_bHasColorBars)
+	{
+		const int nColorBarWidth = GetColorBarWidth();
+		const COLORREF color = GetItemBarColor(nIndex);
+
+		if (color != (COLORREF)-1)
+		{
+			const int nPadding = globalUtils.ScaleByDPI(1);
+
+			CRect rectColorBar = rect;
+			rectColorBar.right = rectColorBar.left + nColorBarWidth;
+			rectColorBar.DeflateRect(nPadding, nPadding);
+
+			OnDrawItemColorBar(pDC, rectColorBar, nIndex, color);
+		}
+		
+		rect.left += nColorBarWidth;
+	}
 
 	if (!bIsCaption)
 	{
 		if (m_bHasCheckBoxes)
 		{
-			const CSize sizeCheckBox = CBCGPVisualManager::GetInstance ()->GetCheckRadioDefaultSize();
-
-			CRect rectCheck = rect;
-			rectCheck.right = rectCheck.left + sizeCheckBox.cx + nHorzMargin;
-
-			if (m_nDescrRows > 0)
-			{
-				rectCheck.DeflateRect(0, nTextRowHeight / 2);
-				rectCheck.bottom = rectCheck.top + sizeCheckBox.cy;
-			}
-
-			int dx = max(0, (rectCheck.Width() - sizeCheckBox.cx) / 2);
-			int dy = max(0, (rectCheck.Height() - sizeCheckBox.cy) / 2);
-
-			rectCheck.DeflateRect(dx, dy);
-
+			CRect rectCheck = GetCheckBoxRect(rect);
 			rect.left = rectCheck.right;
 
 			BOOL bIsHighlighted = m_bIsCheckHighlighted && nIndex == m_nHighlightedItem;
-			BOOL bIsEnabled = IsWindowEnabled() && IsEnabled(nIndex);
+			BOOL bIsEnabled = IsWindowEnabled() && IsEnabled(nIndex) && IsCheckEnabled(nIndex);
 
-			CBCGPVisualManager::GetInstance ()->OnDrawCheckBoxEx
-				(pDC, rectCheck, GetCheck(nIndex), bIsHighlighted, FALSE, bIsEnabled);
+			if (m_bVisualManagerStyle)
+			{
+				CBCGPVisualManager::GetInstance ()->OnDrawCheckBoxEx
+					(pDC, rectCheck, GetCheck(nIndex), bIsHighlighted, FALSE, bIsEnabled);
+			}
+			else
+			{
+				if (!CBCGPVisualManager::GetInstance()->CBCGPVisualManager::DrawCheckBox(pDC, rectCheck, bIsHighlighted, GetCheck(nIndex), bIsEnabled, FALSE))
+				{
+					CBCGPVisualManager::GetInstance()->CBCGPVisualManager::OnDrawCheckBoxEx(pDC, rectCheck, GetCheck(nIndex), bIsHighlighted, FALSE, bIsEnabled);
+				}
+			}
 		}
 
-		int nIcon = -1;
-		if ((m_hImageList != NULL || m_ImageList.GetCount() > 0) && (nIcon = GetItemImage(nIndex)) >= 0)
+		HICON hIcon = GetItemIcon(nIndex);
+		CSize sizeImage = GetItemImageSize(nIndex);
+		int nIcon = (m_hImageList != NULL || m_ImageList.GetCount() > 0) ? GetItemImage(nIndex) : -1;
+
+		if (m_nIconCount > 0 || nIcon >= 0)
 		{
 			CRect rectTop = rect;
 
-			if (m_bHasDescriptions && m_nDescrRows > 0)
+			if (m_bHasDescriptions && m_nDescrRows > 0 && sizeImage.cy < rectTop.Height() / 2)
 			{
 				rectTop.DeflateRect(0, nTextRowHeight / 3);
 				rectTop.bottom = rectTop.top + rect.Height() / (m_nDescrRows + 1);
 			}
 
 			CRect rectImage = rectTop;
-			rectImage.top += (rectTop.Height () - m_sizeImage.cy) / 2;
-			rectImage.bottom = rectImage.top + m_sizeImage.cy;
+			rectImage.top += max(0, (rectTop.Height () - sizeImage.cy) / 2);
+			rectImage.bottom = rectImage.top + sizeImage.cy;
 
 			rectImage.left += nHorzMargin;
-			rectImage.right = rectImage.left + m_sizeImage.cx;
+			rectImage.right = rectImage.left + sizeImage.cx;
 
-			if (m_hImageList != NULL)
+			if (hIcon != NULL)
+			{
+				::DrawIconEx(pDC->GetSafeHdc (), 
+					rectImage.left,
+					rectImage.top,
+					hIcon, sizeImage.cx, sizeImage.cy, 0, NULL,
+					DI_NORMAL);
+			}
+			else if (m_hImageList != NULL)
 			{
 				CImageList* pImageList = CImageList::FromHandle(m_hImageList);
 				pImageList->Draw (pDC, nIcon, rectImage.TopLeft (), ILD_TRANSPARENT);
 			}
-			else
+			else if (m_ImageList.GetCount() > 0)
 			{
 				m_ImageList.DrawEx(pDC, rectImage, nIcon);
 			}
 
-			rect.left += m_sizeImage.cx + max(2 * nHorzMargin, m_sizeImage.cx / 3);
+			rect.left += sizeImage.cx + max(2 * nHorzMargin, sizeImage.cx / 3);
 			rect.right -= 2 * nHorzMargin;
 		}
 		else
@@ -408,37 +562,60 @@ void CBCGPListBox::OnDrawItemContent(CDC* pDC, CRect rect, int nIndex)
 #endif
 
 	CString strText;
-	GetText (nIndex, strText);
+	if (GetStyle() & LBS_HASSTRINGS)
+	{
+		GetText(nIndex, strText);
+	}
 
 	UINT uiDTFlags = DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX;
 
 	if (bIsCaption)
 	{
-		int nTextHeight = OnDrawItemName(pDC, xStart, rect, nIndex, strText, uiDTFlags);
+		int nTextHeight = 0;
+		if (!strText.IsEmpty())
+		{
+			COLORREF clrText = GetCaptionTextColor(nIndex);
+			COLORREF clrTextOld = (COLORREF)-1;
 
-		CBCGPStatic ctrl;
-		ctrl.m_bBackstageMode = m_bBackstageMode;
+			if (clrText != (COLORREF)-1)
+			{
+				clrTextOld = pDC->SetTextColor(clrText);
+			}
 
-		CRect rectSeparator = rect;
-		rectSeparator.top = rect.CenterPoint().y + nTextHeight / 2;
-		rectSeparator.bottom = rectSeparator.top + 1;
-		rectSeparator.right -= nHorzMargin + 1;
+			nTextHeight = OnDrawItemName(pDC, xStart, rect, nIndex, strText, uiDTFlags);
+
+			if (clrTextOld != (COLORREF)-1)
+			{
+				pDC->SetTextColor(clrTextOld);
+			}
+		}
+
+		if (CBCGPVisualManager::GetInstance ()->IsUnderlineListBoxCaption(this))
+		{
+			CBCGPStatic ctrl;
+			ctrl.m_bBackstageMode = m_bBackstageMode;
+
+			CRect rectSeparator = rect;
+			rectSeparator.top = rect.CenterPoint().y + nTextHeight / 2;
+			rectSeparator.bottom = rectSeparator.top + 1;
+			rectSeparator.right -= nHorzMargin + 1;
 
 #ifndef _BCGSUITE_
-		if (!globalData.IsHighContastMode () && CBCGPVisualManager::GetInstance ()->IsOwnerDrawDlgSeparator(&ctrl))
-		{
-			CBCGPVisualManager::GetInstance ()->OnDrawDlgSeparator(pDC, &ctrl, rectSeparator, TRUE);
-		}
-		else
+			if (!globalData.IsHighContastMode () && CBCGPVisualManager::GetInstance ()->IsOwnerDrawDlgSeparator(&ctrl))
+			{
+				CBCGPVisualManager::GetInstance ()->OnDrawDlgSeparator(pDC, &ctrl, rectSeparator, TRUE);
+			}
+			else
 #endif
-		{
-			CPen pen (PS_SOLID, 1, globalData.clrBtnShadow);
-			CPen* pOldPen = (CPen*)pDC->SelectObject (&pen);
+			{
+				CPen pen (PS_SOLID, 1, globalData.clrBtnShadow);
+				CPen* pOldPen = (CPen*)pDC->SelectObject (&pen);
 
-			pDC->MoveTo(rectSeparator.left, rectSeparator.top);
-			pDC->LineTo(rectSeparator.right, rectSeparator.top);
+				pDC->MoveTo(rectSeparator.left, rectSeparator.top);
+				pDC->LineTo(rectSeparator.right, rectSeparator.top);
 
-			pDC->SelectObject(pOldPen);
+				pDC->SelectObject(pOldPen);
+			}
 		}
 
 		pDC->SelectObject(pOldFont);
@@ -478,10 +655,18 @@ void CBCGPListBox::OnDrawItemContent(CDC* pDC, CRect rect, int nIndex)
 				rectBottom.top = rectTop.bottom;
 
 				uiDTFlags = DT_LEFT | DT_END_ELLIPSIS | DT_NOPREFIX | DT_WORDBREAK;
-				pDC->DrawText(strDescr, rectBottom, uiDTFlags);
+				OnDrawItemDescription(pDC, rectBottom, nIndex, strDescr, uiDTFlags);
 			}
 		}
 	}
+}
+//***************************************************************************************
+void CBCGPListBox::OnDrawItemDescription(CDC* pDC, CRect rect, int /*nIndex*/, const CString& strDescr, UINT uiDTFlags)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pDC);
+
+	pDC->DrawText(strDescr, rect, uiDTFlags);
 }
 //***************************************************************************************
 int CBCGPListBox::DU2DP(int nDU)
@@ -497,57 +682,42 @@ int CBCGPListBox::DU2DP(int nDU)
 	}
 }
 //***************************************************************************************
-int CBCGPListBox::OnDrawItemName(CDC* pDC, int xStart, CRect rect, int /*nIndex*/, const CString& strName, UINT nDrawFlags)
+int CBCGPListBox::OnDrawItemName(CDC* pDC, int /*xStart*/, CRect rect, int nIndex, const CString& strName, UINT nDrawFlags)
 {
 	ASSERT_VALID(pDC);
 
-	if ((GetStyle() & LBS_USETABSTOPS) == 0)
+	const int nTabStops = (int)m_arTabStops.GetSize();
+
+	if ((GetStyle() & LBS_USETABSTOPS) == 0 || nTabStops == 0)
 	{
 		return pDC->DrawText (strName, rect, nDrawFlags);
 	}
 
-	int x = rect.left;
-	int nTabStopIndex = 0;
-	int cxCommonTabStop = (m_arTabStops.GetSize() == 1) ? DU2DP(m_arTabStops[0]) : 0;
-	int cyMaxHeight = 0;
+	int nHorzMargin = globalUtils.ScaleByDPI(4);
+	int cy = pDC->GetTextExtent(strName).cy;
+	int nOffset = 0;
 
-	for (int nStart = 0;; nTabStopIndex++)
+	if (m_bHasCheckBoxes && IsCaptionItem(nIndex))
 	{
-		int i = strName.Find(_T('\t'), nStart);
-		CString strWord = (i < 0) ? strName.Mid(nStart) : strName.Mid(nStart, i - nStart);
+		nOffset += CBCGPVisualManager::GetInstance ()->GetCheckRadioDefaultSize().cx;
+	}
 
-		CRect rectWord = rect;
-		rectWord.left = x;
+	if (m_hImageList != NULL || m_ImageList.GetCount() > 0 || GetItemIcon(nIndex) != NULL)
+	{
+		CSize sizeImage = GetItemImageSize(nIndex);
 
-		cyMaxHeight = max(pDC->DrawText(strWord, rectWord, nDrawFlags), cyMaxHeight);
-
-		if (i < 0)
+		if (GetItemImage(nIndex) < 0 || IsCaptionItem(nIndex) || m_nIconCount > 0)
 		{
-			// Last part
-			break;
-		}
-
-		int xTabStop = rect.left + max(0, cxCommonTabStop * (nTabStopIndex + 1));
-
-		if (cxCommonTabStop <= 0 && nTabStopIndex < m_arTabStops.GetSize())
-		{
-			xTabStop = DU2DP(m_arTabStops[nTabStopIndex]);
-		}
-
-		int cxText = pDC->GetTextExtent(strWord).cx + 5;
-		if (x + cxText > xTabStop + xStart)
-		{
-			x += cxText;
+			nOffset += sizeImage.cx + max(2 * nHorzMargin, sizeImage.cx / 3);
 		}
 		else
 		{
-			x = xTabStop + xStart;
+			nOffset += nHorzMargin;
 		}
-
-		nStart = i + 1;
 	}
 
-	return cyMaxHeight;
+	pDC->TabbedTextOut(rect.left, rect.top + max(0, (rect.Height() - cy) / 2), strName, nTabStops, m_arTabStops.GetData(), rect.left + nOffset);
+	return cy;
 }
 //***************************************************************************************
 BOOL CBCGPListBox::SetImageList (HIMAGELIST hImageList, int nVertMargin)
@@ -577,7 +747,7 @@ BOOL CBCGPListBox::SetImageList (HIMAGELIST hImageList, int nVertMargin)
 	return TRUE;
 }
 //***************************************************************************************
-BOOL CBCGPListBox::SetImageList(UINT nImageListResID, int cxIcon, int nVertMargin)
+BOOL CBCGPListBox::SetImageList(UINT nImageListResID, int cxIcon, int nVertMargin, BOOL bAutoScale)
 {
 	m_hImageList = NULL;
 	m_ImageList.Clear();
@@ -594,12 +764,21 @@ BOOL CBCGPListBox::SetImageList(UINT nImageListResID, int cxIcon, int nVertMargi
 		return FALSE;
 	}
 
+#ifndef _BCGSUITE_
+	m_ImageList.SetSingleImage(FALSE);
+#else
 	m_ImageList.SetSingleImage();
+#endif
 
 	int cyIcon = m_ImageList.GetImageSize().cy;
 	m_sizeImage = CSize(cxIcon, cyIcon);
 
 	m_ImageList.SetImageSize(m_sizeImage, TRUE);
+
+	if (bAutoScale)
+	{
+		m_sizeImage = globalUtils.ScaleByDPI(m_ImageList);
+	}
 
 	SetItemHeight(-1, max(GetItemHeight(-1), m_sizeImage.cy + 2 * nVertMargin));
 	return TRUE;
@@ -623,6 +802,38 @@ int CBCGPListBox::GetItemImage(int nIndex) const
 	}
 
 	return -1;
+}
+//***********************************************************************************************************
+void CBCGPListBox::SetItemIcon(int nIndex, HICON hIcon)
+{
+	BCGP_LB_ITEM_DATA* pState = _GetAllocItemData(nIndex);
+	if (pState != NULL)
+	{
+		if (pState->m_hIcon != NULL)
+		{
+			::DestroyIcon(pState->m_hIcon);
+			pState->m_hIcon = NULL;
+
+			m_nIconCount--;
+		}
+
+		if (hIcon != NULL)
+		{
+			pState->m_hIcon = ::CopyIcon(hIcon);
+			m_nIconCount++;
+		}
+	}
+}
+//***********************************************************************************************************
+HICON CBCGPListBox::GetItemIcon(int nIndex) const
+{
+	const BCGP_LB_ITEM_DATA* pState = _GetItemData(nIndex);
+	if (pState != NULL)
+	{
+		return pState->m_hIcon;
+	}
+
+	return NULL;
 }
 //***********************************************************************************************************
 void CBCGPListBox::SetItemDescription(int nIndex, const CString& strDescription)
@@ -650,9 +861,69 @@ LPCTSTR CBCGPListBox::GetItemDescription(int nIndex) const
 	return NULL;
 }
 //***********************************************************************************************************
+void CBCGPListBox::SetItemColorBar(int nIndex, COLORREF color)
+{
+	BCGP_LB_ITEM_DATA* pState = _GetAllocItemData(nIndex);
+	if (pState != NULL)
+	{
+		pState->m_clrBar = color;
+		m_bHasColorBars = TRUE;
+	}
+}
+//***********************************************************************************************************
+COLORREF CBCGPListBox::GetItemBarColor(int nIndex) const
+{
+	const BCGP_LB_ITEM_DATA* pState = _GetItemData(nIndex);
+	if (pState != NULL)
+	{
+		return pState->m_clrBar;
+	}
+	
+	return (COLORREF)-1;
+}
+//***********************************************************************************************************
+void CBCGPListBox::SetItemToolTip(int nIndex, const CString& strToolTip, LPCTSTR lpszDescription/* = NULL*/)
+{
+	BCGP_LB_ITEM_DATA* pState = _GetAllocItemData(nIndex);
+	if (pState != NULL)
+	{
+		pState->m_strToolTip = strToolTip;
+		pState->m_strToolTipDescription = lpszDescription == NULL ? _T("") : lpszDescription;
+
+		RebuildToolTips();
+	}
+}
+//***********************************************************************************************************
+LPCTSTR CBCGPListBox::GetItemToolTip(int nIndex) const
+{
+	const BCGP_LB_ITEM_DATA* pState = _GetItemData(nIndex);
+	if (pState != NULL)
+	{
+		return pState->m_strToolTip.IsEmpty() ? NULL : (LPCTSTR)pState->m_strToolTip;
+	}
+	
+	return NULL;
+}
+//***********************************************************************************************************
+LPCTSTR CBCGPListBox::GetItemToolTipDescription(int nIndex) const
+{
+	const BCGP_LB_ITEM_DATA* pState = _GetItemData(nIndex);
+	if (pState != NULL)
+	{
+		return pState->m_strToolTipDescription.IsEmpty() ? NULL : (LPCTSTR)pState->m_strToolTipDescription;
+	}
+	
+	return NULL;
+}
+//***********************************************************************************************************
 BOOL CBCGPListBox::OnEraseBkgnd(CDC* /*pDC*/)
 {
-	if (GetHorizontalExtent() > 0)
+	if (!(GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED)))
+	{
+		return (BOOL)Default();
+	}
+
+	if (GetHorizontalExtent() > 0 && GetScrollPos(SB_HORZ) > 0)
 	{
 		return (BOOL)Default();
 	}
@@ -660,9 +931,55 @@ BOOL CBCGPListBox::OnEraseBkgnd(CDC* /*pDC*/)
 	return TRUE;
 }
 //***********************************************************************************************************
+void CBCGPListBox::OnFillBackground(CDC* pDC, CRect rectClient, COLORREF& clrTextDefault)
+{
+#ifndef _BCGSUITE_
+	if (m_bVisualManagerStyle)
+	{
+		clrTextDefault = CBCGPVisualManager::GetInstance ()->OnFillListBox(pDC, this, rectClient);
+	}
+	else
+#endif
+	{
+		UNREFERENCED_PARAMETER(clrTextDefault);
+		pDC->FillRect(rectClient, &globalData.brWindow);
+	}
+}
+//***********************************************************************************************************
+COLORREF CBCGPListBox::OnFillItem(CDC* pDC, int nIndex, CRect rect, BOOL bIsHighlihted, BOOL bIsSelected, BOOL& bFocusRectDrawn)
+{
+	if (m_bVisualManagerStyle)
+	{
+		return CBCGPVisualManager::GetInstance ()->OnFillListBoxItem(pDC, this, nIndex, rect, bIsHighlihted, bIsSelected);
+	}
+
+	pDC->FillRect(rect, &globalData.brHilite);
+		
+	if (bIsHighlihted)
+	{
+		pDC->DrawFocusRect (rect);
+		bFocusRectDrawn = TRUE;
+	}
+		
+	return globalData.clrTextHilite;
+}
+//***********************************************************************************************************
 void CBCGPListBox::OnDraw(CDC* pDC) 
 {
 	ASSERT_VALID(pDC);
+
+	BOOL bItemHighlighting = (m_bItemHighlighting && m_bVisualManagerStyle);
+
+	if (m_bRebuildTooltips || (m_nLastScrollPos >= 0 && m_nLastScrollPos != GetScrollPos(SB_VERT)))
+	{
+		m_bRebuildTooltips = FALSE;
+		m_nLastScrollPos = GetScrollPos(SB_VERT);
+
+		if (m_pToolTip->GetSafeHwnd () != NULL)
+		{
+			RebuildToolTips();
+		}
+	}
 
 	if (m_hFont != NULL && ::GetObjectType (m_hFont) != OBJ_FONT)
 	{
@@ -678,16 +995,7 @@ void CBCGPListBox::OnDraw(CDC* pDC)
 
 	COLORREF clrTextDefault = globalData.clrWindowText;
 
-#ifndef _BCGSUITE_
-	if (m_bVisualManagerStyle)
-	{
-		clrTextDefault = CBCGPVisualManager::GetInstance ()->OnFillListBox(pDC, this, rectClient);
-	}
-	else
-#endif
-	{
-		pDC->FillRect(rectClient, &globalData.brWindow);
-	}
+	OnFillBackground(pDC, rectClient, clrTextDefault);
 
 #ifndef _BCGSUITE_
 	if (m_bBackstageMode)
@@ -794,32 +1102,16 @@ void CBCGPListBox::OnDraw(CDC* pDC)
 					break;
 				}
 			}
-		
-			const BOOL bIsHighlihted = (nIndex == m_nHighlightedItem) || (bIsSelected && bIsFocused);
+
+			BOOL bIsHighlihted = (nIndex == m_nHighlightedItem) || (bIsSelected && bIsFocused);
 
 			COLORREF clrText = (COLORREF)-1;
 
 			BOOL bIsCaptionItem = IsCaptionItem(nIndex);
 
-			if (((bIsHighlihted && !m_bIsPinHighlighted && m_bItemHighlighting) || bIsSelected) && !bIsCaptionItem && !bNoSel)
+			if (((bIsHighlihted && !m_bIsPinHighlighted && bItemHighlighting) || bIsSelected) && !bIsCaptionItem && !bNoSel)
 			{
-				if (m_bVisualManagerStyle)
-				{
-					clrText = CBCGPVisualManager::GetInstance ()->OnFillListBoxItem (
-						pDC, this, nIndex, rect, bIsHighlihted && m_bItemHighlighting, bIsSelected);
-				}
-				else
-				{
-					pDC->FillRect (rect, &globalData.brHilite);
-					
-					if (bIsHighlihted && m_bItemHighlighting)
-					{
-						pDC->DrawFocusRect (rect);
-						bFocusRectDrawn = TRUE;
-					}
-
-					clrText = globalData.clrTextHilite;
-				}
+				clrText = OnFillItem(pDC, nIndex, rect, bIsHighlihted && bItemHighlighting, bIsSelected, bFocusRectDrawn);
 			}
 
 			BOOL bIsItemDisabled = !IsWindowEnabled() || !IsEnabled(nIndex);
@@ -853,7 +1145,7 @@ void CBCGPListBox::OnDraw(CDC* pDC)
 				}
 				else if (GetStyle() & LBS_EXTENDEDSEL)
 				{
-					bDraw = !m_bItemHighlighting && (nIndex == m_nHighlightedItem) && ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
+					bDraw = (!bItemHighlighting && (nIndex == m_nHighlightedItem) && ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0)) || (nSelCount <= 0);
 				}
 				else
 				{
@@ -870,21 +1162,12 @@ void CBCGPListBox::OnDraw(CDC* pDC)
 			if (!rectPin.IsRectEmpty())
 			{
 				BOOL bIsPinHighlighted = FALSE;
-				COLORREF clrTextPin = (COLORREF)-1;
+				COLORREF clrTextPin = clrTextDefault;
 
 				if (nIndex == m_nHighlightedItem && m_bIsPinHighlighted)
 				{
 					bIsPinHighlighted = TRUE;
-
-					if (m_bVisualManagerStyle)
-					{
-						clrTextPin = CBCGPVisualManager::GetInstance ()->OnFillListBoxItem (
-							pDC, this, nIndex, rectPin, TRUE, FALSE);
-					}
-					else
-					{
-						pDC->FillRect (rect, &globalData.brHilite);
-					}
+					clrTextPin = OnFillItem(pDC, nIndex, rectPin, TRUE, FALSE, bFocusRectDrawn);
 				}
 
 				BOOL bIsDark = TRUE;
@@ -901,7 +1184,6 @@ void CBCGPListBox::OnDraw(CDC* pDC)
 
 				BOOL bIsPinned = IsItemPinned(nIndex);
 
-#ifndef _BCGSUITE_
 				CSize sizePin = CBCGPVisualManager::GetInstance ()->GetPinSize(bIsPinned);
 				CRect rectPinImage(
 					CPoint(
@@ -911,9 +1193,6 @@ void CBCGPListBox::OnDraw(CDC* pDC)
 
 				CBCGPVisualManager::GetInstance()->OnDrawPin(pDC, rectPinImage, bIsPinned,
 					bIsDark, bIsPinHighlighted, FALSE, bIsItemDisabled);
-#else
-				CBCGPMenuImages::Draw(pDC, bIsPinned ? CBCGPMenuImages::IdPinVert : CBCGPMenuImages::IdPinHorz, rectPin);
-#endif
 			}
 		}
 
@@ -923,6 +1202,12 @@ void CBCGPListBox::OnDraw(CDC* pDC)
 //***********************************************************************************************************
 void CBCGPListBox::OnPaint() 
 {
+	if (!(GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED)))
+	{
+		Default();
+		return;
+	}
+
 	CPaintDC dcPaint(this); // device context for painting
 
 	CRect rectClient;
@@ -948,6 +1233,11 @@ BOOL CBCGPListBox::OnSelchange()
 //************************************************************************************************************
 void CBCGPListBox::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar) 
 {
+	if (m_pToolTip->GetSafeHwnd () != NULL)
+	{
+		m_pToolTip->Pop();
+	}
+
 	CListBox::OnVScroll(nSBCode, nPos, pScrollBar);
 	RedrawWindow();
 }
@@ -955,6 +1245,23 @@ void CBCGPListBox::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 LRESULT CBCGPListBox::OnBCGSetControlBackStageMode (WPARAM, LPARAM)
 {
 	m_bBackstageMode = TRUE;
+	return 0;
+}
+//**************************************************************************
+LRESULT CBCGPListBox::OnBCGChangeVisualManager(WPARAM, LPARAM)
+{
+	if (m_bVisualManagerStyle && (GetStyle() & (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS)) == (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS))
+	{
+		int nVMExtraHeightPrev = m_nVMExtraHeight;
+		m_nVMExtraHeight = CBCGPVisualManager::GetInstance()->GetListBoxItemExtraHeight(this);
+
+		if (m_nVMExtraHeight != nVMExtraHeightPrev)
+		{
+			int nHeight = GetItemHeight(0);
+			SetItemHeight(0, nHeight + m_nVMExtraHeight - nVMExtraHeightPrev);
+		}
+	}
+
 	return 0;
 }
 //**************************************************************************
@@ -980,8 +1287,13 @@ void CBCGPListBox::CleanUp()
 
 	m_sizeImage = CSize(0, 0);
 	m_hImageList = NULL;
+	m_nLastScrollPos = -1;
+	m_bHasColorBars = FALSE;
+	m_nIconCount = 0;
 
 	m_lstCaptionIndexes.RemoveAll();
+
+	CBCGPTooltipManager::DeleteToolTip(m_pToolTip);
 }
 //**************************************************************************
 BOOL CBCGPListBox::IsCaptionItem(int nIndex) const
@@ -1008,7 +1320,14 @@ void CBCGPListBox::OnLButtonDown(UINT nFlags, CPoint point)
 	}
 	
 	CListBox::OnLButtonDown(nFlags, point);
+
 	m_nClickedItem = HitTest(point);
+
+	BOOL bItemHighlighting = (m_bItemHighlighting && m_bVisualManagerStyle);
+	if (!bItemHighlighting)
+	{
+		RedrawWindow();
+	}
 }
 //**************************************************************************
 void CBCGPListBox::OnLButtonUp(UINT nFlags, CPoint point) 
@@ -1026,6 +1345,11 @@ void CBCGPListBox::OnLButtonUp(UINT nFlags, CPoint point)
 	if (!::IsWindow(hwndThis))
 	{
 		return;
+	}
+
+	if (m_nClickedItem >= 0)
+	{
+		RedrawWindow();
 	}
 
 	if (IsSeparatorItem(m_nClickedItem))
@@ -1124,6 +1448,7 @@ void CBCGPListBox::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 	}
 
 	SetCurSel(nNewSel != -1 ? nNewSel : nPrevSel);
+
 	RedrawWindow();
 }
 //**************************************************************************
@@ -1153,8 +1478,42 @@ void CBCGPListBox::EnableItemHighlighting(BOOL bEnable)
 	m_bItemHighlighting = bEnable;
 }
 //**************************************************************************
+void CBCGPListBox::SetItemExtraHeight(int nExtraHeight)
+{
+	m_nItemExtraHeight = nExtraHeight;
+
+	if (GetSafeHwnd() != NULL && (GetStyle() & (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS)) == (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS))
+	{
+		SetItemHeight(0, GetItemMinHeight());
+	}
+}
+//**************************************************************************
 BOOL CBCGPListBox::PreTranslateMessage(MSG* pMsg) 
 {
+   	switch (pMsg->message)
+	{
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_LBUTTONUP:
+	case WM_RBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_NCLBUTTONDOWN:
+	case WM_NCRBUTTONDOWN:
+	case WM_NCMBUTTONDOWN:
+	case WM_NCLBUTTONUP:
+	case WM_NCRBUTTONUP:
+	case WM_NCMBUTTONUP:
+	case WM_MOUSEMOVE:
+		if (m_pToolTip->GetSafeHwnd () != NULL)
+		{
+			m_pToolTip->RelayEvent(pMsg);
+		}
+		break;
+	}
+
 	if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN && GetFocus()->GetSafeHwnd() == GetSafeHwnd())
 	{
 		if (OnReturnKey())
@@ -1164,6 +1523,11 @@ BOOL CBCGPListBox::PreTranslateMessage(MSG* pMsg)
 	}
 	
 	return CListBox::PreTranslateMessage(pMsg);
+}
+//**************************************************************************
+void CBCGPListBox::SetPropertySheetNavigator(BOOL bSet)
+{
+	m_bPropertySheetNavigator = bSet;
 }
 //**************************************************************************
 void CBCGPListBox::EnablePins(BOOL bEnable)
@@ -1261,6 +1625,11 @@ void CBCGPListBox::OnNcPaint()
 //*********************************************************************************************
 LRESULT CBCGPListBox::OnPrintClient(WPARAM wp, LPARAM lp)
 {
+	if (!(GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED)))
+	{
+		return Default();
+	}
+
 	if (lp & PRF_CLIENT)
 	{
 		CDC* pDC = CDC::FromHandle((HDC) wp);
@@ -1277,13 +1646,6 @@ int CBCGPListBox::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (CListBox::OnCreate(lpCreateStruct) == -1)
 		return -1;
 	
-	if (!(GetStyle() & LBS_OWNERDRAWVARIABLE)) //must be one or the other
-	{
-		ModifyStyle(0, LBS_OWNERDRAWFIXED | LBS_HASSTRINGS);
-	}
-
-	ModifyStyle(0, LBS_HASSTRINGS);
-
 	if ((GetStyle() & (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS)) == (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS))
 	{
 		SetItemHeight(0, GetItemMinHeight());
@@ -1294,37 +1656,43 @@ int CBCGPListBox::OnCreate(LPCREATESTRUCT lpCreateStruct)
 //*********************************************************************************************
 void CBCGPListBox::PreSubclassWindow() 
 {
-#ifdef _DEBUG
-	if (!(GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED))) //must be one or the other
-	{
-		TRACE(_T("Warning: CBCGPListBox must be owner drawn\n"));
-	}
-#endif
-
 	CListBox::PreSubclassWindow();
-
-	ModifyStyle(0, LBS_HASSTRINGS);
 
 	if ((GetStyle() & (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS)) == (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS))
 	{
 		SetItemHeight(0, GetItemMinHeight());
 	}
-	
 }
 //*********************************************************************************************
 int CBCGPListBox::GetItemMinHeight()
 {
-	int nVertMargin = 4;
-	if (globalData.GetRibbonImageScale () != 1.)
+	if (m_nTextHeight <= 0)
 	{
-		nVertMargin = (int)(0.5 + globalData.GetRibbonImageScale() * nVertMargin);
+		CClientDC dc(this);
+		
+		CFont* pOldFont = dc.SelectObject(&globalData.fontRegular);
+		ASSERT(pOldFont != NULL);
+		
+		TEXTMETRIC tm;
+		dc.GetTextMetrics (&tm);
+		
+		m_nTextHeight = tm.tmHeight;
+		
+		dc.SelectObject (pOldFont);
 	}
 
+	int nVertMargin = m_nDescrRows == 0 ? 0 : globalUtils.ScaleByDPI(4);
 	int nCheckBoxHeight = !m_bHasCheckBoxes ? 0 : (CBCGPVisualManager::GetInstance ()->GetCheckRadioDefaultSize().cy + 4);
-	int nImageHeight = m_sizeImage.cy == 0 ? 0 : m_sizeImage.cy + nVertMargin;
+	int nImageHeight = m_sizeImage.cy == 0 ? 0 : m_sizeImage.cy + globalUtils.ScaleByDPI(4);
 	int nTextHeight = 0;
 
-	const int nTextRowHeight = m_nTextHeight == -1 ? globalData.GetTextHeight() : m_nTextHeight;
+	if (m_bPins)
+	{
+		int nPinHeight = max(CBCGPVisualManager::GetInstance ()->GetPinSize(TRUE).cy, CBCGPVisualManager::GetInstance ()->GetPinSize(FALSE).cy);
+		nImageHeight = max(nImageHeight, nPinHeight);
+	}
+
+	const int nTextRowHeight = m_nTextHeight;
 	
 	if (IsPropertySheetNavigator())
 	{
@@ -1340,7 +1708,7 @@ int CBCGPListBox::GetItemMinHeight()
 			}
 			else
 			{
-				nTextHeight = nTextRowHeight * 9 / 5;
+				nTextHeight = nTextRowHeight + nVertMargin + 2;
 			}
 		}
 		else
@@ -1349,7 +1717,14 @@ int CBCGPListBox::GetItemMinHeight()
 		}
 	}
 	
-	return max(nCheckBoxHeight, max(nImageHeight, nTextHeight));
+	int nExtraHeight = m_nItemExtraHeight;
+	if (m_bVisualManagerStyle)
+	{
+		m_nVMExtraHeight = CBCGPVisualManager::GetInstance()->GetListBoxItemExtraHeight(this);
+		nExtraHeight += m_nVMExtraHeight;
+	}
+
+	return max(nCheckBoxHeight, max(nImageHeight, nTextHeight)) + m_nItemExtraHeight + nExtraHeight;
 }
 //*********************************************************************************************
 void CBCGPListBox::DeleteItem(LPDELETEITEMSTRUCT lpDeleteItemStruct)
@@ -1366,9 +1741,15 @@ void CBCGPListBox::DeleteItem(LPDELETEITEMSTRUCT lpDeleteItemStruct)
 		}
 	}
 	
-	if (deleteItem.itemData != 0 && deleteItem.itemData != LB_ERR)
+	if ((GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED)) != 0 &&
+		deleteItem.itemData != 0 && deleteItem.itemData != LB_ERR)
 	{
 		BCGP_LB_ITEM_DATA* pState = (BCGP_LB_ITEM_DATA*)deleteItem.itemData;
+		if (pState->m_hIcon != NULL)
+		{
+			m_nIconCount--;
+		}
+
 		deleteItem.itemData = pState->m_dwData;
 		delete pState;
 	}
@@ -1378,6 +1759,11 @@ void CBCGPListBox::DeleteItem(LPDELETEITEMSTRUCT lpDeleteItemStruct)
 //*********************************************************************************************
 LRESULT CBCGPListBox::OnLBAddString(WPARAM wParam, LPARAM lParam)
 {
+	if (!(GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED)))
+	{
+		return DefWindowProc(LB_ADDSTRING, wParam, lParam);
+	}
+
 	BCGP_LB_ITEM_DATA* pState = NULL;
 	
 	if (!(GetStyle() & LBS_HASSTRINGS))
@@ -1394,11 +1780,17 @@ LRESULT CBCGPListBox::OnLBAddString(WPARAM wParam, LPARAM lParam)
 		delete pState;
 	}
 	
+	m_bRebuildTooltips = TRUE;
 	return lResult;
 }
 //*********************************************************************************************
 LRESULT CBCGPListBox::OnLBInsertString(WPARAM wParam, LPARAM lParam)
 {
+	if (!(GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED)))
+	{
+		return DefWindowProc(LB_INSERTSTRING, wParam, lParam);
+	}
+	
 	BCGP_LB_ITEM_DATA* pState = NULL;
 	
 	if (!(GetStyle() & LBS_HASSTRINGS))
@@ -1414,14 +1806,20 @@ LRESULT CBCGPListBox::OnLBInsertString(WPARAM wParam, LPARAM lParam)
 	{
 		delete pState;
 	}
-	
+
+	m_bRebuildTooltips = TRUE;
 	return lResult;
 }
 //*********************************************************************************************
 LRESULT CBCGPListBox::OnLBGetItemData(WPARAM wParam, LPARAM lParam)
 {
 	LRESULT lResult = DefWindowProc(LB_GETITEMDATA, wParam, lParam);
-	
+
+	if (!(GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED)))
+	{
+		return lResult;
+	}
+
 	if (lResult != LB_ERR)
 	{
 		BCGP_LB_ITEM_DATA* pState = (BCGP_LB_ITEM_DATA*)lResult;
@@ -1439,8 +1837,13 @@ LRESULT CBCGPListBox::OnLBGetItemData(WPARAM wParam, LPARAM lParam)
 //*********************************************************************************************
 LRESULT CBCGPListBox::OnLBSetItemData(WPARAM wParam, LPARAM lParam)
 {
+	if (!(GetStyle() & (LBS_OWNERDRAWVARIABLE | LBS_OWNERDRAWFIXED)))
+	{
+		return Default();
+	}
+
 	LRESULT lResult = DefWindowProc(LB_GETITEMDATA, wParam, 0);
-	
+
 	if (lResult != LB_ERR)
 	{
 		BCGP_LB_ITEM_DATA* pState = (BCGP_LB_ITEM_DATA*)lResult;
@@ -1479,10 +1882,9 @@ LRESULT CBCGPListBox::OnSetFont(WPARAM wParam, LPARAM)
 		TEXTMETRIC tm;
 		dc.GetTextMetrics (&tm);
 		
-		int nTextMarginsHorz = tm.tmHeight < 15 ? 2 : 5;
-		m_nTextHeight = tm.tmHeight + nTextMarginsHorz;
+		m_nTextHeight = tm.tmHeight;
 		
-		dc.SelectObject (pOldFont);
+		dc.SelectObject(pOldFont);
 	}
 
 	if (GetSafeHwnd() != NULL && (GetStyle() & (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS)) == (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS))
@@ -1514,6 +1916,117 @@ LRESULT CBCGPListBox::OnLBSetTabstops(WPARAM wp, LPARAM lp)
 	}
 
 	return Default();
+}
+//*****************************************************************************
+LRESULT CBCGPListBox::OnLBSetCurSel(WPARAM/* wp*/, LPARAM /*lp*/)
+{
+	LRESULT lResult = Default();
+
+	RedrawWindow();
+	return lResult;
+}
+//***********************************************************************************************************
+BOOL CBCGPListBox::OnTTNeedTipText (UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResult*/)
+{
+	static CString strTipText;
+
+	int nItem = ((int)pNMH->idFrom) - 1;
+    if (nItem < 0)
+	{
+        return FALSE;
+	}
+	
+	LPCTSTR lpszTT = GetItemToolTip(nItem);
+	if (lpszTT == NULL)
+	{
+		return FALSE;
+	}
+
+	strTipText = lpszTT;
+
+	LPNMTTDISPINFO	pTTDispInfo	= (LPNMTTDISPINFO) pNMH;
+	ASSERT((pTTDispInfo->uFlags & TTF_IDISHWND) == 0);
+
+	LPCTSTR lpszDescr = GetItemToolTipDescription(nItem);
+	
+	if (lpszDescr != NULL)
+	{
+		CBCGPToolTipCtrl* pToolTip = DYNAMIC_DOWNCAST(CBCGPToolTipCtrl, m_pToolTip);
+		if (pToolTip != NULL)
+		{
+			ASSERT_VALID (pToolTip);
+			pToolTip->SetDescription(lpszDescr);
+		}
+	}
+	
+	pTTDispInfo->lpszText = const_cast<LPTSTR> ((LPCTSTR)strTipText);
+
+	return TRUE;
+}
+//**************************************************************************
+LRESULT CBCGPListBox::OnBCGUpdateToolTips(WPARAM wp, LPARAM)
+{
+	UINT nTypes = (UINT) wp;
+
+	if (m_pToolTip->GetSafeHwnd () == NULL)
+	{
+		return 0;
+	}
+
+	if (nTypes & BCGP_TOOLTIP_TYPE_GRID)
+	{
+		RebuildToolTips();
+	}
+
+	return 0;
+}
+//**************************************************************************
+void CBCGPListBox::OnSize(UINT nType, int cx, int cy) 
+{
+	CListBox::OnSize(nType, cx, cy);
+	m_bRebuildTooltips = TRUE;
+}
+//**************************************************************************
+void CBCGPListBox::RebuildToolTips()
+{
+	CBCGPTooltipManager::DeleteToolTip(m_pToolTip);
+	CBCGPTooltipManager::CreateToolTip(m_pToolTip, this, BCGP_TOOLTIP_TYPE_GRID);
+
+	CRect rectClient;
+	GetClientRect(rectClient);
+
+	for (int i = 0; i < GetCount(); i++)
+	{
+		LPCTSTR lpszTT = GetItemToolTip(i);
+		if (lpszTT == NULL)
+		{
+			continue;
+		}
+
+		CRect rectItem;
+		GetItemRect(i, rectItem);
+
+		if (rectItem.bottom < rectClient.top || rectItem.top > rectClient.bottom)
+		{
+			continue;
+		}
+
+		if (m_bPins && !IsSeparatorItem(i) && !IsCaptionItem(i))
+		{
+			rectItem.right -= PIN_AREA_WIDTH;
+		}
+
+		m_pToolTip->AddTool(this, LPSTR_TEXTCALLBACK, rectItem, i + 1);
+	}
+}
+//************************************************************************
+BOOL CBCGPListBox::IsInternalScrollBarThemed() const
+{
+#ifndef _BCGSUITE_
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_LISTBOX) != 0 && m_bVisualManagerStyle;
+#else
+	return FALSE;
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1555,7 +2068,7 @@ void CBCGPCheckListBox::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 			{
 				if ((GetStyle() & LBS_MULTIPLESEL) != 0)
 				{
-					if (IsEnabled(nIndex))
+					if (IsEnabled(nIndex) && IsCheckEnabled(nIndex))
 					{
 						BOOL bSelected = GetSel(nIndex);
 						if (bSelected)
@@ -1578,7 +2091,7 @@ void CBCGPCheckListBox::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 					// If there is a selection, the space bar toggles that check,
 					// all other keys are the same as a standard listbox.
 					
-					if (IsEnabled(nIndex))
+					if (IsEnabled(nIndex) && IsCheckEnabled(nIndex))
 					{
 						int nCheck = GetCheck(nIndex);
 						nCheck = (nCheck == nModulo) ? nCheck - 1 : nCheck;
@@ -1658,6 +2171,34 @@ int CBCGPCheckListBox::GetCheck(int nIndex) const
 	return BST_UNCHECKED;
 }
 //**********************************************************************************************
+void CBCGPCheckListBox::EnableCheck(int nIndex, BOOL bEnabled, BOOL bRedraw)
+{
+	BCGP_LB_ITEM_DATA* pState = _GetAllocItemData(nIndex);
+	if (pState != NULL)
+	{
+		pState->m_nCheckEnabled = bEnabled;
+	}
+
+	if (bRedraw && GetSafeHwnd() != NULL)
+	{
+		CRect rectItem;
+		GetItemRect(nIndex, rectItem);
+
+		RedrawWindow (rectItem);
+	}
+}
+//**********************************************************************************************
+BOOL CBCGPCheckListBox::IsCheckEnabled(int nIndex) const
+{
+	const BCGP_LB_ITEM_DATA* pState = _GetItemData(nIndex);
+	if (pState != NULL)
+	{
+		return pState->m_nCheckEnabled;
+	}
+
+	return TRUE;
+}
+//**********************************************************************************************
 void CBCGPCheckListBox::OnLButtonDown(UINT nFlags, CPoint point)
 {
 	SetFocus();
@@ -1672,7 +2213,7 @@ void CBCGPCheckListBox::OnLButtonDown(UINT nFlags, CPoint point)
 		return;
 	}
 	
-	if (m_nCheckStyle != BS_CHECKBOX && m_nCheckStyle != BS_3STATE)
+	if (m_nCheckStyle != BS_CHECKBOX && m_nCheckStyle != BS_3STATE && IsCheckEnabled(nIndex))
 	{
 		// toggle the check mark automatically if the check mark was hit
 		if (bInCheck)
@@ -1744,3 +2285,79 @@ int CBCGPCheckListBox::GetCheckCount() const
 
 	return nCheckCount;
 }
+
+#ifndef _BCGSUITE_
+
+/////////////////////////////////////////////////////////////////////////////
+//CBCGPMDITemplatesListBox window
+
+CBCGPMDITemplatesListBox::CBCGPMDITemplatesListBox()
+{
+}
+//**********************************************************************************************
+CDocTemplate* CBCGPMDITemplatesListBox::GetSelectedTemplate() const
+{
+	if (GetSafeHwnd() == NULL)
+	{
+		return NULL;
+	}
+	
+	int nSel = GetCurSel();
+	if (nSel < 0)
+	{
+		return NULL;
+	}
+	
+	CDocTemplate* pTemplate = (CDocTemplate*)GetItemData(nSel);
+	ASSERT_VALID(pTemplate);
+	
+	return pTemplate;
+}
+//**********************************************************************************************
+void CBCGPMDITemplatesListBox::FillList()
+{
+	if (GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+	
+	ResetContent();
+	CleanUp();
+	
+	SetItemHeight(-1, ::GetSystemMetrics (SM_CYICON) + globalUtils.ScaleByDPI(8));
+	
+	for (POSITION pos = AfxGetApp()->GetFirstDocTemplatePosition(); pos != NULL;)
+	{
+		CBCGPMultiDocTemplate* pTemplate = (CBCGPMultiDocTemplate*)DYNAMIC_DOWNCAST(CMultiDocTemplate, AfxGetApp()->GetNextDocTemplate(pos));
+		if (pTemplate != NULL)
+		{
+			ASSERT_VALID(pTemplate);
+			
+			CString strTypeName;
+			if (pTemplate->GetDocString(strTypeName, CDocTemplate::fileNewName) && !strTypeName.IsEmpty())
+			{
+				int nIndex = AddString(strTypeName);
+				
+				SetItemData(nIndex, (DWORD_PTR)pTemplate);
+				
+				HICON hIcon = AfxGetApp()->LoadIcon(pTemplate->GetResId ());
+				if (hIcon == NULL)
+				{
+					hIcon = ::LoadIcon(NULL, IDI_APPLICATION);
+				}
+				
+				if (hIcon != NULL)
+				{
+					SetItemIcon(nIndex, hIcon);
+				}
+			}
+		}
+	}
+	
+	if (GetCount() > 0)
+	{
+		SetCurSel(0);
+	}
+}
+#endif
+

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -149,11 +149,12 @@ public:
 
 protected:
 	virtual void OnDrawShape(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagram);
+
 	virtual void OnDrawText(CBCGPGraphicsManager* pGM, const CBCGPRect& rectDiagram)
 	{
 		UNREFERENCED_PARAMETER(pGM);
 		UNREFERENCED_PARAMETER(rectDiagram);
-	}	
+	}
 };
 
 class BCGCBPRODLLEXPORT CBCGPChartRangeObject : public CBCGPChartObject
@@ -267,11 +268,11 @@ public:
 	CBCGPBrush m_brBottomBrush;
 
 protected:
-	CBCGPGeometry* CreateGeometry(const CBCGPPointsArray& arOrgPoints, const CBCGPRect& rectBounds, 
-									BCGPChartFormatSeries::ChartCurveType curveType, BOOL bClip);
-	CBCGPGeometry* CreateClipGeometry(double dblOrigin);
+	virtual CBCGPGeometry* CreateGeometry(const CBCGPPointsArray& arOrgPoints, const CBCGPRect& rectBounds,
+									BCGPChartFormatSeries::ChartCurveType curveType, BOOL bClip, BOOL bClosed);
+	virtual CBCGPGeometry* CreateClipGeometry(double dblOrigin);
 
-	void DrawEffect(CBCGPGraphicsManager* pGM, CBCGPGeometry* pDrawGeometry, CBCGPGeometry* pClipGeometry, 
+	virtual void DrawEffect(CBCGPGraphicsManager* pGM, CBCGPGeometry* pDrawGeometry, CBCGPGeometry* pClipGeometry, 
 					const CBCGPRect& rectBounds, const CBCGPBrush& brFill);
 
 protected:

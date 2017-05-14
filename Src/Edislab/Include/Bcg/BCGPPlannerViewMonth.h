@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -55,6 +55,9 @@ public:
 	virtual void SetCompressWeekend (BOOL bCompress);
 	virtual BOOL IsCompressWeekend () const;
 
+	virtual void SetWeekBarType (BCGP_PLANNER_WEEKBAR type);
+	virtual BCGP_PLANNER_WEEKBAR GetWeekBarType () const;
+
 	virtual COleDateTime GetDateFromPoint (const CPoint& point) const;
 	virtual int GetWeekFromPoint (const CPoint& point) const;
 
@@ -103,6 +106,7 @@ protected:
 	BOOL	m_bDrawTimeAsIcons;
 
 	BOOL	m_bCompressWeekend;
+	BCGP_PLANNER_WEEKBAR m_WeekBarType;
 
 	CArray<CRect, CRect&>
 			m_WeekRects;

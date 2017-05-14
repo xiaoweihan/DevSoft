@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -60,10 +60,10 @@ public:
 	enum { IDD = IDD_BCGBARRES_PROPPAGE7 };
 	CBCGPMenuButton	m_wndInitialDirBtn;
 	CBCGPMenuButton	m_wndArgumentsBtn;
-	CEdit	m_wndArgumentsEdit;
-	CEdit	m_wndInitialDirEdit;
-	CEdit	m_wndCommandEdit;
-	CButton	m_wndBrowseBtn;
+	CBCGPEdit	m_wndArgumentsEdit;
+	CBCGPEdit	m_wndInitialDirEdit;
+	CBCGPEdit	m_wndCommandEdit;
+	CBCGPButton	m_wndBrowseBtn;
 	CRibbonToolsList	m_wndToolsList;
 	CString	m_strCommand;
 	CString	m_strArguments;
@@ -80,6 +80,8 @@ public:
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
 	//}}AFX_VIRTUAL
+
+	virtual void OnSelectionChanged() {}
 	
 	// Implementation
 protected:

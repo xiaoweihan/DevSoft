@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -57,7 +57,7 @@ void CBCGPRibbonLaunchButton::OnDraw (CDC* pDC)
 	ASSERT_VALID (this);
 	ASSERT_VALID (pDC);
 
-	if (m_rect.IsRectEmpty ())
+	if (m_rect.IsRectEmpty () || IsHiddenInAppMode())
 	{
 		return;
 	}
@@ -263,16 +263,58 @@ void CBCGPRibbonDefaultPanelButton::OnDrawOnList (CDC* pDC, CString strText,
 		(pDC, this, rect, bIsSelected, bHighlighted);
 }
 //*****************************************************************************
+HICON CBCGPRibbonDefaultPanelButton::CreateSimplifiedIcon()
+{
+	CBCGPRibbonDefaultPanelButton* pOrigButton = DYNAMIC_DOWNCAST(CBCGPRibbonDefaultPanelButton, m_pOriginal);
+	if (pOrigButton != NULL)
+	{
+		return pOrigButton->CreateSimplifiedIcon();
+	}
+	
+	CBCGPToolBarImages images;
+	
+	if (m_pIconsImageList != NULL && m_nSmallImageIndex >= 0)
+	{
+		ASSERT_VALID(m_pIconsImageList);
+		
+		images.SetImageSize(m_pIconsImageList->GetImageSize());
+		
+		HICON hIconFromList = ((CBCGPToolBarImages*)m_pIconsImageList)->ExtractIcon(m_nSmallImageIndex);
+		if (hIconFromList != NULL)
+		{
+			images.AddIcon(hIconFromList, TRUE);
+			::DestroyIcon(hIconFromList);
+
+			images.Simplify();
+			return images.ExtractIcon(0);
+		}
+
+		return NULL;
+	}
+
+	return CBCGPRibbonButton::CreateSimplifiedIcon();
+}
+//*****************************************************************************
 void CBCGPRibbonDefaultPanelButton::DrawImage (CDC* pDC, 
 	RibbonImageType type, CRect rectImage)
 {
 	ASSERT_VALID (this);
 	ASSERT_VALID (pDC);
 
-	CBCGPRibbonDefaultPanelButton* pOrigButton = DYNAMIC_DOWNCAST (
-		CBCGPRibbonDefaultPanelButton, m_pOriginal);
-
-	if (pOrigButton != NULL)
+	HICON hiconSimplified = NULL;
+	
+	if (IsDrawSimplifiedIcon())
+	{
+		if (m_hIconSimplified == NULL)
+		{
+			m_hIconSimplified = CreateSimplifiedIcon();
+		}
+		
+		hiconSimplified = m_hIconSimplified;
+	}
+	
+	CBCGPRibbonDefaultPanelButton* pOrigButton = DYNAMIC_DOWNCAST(CBCGPRibbonDefaultPanelButton, m_pOriginal);
+	if (hiconSimplified == NULL && pOrigButton != NULL)
 	{
 		ASSERT_VALID (pOrigButton);
 
@@ -280,7 +322,7 @@ void CBCGPRibbonDefaultPanelButton::DrawImage (CDC* pDC,
 		return;
 	}
 
-	if (m_pIconsImageList != NULL && m_nSmallImageIndex >= 0)
+	if (hiconSimplified == NULL && m_pIconsImageList != NULL && m_nSmallImageIndex >= 0)
 	{
 		ASSERT_VALID(m_pIconsImageList);
 
@@ -289,20 +331,15 @@ void CBCGPRibbonDefaultPanelButton::DrawImage (CDC* pDC,
 		return;
 	}
 
-	if (m_hIcon == NULL)
+	HICON hIcon = hiconSimplified != NULL ? hiconSimplified : m_hIcon;
+
+	if (hIcon == NULL)
 	{
-		CBCGPVisualManager::GetInstance ()->OnDrawDefaultRibbonImage (
-			pDC, rectImage);
+		CBCGPVisualManager::GetInstance ()->OnDrawDefaultRibbonImage(pDC, rectImage);
 		return;
 	}
 
-	CSize sizeIcon (16, 16);
-
-	if (globalData.GetRibbonImageScale () != 1.)
-	{
-		sizeIcon.cx = (int) (.5 + globalData.GetRibbonImageScale () * sizeIcon.cx);
-		sizeIcon.cy = (int) (.5 + globalData.GetRibbonImageScale () * sizeIcon.cy);
-	}
+	CSize sizeIcon = globalUtils.ScaleByDPI(CSize(16, 16));
 
 	BOOL bIsRTL = FALSE;
 
@@ -324,7 +361,7 @@ void CBCGPRibbonDefaultPanelButton::DrawImage (CDC* pDC,
 		::DrawIconEx (pDC->GetSafeHdc (), 
 			rectImage.CenterPoint ().x - sizeIcon.cx / 2, 
 			rectImage.CenterPoint ().y - sizeIcon.cy / 2, 
-			m_hIcon, sizeIcon.cx, sizeIcon.cy, 0, NULL,
+			hIcon, sizeIcon.cx, sizeIcon.cy, 0, NULL,
 			diFlags);
 	}
 	else
@@ -333,7 +370,7 @@ void CBCGPRibbonDefaultPanelButton::DrawImage (CDC* pDC,
 			CPoint (
 				rectImage.CenterPoint ().x - sizeIcon.cx / 2,
 				rectImage.CenterPoint ().y - sizeIcon.cy / 2),
-			sizeIcon, m_hIcon, DSS_NORMAL, (HBRUSH) NULL);
+			sizeIcon, hIcon, DSS_NORMAL, (HBRUSH) NULL);
 	}
 }
 //*****************************************************************************
@@ -463,7 +500,7 @@ CBCGPRibbonPanel* CBCGPRibbonPanel::CreateCustomCopy(CBCGPRibbonCategory* pParen
 		}
 	}
 
-	m_btnLaunch.SetParentCategory(pParent);
+	pCustomPanel->m_btnLaunch.SetParentCategory(pParent);
 	
 	return pCustomPanel;
 }
@@ -473,6 +510,7 @@ void CBCGPRibbonPanel::CopyFrom (CBCGPRibbonPanel& src)
 	m_strName = src.m_strName;
 	m_sizePadding = src.m_sizePadding;
 	m_dwData = src.m_dwData;
+	m_nApplicationModes = src.m_nApplicationModes;
 	m_nKey = src.m_nKey;
 	m_bIsCustom = src.m_bIsCustom;
 	m_bIsNew = src.m_bIsNew;
@@ -482,11 +520,14 @@ void CBCGPRibbonPanel::CopyFrom (CBCGPRibbonPanel& src)
 	m_nYMargin = src.m_nYMargin;
 	m_bShowCaption = src.m_bShowCaption;
 	m_bAlignByColumn = src.m_bAlignByColumn;
+	m_bAlwaysAlignByColumn = src.m_bAlwaysAlignByColumn;
 	m_bCenterColumnVert = src.m_bCenterColumnVert;
 	m_bJustifyColumns = src.m_bJustifyColumns;
 	m_nMaxRows = src.m_nMaxRows;
 	m_bPreserveElementOrder = src.m_bPreserveElementOrder;
 	m_bNonCollapsible = src.m_bNonCollapsible;
+	m_bAlwaysCollapsed = src.m_bAlwaysCollapsed;
+	m_bInvokeCommandBySpace = src.m_bInvokeCommandBySpace;
 
 	int i = 0;
 
@@ -526,6 +567,7 @@ void CBCGPRibbonPanel::CommonInit (LPCTSTR lpszName, HICON hIcon, BOOL bAutoDest
 	}
 
 	m_dwData = 0;
+	m_nApplicationModes = (UINT)-1;
 	m_sizePadding = CSize(0, 0);
 	m_nKey = -1;
 	m_pOriginal = NULL;
@@ -540,9 +582,9 @@ void CBCGPRibbonPanel::CommonInit (LPCTSTR lpszName, HICON hIcon, BOOL bAutoDest
 	m_btnDefault.SetText (m_strName);
 
 	// jump across a ribbon (system) id
-	if ((UINT)-108 <= m_nNextPanelID && m_nNextPanelID <= (UINT)-102)
+	if ((UINT)-109 <= m_nNextPanelID && m_nNextPanelID <= (UINT)-102)
 	{
-		m_nNextPanelID = (UINT)-109;
+		m_nNextPanelID = (UINT)-110;
 	}
 
 	m_btnDefault.SetID (m_nNextPanelID--);
@@ -561,6 +603,7 @@ void CBCGPRibbonPanel::CommonInit (LPCTSTR lpszName, HICON hIcon, BOOL bAutoDest
 	m_bIsCalcWidth = FALSE;
 	m_pHighlighted = NULL;
 	m_bAlignByColumn = TRUE;
+	m_bAlwaysAlignByColumn = FALSE;
 	m_bCenterColumnVert = FALSE;
 	m_bFloatyMode = FALSE;
 	m_bIsQATPopup = FALSE;
@@ -584,6 +627,8 @@ void CBCGPRibbonPanel::CommonInit (LPCTSTR lpszName, HICON hIcon, BOOL bAutoDest
 	m_bNavigateSearchResultsOnly = FALSE;
 	m_bMouseIsDown = FALSE;
 	m_bNonCollapsible = FALSE;
+	m_bAlwaysCollapsed = FALSE;
+	m_bInvokeCommandBySpace = TRUE;
 }
 
 #pragma warning (default : 4355)
@@ -618,7 +663,14 @@ void CBCGPRibbonPanel::Add (CBCGPBaseRibbonElement* pElem)
 //********************************************************************************
 void CBCGPRibbonPanel::AddSeparator ()
 {
-	InsertSeparator ((int) m_arElements.GetSize ());
+	if (IsMainPanel() && !IsBackstageView())
+	{
+		Add(new CBCGPRibbonSeparator(TRUE));
+	}
+	else
+	{
+		InsertSeparator ((int) m_arElements.GetSize ());
+	}
 }
 //********************************************************************************
 BOOL CBCGPRibbonPanel::Insert (CBCGPBaseRibbonElement* pElem, int nIndex)
@@ -638,7 +690,7 @@ BOOL CBCGPRibbonPanel::Insert (CBCGPBaseRibbonElement* pElem, int nIndex)
 
 	pElem->SetParentCategory (m_pParent);
 
-	if (!pElem->IsAlignByColumn () && m_bAlignByColumn)
+	if (!pElem->IsAlignByColumn () && m_bAlignByColumn && !m_bAlwaysAlignByColumn)
 	{
 		//---------------------------------------------------
 		// If 2 or more elements are aligned by row, set this
@@ -680,12 +732,17 @@ BOOL CBCGPRibbonPanel::InsertSeparator (int nIndex)
 {
 	ASSERT_VALID (this);
 
+	if (IsMainPanel() && !IsBackstageView())
+	{
+		return Insert(new CBCGPRibbonSeparator(TRUE), nIndex);
+	}
+
 	if (nIndex < 0 || nIndex > m_arElements.GetSize ())
 	{
 		return FALSE;
 	}
 
-	CBCGPRibbonSeparator* pSeparator = new CBCGPRibbonSeparator;
+	CBCGPRibbonSeparator* pSeparator = new CBCGPRibbonSeparator(IsBackstageView());
 	ASSERT_VALID (pSeparator);
 
 	pSeparator->m_pParent = m_pParent;
@@ -964,7 +1021,15 @@ void CBCGPRibbonPanel::DoPaint (CDC* pDC)
 					pElem->m_bIsHighlighted = TRUE;
 				}
 
+				BOOL bIsDontDrawSimplifiedImage = pElem->m_bIsDontDrawSimplifiedImage;
+				if (m_bIsQATPopup)
+				{
+					pElem->m_bIsDontDrawSimplifiedImage = TRUE;
+				}
+
 				pElem->OnDraw (pDC);
+
+				pElem->m_bIsDontDrawSimplifiedImage = bIsDontDrawSimplifiedImage;
 
 				if (bDrawGroupSeparator && pElem->IsKindOf(RUNTIME_CLASS(CBCGPRibbonButtonsGroup)) && pElem->CanBeSeparated ())
 				{
@@ -1071,6 +1136,15 @@ void CBCGPRibbonPanel::OnDrawPaletteMenu (CDC* pDC)
 		m_pPaletteButton->m_imagesPalette.PrepareDrawImage (ds, m_pPaletteButton->GetIconSize ());
 	}
 
+	CRect rectScrollBar;
+	rectScrollBar.SetRectEmpty();
+
+	if (m_pParentMenuBar->GetSafeHwnd() != NULL && m_pScrollBar->GetSafeHwnd () != NULL && m_pScrollBar->IsWindowVisible())
+	{
+		m_pScrollBar->GetWindowRect(rectScrollBar);
+		m_pParentMenuBar->ScreenToClient(rectScrollBar);
+	}
+
 	// First, draw icons + labels:
 	for (i = 0; i < m_arElements.GetSize (); i++)
 	{
@@ -1082,7 +1156,15 @@ void CBCGPRibbonPanel::OnDrawPaletteMenu (CDC* pDC)
 
 		if (bIsLabel || bIsIcon)
 		{
+			CRect rect = pElem->m_rect;
+			if (!rectScrollBar.IsRectEmpty() && rect.right > rectScrollBar.left)
+			{
+				pElem->m_rect.right = rectScrollBar.left;
+			}
+
 			pElem->OnDraw (pDC);
+
+			pElem->m_rect = rect;
 		}
 	}
 
@@ -1233,6 +1315,7 @@ void CBCGPRibbonPanel::Repos (CDC* pDC, const CRect& rect)
 
 		pElem->m_bFloatyMode = m_bFloatyMode;
 		pElem->m_nRow = -1;
+		pElem->m_bIsFixedWidth = FALSE;
 	}
 
 	//----------------------------------------------
@@ -2002,12 +2085,20 @@ void CBCGPRibbonPanel::Repos (CDC* pDC, const CRect& rect)
 	{
 		CRect rectLaunch = m_rect;
 
-		rectLaunch.DeflateRect (1, 1);
+		if (m_btnLaunch.IsHiddenInAppMode())
+		{
+			rectLaunch.left = rectLaunch.right;
+			rectLaunch.bottom = rectLaunch.top;
+		}
+		else
+		{
+			rectLaunch.DeflateRect (1, 1);
 
-		rectLaunch.top = rectLaunch.bottom - sizeCaption.cy + 1;
-		rectLaunch.left = rectLaunch.right - sizeCaption.cy;
-		rectLaunch.bottom--;
-		rectLaunch.right--;
+			rectLaunch.top = rectLaunch.bottom - sizeCaption.cy + 1;
+			rectLaunch.left = rectLaunch.right - sizeCaption.cy;
+			rectLaunch.bottom--;
+			rectLaunch.right--;
+		}
 
 		m_btnLaunch.SetRect (rectLaunch);
 	}
@@ -2030,7 +2121,6 @@ void CBCGPRibbonPanel::ReposMenu (CDC* pDC, const CRect& rect)
 	m_bScrollDnAvailable = FALSE;
 
 	m_nXMargin = 0;
-	m_nYMargin = 0;
 
 	CSize size = rect.Size ();
 
@@ -2147,8 +2237,8 @@ void CBCGPRibbonPanel::ReposMenu (CDC* pDC, const CRect& rect)
 	}
 
 	m_rect = rect;
-	m_rect.bottom = m_rect.top + y;
-	m_rect.right = m_rect.left + m_nFullWidth;
+	m_rect.bottom = m_rect.top + y + 2 * m_nYMargin;
+	m_rect.right = m_rect.left + m_nFullWidth + 2 * m_nXMargin;
 }
 //********************************************************************************
 void CBCGPRibbonPanel::ReposPalette (CDC* pDC, const CRect& rect)
@@ -2334,7 +2424,7 @@ void CBCGPRibbonPanel::ReposPalette (CDC* pDC, const CRect& rect)
 			pElem->SetTextAlwaysOnRight ();
 
 			CSize sizeElem = pElem->GetSize (pDC);
-			sizeElem.cx += 2 * TEXT_MARGIN;
+			sizeElem.cx += 2 * globalUtils.ScaleByDPI(TEXT_MARGIN);
 
 			nMaxItemHeight = max (nMaxItemHeight, sizeElem.cy);
 			nMaxImageWidth = max (nMaxImageWidth, 
@@ -2666,7 +2756,8 @@ int CBCGPRibbonPanel::CalcTotalWidth ()
 	// Total width will be right edge of the last visible element
 	// in the right column
 	//------------------------------------------------------------
-	int xRight = 0;
+	int xRight = INT_MIN;
+	BOOL bIsEmpty = TRUE;
 
 	for (int i = (int) m_arElements.GetSize () - 1; i >= 0; i--)
 	{
@@ -2679,9 +2770,10 @@ int CBCGPRibbonPanel::CalcTotalWidth ()
 		}
 
 		xRight = max (xRight, pElem->m_rect.right);
+		bIsEmpty = FALSE;
 	}
 
-	return max (0, xRight - m_rect.left - m_nXMargin / 2 - 1);
+	return bIsEmpty ? 0 : max (0, xRight - m_rect.left - m_nXMargin / 2 - 1);
 }
 //********************************************************************************
 CSize CBCGPRibbonPanel::GetCaptionSize (CDC* pDC) const
@@ -2723,9 +2815,11 @@ void CBCGPRibbonPanel::CenterElementsInColumn (int nFirstInColumnIndex, int nLas
 	CBCGPBaseRibbonElement* pLastElem = m_arElements [nLastInColumnIndex];
 	ASSERT_VALID (pLastElem);
 
+	const BOOL bIsTwo = (nLastInColumnIndex - nFirstInColumnIndex) == 1;
+
 	const int nColumnHeight = m_rect.Height () - nCaptionHeight - 2 * m_nYMargin;
 	const int nTotalHeight = pLastElem->m_rect.bottom - m_rect.top - m_nYMargin;
-	const int nOffset = max (0, (nColumnHeight - nTotalHeight) / 2);
+	int nOffset = max (0, (nColumnHeight - nTotalHeight) / (bIsTwo ? 3 : 2));
 
 	for (int i = nFirstInColumnIndex; i <= nLastInColumnIndex; i++)
 	{
@@ -2735,6 +2829,11 @@ void CBCGPRibbonPanel::CenterElementsInColumn (int nFirstInColumnIndex, int nLas
 		CRect rectElem = pColumnElem->m_rect;
 		rectElem.OffsetRect (0, nOffset);
 		pColumnElem->SetRect (rectElem);
+
+		if (bIsTwo)
+		{
+			nOffset *= 2;
+		}
 	}
 }
 //********************************************************************************
@@ -2769,6 +2868,7 @@ void CBCGPRibbonPanel::JustifyElementsInColumn (int nFirstInColumnIndex, int nLa
 		CRect rectElem = pColumnElem->m_rect;
 		rectElem.right = rectElem.left + nColumnWidth;
 
+		pColumnElem->m_bIsFixedWidth = TRUE;
 		pColumnElem->SetRect (rectElem);
 	}
 }
@@ -3674,6 +3774,7 @@ void CBCGPRibbonPanel::GetItemIDsList (CList<UINT,UINT>& lstItems) const
 	}
 
 	m_btnDefault.GetItemIDsList (lstItems);
+	m_btnLaunch.GetItemIDsList (lstItems);
 }
 //*************************************************************************************
 void CBCGPRibbonPanel::GetElementsByID (UINT uiCmdID,
@@ -3711,6 +3812,32 @@ void CBCGPRibbonPanel::GetElementsByName (LPCTSTR lpszName,
 		m_btnDefault.GetElementsByName (lpszName, arButtons, dwFlags);
 		m_btnLaunch.GetElementsByName (lpszName, arButtons, dwFlags);
 	}
+}
+//*************************************************************************************
+BOOL CBCGPRibbonPanel::QueryElements(const CStringArray& arWords, CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons, int nMaxResults, BOOL bDescription, BOOL bAll)
+{
+	ASSERT_VALID (this);
+	
+	for (int i = 0; i < m_arElements.GetSize (); i++)
+	{
+		CBCGPBaseRibbonElement* pElem = m_arElements [i];
+		ASSERT_VALID (pElem);
+		
+		if (pElem->QueryElements (arWords, arButtons, nMaxResults, bDescription, bAll))
+		{
+			return TRUE;
+		}
+	}
+	
+	if (!IsMainPanel() && !IsBackstageView())
+	{
+		if (m_btnLaunch.QueryElements(arWords, arButtons, nMaxResults, bDescription, bAll))
+		{
+			return TRUE;
+		}
+	}
+
+	return FALSE;
 }
 //*************************************************************************************
 void CBCGPRibbonPanel::GetVisibleElements (
@@ -3835,7 +3962,7 @@ BOOL CBCGPRibbonPanel::OnKey (UINT nChar)
 {
 	ASSERT_VALID (this);
 
-	if (m_arElements.GetSize () == NULL)
+	if (m_arElements.GetSize () == 0)
 	{
 		return FALSE;
 	}
@@ -3991,8 +4118,13 @@ BOOL CBCGPRibbonPanel::OnKey (UINT nChar)
 		}
 		break;
 
-	case VK_RETURN:
 	case VK_SPACE:
+		if (!m_bInvokeCommandBySpace)
+		{
+			break;
+		}
+
+	case VK_RETURN:
 		bInvokeCommand = TRUE;
 		break;
 
@@ -4049,6 +4181,12 @@ BOOL CBCGPRibbonPanel::OnKey (UINT nChar)
 
 		if (m_pHighlighted != pNewHighlighted)
 		{
+			CBCGPRibbonBar* pRibbonBar = m_pParentMenuBar->GetTopLevelRibbonBar ();
+			if (m_bMenuMode && pRibbonBar != NULL && pRibbonBar->GetKeyboardNavLevelCurrent () == this)
+			{
+				pRibbonBar->DeactivateKeyboardFocus (TRUE);
+			}
+
 			if (m_pHighlighted != NULL)
 			{
 				ASSERT_VALID (m_pHighlighted);
@@ -4093,7 +4231,7 @@ BOOL CBCGPRibbonPanel::OnKey (UINT nChar)
 
 			if (m_pPaletteButton != NULL)
 			{
-				MakePaletteItemVisible (pNewHighlighted);
+				MakePaletteItemVisible (pNewHighlighted, FALSE);
 			}
 
 			pNewHighlighted->m_bIsHighlighted = TRUE;
@@ -4364,6 +4502,21 @@ void CBCGPRibbonPanel::CleanUpSizes ()
 	m_btnDefault.CleanUpSizes ();
 }
 //***************************************************************************
+void CBCGPRibbonPanel::OnChangeRibbonFont()
+{
+	ASSERT_VALID (this);
+
+	for (int i = 0; i < m_arElements.GetSize (); i++)
+	{
+		CBCGPBaseRibbonElement* pElem = m_arElements [i];
+		ASSERT_VALID (pElem);
+
+		pElem->OnChangeRibbonFont();
+	}
+
+	m_btnDefault.OnChangeRibbonFont();
+}
+//***************************************************************************
 void CBCGPRibbonPanel::ScrollPalette (int nScrollOffset, BOOL bIsDelta)
 {
 	ASSERT_VALID (this);
@@ -4388,6 +4541,11 @@ void CBCGPRibbonPanel::ScrollPalette (int nScrollOffset, BOOL bIsDelta)
 		if (bIsLabel || bIsIcon)
 		{
 			pElem->m_rect.OffsetRect (0, nDelta);
+
+			if (bIsIcon)
+			{
+				((CBCGPRibbonPaletteIcon*)pElem)->SetCheckRect();
+			}
 		}
 	}
 }
@@ -4427,9 +4585,7 @@ CSize CBCGPRibbonPanel::GetPaletteMinSize () const
 	ASSERT (pOldFont != NULL);
 
 	const int cxScroll = ::GetSystemMetrics (SM_CXVSCROLL);
-
-	int cxIcon = m_pPaletteButton->GetIconSize ().cx;
-	int cyIcon = m_pPaletteButton->GetIconSize ().cy;
+	const CSize sizeItem = m_pPaletteButton->GetItemSize();
 
 	int cxLabel = 0;
 	int cyLabel = 0;
@@ -4459,7 +4615,7 @@ CSize CBCGPRibbonPanel::GetPaletteMinSize () const
 		{
 			if (!bNoSideBar)
 			{
-				sizeElem.cx += 4 * TEXT_MARGIN + CBCGPToolBar::GetMenuImageSize ().cx + 
+				sizeElem.cx += 4 * globalUtils.ScaleByDPI(TEXT_MARGIN) + CBCGPToolBar::GetMenuImageSize ().cx + 
 					2 * CBCGPVisualManager::GetInstance ()->GetMenuImageMargin ();
 			}
 
@@ -4470,9 +4626,9 @@ CSize CBCGPRibbonPanel::GetPaletteMinSize () const
 
 	dc.SelectObject (pOldFont);
 
-	int cx = max (cxIcon, cxLabel);
+	int cx = max (sizeItem.cx, cxLabel);
 
-	return CSize (max (cx + cxScroll, cxBottom), cyIcon + cyBottom + cyLabel);
+	return CSize (max (cx + cxScroll, cxBottom), sizeItem.cy + cyBottom + cyLabel);
 }
 //***************************************************************************
 void CBCGPRibbonPanel::SetKeys (LPCTSTR lpszKeys)
@@ -4574,7 +4730,7 @@ CRect CBCGPRibbonPanel::GetPaletteRect ()
 	return rectPalette;
 }
 //***************************************************************************
-void CBCGPRibbonPanel::MakePaletteItemVisible (CBCGPBaseRibbonElement* pItem)
+void CBCGPRibbonPanel::MakePaletteItemVisible (CBCGPBaseRibbonElement* pItem, BOOL bChangeScrollBar)
 {
 	ASSERT_VALID (this);
 	ASSERT_VALID (pItem);
@@ -4595,7 +4751,7 @@ void CBCGPRibbonPanel::MakePaletteItemVisible (CBCGPBaseRibbonElement* pItem)
 			GetParentWnd ()->RedrawWindow (rectPalette);
 		}
 
-		if (m_pScrollBar->GetSafeHwnd () != NULL)
+		if (bChangeScrollBar && m_pScrollBar->GetSafeHwnd () != NULL)
 		{
 			m_pScrollBar->SetScrollPos (m_nScrollOffset);
 		}
@@ -4625,7 +4781,7 @@ void CBCGPRibbonPanel::MakePaletteItemVisible (CBCGPBaseRibbonElement* pItem)
 			GetParentWnd ()->RedrawWindow (rectPalette);
 		}
 
-		if (m_pScrollBar->GetSafeHwnd () != NULL)
+		if (bChangeScrollBar && m_pScrollBar->GetSafeHwnd () != NULL)
 		{
 			m_pScrollBar->SetScrollPos (m_nScrollOffset);
 		}
@@ -5159,6 +5315,26 @@ void CBCGPRibbonPanel::SetNonCollapsible(BOOL bSet/* = TRUE*/)
 	ASSERT_VALID(this);
 
 	m_bNonCollapsible = bSet;
+
+	if (bSet)
+	{
+		m_bAlwaysCollapsed = FALSE;
+	}
+
+	VerifyNonCollapsibleState();
+}
+//*******************************************************************************
+void CBCGPRibbonPanel::SetAlwaysCollapsed(BOOL bSet/* = TRUE*/)
+{
+	ASSERT_VALID(this);
+	
+	m_bAlwaysCollapsed = bSet;
+	
+	if (bSet)
+	{
+		m_bNonCollapsible = FALSE;
+	}
+	
 	VerifyNonCollapsibleState();
 }
 //*******************************************************************************
@@ -5189,6 +5365,80 @@ BOOL CBCGPRibbonPanel::VerifyNonCollapsibleState()
 	}
 
 	return TRUE;
+}
+//*******************************************************************************
+void CBCGPRibbonPanel::SetAlwaysAlignByColumn(BOOL bSet/* = TRUE*/)
+{
+	ASSERT_VALID(this);
+
+	m_bAlwaysAlignByColumn = bSet;
+
+	if (bSet)
+	{
+		m_bAlignByColumn = TRUE;
+	}
+	else
+	{
+		int nCount = 0;
+		
+		for (int i = 0; i < m_arElements.GetSize () && nCount < 2; i++)
+		{
+			CBCGPBaseRibbonElement* pListElem = m_arElements [i];
+			ASSERT_VALID (pListElem);
+			
+			if (!pListElem->IsAlignByColumn ())
+			{
+				nCount++;
+			}
+		}
+		
+		if (nCount >= 2)
+		{
+			m_bAlignByColumn = FALSE;
+		}
+	}
+}
+//*******************************************************************************
+BOOL CBCGPRibbonPanel::IsHiddenInAppMode() const
+{
+	CBCGPRibbonCategory* pParentCategory = GetParentCategory ();
+	if (pParentCategory != NULL)
+	{
+		ASSERT_VALID(pParentCategory);
+
+		if (pParentCategory->IsHiddenInAppMode())
+		{
+			return TRUE;
+		}
+
+		CBCGPRibbonBar* pRibbonBar = pParentCategory->GetParentRibbonBar();
+		if (pRibbonBar != NULL)
+		{
+			ASSERT_VALID(pRibbonBar);
+			
+			if (!pRibbonBar->IsElementInApplicationMode(m_nApplicationModes))
+			{
+				return TRUE;
+			}
+		}
+	}
+	
+	return FALSE;
+}
+//*******************************************************************************
+void CBCGPRibbonPanel::OnUpdateToolTips()
+{
+	ASSERT_VALID(this);
+	
+	for (int i = 0; i < m_arElements.GetSize(); i++)
+	{
+		CBCGPBaseRibbonElement* pElem = m_arElements[i];
+		if (pElem != NULL)
+		{
+			ASSERT_VALID(pElem);
+			pElem->OnUpdateToolTips();
+		}
+	}
 }
 
 #endif // BCGP_EXCLUDE_RIBBON

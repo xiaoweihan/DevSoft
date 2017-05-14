@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -216,8 +216,13 @@ static const XEntity s_EntityText [] =
 	{_T("&circ;") , _T("^")},
 	{_T("&tilde;"), _T("~")},
 	{_T("&#09;")  , _T("\t")},
-	{_T("&#0A;")  , _T("\r")},
-	{_T("&#0D;")  , _T("\n")},
+	{_T("&#x9;")  , _T("\t")},
+	{_T("&#10;")  , _T("\r")},
+	{_T("&#xA;")  , _T("\r")},
+	{_T("&#0A;")  , _T("\r")}, // old entity
+	{_T("&#13;")  , _T("\n")},
+	{_T("&#xD;")  , _T("\n")},
+	{_T("&#0D;")  , _T("\n")}, // old entity
 	{NULL         , NULL}
 };
 
@@ -518,6 +523,12 @@ BOOL CBCGPTagManager::LoadFromFile (LPCTSTR lpszFileName)
 BOOL CBCGPTagManager::ExcludeTag (LPCTSTR lpszTag, CString& strTag, 
 					BOOL bIsCharsList)
 {
+	return CBCGPTagManager::ExcludeTag (m_strBuffer, lpszTag, strTag, bIsCharsList);
+}
+
+BOOL CBCGPTagManager::ExcludeTag (CString& strBuffer, LPCTSTR lpszTag, CString& strTag, 
+					BOOL bIsCharsList)
+{
 	if (lpszTag == NULL)
 	{
 		return FALSE;
@@ -529,13 +540,13 @@ BOOL CBCGPTagManager::ExcludeTag (LPCTSTR lpszTag, CString& strTag,
 		return FALSE;
 	}
 
-	const int iBufLen = m_strBuffer.GetLength ();
+	const int iBufLen = strBuffer.GetLength ();
 
 	CString strTagStart;
 	strTagStart.Format (_T("<%s>"), lpszTag);
 	const int iTagStartLen = nTagLen + 2;
 
-	int iIndexStart = m_strBuffer.Find (strTagStart);
+	int iIndexStart = strBuffer.Find (strTagStart);
 	if (iIndexStart < 0)
 	{
 		return FALSE;
@@ -551,7 +562,7 @@ BOOL CBCGPTagManager::ExcludeTag (LPCTSTR lpszTag, CString& strTag,
 
 	int iIndexEnd =  -1;
 	int nBalance = 1;
-	LPCTSTR pBuffer = m_strBuffer;
+	LPCTSTR pBuffer = strBuffer;
 	for (int i = iStart; i <= iEnd; i ++)
 	{
 		LPCTSTR p = pBuffer + i;
@@ -586,11 +597,11 @@ BOOL CBCGPTagManager::ExcludeTag (LPCTSTR lpszTag, CString& strTag,
 		return FALSE;
 	}
 
-	strTag = m_strBuffer.Mid (iStart, iIndexEnd - iStart);
+	strTag = strBuffer.Mid (iStart, iIndexEnd - iStart);
 	strTag.TrimLeft ();
 	strTag.TrimRight ();
 
-	m_strBuffer.Delete (iIndexStart, iIndexEnd + iTagEndLen - iIndexStart);
+	strBuffer.Delete (iIndexStart, iIndexEnd + iTagEndLen - iIndexStart);
 
 	if (bIsCharsList)
 	{
@@ -1312,7 +1323,11 @@ BOOL CBCGPTagManager::ParseToolBarImages (const CString& strItem, CBCGPToolBarIm
 
 	if (size == CSize (0, 0))
 	{
+#ifndef _BCGSUITE_
+		value.SetSingleImage (FALSE);
+#else
 		value.SetSingleImage ();
+#endif
 	}
 
 	COLORREF clrTransparent = CLR_DEFAULT;

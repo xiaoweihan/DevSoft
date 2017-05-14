@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -105,7 +105,10 @@ CSize CBCGPAutoHideButton::GetSize (BOOL bIgnoreOthersInRow) const
 		CSize sizeIcon (0, 0);
 		if (hIcon != NULL || bIsOverlapped)
 		{
-			sizeIcon = globalData.m_sizeSmallIcon;
+			sizeIcon = globalUtils.GetIconSize(hIcon);
+			
+			sizeIcon.cx = max(sizeIcon.cx, globalData.m_sizeSmallIcon.cx);
+			sizeIcon.cy = max(sizeIcon.cy, globalData.m_sizeSmallIcon.cy);
 		}
 
 		if (hIcon == NULL && !bIsOverlapped)
@@ -130,11 +133,7 @@ CSize CBCGPAutoHideButton::GetSize (BOOL bIgnoreOthersInRow) const
 			nSpacing += m_nMarginSize + 1;
 		}
 
-		int nExtraSpaceVM = CBCGPVisualManager::GetInstance ()->GetAutohideButtonExtraSpace();
-		if (nExtraSpaceVM > 0 && globalData.GetRibbonImageScale () != 1.)
-		{
-			nExtraSpaceVM = (int) (globalData.GetRibbonImageScale () * nExtraSpaceVM);
-		}
+		int nExtraSpaceVM = globalUtils.ScaleByDPI(CBCGPVisualManager::GetInstance ()->GetAutohideButtonExtraSpace());
 		
 		if (bHorz)
 		{
@@ -232,15 +231,10 @@ void CBCGPAutoHideButton::OnDraw (CDC* pDC)
 
 	rectDraw.DeflateRect (m_nMarginSize, m_nMarginSize);
 
-	int nExtraSpace = CBCGPVisualManager::GetInstance ()->GetAutohideButtonExtraSpace();
+	int nExtraSpace = globalUtils.ScaleByDPI(CBCGPVisualManager::GetInstance ()->GetAutohideButtonExtraSpace());
 
 	if (nExtraSpace > 0)
 	{
-		if (globalData.GetRibbonImageScale () != 1.)
-		{
-			nExtraSpace = (int) (globalData.GetRibbonImageScale () * nExtraSpace);
-		}
-
 		switch (m_dwAlignment & CBRS_ALIGN_ANY)
 		{
 		case CBRS_ALIGN_RIGHT:
@@ -267,7 +261,10 @@ void CBCGPAutoHideButton::OnDraw (CDC* pDC)
 		HICON hIcon = m_pAutoHideWindow->GetBarIcon (FALSE);
 		if (hIcon != NULL || bIsOverlapped)
 		{
-			CSize sizeIcon (globalData.m_sizeSmallIcon);
+			CSize sizeIcon = globalUtils.GetIconSize(hIcon);
+			
+			sizeIcon.cx = max(sizeIcon.cx, globalData.m_sizeSmallIcon.cx);
+			sizeIcon.cy = max(sizeIcon.cy, globalData.m_sizeSmallIcon.cy);
 
 			int dx = IsHorizontal () ? 0 : (rectDraw.Width () - sizeIcon.cx) / 2;
 			int dy = IsHorizontal () ? (rectDraw.Height () - sizeIcon.cy) / 2 : 0;

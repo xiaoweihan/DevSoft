@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -104,6 +104,7 @@ protected:
 	BOOL						m_bResizeTracking;
 	CPoint						m_ptCursorInit;
 	BOOL						m_bGutterLogo;
+	int							m_nCurrTextHeight;
 
 	static UINT					m_uiPopupTimerDelay;
 	static int					m_nLastCommandIndex;
@@ -160,6 +161,13 @@ public:
 // Overrides
 	virtual void SetButtonStyle(int nIndex, UINT nStyle);
 
+	virtual int GetRowHeight() const
+	{
+		return max(m_nCurrTextHeight, CBCGPToolBar::GetRowHeight());
+	}
+
+	virtual CFont* SelectDefaultFont(CDC* pDC);
+
 	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
 	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
 	virtual HRESULT get_accParent(IDispatch **ppdispParent);
@@ -188,6 +196,7 @@ protected:
 
 	virtual DROPEFFECT OnDragOver(COleDataObject* pDataObject, DWORD dwKeyState, CPoint point);
 	virtual INT_PTR OnToolHitTest(CPoint point, TOOLINFO* pTI) const;
+	virtual void GetMessageString(UINT nID, CString& strMessageString) const;
 
 	virtual BOOL OnUserToolTip (CBCGPToolbarButton* /*pButton*/, CString& /*strTTText*/) const
 	{

@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,13 +28,14 @@
 #include "BCGPToolBar.h"
 #include "BCGPTaskPaneMiniFrameWnd.h"
 #include "BCGPScrollBar.h"
+#include "BCGPAnimationManager.h"
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPTasksPane additional classes
 
 class CBCGPTasksPane;
 
-class BCGCBPRODLLEXPORT CBCGPTasksPanePage : public CObject
+class BCGCBPRODLLEXPORT CBCGPTasksPanePage : public CBCGPBaseAccessibleObject
 {
 public:
 	CBCGPTasksPanePage(LPCTSTR lpszName, CBCGPTasksPane *pTaskPane)
@@ -54,7 +55,7 @@ public:
 	CBCGPTasksPane*	m_pTaskPane;
 };
 
-class BCGCBPRODLLEXPORT CBCGPTasksGroup : public CObject
+class BCGCBPRODLLEXPORT CBCGPTasksGroup : public CBCGPBaseAccessibleObject
 {
 public:
 	CBCGPTasksGroup(LPCTSTR lpszName, BOOL bIsBottom, BOOL bIsSpecial = FALSE, 
@@ -68,23 +69,12 @@ public:
 		m_rectGroup.SetRectEmpty ();
 		m_bIsCollapsed = bIsCollapsed;
 		m_hIcon = hIcon;
-		m_sizeIcon = CSize(0, 0);
+		m_sizeIcon = globalUtils.GetIconSize(m_hIcon);
 
 		m_clrText		= (COLORREF)-1;
 		m_clrTextHot	= (COLORREF)-1;
 
-		ICONINFO iconInfo;
-		::ZeroMemory(&iconInfo, sizeof(iconInfo));
-		::GetIconInfo(m_hIcon, &iconInfo);
-		
-		BITMAP bm;
-		::ZeroMemory(&bm, sizeof(bm));
-		::GetObject(iconInfo.hbmColor, sizeof(BITMAP), &bm);
-
-		m_sizeIcon = CSize(bm.bmWidth, bm.bmHeight);
-
-		::DeleteObject (iconInfo.hbmColor);
-		::DeleteObject (iconInfo.hbmMask);
+		m_bIsVisible = TRUE;
 	}
 
 	virtual ~CBCGPTasksGroup()
@@ -96,7 +86,18 @@ public:
 		m_pPage = NULL;
 	}
 
+	// IAccessible
+	virtual HRESULT get_accParent(IDispatch **ppdispParent);
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accValue(VARIANT varChild, BSTR *pszValue);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
+    virtual HRESULT accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild);
 	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
+	virtual CBCGPTask* GetAccChild(int nIndex);
 
 	CBCGPTasksPanePage*	m_pPage;
 	CString	m_strName;
@@ -110,9 +111,10 @@ public:
 	CSize	m_sizeIcon;
 	COLORREF m_clrText;
 	COLORREF m_clrTextHot;
+	BOOL	m_bIsVisible;
 };
 
-class BCGCBPRODLLEXPORT CBCGPTask : public CObject
+class BCGCBPRODLLEXPORT CBCGPTask : public CBCGPBaseAccessibleObject
 {
 public:
 	enum WindowAlign
@@ -168,7 +170,15 @@ public:
 	}
 
 	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
-
+	virtual HRESULT get_accParent(IDispatch **ppdispParent);
+	virtual HRESULT get_accName(VARIANT varChild, BSTR *pszName);
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+    virtual HRESULT accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild);
+	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);	
+	
 	CBCGPTasksGroup*	m_pGroup;
 	CString			m_strName;
 	int				m_nIcon;
@@ -231,7 +241,8 @@ protected:
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPTasksPane window
 
-class BCGCBPRODLLEXPORT CBCGPTasksPane : public CBCGPDockingControlBar
+class BCGCBPRODLLEXPORT CBCGPTasksPane :	public CBCGPDockingControlBar,
+											public CBCGPAnimationManager
 {
 	friend CBCGPTasksPaneToolBar;
 	DECLARE_SERIAL(CBCGPTasksPane);
@@ -246,6 +257,7 @@ protected:
 	CArray<int, int> m_arrHistoryStack;
 	int				m_iActivePage;
 	const int		m_nMaxHistory;
+	BOOL			m_bHideSingleGroupCaption;
 	
 	CObList			m_lstTaskGroups;
 	CBCGPTask*		m_pHotTask;
@@ -254,8 +266,11 @@ protected:
 	CBCGPTasksGroup*	m_pHotGroupCaption;
 	CBCGPTasksGroup*	m_pClickedGroupCaption;
 	CBCGPTasksGroup*	m_pFocusedGroupCaption;
+	CBCGPTasksGroup*	m_pCurrGroup;	// Used in CBCGPTasksPane::ReposTasks
 
 	CString			m_strCaption;
+
+	HWND			m_hwndHeader;
 
 	HFONT			m_hFont;
 	CBCGPScrollBar	m_wndScrollVert;		// Vertical scroll bar
@@ -315,15 +330,15 @@ protected:
 
 	CBCGPScrollBar::BCGPSB_STYLE m_ScrollBarStyle;			// Scroll bars style
 
-	static clock_t m_nLastAnimTime;
-	static const int m_iAnimTimerDuration;
 	static const int m_iScrollTimerDuration;
 	static const LONG m_lAccUseCursorPosValue;
 	static const LONG m_lAccUseFocus;
 
+	int m_nAccHeaderControlsCount;
+
 // Operations
 public:
-	BOOL SetIconsList (UINT uiImageListResID, int cx, COLORREF clrTransparent = RGB (255, 0, 255));
+	BOOL SetIconsList (UINT uiImageListResID, int cx, COLORREF clrTransparent = RGB (255, 0, 255), BOOL bAutoScale = FALSE);
 	void SetIconsList (HIMAGELIST hIcons);
 
 	void RecalcLayout (BOOL bRedraw = TRUE);
@@ -372,6 +387,10 @@ public:
 	{
 		return AddGroup (0, lpszGroupName, bBottomLocation, bSpecial, hIcon);
 	}
+
+	BOOL IsHideSingleGroupCaption() const	{return m_bHideSingleGroupCaption;}
+	void HideSingleGroupCaption (BOOL bHide = TRUE);
+
 	void RemoveGroup (int nGroup);
 	void RemoveAllGroups (int nPageIdx = 0);
 
@@ -678,6 +697,8 @@ public:
 public:
 	virtual void OnClickTask (int nGroupNumber, int nTaskNumber, 
 							UINT uiCommandID, DWORD_PTR dwUserData);
+	virtual BOOL CanClickTask(int nGroupNumber, int nTaskNumber, 
+							UINT uiCommandID, DWORD_PTR dwUserData);
 	virtual void OnFirst();
 	virtual void OnNext();
 	virtual void OnPrev();
@@ -698,7 +719,8 @@ public:
 
 	virtual BCGP_DOCK_TYPE GetDockMode () const 
 	{
-		return BCGP_DT_IMMEDIATE;
+		BCGP_DOCK_TYPE dockType = CBCGPDockingControlBar::GetDockMode();
+		return ((dockType & BCGP_DT_STANDARD) != 0) ? BCGP_DT_IMMEDIATE : dockType;
 	}
 
 	virtual void OnUpdateCmdUI(CFrameWnd* pTarget, BOOL bDisableIfNoHndler);
@@ -709,12 +731,26 @@ public:
 	
 	virtual BOOL IsToolBox () const		{	return FALSE;	}
 
+	// Accessibility:
 	virtual BOOL IsAccessibilityCompatible () { return TRUE; }
-	virtual BOOL CBCGPTasksPane::OnSetAccData (long /*lVal*/);
+	virtual BOOL OnSetAccData(long /*lVal*/);
+	virtual HRESULT get_accChildCount(long *pcountChildren);
+	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
+	virtual HRESULT accHitTest(long xLeft, long yTop, VARIANT *pvarChild);
+    virtual HRESULT accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild);
+	virtual long AccGetChildCount();
+	virtual CBCGPBaseAccessibleObject* AccessibleObjectByIndex(long lVal);
+	virtual long ChildIndexByObject(CBCGPBaseAccessibleObject* pObject);
+	virtual void NotifyAccessibility (int nGroupNumber, int nTaskNumber);
+	virtual void NotifyAccessibilityFocusEvent(BOOL bUseCursor /*CBCGPBaseAccessibleObject* pObject*/);
+	virtual LPDISPATCH GetAccessibleDispatch();
 
 	virtual BOOL OnGestureEventPan(const CPoint& ptFrom, const CPoint& ptTo, CSize& sizeOverPan);
 
 protected:
+	virtual void OnAnimationValueChanged(double dblOldValue, double dblNewValue);
+	virtual void OnAnimationFinished();
+
 	virtual void OnFillBackground (CDC* pDC, CRect rectFill);
 	virtual void OnDrawTasks (CDC* pDC, CRect rectWorkArea);
 	virtual void OnDrawTaskFocusRect (CDC* pDC, CBCGPTask* pTask);
@@ -734,8 +770,6 @@ protected:
 	
 	virtual void ScrollChild (HWND /*hwndTask*/, int /*nScrollValue*/) {}
 
-	virtual void NotifyAccessibility (int nGroupNumber, int nTaskNumber);
-	virtual void NotifyAccessibilityFocusEvent (BOOL bUseCursor);
 	virtual BOOL ProcessKeyboard (UINT nKey);
 	virtual void OnChangeFocus (CBCGPTask* pTask, CBCGPTasksGroup* pGroup);
 	virtual void OnHotTask (CBCGPTask* pTask);
@@ -783,7 +817,6 @@ protected:
 	afx_msg LRESULT OnSetText(WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 
-
 	virtual void DoPaint(CDC* pDC);
 	virtual int ReposTasks (BOOL bCalcHeightOnly = FALSE);
 	void CreateFonts ();
@@ -820,9 +853,15 @@ protected:
 
 	void EnsureVisible ();
 	void DoTaskClick (CBCGPTask* pClickTask);
-	void DoGroupCaptionClick (CBCGPTasksGroup* pClickGroupCaption, BOOL bDisableAnimation);
+	
+	virtual void DoGroupCaptionClick (CBCGPTasksGroup* pClickGroupCaption, BOOL bDisableAnimation);
+
  	CBCGPTask* GetNextTask (CBCGPTasksGroup* pGroup, CBCGPTask* pStartTask, BOOL bForward) const;
  	CBCGPTasksGroup* GetNextGroup (CBCGPTasksGroup* pStartGroup, BOOL bForward) const;
+
+	int GetHeaderHeight();
+	int GetGroupHeight(CBCGPTasksGroup* pGroup);
+	int GetGroupCount(CBCGPTasksPanePage* pPage);
 };
 
 #endif // BCGP_EXCLUDE_TASK_PANE

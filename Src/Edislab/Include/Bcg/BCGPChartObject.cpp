@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -973,11 +973,15 @@ void CBCGPChartInterLineColoringEffect::OnCalcScreenPoints(CBCGPGraphicsManager*
 	}
 
 	int i = 0;
-	for (i = m_pSeries1->GetMinDataPointIndex(); i <= m_pSeries1->GetMaxDataPointIndex(); i++)
+
+	if (m_pSeries1 != NULL)
 	{
-		if (!m_pSeries1->IsDataPointScreenPointsEmpty(i))
+		for (i = m_pSeries1->GetMinDataPointIndex(); i <= m_pSeries1->GetMaxDataPointIndex(); i++)
 		{
-			m_arPointsSeries1.Add(m_pSeries1->GetDataPointScreenPoint(i, 0)); 
+			if (!m_pSeries1->IsDataPointScreenPointsEmpty(i))
+			{
+				m_arPointsSeries1.Add(m_pSeries1->GetDataPointScreenPoint(i, 0));
+			}
 		}
 	}
 
@@ -1033,33 +1037,60 @@ void CBCGPChartInterLineColoringEffect::OnDraw(CBCGPGraphicsManager* pGM)
 	m_pSeries1->GetColors(colors, -1);
 
 	CBCGPBrush& brFill = m_brTopBrush.IsEmpty() ? *colors.m_pBrElementFillColor : m_brTopBrush;
-	
-	CBCGPGeometry* pDrawGeometry = CreateGeometry(m_arPointsSeries1, rectBounds, curveType, FALSE);
-	CBCGPGeometry* pClipGeometry = m_pSeries2 != NULL ? 
-		CreateGeometry(m_arPointsSeries2, rectBounds, m_pSeries2->GetCurveType(), TRUE) : 
-		CreateClipGeometry(m_dblOrigin);
 
-	ASSERT_VALID(pDrawGeometry);
-	ASSERT_VALID(pClipGeometry);
+	BOOL bSeries1Closed = FALSE;
+	if (m_pSeries1 != NULL)
+	{
+		CBCGPChartLineSeries* pSeries = DYNAMIC_DOWNCAST(CBCGPChartLineSeries, m_pSeries1);
+		bSeries1Closed = pSeries != NULL && pSeries->IsConnectFirstLastPoints();
+	}
 
-	DrawEffect(pGM, pDrawGeometry, pClipGeometry, rectBounds, brFill);
+	BOOL bSeries2Closed = FALSE;
+	if (m_pSeries2 != NULL)
+	{
+		CBCGPChartLineSeries* pSeries = DYNAMIC_DOWNCAST(CBCGPChartLineSeries, m_pSeries2);
+		bSeries2Closed = pSeries != NULL && pSeries->IsConnectFirstLastPoints();
+	}
 
-	delete pClipGeometry;
-	delete pDrawGeometry;
+	CBCGPGeometry* pDrawGeometry = CreateGeometry(m_arPointsSeries1, rectBounds, curveType, FALSE, bSeries1Closed);
+	if (pDrawGeometry != NULL)
+	{
+		CBCGPGeometry* pClipGeometry = m_pSeries2 != NULL ? 
+			CreateGeometry(m_arPointsSeries2, rectBounds, m_pSeries2->GetCurveType(), TRUE, bSeries2Closed) : 
+			CreateClipGeometry(m_dblOrigin);
+
+		if (pClipGeometry != NULL)
+		{
+			ASSERT_VALID(pDrawGeometry);
+			ASSERT_VALID(pClipGeometry);
+
+			DrawEffect(pGM, pDrawGeometry, pClipGeometry, rectBounds, brFill);
+
+			delete pClipGeometry;
+		}
+
+		delete pDrawGeometry;
+	}
 
 	if (m_pSeries2 != NULL && m_arPointsSeries2.GetSize() > 2 && !m_bTopOnly)
 	{
 		BCGPSeriesColorsPtr colors;
 		m_pSeries2->GetColors(colors, -1);
 
-		pDrawGeometry = CreateGeometry(m_arPointsSeries2, rectBounds, m_pSeries2->GetCurveType(), FALSE);
-		pClipGeometry = CreateGeometry(m_arPointsSeries1, rectBounds, curveType, TRUE);
+		pDrawGeometry = CreateGeometry(m_arPointsSeries2, rectBounds, m_pSeries2->GetCurveType(), FALSE, bSeries2Closed);
+		if (pDrawGeometry != NULL)
+		{
+			CBCGPGeometry* pClipGeometry = CreateGeometry(m_arPointsSeries1, rectBounds, curveType, TRUE, bSeries1Closed);
+			if (pClipGeometry != NULL)
+			{
+				CBCGPBrush& brFill = m_brBottomBrush.IsEmpty() ? *colors.m_pBrElementFillColor : m_brBottomBrush;
+				DrawEffect(pGM, pDrawGeometry, pClipGeometry, rectBounds, brFill);
 
-		CBCGPBrush& brFill = m_brBottomBrush.IsEmpty() ? *colors.m_pBrElementFillColor : m_brBottomBrush;
-		DrawEffect(pGM, pDrawGeometry, pClipGeometry, rectBounds, brFill);
+				delete pClipGeometry;
+			}
 
-		delete pClipGeometry;
-		delete pDrawGeometry;
+			delete pDrawGeometry;
+		}
 	}
 
 	CBCGPGraphicsManagerGDI::EnableTransparency(bWasTransparency);
@@ -1068,22 +1099,87 @@ void CBCGPChartInterLineColoringEffect::OnDraw(CBCGPGraphicsManager* pGM)
 void CBCGPChartInterLineColoringEffect::DrawEffect(CBCGPGraphicsManager* pGM, CBCGPGeometry* pDrawGeometry, CBCGPGeometry* pClipGeometry, 
 													const CBCGPRect& rectBounds, const CBCGPBrush& brFill)
 {
-    CBCGPRectangleGeometry g(rectBounds);
+	CBCGPGeometry* g = NULL;
 
-    CBCGPGeometry geometryDest;
+	BCGPChartCategory category = m_pSeries1->GetChartCategory();
+	if (category == BCGPChartPolar)
+	{
+		CBCGPChartAxisPolarY* pYAxis = DYNAMIC_DOWNCAST(CBCGPChartAxisPolarY, m_pSeries1->GetRelatedAxis(CBCGPChartSeries::AI_Y));
+		ASSERT_VALID(pYAxis);
 
-    pGM->CombineGeometry(geometryDest, g, *pClipGeometry, RGN_AND);
+		CBCGPPoint ptStart;
+		CBCGPPoint ptEnd;
+		pYAxis->GetAxisPos(ptStart, ptEnd);
 
-    CBCGPGeometry geometryDraw;
-    pGM->CombineGeometry(geometryDraw, *pDrawGeometry, geometryDest, RGN_DIFF);
+		double dblCurrValue = pYAxis->GetMaxDisplayedValue();
+		double dblRadius = pYAxis->IsVertical()
+							? ptStart.y - pYAxis->PointFromValue(dblCurrValue, TRUE)
+							: pYAxis->PointFromValue(dblCurrValue, TRUE) - ptStart.x;
 
-    pGM->FillGeometry(geometryDraw, brFill);
+		if (pYAxis->m_bRadialGridLines)
+		{
+			g = new CBCGPEllipseGeometry(CBCGPEllipse(ptStart, dblRadius, dblRadius));
+		}
+		else
+		{
+			CBCGPChartAxisPolarX* pXAxis = DYNAMIC_DOWNCAST(CBCGPChartAxisPolarX, pYAxis->GetPerpendecularAxis());
+			ASSERT_VALID(pYAxis);
+
+			int nIndex = 0;
+			int nMaxValue = (int) pXAxis->GetMaxDisplayedValue();
+
+			if (!pXAxis->IsComponentXSet())
+			{
+				nMaxValue++;
+			}
+
+			CBCGPPointsArray arPoints;
+
+			for (int i = (int)pXAxis->GetMinDisplayedValue(); i < nMaxValue; i += (int)pXAxis->GetMajorUnit(), nIndex++)
+			{
+				double dblAngleStart = bcg_deg2rad(pXAxis->GetAngleFromIndex(nIndex));
+
+				CBCGPPoint pt(ptStart);
+
+				pt.x += dblRadius * sin(dblAngleStart);
+				pt.y -= dblRadius * cos(dblAngleStart);
+
+				arPoints.Add(pt);
+			}
+
+			g = new CBCGPPolygonGeometry(arPoints);
+		}
+	}
+	else if (category == BCGPChartTernary)
+	{
+
+	}
+	else
+	{
+		g = new CBCGPRectangleGeometry(rectBounds);
+	}
+
+	CBCGPGeometry geometryDest;
+	pGM->CombineGeometry(geometryDest, *pDrawGeometry, *pClipGeometry, RGN_DIFF);
+
+	if (g != NULL)
+	{
+		CBCGPGeometry geometryDraw;
+		pGM->CombineGeometry(geometryDraw, *g, geometryDest, RGN_AND);
+
+		pGM->FillGeometry(geometryDraw, brFill);
+
+		delete g;
+	}
+	else
+	{
+		pGM->FillGeometry(geometryDest, brFill);
+	}
 }
 //*******************************************************************************
 CBCGPGeometry* CBCGPChartInterLineColoringEffect::CreateClipGeometry(double dblOrigin)
 {
 	CBCGPChartAxis* pYAxis = m_pSeries1->GetRelatedAxis(CBCGPChartSeries::AI_Y);
-
 	ASSERT_VALID(pYAxis);
 
 	CBCGPRect rectBounds = pYAxis->GetBoundingRect();
@@ -1107,11 +1203,18 @@ CBCGPGeometry* CBCGPChartInterLineColoringEffect::CreateClipGeometry(double dblO
 }
 //*******************************************************************************
 CBCGPGeometry* CBCGPChartInterLineColoringEffect::CreateGeometry(const CBCGPPointsArray& arOrgPoints, const CBCGPRect& rectBounds, 
-																 BCGPChartFormatSeries::ChartCurveType curveType, BOOL bClip)
+																 BCGPChartFormatSeries::ChartCurveType curveType, BOOL bClip, BOOL bClosed)
 {
 	CBCGPChartAxis* pXAxis = m_pSeries1->GetRelatedAxis(CBCGPChartSeries::AI_X);
-
 	ASSERT_VALID(pXAxis);
+
+	if (arOrgPoints.GetSize() == 0)
+	{
+		return NULL;
+	}
+
+	BOOL bNotRectangle = m_pSeries1->GetChartCategory() == BCGPChartPolar ||
+						m_pSeries1->GetChartCategory() == BCGPChartTernary;
 
 	BOOL bIsVertical = pXAxis->IsVertical();
 	CBCGPGeometry* pGeometry = NULL;
@@ -1125,51 +1228,54 @@ CBCGPGeometry* CBCGPChartInterLineColoringEffect::CreateGeometry(const CBCGPPoin
 	CBCGPPoint ptClipCorrectionStart = ptStart;
 	CBCGPPoint ptClipCorrectionEnd = ptEnd;
 
-	if (bIsVertical)
+	if (!bNotRectangle && !bClosed)
 	{
-		if (bClip)
+		if (bIsVertical)
 		{
-			if (pXAxis->m_bReverseOrder)
+			if (bClip)
 			{
-				ptClipCorrectionStart.y -= 1.;
-				ptClipCorrectionEnd.y += 1.;
+				if (pXAxis->m_bReverseOrder)
+				{
+					ptClipCorrectionStart.y -= 1.;
+					ptClipCorrectionEnd.y += 1.;
+				}
+				else
+				{
+					ptClipCorrectionStart.y += 1.;
+					ptClipCorrectionEnd.y -= 1.;
+				}
+				
+				ptStart = CBCGPPoint(rectBounds.left, ptClipCorrectionStart.y);
+				ptEnd = CBCGPPoint(rectBounds.left, ptClipCorrectionEnd.y);
 			}
 			else
 			{
-				ptClipCorrectionStart.y += 1.;
-				ptClipCorrectionEnd.y -= 1.;
+				ptStart = CBCGPPoint(rectBounds.left, ptStart.y);
+				ptEnd = CBCGPPoint(rectBounds.left, ptEnd.y);
 			}
-			
-			ptStart = CBCGPPoint(rectBounds.left, ptClipCorrectionStart.y);
-			ptEnd = CBCGPPoint(rectBounds.left, ptClipCorrectionEnd.y);
 		}
 		else
 		{
-			ptStart = CBCGPPoint(rectBounds.left, ptStart.y);
-			ptEnd = CBCGPPoint(rectBounds.left, ptEnd.y);
-		}
-	}
-	else
-	{
-		if (bClip)
-		{
-			if (pXAxis->m_bReverseOrder)
+			if (bClip)
 			{
-				ptClipCorrectionStart.x += 1.;
-				ptClipCorrectionEnd.x -= 1.;
+				if (pXAxis->m_bReverseOrder)
+				{
+					ptClipCorrectionStart.x += 1.;
+					ptClipCorrectionEnd.x -= 1.;
+				}
+				else
+				{
+					ptClipCorrectionStart.x -= 1.;
+					ptClipCorrectionEnd.x += 1.;
+				}
+				ptStart = CBCGPPoint(ptClipCorrectionStart.x, rectBounds.bottom);
+				ptEnd = CBCGPPoint(ptClipCorrectionEnd.x, rectBounds.bottom);
 			}
 			else
 			{
-				ptClipCorrectionStart.x -= 1.;
-				ptClipCorrectionEnd.x += 1.;
+				ptStart = CBCGPPoint(ptStart.x, rectBounds.bottom);
+				ptEnd = CBCGPPoint(ptEnd.x, rectBounds.bottom);
 			}
-			ptStart = CBCGPPoint(ptClipCorrectionStart.x, rectBounds.bottom);
-			ptEnd = CBCGPPoint(ptClipCorrectionEnd.x, rectBounds.bottom);
-		}
-		else
-		{
-			ptStart = CBCGPPoint(ptStart.x, rectBounds.bottom);
-			ptEnd = CBCGPPoint(ptEnd.x, rectBounds.bottom);
 		}
 	}
 
@@ -1182,44 +1288,53 @@ CBCGPGeometry* CBCGPChartInterLineColoringEffect::CreateGeometry(const CBCGPPoin
 			splineType = CBCGPSplineGeometry::BCGP_SPLINE_TYPE_HERMITE;
 		}
 
-		CBCGPComplexGeometry* pComplex = new CBCGPComplexGeometry() ;
+		if (bNotRectangle && bClosed)
+		{
+			arPoints.Add(CBCGPPoint(arPoints[0]));
+		}
+		CBCGPSplineGeometry geometryTop(arPoints, splineType, bNotRectangle && bClosed);
 
-		CBCGPSplineGeometry geometryTop(arOrgPoints, splineType, FALSE);
-
+		CBCGPComplexGeometry* pComplex = new CBCGPComplexGeometry();
 		pComplex->AddPoints(geometryTop.GetPoints(), CBCGPPolygonGeometry::BCGP_CURVE_TYPE_BEZIER);
 
-		if (bClip)
+		if (!bNotRectangle && !bClosed)
 		{
-			pComplex->AddLine(ptClipCorrectionEnd);
+			if (bClip)
+			{
+				pComplex->AddLine(ptClipCorrectionEnd);
+			}
+
+			pComplex->AddLine(ptEnd);
+			pComplex->AddLine(ptStart);
+
+			if (bClip)
+			{
+				pComplex->AddLine(ptClipCorrectionStart);
+			}
 		}
 
-		pComplex->AddLine(ptEnd);
-		pComplex->AddLine(ptStart);
-
-		if (bClip)
-		{
-			pComplex->AddLine(ptClipCorrectionStart);
-		}
-	
 		pComplex->SetClosed(TRUE);
 
 		pGeometry = pComplex;
 	}
 	else
 	{
-		if (bClip)
+		if (!bNotRectangle && !bClosed)
 		{
-			arPoints.Add(ptClipCorrectionEnd);
+			if (bClip)
+			{
+				arPoints.Add(ptClipCorrectionEnd);
+			}
+
+			arPoints.Add(ptEnd);
+			arPoints.Add(ptStart);
+
+			if (bClip)
+			{
+				arPoints.Add(ptClipCorrectionStart);
+			}
 		}
 
-		arPoints.Add(ptEnd);
-		arPoints.Add(ptStart);
-
-		if (bClip)
-		{
-			arPoints.Add(ptClipCorrectionStart);
-		}
-		
 		pGeometry = new CBCGPPolygonGeometry(arPoints);
 	}
 

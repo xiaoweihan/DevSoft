@@ -1,6 +1,6 @@
 // BCGPDateTimeCtrl.cpp : implementation file
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -14,6 +14,7 @@
 #include "BCGPDateTimeCtrl.h"
 #include "BCGPCalendarBar.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPGlobalUtils.h"
 #include "BCGPEdit.h"
 #include "trackmouse.h"
 
@@ -38,8 +39,6 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
-static const int iSpinWidth = 15;
-static const int iDropButtonWidth = 17;
 static const int iSpinID = 1;
 static const COLORREF clrTransparent = RGB (255, 0, 255);
 
@@ -105,6 +104,8 @@ CBCGPDateTimeCtrl::CBCGPDateTimeCtrl()
 	m_bMouseOnCheckBox = FALSE;
 
 	m_bTrackPart = FALSE;
+	
+	m_nMaxWeekDayCharacters = 2;
 
 	m_pPopup = NULL;
 
@@ -123,11 +124,12 @@ CBCGPDateTimeCtrl::CBCGPDateTimeCtrl()
 
 	m_iYearPos = 0;
 	m_monthFormat = 0;
+	m_dateFormat = -1;
 
 	m_MinDate = COleDateTime (iFirstAllowedYear, 1, 1, 0, 0, 0);
 	m_MaxDate = COleDateTime (iLastAllowedYear, 12, 31, 23, 59, 59);
 
-	m_weekStart = 1;
+	m_weekStart = 0;
 	m_b24HoursByLocale = TRUE;
 	m_bSeconds = FALSE;
 
@@ -205,7 +207,7 @@ void CBCGPDateTimeCtrl::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 
 	if (m_colorBackground != (COLORREF)-1)
 	{
-		pDC->FillSolidRect (&rectClient, m_colorBackground);
+		pDC->FillSolidRect(rectClient, m_colorBackground);
 	}
 	else if (m_bVisualManagerStyle)
 	{
@@ -232,93 +234,116 @@ void CBCGPDateTimeCtrl::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 		DrawCheckBox (pDC, lpDIS->itemState);
 	}
 
-	// Draw date/time parts:
-	int iStart = m_bCheckBoxIsAvailable ? 1 : 0;
-
-	for (int i = iStart; i < m_iPartsNumber; i ++)
+	if (!m_bDrawDateTimeOnly && m_bCheckBoxIsAvailable && !m_bIsChecked && !m_strEmptyDate.IsEmpty())
 	{
-		CString str;
-		
-		if (m_arPartsOrder [i] == YEAR)
+		pDC->SetTextColor(globalData.clrGrayedText);
+
+		CRect rect = m_arPartRects[1];
+		rect.right = m_arPartRects[m_iPartsNumber - 1].right;
+
+		UINT dtFlags = DT_SINGLELINE | DT_VCENTER;
+
+		if (pDC->GetTextExtent(m_strEmptyDate).cx < rect.Width())
 		{
-			str.Format(_T("%04d"), m_Date.GetYear());
+			dtFlags |= DT_CENTER;
 		}
 		else
 		{
-			str = PartToString(m_Date, i);;
+			dtFlags |= DT_END_ELLIPSIS;
 		}
 
-		CRect rect = m_arPartRects [i];
+		pDC->DrawText(m_strEmptyDate, rect, dtFlags);
+	}
+	else
+	{
+		// Draw date/time parts:
+		int iStart = m_bCheckBoxIsAvailable ? 1 : 0;
 
-		if (!m_rectDropButton.IsRectEmpty() && rect.right > m_rectDropButton.left)
+		for (int i = iStart; i < m_iPartsNumber; i ++)
 		{
-			rect.right = max(rect.left, m_rectDropButton.left);
-
-			if (rect.right <= rect.left)
+			CString str;
+			
+			if (m_arPartsOrder [i] == YEAR)
 			{
-				continue;
-			}
-		}
-
-		if (m_bIsChecked && m_bShowSelection && i == m_iPartNum)	// Selected part
-		{
-			CRect rectFill = rect;
-			pDC->DrawText (str, rectFill, 
-				DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_CALCRECT);
-
-			int iOffset = (m_rectText.Height () - rectFill.Height ()) / 2 - 1;
-
-			rectFill.OffsetRect ((rect.Width () - rectFill.Width ()) / 2, iOffset);
-
-			if (m_bVisualManagerStyle)
-			{
-				CBCGPCalendar dummy;
-				CBCGPCalendarColors colors;
-
-				CBCGPVisualManager::GetInstance()->GetCalendarColors(&dummy, colors);
-
-				pDC->FillSolidRect (rectFill, colors.clrSelected);
-				pDC->SetTextColor (colors.clrSelectedText);
+				str.Format(_T("%04d"), m_Date.GetYear());
 			}
 			else
 			{
-				pDC->FillSolidRect (rectFill, globalData.clrHilite);
-				pDC->SetTextColor (globalData.clrTextHilite);
+				str = PartToString(m_Date, i);;
 			}
-		}
-		else
-		{
-			pDC->SetTextColor (m_bIsChecked && IsWindowEnabled () ? 
-					(m_colorText == (COLORREF)-1 ? clrTextDefault : m_colorText) : 
-					globalData.clrGrayedText);
-		}
 
-		pDC->DrawText (str, rect, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+			CRect rect = m_arPartRects [i];
 
-		//-----------------
-		// Draw separator:
-		//-----------------
-		if (i < m_iPartsNumber - 1)
-		{
-			CString strSeparator = _T(" ");
-
-			if (IsDatePart (i) && IsDatePart (i + 1))
+			if (!m_rectDropButton.IsRectEmpty() && rect.right > m_rectDropButton.left)
 			{
-				strSeparator = m_strDateSeparator;
+				rect.right = max(rect.left, m_rectDropButton.left);
+
+				if (rect.right <= rect.left)
+				{
+					continue;
+				}
 			}
 
-			if (IsTimePart (i) && IsTimePart (i + 1))
+			if (m_bIsChecked && m_bShowSelection && i == m_iPartNum)	// Selected part
 			{
-				strSeparator = m_strTimeSeparator;
-			}
-		
-			rect.left = m_arPartRects [i].right;
-			rect.right = m_arPartRects [i + 1].left;
+				CRect rectFill = rect;
+				pDC->DrawText (str, rectFill, 
+					DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_CALCRECT);
 
-			pDC->SetTextColor (m_bIsChecked && IsWindowEnabled () ? 
-					(m_colorText == (COLORREF)-1 ? clrTextDefault : m_colorText) : 
-					globalData.clrGrayedText);
-			pDC->DrawText (strSeparator, rect, DT_SINGLELINE | DT_VCENTER);
+				int iOffset = (m_rectText.Height () - rectFill.Height ()) / 2 - 1;
+
+				rectFill.OffsetRect ((rect.Width () - rectFill.Width ()) / 2, iOffset);
+
+				if (m_bVisualManagerStyle)
+				{
+					CBCGPCalendar dummy;
+					CBCGPCalendarColors colors;
+
+					CBCGPVisualManager::GetInstance()->GetCalendarColors(&dummy, colors);
+
+					pDC->FillSolidRect (rectFill, colors.clrSelected);
+					pDC->SetTextColor (colors.clrSelectedText);
+				}
+				else
+				{
+					pDC->FillSolidRect (rectFill, globalData.clrHilite);
+					pDC->SetTextColor (globalData.clrTextHilite);
+				}
+			}
+			else
+			{
+				pDC->SetTextColor (m_bIsChecked && IsWindowEnabled () ? 
+						(m_colorText == (COLORREF)-1 ? clrTextDefault : m_colorText) : 
+						globalData.clrGrayedText);
+			}
+
+			pDC->DrawText (str, rect, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+
+			//-----------------
+			// Draw separator:
+			//-----------------
+			if (i < m_iPartsNumber - 1)
+			{
+				CString strSeparator = _T(" ");
+
+				if (IsDatePart (i) && IsDatePart (i + 1))
+				{
+					strSeparator = m_strDateSeparator;
+				}
+
+				if (IsTimePart (i) && IsTimePart (i + 1))
+				{
+					strSeparator = m_strTimeSeparator;
+				}
+			
+				rect.left = m_arPartRects [i].right;
+				rect.right = m_arPartRects [i + 1].left;
+
+				pDC->SetTextColor (m_bIsChecked && IsWindowEnabled () ? 
+						(m_colorText == (COLORREF)-1 ? clrTextDefault : m_colorText) : 
+						globalData.clrGrayedText);
+				pDC->DrawText (strSeparator, rect, DT_SINGLELINE | DT_VCENTER);
+			}
 		}
 	}
 
@@ -363,6 +388,7 @@ void CBCGPDateTimeCtrl::OnShowCalendarPopup ()
 	m_pPopup->SetFirstDayOfWeek (m_weekStart - 1);
 	m_pPopup->EnableTodayButton ();
 	m_pPopup->EnableVisualManagerStyle(m_bVisualManagerStyle);
+	m_pPopup->SetMaxWeekDayCharacters(m_nMaxWeekDayCharacters);
 
 	m_pPopup->SetMinDate(m_MinDate);
 	m_pPopup->SetMaxDate(m_MaxDate);
@@ -774,15 +800,6 @@ void CBCGPDateTimeCtrl::AdjustControl (CRect rectClient)
 		return;
 	}
 
-	int nSpinWidthCurr = iSpinWidth;
-	int nDropDownWidthCurr = iDropButtonWidth;
-
-	if (globalData.GetRibbonImageScale() != 1.0)
-	{
-		nSpinWidthCurr = (int)(.5 + globalData.GetRibbonImageScale() * nSpinWidthCurr);
-		nDropDownWidthCurr = (int)(.5 + globalData.GetRibbonImageScale() * nDropDownWidthCurr);
-	}
-
 	CClientDC dc (this);
 
 	CFont* pPrevFont = m_hFont == NULL ?
@@ -816,11 +833,18 @@ void CBCGPDateTimeCtrl::AdjustControl (CRect rectClient)
 		m_iControlHeight = rectClient.Height ();
 	}
 
+	int nSpinWidthCurr = m_iControlHeight - 4;
+	int nDropDownWidthCurr = m_iControlHeight - 2;
+
 	if (m_bCheckBoxIsAvailable)
 	{
-		m_rectCheck = CRect (rectClient.left + 1, rectClient.top + 1, 
-			rectClient.left + m_iControlHeight - 1, rectClient.bottom - 1);
-		m_rectText.left = m_rectCheck.right + 2;
+		const CSize sizeCheckBox = CBCGPVisualManager::GetInstance ()->GetCheckRadioDefaultSize();
+		const int dx = globalUtils.ScaleByDPI(2);
+		const int dy = max(0, (int)(.5 + .5 * (rectClient.Height() - sizeCheckBox.cy)));
+
+		m_rectCheck = CRect (rectClient.left + dx, rectClient.top + dy, 
+			rectClient.left + dx + sizeCheckBox.cx, rectClient.top + dy + sizeCheckBox.cy);
+		m_rectText.left = m_rectCheck.right + dx;
 	}
 	
 	m_rectText.top = rectClient.top;
@@ -831,7 +855,7 @@ void CBCGPDateTimeCtrl::AdjustControl (CRect rectClient)
 
 	// Adjust control size:
 	m_rectText.right = m_arPartRects [m_iPartsNumber - 1].right + 2;
-	m_iControlWidth = m_rectText.right;
+	m_iControlWidth = m_rectText.right + 2;
 
 	if (m_spinButton)
 	{
@@ -854,13 +878,28 @@ void CBCGPDateTimeCtrl::AdjustControl (CRect rectClient)
 		int iDropStart = rectClient.left + m_iControlWidth - nDropDownWidthCurr - 1;
 		if (m_spinButton)
 		{
-			iDropStart -= nSpinWidthCurr + 1;
+			iDropStart -= nSpinWidthCurr;
+
+			if (m_bAutoResize)
+			{
+				iDropStart--;
+			}
+			else
+			{
+				iDropStart++;
+			}
+		}
+		else if (!m_bAutoResize)
+		{
+			iDropStart++;
 		}
 
 		m_rectDropButton = CRect (	iDropStart,
 									rectClient.top,
 									iDropStart + nDropDownWidthCurr,
-									rectClient.top + m_iControlHeight - 2);
+									rectClient.top + m_iControlHeight);
+
+		m_rectText.right = iDropStart - 1;
 	}
 	else
 	{
@@ -870,7 +909,7 @@ void CBCGPDateTimeCtrl::AdjustControl (CRect rectClient)
 	if (m_bAutoResize)
 	{
 		SetWindowPos (NULL, -1, -1, m_iControlWidth + 2, m_iControlHeight + 2,
-			SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE);
+			SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE | SWP_FRAMECHANGED);
 	}
 
 	// Adjust spin button:
@@ -883,9 +922,11 @@ void CBCGPDateTimeCtrl::AdjustControl (CRect rectClient)
 			m_wndSpin.m_bIsDateTimeControl = TRUE;
 		}
 
+		int nDelta = m_bAutoResize ? 2 : 0;
+
 		m_wndSpin.SetWindowPos (NULL, 
-				rectClient.left + m_iControlWidth - nSpinWidthCurr - 2, rectClient.top,
-				nSpinWidthCurr, m_iControlHeight - 2,
+				rectClient.left + m_iControlWidth - nSpinWidthCurr - nDelta, rectClient.top,
+				nSpinWidthCurr, m_iControlHeight - nDelta,
 				SWP_NOZORDER);
 		m_wndSpin.ShowWindow (SW_SHOW);
 
@@ -1046,23 +1087,30 @@ void CBCGPDateTimeCtrl::SetPartsOrder ()
 
 	if (m_showDate)
 	{
-		GetLocaleInfo (LOCALE_USER_DEFAULT, LOCALE_IDATE, szLocaleData, 100);
-		switch (szLocaleData [0])
+		GetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_IDATE, szLocaleData, 100);
+
+		CString cDateFormat(szLocaleData[0]);
+		if (m_dateFormat >= 0)
 		{
-		case '0':	// Month-Day-Year
+			cDateFormat.Format(_T("%d"), m_dateFormat);
+		}
+
+		switch (cDateFormat[0])
+		{
+		case (TCHAR)'0':	// Month-Day-Year
 		default:
 			m_arPartsOrder [i ++] = MONTH;
 			m_arPartsOrder [i ++] = DAY;
 			m_arPartsOrder [i ++] = YEAR;
 			break;
 
-		case '1':	// Day-Month-Year
+		case (TCHAR)'1':	// Day-Month-Year
 			m_arPartsOrder [i ++] = DAY;
 			m_arPartsOrder [i ++] = MONTH;
 			m_arPartsOrder [i ++] = YEAR;
 			break;
 
-		case '2':	// Year-Month-Day
+		case (TCHAR)'2':	// Year-Month-Day
 			m_arPartsOrder [i ++] = YEAR;
 			m_arPartsOrder [i ++] = MONTH;
 			m_arPartsOrder [i ++] = DAY;
@@ -1544,7 +1592,7 @@ void CBCGPDateTimeCtrl::PushDigit (int iDigit)
 
 			if (iDigit > 1 && m_iPrevDigit == -1)
 			{
-				m_iPrevDigit = 0;	// Stimulate junp to the next part
+				m_iPrevDigit = 0;	// Stimulate jump to the next part
 			}
 		}
 		break;
@@ -1595,7 +1643,7 @@ void CBCGPDateTimeCtrl::PushDigit (int iDigit)
 				iYear %= iTens;
 			}
 
-			iYear = iYearNew;
+			iYear = min(iLastAllowedYear, iYearNew);
 		}
 
 		m_iYearPos ++;
@@ -1626,6 +1674,11 @@ void CBCGPDateTimeCtrl::PushDigit (int iDigit)
 				m_iPrevDigit = -1;
 				SelectNext ();
 			}
+		}
+		else if (m_CurrPartType == YEAR && m_iYearPos == iYearDigits)
+		{
+			m_iPrevDigit = -1;
+			m_iYearPos = 0;
 		}
 	}
 }
@@ -1658,9 +1711,9 @@ void CBCGPDateTimeCtrl::ChangeMonth (UINT uiMonthLetter)
 			break;
 		}
 
-		//--------------------------------------------------
-		// Compare manth 'i' first char with the typed char:
-		//--------------------------------------------------
+		//----------------------------------------------------
+		// Compare matching 'i' first char to the typed char:
+		//----------------------------------------------------
 		CString strMonth = COleDateTime (iYear, i, 1, 0, 0, 0).
 			Format (m_monthFormat == 0 ? _T ("%b") : _T ("%B"));
 
@@ -2172,9 +2225,10 @@ void CBCGPDateTimeCtrl::ClosePopupCalendar (COleDateTime date/* = COleDateTime (
 			dateOld.GetYear () != date.GetYear ())
 		{
 			bIsDateChanged = TRUE;
-		}
 
-		SetDate (date);
+			SetDate(COleDateTime(date.GetYear(), date.GetMonth(), date.GetDay(),
+				dateOld.GetHour(), dateOld.GetMinute(), dateOld.GetSecond()));
+		}
 	}
 
 	m_pPopup->SendMessage (WM_CLOSE);
@@ -2182,7 +2236,11 @@ void CBCGPDateTimeCtrl::ClosePopupCalendar (COleDateTime date/* = COleDateTime (
 	if (::IsWindow (GetSafeHwnd ()))
 	{
 		m_pPopup = NULL;
-		SetFocus ();
+
+		if (!IsPropListMode())
+		{
+			SetFocus();
+		}
 
 		if (bIsDateChanged)
 		{
@@ -2257,6 +2315,11 @@ LRESULT CBCGPDateTimeCtrl::OnPrint(WPARAM wp, LPARAM lp)
 //****************************************************************************
 BOOL CBCGPDateTimeCtrl::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
+	if (!IsWindowEnabled())
+	{
+		return FALSE;
+	}
+
 	if (m_pPopup != NULL &&	::IsWindow (m_pPopup->GetSafeHwnd ()))
 	{
 		return (BOOL)m_pPopup->SendMessage(WM_MOUSEWHEEL, MAKEWPARAM(nFlags, zDelta), MAKELPARAM(pt.x, pt.y));
@@ -2279,3 +2342,14 @@ BOOL CBCGPDateTimeCtrl::DoScroll(int nScrollSteps)
 
 	return TRUE;
 }
+//*********************************************************************************
+void CBCGPDateTimeCtrl::SetEmptyDateLabel(const CString& strEmptyDate, BOOL bRedraw)
+{
+	m_strEmptyDate = strEmptyDate;
+
+	if (bRedraw && GetSafeHwnd () != NULL)
+	{
+		RedrawWindow ();
+	}
+}
+

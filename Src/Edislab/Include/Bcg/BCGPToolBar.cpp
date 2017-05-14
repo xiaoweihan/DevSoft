@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -44,6 +44,7 @@
 #include "BCGPVisualManager.h"
 #include "BCGPDropDown.h"
 #include "BCGPWorkspace.h"
+#include "BCGPGlobalUtils.h"
 
 #include "BCGPDockBar.h"
 #include "BCGPDockBarRow.h"
@@ -54,6 +55,7 @@
 #include "BCGPToolbarMenuButtonsButton.h"
 #include "BCGPTooltipManager.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPMessageBox.h"
 
 extern CBCGPWorkspace*	g_pWorkspace;
 
@@ -63,9 +65,9 @@ static char THIS_FILE[] = __FILE__;
 #define new DEBUG_NEW
 #endif
 
-#define TEXT_MARGIN			3
-#define STRETCH_DELTA		6
-#define BUTTON_MIN_WIDTH	5
+#define TEXT_MARGIN			globalUtils.ScaleByDPI(3)
+#define STRETCH_DELTA		globalUtils.ScaleByDPI(6)
+#define BUTTON_MIN_WIDTH	globalUtils.ScaleByDPI(5)
 
 
 #define REG_SECTION_FMT					_T("%sBCGToolBar-%d")
@@ -86,6 +88,7 @@ static char THIS_FILE[] = __FILE__;
 #define REG_ENTRY_RESET_ITEMS			_T("OrigResetItems")
 
 static const CString strToolbarProfile	= _T("BCGToolBars");
+static const CString strDummyAmpSeq = _T("\001\001");
 
 #ifdef AFX_INIT_SEG
 #pragma code_seg(AFX_INIT_SEG)
@@ -122,9 +125,12 @@ BOOL CBCGPToolBar::m_bShowShortcutKeys = TRUE;
 BOOL CBCGPToolBar::m_bLargeIcons = FALSE;
 BOOL CBCGPToolBar::m_bAutoGrayInactiveImages = FALSE;
 int  CBCGPToolBar::m_nGrayImagePercentage = 0;
+BOOL CBCGPToolBar::m_bDefaultResourceHandle = TRUE;
 
 BOOL CBCGPToolBar::m_bDisableLabelsEdit = FALSE;
 CBCGPToolbarDropSource CBCGPToolBar::m_DropSource;
+
+BOOL CBCGPToolBar::m_bGrayDisabledImages = FALSE;
 
 CBCGPToolBarImages	CBCGPToolBar::m_Images;
 CBCGPToolBarImages	CBCGPToolBar::m_ColdImages;
@@ -136,6 +142,7 @@ CBCGPToolBarImages	CBCGPToolBar::m_LargeColdImages;
 CBCGPToolBarImages	CBCGPToolBar::m_LargeDisabledImages;
 
 CBCGPToolBarImages*	CBCGPToolBar::m_pUserImages = NULL;
+CBCGPToolBarImages	CBCGPToolBar::m_UserImagesScaled;
 
 BOOL CBCGPToolBar::m_bDontScaleImages = FALSE;
 
@@ -181,6 +188,7 @@ CBCGPToolBarParams::CBCGPToolBarParams()
 	m_uiLargeDisabledResID = 0;
 	m_uiMenuResID = 0;
 	m_uiMenuDisabledResID = 0;
+	m_hResourceHandle = NULL;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -280,6 +288,8 @@ CBCGPToolBar::CBCGPToolBar() :
 	m_bInUpdateShadow	  = FALSE;
 
 	m_pToolTip			  = NULL;
+
+	m_bIsLocal			  = FALSE;
 }
 
 #pragma warning (default : 4355)
@@ -411,16 +421,15 @@ void CBCGPToolBar::SetSizes (SIZE sizeButton, SIZE sizeImage)
 		m_sizeCurImage.cy = (int) (.5 + m_dblLargeImageRatio * m_sizeCurImage.cy);
 	}
 
-	if (m_pUserImages != NULL && m_pUserImages->GetScale () == 1.)
+	if (m_pUserImages != NULL)
 	{
+		m_pUserImages->SetImageSize(m_sizeImage);
+
 		if (globalData.GetRibbonImageScale () != 1.)
 		{
-			m_pUserImages->SetTransparentColor (globalData.clrBtnFace);
-			m_pUserImages->SmoothResize (globalData.GetRibbonImageScale ());
-		}
-		else
-		{
-			m_pUserImages->SetImageSize (m_sizeImage);
+			m_pUserImages->CopyTo(m_UserImagesScaled);
+			m_UserImagesScaled.SetTransparentColor (globalData.clrBtnFace);
+			m_UserImagesScaled.SmoothResize(globalData.GetRibbonImageScale());
 		}
 	}
 }
@@ -497,6 +506,11 @@ void CBCGPToolBar::SetHeight(int cyHeight)
 	}
 }
 //******************************************************************************************
+void CBCGPToolBar::SetGrayDisabledImages(BOOL bSet)
+{
+	m_bGrayDisabledImages = bSet;
+}
+//******************************************************************************************
 BOOL CBCGPToolBar::SetUserImages (CBCGPToolBarImages* pUserImages, BOOL bAdjustSize)
 {
 	ASSERT (pUserImages != NULL);
@@ -514,10 +528,32 @@ BOOL CBCGPToolBar::SetUserImages (CBCGPToolBarImages* pUserImages, BOOL bAdjustS
 			return FALSE;
 		}
 
-		pUserImages->SetImageSize(m_sizeImage);
+		if (m_bDontScaleImages)
+		{
+			// Assume, each icon is a square: 
+			BITMAP bmp;
+			::GetObject (pUserImages->GetImageWell(), sizeof (BITMAP), (LPVOID) &bmp);
+
+			int cy = bmp.bmHeight;
+			int cx = cy == 15 ? 16 : cy;
+
+			pUserImages->SetImageSize(CSize(cx, cy));
+		}
+		else
+		{
+			pUserImages->SetImageSize(m_sizeImage);
+		}
 	}
 
 	m_pUserImages = pUserImages;
+
+	if (globalData.GetRibbonImageScale () != 1.)
+	{
+		m_pUserImages->CopyTo(m_UserImagesScaled);
+		m_UserImagesScaled.SetTransparentColor (globalData.clrBtnFace);
+		m_UserImagesScaled.SmoothResize(globalData.GetRibbonImageScale());
+	}
+
 	return TRUE;
 }
 //******************************************************************************************
@@ -682,19 +718,21 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 {
 	m_bLocked = bLocked;
 
+	HINSTANCE hResourceHandle = CBCGPToolBar::IsDefaultResourceHandle() ? AfxGetResourceHandle() : params.m_hResourceHandle;
+
 	if (m_bLocked)
 	{
 		//------------------------------------------
 		// Don't add bitmap to the shared resources!
 		//------------------------------------------
-		if (!m_ImagesLocked.Load (params.m_uiHotResID, AfxGetResourceHandle (), TRUE))
+		if (!m_ImagesLocked.Load (params.m_uiHotResID, hResourceHandle, TRUE))
 		{
 			return FALSE;
 		}
 
 		if (params.m_uiColdResID != 0)
 		{
-			if (!m_ColdImagesLocked.Load (params.m_uiColdResID, AfxGetResourceHandle (), TRUE))
+			if (!m_ColdImagesLocked.Load (params.m_uiColdResID, hResourceHandle, TRUE))
 			{
 				return FALSE;
 			}
@@ -709,12 +747,23 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 		
 		if (params.m_uiDisabledResID != 0)
 		{
-			if (!m_DisabledImagesLocked.Load (params.m_uiDisabledResID, AfxGetResourceHandle (), TRUE))
+			if (!m_DisabledImagesLocked.Load (params.m_uiDisabledResID, hResourceHandle, TRUE))
 			{
 				return FALSE;
 			}
 			
 			ASSERT (m_ImagesLocked.GetCount () == m_DisabledImagesLocked.GetCount ());
+		}
+		else if (m_bGrayDisabledImages)
+		{
+			if (!m_ImagesLocked.CopyTo(m_DisabledImagesLocked))
+			{
+				m_DisabledImagesLocked.Clear();
+			}
+			else
+			{
+				m_DisabledImagesLocked.ConvertToGrayScale(1.0, TRUE);
+			}
 		}
 
 		//------------------
@@ -722,7 +771,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 		//-------------------
 		if (params.m_uiLargeHotResID != 0)
 		{	
-			if (!m_LargeImagesLocked.Load (params.m_uiLargeHotResID, AfxGetResourceHandle (), TRUE))
+			if (!m_LargeImagesLocked.Load (params.m_uiLargeHotResID, hResourceHandle, TRUE))
 			{
 				return FALSE;
 			}
@@ -734,7 +783,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 		{
 			ASSERT (params.m_uiColdResID != 0);
 
-			if (!m_LargeColdImagesLocked.Load (params.m_uiLargeColdResID, AfxGetResourceHandle (), TRUE))
+			if (!m_LargeColdImagesLocked.Load (params.m_uiLargeColdResID, hResourceHandle, TRUE))
 			{
 				return FALSE;
 			}
@@ -746,7 +795,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 		{
 			ASSERT (params.m_uiDisabledResID != 0);
 
-			if (!m_LargeDisabledImagesLocked.Load (params.m_uiLargeDisabledResID, AfxGetResourceHandle (), TRUE))
+			if (!m_LargeDisabledImagesLocked.Load (params.m_uiLargeDisabledResID, hResourceHandle, TRUE))
 			{
 				return FALSE;
 			}
@@ -756,7 +805,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 	
 		if (params.m_uiMenuResID != 0)
 		{
-			if (!m_MenuImagesLocked.Load (params.m_uiMenuResID, AfxGetResourceHandle (), TRUE))
+			if (!m_MenuImagesLocked.Load (params.m_uiMenuResID, hResourceHandle, TRUE))
 			{
 				return FALSE;
 			}
@@ -766,7 +815,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 
 		if (params.m_uiMenuDisabledResID != 0)
 		{
-			if (!m_MenuImagesLocked.Load (params.m_uiMenuResID, AfxGetResourceHandle (), TRUE))
+			if (!m_MenuImagesLocked.Load (params.m_uiMenuResID, hResourceHandle, TRUE))
 			{
 				return FALSE;
 			}
@@ -777,7 +826,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 		return TRUE;
 	}
 
-	if (!m_Images.Load (params.m_uiHotResID, AfxGetResourceHandle (), TRUE))
+	if (!m_Images.Load (params.m_uiHotResID, hResourceHandle, TRUE))
 	{
 		return FALSE;
 	}
@@ -787,7 +836,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 
 	if (params.m_uiColdResID != 0)
 	{
-		if (!m_ColdImages.Load (params.m_uiColdResID, AfxGetResourceHandle (), TRUE))
+		if (!m_ColdImages.Load (params.m_uiColdResID, hResourceHandle, TRUE))
 		{
 			return FALSE;
 		}
@@ -803,7 +852,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 
 	if (params.m_uiMenuResID != 0)
 	{
-		if (!m_MenuImages.Load (params.m_uiMenuResID, AfxGetResourceHandle (), TRUE))
+		if (!m_MenuImages.Load (params.m_uiMenuResID, hResourceHandle, TRUE))
 		{
 			return FALSE;
 		}
@@ -814,22 +863,44 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 
 	if (params.m_uiDisabledResID != 0)
 	{
-		if (!m_DisabledImages.Load (params.m_uiDisabledResID, AfxGetResourceHandle (), TRUE))
+		if (!m_DisabledImages.Load (params.m_uiDisabledResID, hResourceHandle, TRUE))
 		{
 			return FALSE;
 		}
 		
 		ASSERT (m_Images.GetCount () == m_DisabledImages.GetCount ());
 	}
+	else if (m_bGrayDisabledImages)
+	{
+		if (!m_Images.CopyTo(m_DisabledImages))
+		{
+			m_DisabledImages.Clear();
+		}
+		else
+		{
+			m_DisabledImages.ConvertToGrayScale(1.0, TRUE);
+		}
+	}
 	
 	if (params.m_uiMenuDisabledResID != 0)
 	{
-		if (!m_DisabledMenuImages.Load (params.m_uiMenuDisabledResID, AfxGetResourceHandle (), TRUE))
+		if (!m_DisabledMenuImages.Load (params.m_uiMenuDisabledResID, hResourceHandle, TRUE))
 		{
 			return FALSE;
 		}
 		
 		ASSERT (m_Images.GetCount () == m_DisabledMenuImages.GetCount ());
+	}
+	else if (m_bGrayDisabledImages && m_MenuImages.GetCount() > 0)
+	{
+		if (!m_MenuImages.CopyTo(m_DisabledMenuImages))
+		{
+			m_DisabledMenuImages.Clear();
+		}
+		else
+		{
+			m_DisabledMenuImages.ConvertToGrayScale(1.0, TRUE);
+		}
 	}
 
 	//------------------
@@ -837,7 +908,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 	//-------------------
 	if (params.m_uiLargeHotResID != 0)
 	{	
-		if (!m_LargeImages.Load (params.m_uiLargeHotResID, AfxGetResourceHandle (), TRUE))
+		if (!m_LargeImages.Load (params.m_uiLargeHotResID, hResourceHandle, TRUE))
 		{
 			return FALSE;
 		}
@@ -849,7 +920,7 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 	{
 		ASSERT (params.m_uiColdResID != 0);
 
-		if (!m_LargeColdImages.Load (params.m_uiLargeColdResID, AfxGetResourceHandle (), TRUE))
+		if (!m_LargeColdImages.Load (params.m_uiLargeColdResID, hResourceHandle, TRUE))
 		{
 			return FALSE;
 		}
@@ -861,12 +932,23 @@ BOOL CBCGPToolBar::LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked)
 	{
 		ASSERT (params.m_uiDisabledResID != 0);
 
-		if (!m_LargeDisabledImages.Load (params.m_uiLargeDisabledResID, AfxGetResourceHandle (), TRUE))
+		if (!m_LargeDisabledImages.Load (params.m_uiLargeDisabledResID, hResourceHandle, TRUE))
 		{
 			return FALSE;
 		}
 		
 		ASSERT (m_Images.GetCount () == m_LargeDisabledImages.GetCount ());
+	}
+	else if (m_bGrayDisabledImages && m_LargeImages.GetCount() > 0)
+	{
+		if (!m_LargeImages.CopyTo(m_LargeDisabledImages))
+		{
+			m_LargeDisabledImages.Clear();
+		}
+		else
+		{
+			m_LargeDisabledImages.ConvertToGrayScale(1.0, TRUE);
+		}
 	}
 	
 	return TRUE;
@@ -916,16 +998,14 @@ BOOL CBCGPToolBar::LoadToolBarEx(UINT uiToolbarResID, CBCGPToolBarParams& params
 
 	BOOL bDontScaleImages = bLocked ? m_bDontScaleLocked : m_bDontScaleImages;
 
-	if (!bDontScaleImages && globalData.GetRibbonImageScale () != 1.)
+	if (!bDontScaleImages)
 	{
-		double dblImageScale = globalData.GetRibbonImageScale ();
-
-		sizeButton = CSize ((int)(.5 + sizeButton.cx * dblImageScale), (int)(.5 + sizeButton.cy * dblImageScale));
+		sizeButton = globalUtils.ScaleByDPI(sizeButton);
 	}
 
 	if (bLocked)
 	{
-		SetLockedSizes (sizeButton, sizeImage);
+		SetLockedSizes (sizeButton, sizeImage, m_bDontScaleLocked);
 	}
 	else if (!m_Images.IsScaled ())
 	{
@@ -1093,7 +1173,7 @@ int CBCGPToolBar::InsertButton (CBCGPToolbarButton* pButton, int iInsertAt)
 //******************************************************************************************
 int CBCGPToolBar::InsertSeparator (INT_PTR iInsertAt)
 {
-	// Don't allow add a separtor first:
+	// Don't allow add a separator first:
 	if (m_Buttons.IsEmpty () || iInsertAt == 0)
 	{
 		return -1;
@@ -1121,11 +1201,11 @@ void CBCGPToolBar::RemoveAllButtons ()
 
 	while (!m_Buttons.IsEmpty ())
 	{
-		CBCGPToolbarButton* pButton = (CBCGPToolbarButton*) m_Buttons.RemoveHead ();
-		ASSERT_VALID (pButton);
-
+		CBCGPToolbarButton* pButton = DYNAMIC_DOWNCAST(CBCGPToolbarButton, m_Buttons.RemoveHead());
 		if (pButton != NULL)
 		{
+			ASSERT_VALID (pButton);
+
 			pButton->OnCancelMode ();
 			delete pButton;
 		}
@@ -1649,7 +1729,7 @@ void CBCGPToolBar::DoPaint(CDC* pDCPaint)
 		}
 
 		BOOL bHighlighted = IsButtonHighlighted (iButton);
-		BOOL bDisabled = (pButton->m_nStyle & TBBS_DISABLED) && !IsCustomizeMode ();
+		BOOL bDisabled = (pButton->m_nStyle & TBBS_DISABLED) && !IsCustomizeMode () && DYNAMIC_DOWNCAST(CBCGPCustomizeMenuButton, pButton) == NULL;
 
 		if (pDC->RectVisible(&rect))
 		{
@@ -1663,7 +1743,7 @@ void CBCGPToolBar::DoPaint(CDC* pDCPaint)
 				{
 					if (pButton->GetImage () >= 0)
 					{
-						pNewImages = m_pUserImages;
+						pNewImages = GetUserImages();
 					}
 				}
 				else
@@ -1818,7 +1898,8 @@ BOOL CBCGPToolBar::DrawButton(CDC* pDC, CBCGPToolbarButton* pButton,
 	pButton->OnDraw (pDC, pButton->Rect (), pImages, bHorz, 
 		IsCustomizeMode () && !m_bAltCustomizeMode && !m_bLocked, 
 		bHighlighted, m_bShowHotBorder,
-		m_bGrayDisabledButtons && !bDrawDisabledImages);
+		m_bGrayDisabledButtons && (!bDrawDisabledImages || m_bGrayDisabledImages));
+
 	return TRUE;
 }
 //*************************************************************************************
@@ -1867,6 +1948,14 @@ CBCGPToolbarButton* CBCGPToolBar::InvalidateButton (int nIndex)
 	return pButton;
 }
 //*************************************************************************************
+BOOL CBCGPToolBar::GetButtonKeyboardAccelerator(const CBCGPToolbarButton* pButton, CString& strLabel) const
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pButton);
+
+	return pButton->GetKeyboardAccelerator(strLabel);
+}
+//*************************************************************************************
 INT_PTR CBCGPToolBar::OnToolHitTest(CPoint point, TOOLINFO* pTI) const
 {
 	ASSERT_VALID(this);
@@ -1908,7 +1997,9 @@ INT_PTR CBCGPToolBar::OnToolHitTest(CPoint point, TOOLINFO* pTI) const
 					// Use button text as tooltip!
 					strTipText = pButton->m_strText;
 
+					strTipText.Replace (_T("&&"), strDummyAmpSeq);
 					strTipText.Remove (_T('&'));
+					strTipText.Replace (strDummyAmpSeq, _T("&&"));
 				}
 				else
 				{
@@ -1921,10 +2012,24 @@ INT_PTR CBCGPToolBar::OnToolHitTest(CPoint point, TOOLINFO* pTI) const
 					{
 						TCHAR szFullText [256];
 
+						CBCGPLocalResource* pLocalRes = NULL;
+						if (m_bIsLocal)
+						{
+							pLocalRes = new CBCGPLocalResource();
+						}
+
 						AfxLoadString (pButton->m_nID, szFullText);
+
+						if (pLocalRes != NULL)
+						{
+							delete pLocalRes;
+						}
+
 						AfxExtractSubString(strTipText, szFullText, 1, '\n');
 
+						strTipText.Replace (_T("&&"), strDummyAmpSeq);
 						strTipText.Remove (_T('&'));
+						strTipText.Replace (strDummyAmpSeq, _T("&&"));
 					}
 				}
 			}
@@ -1941,7 +2046,7 @@ INT_PTR CBCGPToolBar::OnToolHitTest(CPoint point, TOOLINFO* pTI) const
 				// Add shortcut label:
 				//--------------------
 				CString strLabel;
-				if (pButton->GetKeyboardAccelerator(strLabel))
+				if (GetButtonKeyboardAccelerator(pButton, strLabel))
 				{
 					strTipText += _T(" (");
 					strTipText += strLabel;
@@ -1950,12 +2055,7 @@ INT_PTR CBCGPToolBar::OnToolHitTest(CPoint point, TOOLINFO* pTI) const
 			}
 
 			CString strDescr;
-			
-			CFrameWnd* pParent = GetParentFrame ();
-			if (pParent->GetSafeHwnd () != NULL && pButton->m_nID != 0)
-			{
-				pParent->GetMessageString (pButton->m_nID, strDescr);
-			}
+			GetMessageString(pButton->m_nID, strDescr);	
 
 			CBCGPTooltipManager::SetTooltipText (pTI,
 				m_pToolTip, BCGP_TOOLTIP_TYPE_TOOLBAR, strTipText, strDescr);
@@ -1969,6 +2069,29 @@ INT_PTR CBCGPToolBar::OnToolHitTest(CPoint point, TOOLINFO* pTI) const
 	}
 
 	return nHit;
+}
+//*************************************************************************************
+void CBCGPToolBar::GetMessageString(UINT nID, CString& strMessageString) const
+{
+	if (nID != 0 && nID != (UINT)-1)
+	{
+		CFrameWnd* pParent = GetParentFrame();
+		if (pParent->GetSafeHwnd() != NULL)
+		{
+			CBCGPLocalResource* pLocalRes = NULL;
+			if (m_bIsLocal)
+			{
+				pLocalRes = new CBCGPLocalResource();
+			}
+
+			pParent->GetMessageString(nID, strMessageString);
+
+			if (pLocalRes != NULL)
+			{
+				delete pLocalRes;
+			}
+		}
+	}
 }
 //*************************************************************************************
 int CBCGPToolBar::HitTest(CPoint point) // in window relative coords
@@ -2100,7 +2223,7 @@ void CBCGPToolBar::OnLButtonDown(UINT nFlags, CPoint point)
 	ASSERT(!(pButton->m_nStyle & TBBS_SEPARATOR));
 
 	//-----------------------------------------------------------------
-	// Check for "Alt-customizible mode" (when ALT key is holded down):
+	// Check for "Alt-customization mode" (when ALT key is hold down):
 	//-----------------------------------------------------------------
 	m_bAltCustomizeMode = FALSE;
 	if (m_bAltCustomization &&
@@ -2651,6 +2774,7 @@ void CBCGPToolBar::OnLButtonUp(UINT nFlags, CPoint point)
 			!g_pUserToolsManager->InvokeTool (nIDCmd)))
 		{
 			GetOwner()->SendMessage (WM_COMMAND, nIDCmd);    // send command
+			CBCGPMDIFrameWnd::RestoreDetachedFrameActivation();
 		}
 	}
 	else if (::IsWindow (hwndSaved) && iButtonCapture < m_Buttons.GetCount () && GetButton(iButtonCapture) == pButton)
@@ -2658,7 +2782,7 @@ void CBCGPToolBar::OnLButtonUp(UINT nFlags, CPoint point)
 		pButton->OnClickUpOutside();
 	}
 
-	if (::IsWindow (hwndSaved) &&				// "This" may be destoyed now!
+	if (::IsWindow (hwndSaved) &&				// "This" may be destroyed now!
 		iButtonCapture < m_Buttons.GetCount ())	// Button may disappear now!
 	{
 		if (bIsSystemMenuButton)
@@ -2871,7 +2995,7 @@ void CToolCmdUI::SetText (LPCTSTR lpszText)
 
 	ASSERT_VALID (pButton);
 
-	//Remove any amperstands and trailing label (ex.:"\tCtrl+S")
+	//Remove any ampersands and trailing label (ex.:"\tCtrl+S")
 	CString strNewText(lpszText);
 
 	int iOffset = strNewText.Find (_T('\t'));
@@ -3266,7 +3390,7 @@ BOOL CBCGPToolBar::OnDrop(COleDataObject* pDataObject, DROPEFFECT dropEffect, CP
 	if (m_bAltCustomizeMode)
 	{
 		//------------------------------
-		// Immideatly save button state:
+		// Save button state now:
 		//------------------------------
 		pButton->SaveBarState ();
 	}
@@ -4214,7 +4338,7 @@ void CBCGPToolBar::OnToolbarAppearance()
 
 	CBCGPLocalResource locaRes;
 
-	CButtonAppearanceDlg dlg (pButton, m_pUserImages, this, 0, IsPureMenuButton (pButton));
+	CButtonAppearanceDlg dlg (pButton, m_pUserImages, &m_UserImagesScaled, this, 0, IsPureMenuButton (pButton));
 	if (dlg.DoModal () == IDOK)
 	{
 		AdjustLayout ();
@@ -4269,7 +4393,7 @@ void CBCGPToolBar::OnToolbarImage()
 
 	if (pButton->GetImage () < 0)
 	{
-		CButtonAppearanceDlg dlg (pButton, m_pUserImages, this, 0, IsPureMenuButton (pButton));
+		CButtonAppearanceDlg dlg (pButton, m_pUserImages, &m_UserImagesScaled, this, 0, IsPureMenuButton (pButton));
 		if (dlg.DoModal () != IDOK)
 		{
 			pButton->m_bText = bSaveText;
@@ -4306,7 +4430,7 @@ void CBCGPToolBar::OnToolbarImageAndText()
 	{
 		CBCGPLocalResource locaRes;
 
-		CButtonAppearanceDlg dlg (pButton, m_pUserImages, this, 0, IsPureMenuButton (pButton));
+		CButtonAppearanceDlg dlg (pButton, m_pUserImages, &m_UserImagesScaled, this, 0, IsPureMenuButton (pButton));
 		if (dlg.DoModal () != IDOK)
 		{
 			pButton->m_bText = bSaveText;
@@ -4631,8 +4755,8 @@ BOOL CBCGPToolBar::NotifyControlCommand (CBCGPToolbarButton* pButton,
 		}
 	}
 
-	GetOwner()->PostMessage (WM_COMMAND, 
-							MAKEWPARAM (pButton->m_nID, nNotifyCode), lParam);
+	GetOwner()->PostMessage (WM_COMMAND, MAKEWPARAM (pButton->m_nID, nNotifyCode), lParam);
+	CBCGPMDIFrameWnd::RestoreDetachedFrameActivation();
 	return TRUE;
 }
 //*************************************************************************************
@@ -5456,7 +5580,7 @@ CBCGPToolbarButton* CBCGPToolBar::CreateDroppedButton (COleDataObject* pDataObje
 		// appearance, ask user about it's properties:
 		//----------------------------------------------
 		CBCGPLocalResource locaRes;
-		CButtonAppearanceDlg dlg (pButton, m_pUserImages, this, 0, IsPureMenuButton (pButton));
+		CButtonAppearanceDlg dlg (pButton, m_pUserImages, &m_UserImagesScaled, this, 0, IsPureMenuButton (pButton));
 
 		if (dlg.DoModal () != IDOK)
 		{
@@ -6025,12 +6149,23 @@ void CBCGPToolBar::OnBcgbarresCopyImage()
 		}
 	}
 
-	CBCGPToolBarImages* pImages = (pButton->m_bUserButton) ? 
-			m_pUserImages : &m_Images;
+	CBCGPToolBarImages* pImages = (pButton->m_bUserButton) ? GetUserImages() : &m_Images;
 	ASSERT (pImages != NULL);
 
 	CWaitCursor wait;
-	pImages->CopyImageToClipboard (pButton->GetImage ());
+
+	if (pImages->GetScale() == 1.0)
+	{
+		pImages->CopyImageToClipboard (pButton->GetImage ());
+		return;
+	}
+
+	// Get non-scaled images:
+	CBCGPToolBarImages image;
+	pImages->CopyTo(image);
+
+	image.OnSysColorChange();
+	image.CopyImageToClipboard (pButton->GetImage ());
 }
 //****************************************************************************************
 BOOL CBCGPToolBar::OnSetDefaultButtonText (CBCGPToolbarButton* pButton)
@@ -6045,8 +6180,20 @@ BOOL CBCGPToolBar::OnSetDefaultButtonText (CBCGPToolbarButton* pButton)
 	TCHAR szFullText [256];
 	CString strTipText;
 
-	if (AfxLoadString (pButton->m_nID, szFullText) &&
-		AfxExtractSubString (strTipText, szFullText, 1, '\n'))
+	CBCGPLocalResource* pLocalRes = NULL;
+	if (m_bIsLocal)
+	{
+		pLocalRes = new CBCGPLocalResource();
+	}
+
+	BOOL bRes = AfxLoadString (pButton->m_nID, szFullText);
+
+	if (pLocalRes != NULL)
+	{
+		delete pLocalRes;
+	}
+
+	if (bRes && AfxExtractSubString (strTipText, szFullText, 1, '\n'))
 	{
 		pButton->m_strText = strTipText;
 		return TRUE;
@@ -6076,11 +6223,9 @@ CSize CBCGPToolBar::GetMenuImageSize ()
 {
 	CSize size = (m_sizeMenuImage.cx == -1) ? m_sizeImage : m_sizeMenuImage;
 
-	if (globalData.GetRibbonImageScale () != 1.)
+	if (!CBCGPToolBar::m_bDontScaleImages)
 	{
-		size = CSize (
-			(int)(.5 + size.cx * globalData.GetRibbonImageScale ()),
-			(int)(.5 + size.cy * globalData.GetRibbonImageScale ()));
+		size = globalUtils.ScaleByDPI(size);
 	}
 
 	return size;
@@ -6536,6 +6681,7 @@ BOOL CBCGPToolBar::ProcessCommand (CBCGPToolbarButton* pButton)
 	AddCommandUsage (pButton->m_nID);
 	GetOwner()->PostMessage (WM_COMMAND, pButton->m_nID);
 
+	CBCGPMDIFrameWnd::RestoreDetachedFrameActivation();
 	return TRUE;
 }
 //********************************************************************************************
@@ -6710,7 +6856,7 @@ void CBCGPToolBar::OnBcgbarresToolbarNewMenu()
 	pMenuButton->m_bImage = FALSE;
 
 	CBCGPLocalResource locaRes;
-	CButtonAppearanceDlg dlg (pMenuButton, m_pUserImages, this, 0, IsPureMenuButton (pMenuButton));
+	CButtonAppearanceDlg dlg (pMenuButton, m_pUserImages, &m_UserImagesScaled, this, 0, IsPureMenuButton (pMenuButton));
 	if (dlg.DoModal () != IDOK)
 	{
 		delete pMenuButton;
@@ -6837,6 +6983,11 @@ void CBCGPToolBar::SetLargeIcons (BOOL bLargeIcons/* = TRUE*/)
 			}
 		}
 	}
+}
+//************************************************************************************
+void CBCGPToolBar::UseDefaultResourceHandle(BOOL bDefaultResourceHandle)
+{
+	m_bDefaultResourceHandle = bDefaultResourceHandle;
 }
 //************************************************************************************
 BOOL CBCGPToolBar::IsCommandRarelyUsed (UINT uiCmd)
@@ -7497,13 +7648,23 @@ void CBCGPToolBar::UpdateTooltips ()
 		return;
 	}
 
-	while (m_nTooltipsCount-- >= 0)
+	int i = 0;
+	const int nCount = m_pToolTip->GetToolCount();
+
+	for (i = 0; i < nCount; i++)
 	{
-		m_pToolTip->DelTool (this, m_nTooltipsCount);
+		m_pToolTip->DelTool(this, i + 1);
 	}
 
 	m_nTooltipsCount = 0;
-	for (int i = 0; i < m_Buttons.GetCount (); i++)
+
+	CBCGPLocalResource* pLocalRes = NULL;
+	if (m_bIsLocal)
+	{
+		pLocalRes = new CBCGPLocalResource();
+	}
+
+	for (i = 0; i < m_Buttons.GetCount (); i++)
 	{
 		CBCGPToolbarButton* pButton = GetButton (i);
 		ASSERT_VALID (pButton);
@@ -7514,6 +7675,7 @@ void CBCGPToolBar::UpdateTooltips ()
 			CString strTipText;
 
 			AfxLoadString (pButton->m_nID, szFullText);
+
 			AfxExtractSubString (strTipText, szFullText, 1, '\n');
 
 			if (!pButton->OnUpdateToolTip (this, i, *m_pToolTip, strTipText))
@@ -7523,6 +7685,11 @@ void CBCGPToolBar::UpdateTooltips ()
 
 			m_nTooltipsCount ++;
 		}
+	}
+
+	if (pLocalRes != NULL)
+	{
+		delete pLocalRes;
 	}
 }
 //************************************************************************************
@@ -7845,7 +8012,7 @@ LRESULT CBCGPToolBar::OnPromptReset(WPARAM, LPARAM)
 	}
 
 	//Ask for reset
-	if (AfxMessageBox (strPrompt, MB_OKCANCEL|MB_ICONWARNING) == IDOK)
+	if (BCGPShowMessageBox(globalData.m_bUseVisualManagerInBuiltInDialogs, this, strPrompt, NULL, MB_OKCANCEL | MB_ICONWARNING) == IDOK)
 	{
 		RestoreOriginalstate();
 	}
@@ -8434,6 +8601,7 @@ HRESULT CBCGPToolBar::accDoDefaultAction(VARIANT varChild)
 			if (!pButton->OnClickUp ())
 			{
 				GetOwner()->SendMessage (WM_COMMAND, pButton->m_nID); 
+				CBCGPMDIFrameWnd::RestoreDetachedFrameActivation();
 			}
 		}
 		else

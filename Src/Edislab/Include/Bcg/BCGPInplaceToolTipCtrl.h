@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -53,13 +53,12 @@ public:
 	}
 
 protected:
-	static CString	m_strClassName;
-	CString			m_strText;
-	CRect			m_rectLast;
-	int				m_nTextMargin;
-	CFont*			m_pFont;
-	CWnd*			m_pWndParent;
-	BOOL			m_bMultiline;
+	CString		m_strText;
+	CRect		m_rectLast;
+	int			m_nTextMargin;
+	CFont*		m_pFont;
+	CWnd*		m_pWndParent;
+	BOOL		m_bMultiline;
 
 // Operations
 public:

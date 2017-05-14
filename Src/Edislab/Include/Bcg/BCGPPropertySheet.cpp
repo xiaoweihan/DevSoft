@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -23,10 +23,14 @@
 #include "BCGPLocalResource.h"
 #include "BCGProRes.h"
 #include "BCGPGestureManager.h"
+#include "BCGPGlobalUtils.h"
 
 #ifndef _BCGSUITE_
+#include "BCGPURLLinkButton.h"
+#include "BCGPPopupMenu.h"
 #include "BCGPPngImage.h"
 #include "BCGPOutlookWnd.h"
+#include "BCGPOutlookButton.h"
 #endif
 
 #ifdef _DEBUG
@@ -47,6 +51,26 @@ BEGIN_MESSAGE_MAP(CBCGPPropSheetBtn, CBCGPButton)
 	ON_WM_SETFOCUS()
 END_MESSAGE_MAP()
 
+#ifndef _BCGSUITE_
+
+static CBCGPMenuImages::IMAGE_STATE CBCGPPropSheetGetNavImageState(BOOL bIsDisabled, BOOL bIsHighlighted)
+{
+	CBCGPMenuImages::IMAGE_STATE stateImage = CBCGPMenuImages::ImageBlack;
+	
+	if (bIsDisabled)
+	{
+		stateImage = CBCGPVisualManager::GetInstance()->IsDarkTheme() ? CBCGPMenuImages::ImageDkGray : CBCGPMenuImages::ImageLtGray;
+	}
+	else if (bIsHighlighted)
+	{
+		stateImage = CBCGPMenuImages::ImageBlack2;
+	}
+	
+	return stateImage;
+}
+
+#endif
+
 void CBCGPPropSheetBtn::OnPaint() 
 {
 	CPaintDC dc(this); // device context for painting
@@ -58,6 +82,22 @@ void CBCGPPropSheetBtn::OnPaint()
 	CDC* pDC = &memDC.GetDC ();
 
 	globalData.DrawParentBackground (this, pDC);
+
+	CBCGPPropertySheet* pParent = DYNAMIC_DOWNCAST(CBCGPPropertySheet, GetParent());
+	if (pParent == NULL)
+	{
+		return;
+	}
+
+#ifndef _BCGSUITE_
+	if (pParent->m_bSimplifiedBackIcon)
+	{
+		CBCGPMenuImages::IMAGE_STATE stateImage = CBCGPPropSheetGetNavImageState(!IsWindowEnabled(), IsHighlighted() || (GetFocus() == this));
+		CBCGPMenuImages::Draw(pDC, CBCGPMenuImages::IdExplorerBack, rectClient, stateImage);
+		
+		return;
+	}
+#endif
 
 	int nIndex = 1;
 
@@ -72,13 +112,6 @@ void CBCGPPropSheetBtn::OnPaint()
 	else if (IsHighlighted() || (GetFocus() == this))
 	{
 		nIndex = 2;
-	}
-
-
-	CBCGPPropertySheet* pParent = DYNAMIC_DOWNCAST(CBCGPPropertySheet, GetParent());
-	if (pParent == NULL)
-	{
-		return;
 	}
 
 	CBCGPToolBarImages& images = 
@@ -105,6 +138,10 @@ BOOL CBCGPPropSheetPane::OnSendCommand (const CBCGPToolbarButton* pButton)
 	ASSERT_VALID (m_pParent);
 
 	int nPageIndex = ButtonToIndex(pButton);
+	if (nPageIndex == m_pParent->GetActiveIndex())
+	{
+		return TRUE;
+	}
 
 	if (m_pParent->IsPageTransitionAvailable())
 	{
@@ -119,7 +156,26 @@ BOOL CBCGPPropSheetPane::OnSendCommand (const CBCGPToolbarButton* pButton)
 
 	return TRUE;
 }
-//****************************************************************************************
+
+#ifndef _BCGSUITE_
+
+BOOL CBCGPPropSheetPane::OnDrawButtonImage(CDC* pDC, CBCGPOutlookButton* pButton, CBCGPToolBarImages* pImages, int iImageIndex, CRect rectIcon)
+{
+	ASSERT_VALID (this);
+
+	if (m_pParent == NULL)
+	{
+		return FALSE;
+	}
+
+	ASSERT_VALID (m_pParent);
+
+	int nPageIndex = ButtonToIndex(pButton);
+	return m_pParent->OnDrawPageIcon(pDC, nPageIndex, pImages, iImageIndex, rectIcon);
+}
+
+#endif
+
 void CBCGPPropSheetPane::EnsureVisible (int iButton)
 {
 	ASSERT_VALID (this);
@@ -321,14 +377,18 @@ CBCGPPropertySheet::CBCGPPropertySheet(LPCTSTR pszCaption, CWnd* pParentWnd, UIN
 
 #pragma warning (default : 4355)
 
-void CBCGPPropertySheet::SetLook (PropSheetLook look, int nNavBarWidth, BOOL bGlassEffect)
+void CBCGPPropertySheet::SetLook (PropSheetLook look, int nNavBarWidth, BOOL bGlassEffect, BOOL bSimplifiedBackIcon)
 {
 	ASSERT (GetSafeHwnd () == NULL);
 
 	m_look = look;
 
 	m_nBarWidth = nNavBarWidth;
-
+#ifndef _BCGSUITE_
+	m_bSimplifiedBackIcon = bSimplifiedBackIcon;
+#else
+	UNREFERENCED_PARAMETER(bSimplifiedBackIcon);
+#endif
 	m_bGlassEffect = bGlassEffect;
 
 	if (m_look == PropSheetLook_Wizard || m_look == PropSheetLook_AeroWizard)
@@ -345,21 +405,30 @@ void CBCGPPropertySheet::SetLook (PropSheetLook look, int nNavBarWidth, BOOL bGl
 	{
 		m_Impl.m_lstNonSubclassedItems.AddTail(ID_WIZBACK);
 
-		CBCGPLocalResource locaRes;
+		if (m_bSimplifiedBackIcon)
+		{
+			m_nAeroHeight = globalData.GetTextHeight() * 3 / 2;
+		}
+		else
+		{
+			CBCGPLocalResource locaRes;
 
-		BOOL bIsHighDPI = (globalData.GetRibbonImageScale() >= 1.2) && (globalData.m_nBitsPerPixel > 8) && !globalData.IsHighContastMode ();
+			BOOL bIsHighDPI = (globalData.GetRibbonImageScale() >= 1.2) && (globalData.m_nBitsPerPixel > 8) && !globalData.IsHighContastMode ();
 
-		const CSize sizeImage = bIsHighDPI ? CSize(32, 32) : CSize(25, 25);
+			const CSize sizeImage = bIsHighDPI ? CSize(32, 32) : CSize(25, 25);
 
-		m_NavImages16.SetImageSize (sizeImage);
-		m_NavImages16.SetTransparentColor (globalData.clrBtnFace);
-		
-		m_NavImages16.Load (IDB_BCGBARRES_NAV_BUTTONS_16);
-		
-		m_NavImages.SetImageSize (sizeImage);
-		m_NavImages.Load (CBCGPVisualManager::GetInstance()->GetNavButtonsID(bIsHighDPI));
+			m_NavImages16.SetImageSize (sizeImage);
+			m_NavImages16.SetTransparentColor (globalData.clrBtnFace);
+			
+			m_NavImages16.Load (IDB_BCGBARRES_NAV_BUTTONS_16);
+			
+			m_NavImages.Clear();
+			m_NavImages.SetImageSize (sizeImage);
+			m_NavImages.Load (CBCGPVisualManager::GetInstance()->GetNavButtonsID(bIsHighDPI));
+			globalUtils.ScaleByDPI(m_NavImages);
 
-		m_nAeroHeight = m_NavImages.GetImageSize ().cy * 3 / 2;
+			m_nAeroHeight = m_NavImages.GetImageSize ().cy * 3 / 2;
+		}
 	}
 }
 
@@ -379,18 +448,25 @@ void CBCGPPropertySheet::CommonInit ()
 	m_bIsInSelectTree = FALSE;
 	m_bAlphaBlendIcons = FALSE;
 	m_nHeaderHeight = 0;
+	m_bSyncHeaderHeightWithListItemHeight = FALSE;
 	m_bDrawHeaderOnAeroCaption = FALSE;
 	m_nAeroHeight = 0;
 	m_bWasMaximized = FALSE;
 	m_bDrawPageFrame = FALSE;
 	m_bGlassArea = FALSE;
 	m_bGlassEffect = TRUE;
+#ifndef _BCGSUITE_
+	m_bSimplifiedBackIcon = TRUE;
+#else
+	m_bSimplifiedBackIcon = FALSE;
+#endif
 	m_bIsReady = FALSE;
 	m_sizeOriginal = m_sizePrev = CSize(0, 0);
 	m_bInAdjustLayout = FALSE;
 	m_bBackstageMode = FALSE;
 	m_bIsTabsScrolling = FALSE;
 	m_nNewActivePage = -1;
+	m_bDisableShadows = FALSE;
 }
 
 BEGIN_MESSAGE_MAP(CBCGPPropertySheet, CPropertySheet)
@@ -416,7 +492,9 @@ BEGIN_MESSAGE_MAP(CBCGPPropertySheet, CPropertySheet)
 	ON_WM_NCACTIVATE()
 	ON_WM_ENABLE()
 	ON_WM_PAINT()
+	ON_WM_SYSCOMMAND()
 	//}}AFX_MSG_MAP
+	ON_WM_STYLECHANGED()
 	ON_MESSAGE(UM_AFTERACTIVATEPAGE, OnAfterActivatePage)
 	ON_MESSAGE(UM_ADJUSTBUTTONS, OnAdjustButtons)
 	ON_MESSAGE(UM_ADJUSTWIZARDPAGE, OnAdjustWizardPage)
@@ -429,6 +507,8 @@ BEGIN_MESSAGE_MAP(CBCGPPropertySheet, CPropertySheet)
 	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLBACKSTAGEMODE, OnBCGSetControlBackStageMode)
 	ON_MESSAGE(WM_SETTEXT, OnSetText)
+	ON_MESSAGE(WM_DPICHANGED, OnDPIChanged)
+	ON_MESSAGE(WM_THEMECHANGED, OnThemeChanged)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -450,7 +530,7 @@ void CBCGPPropertySheet::AddPage(CPropertyPage* pPage)
 		}
 	}
 
-	if (GetSafeHwnd () == NULL || m_look == PropSheetLook_Tabs)
+	if (GetSafeHwnd () == NULL || (m_look == PropSheetLook_Tabs && !IsVisualManagerStyle()))
 	{
 		return;
 	}
@@ -525,25 +605,38 @@ void CBCGPPropertySheet::InternalAddPage (int nTab)
 			return;
 		}
 
-		int nCaptionsBefore = 0;
+		int i = 0;
 
-		for (int i = 0; i < m_arGroupIndexes.GetSize(); i++)
+		for (i = 0; i < m_arGroupIndexes.GetSize(); i++)
 		{
 			if (m_arGroupIndexes[i] == nTab)
 			{
 				m_wndList.AddCaption(m_arGroupCaptions[i]);
+				break;
 			}
+		}
+		
+		int nCaptionsBefore = 0;
 
-			if (m_arGroupIndexes[i] < m_wndList.GetCount())
+		for (i = 0; i < m_wndList.GetCount(); i++)
+		{
+			if (m_wndList.IsCaptionItem(i))
 			{
 				nCaptionsBefore++;
 			}
 		}
-		
+
 		int nIndex = m_wndList.AddString (szTab);
 		m_wndList.SetItemData (nIndex, (DWORD_PTR) pPage);
 
-		m_wndList.SetItemImage(nIndex, nIndex - nCaptionsBefore);
+		if (pPage->GetPageIcon() != NULL)
+		{
+			m_wndList.SetItemIcon(nIndex, pPage->GetPageIcon());
+		}
+		else
+		{
+			m_wndList.SetItemImage(nIndex, nIndex - nCaptionsBefore);
+		}
 	}
 
 	if (m_wndTab.GetSafeHwnd () != NULL)
@@ -558,6 +651,11 @@ void CBCGPPropertySheet::InternalAddPage (int nTab)
 		UINT uiImage = m_Icons.GetSafeHandle () == NULL ? (UINT)-1 : nTab;
 
 		m_wndTab.AddTab (pPage, szTab, uiImage, FALSE);
+
+		if (pPage->GetPageIcon() != NULL)
+		{
+			m_wndTab.SetTabHicon(m_wndTab.GetTabsNum() - 1, pPage->GetPageIcon());
+		}
 	}
 }
 //****************************************************************************************
@@ -589,6 +687,11 @@ void CBCGPPropertySheet::RemovePage(CPropertyPage* pPage)
 	{
 		m_wndList.DeleteString (FindPageIndexInList (pPage));
 	}
+
+	if (m_wndTab.GetSafeHwnd() != NULL)
+	{
+		m_wndTab.RemoveTab(nPage);
+	}
 }
 //****************************************************************************************
 void CBCGPPropertySheet::RemovePage(int nPage)
@@ -615,6 +718,11 @@ void CBCGPPropertySheet::RemovePage(int nPage)
 #else
 		m_wndPane1.RemoveButton (nPage);
 #endif
+	}
+
+	if (m_wndTab.GetSafeHwnd() != NULL)
+	{
+		m_wndTab.RemoveTab(nPage);
 	}
 }
 //********************************************************************************
@@ -664,17 +772,42 @@ void CBCGPPropertySheet::RenamePage(int nPage, const CString& strPageName)
 
 	if (m_wndList.GetSafeHwnd() != NULL)
 	{
-		BOOL bIsSelected = m_wndList.GetCurSel() == nPage;
+		CPropertyPage* pPage = GetPage(nPage);
+		ASSERT_VALID(pPage);
+
+		int nPageIndex = FindPageIndexInList(pPage);
+		if (nPageIndex < 0)
+		{
+			ASSERT(FALSE);
+			return;
+		}
+
+		BOOL bIsSelected = m_wndList.GetCurSel() == nPageIndex;
 
 		m_wndList.SetRedraw(FALSE);
-		m_wndList.DeleteString(nPage);
+		m_wndList.DeleteString(nPageIndex);
 
-		m_wndList.InsertString(nPage, strPageName);
-		m_wndList.SetItemData(nPage, (DWORD_PTR) GetPage(nPage));
+		m_wndList.InsertString(nPageIndex, strPageName);
+		m_wndList.SetItemData(nPageIndex, (DWORD_PTR)pPage);
+
+		CBCGPPropertyPage* pBCGPage = DYNAMIC_DOWNCAST (CBCGPPropertyPage, pPage);
+		if (pBCGPage != NULL)
+		{
+			ASSERT_VALID(pBCGPage);
+
+			if (pBCGPage->GetPageIcon() != NULL)
+			{
+				m_wndList.SetItemIcon(nPageIndex, pBCGPage->GetPageIcon());
+			}
+			else
+			{
+				m_wndList.SetItemImage(nPageIndex, nPage);
+			}
+		}
 
 		if (bIsSelected)
 		{
-			m_wndList.SetCurSel(nPage);
+			m_wndList.SetCurSel(nPageIndex);
 		}
 		
 		m_wndList.SetRedraw(TRUE);
@@ -798,12 +931,31 @@ void CBCGPPropertySheet::AddPageToTree (CBCGPPropSheetCategory* pCategory,
 //****************************************************************************************
 BOOL CBCGPPropertySheet::OnInitDialog() 
 {
+#ifndef _BCGSUITE_
+	CBCGPPopupMenu* pActivePopupMenu = CBCGPPopupMenu::GetSafeActivePopupMenu();
+	if (pActivePopupMenu != NULL)
+	{
+		ASSERT_VALID(pActivePopupMenu);
+		
+		if (pActivePopupMenu->IsFloaty())
+		{
+			pActivePopupMenu->SendMessage(WM_CLOSE);
+		}
+	}
+#endif	
+
 	if (AfxGetMainWnd() == this)
 	{
 		globalData.m_bIsRTL = (GetExStyle() & WS_EX_LAYOUTRTL);
 		CBCGPToolBarImages::EnableRTL(globalData.m_bIsRTL);
 	}
 	
+	if (m_bSyncHeaderHeightWithListItemHeight && m_look == PropSheetLook_List)
+	{
+		CreateListBox();
+		m_nHeaderHeight = m_wndList.GetItemHeight(0);
+	}
+
 	BOOL bResult = CPropertySheet::OnInitDialog();
 
 	m_Impl.m_bHasBorder = (GetStyle () & WS_BORDER) != 0;
@@ -811,7 +963,7 @@ BOOL CBCGPPropertySheet::OnInitDialog()
 
 	BOOL bIsCtrl = (GetStyle() & WS_CHILD) != 0;
 
-	CWnd* pWndNavigator = InitNavigationControl ();
+	CWnd* pWndNavigator = InitNavigationControl();
 
 	if (IsVisualManagerStyle ())
 	{
@@ -896,7 +1048,7 @@ BOOL CBCGPPropertySheet::OnInitDialog()
 			pTab->GetItemRect (0, rectTabItem);
 			pTab->MapWindowPoints (this, &rectTabItem);
 
-			const int nVertMargin = bIsCtrl ? 0 : 5;
+			const int nVertMargin = bIsCtrl ? 0 : globalUtils.ScaleByDPI(5);
 			const int nTabsHeight = rectTabItem.Height () + nVertMargin;
 
 			CRect rectClient;
@@ -967,7 +1119,7 @@ BOOL CBCGPPropertySheet::OnInitDialog()
 
 			if (m_bBackstageMode)
 			{
-				rectNavigator.left += 10;
+				rectNavigator.left += globalUtils.ScaleByDPI(10);
 			}
 
 			pWndNavigator->SetWindowPos (&wndTop, 
@@ -1005,14 +1157,7 @@ BOOL CBCGPPropertySheet::OnInitDialog()
 				if (CBCGPVisualManager::GetInstance()->IsDWMCaptionSupported())
 #endif
 				{
-#if _MSC_VER < 1700 || !defined(_BCGSUITE_)
-					if (m_bGlassEffect && globalData.DwmIsCompositionEnabled ())
-#else
-					BOOL bIsDWMEnabled = FALSE;
-					DwmIsCompositionEnabled(&bIsDWMEnabled);
-
-					if (m_bGlassEffect && bIsDWMEnabled)
-#endif
+					if (m_bGlassEffect && BCGCBProDwmIsCompositionEnabled())
 					{
 						CRect rectWindow;
 						GetWindowRect (rectWindow);
@@ -1023,11 +1168,7 @@ BOOL CBCGPPropertySheet::OnInitDialog()
 						margins.cyTopHeight = m_nAeroHeight;
 						margins.cyBottomHeight = 0;
 
-#if _MSC_VER < 1700 || !defined(_BCGSUITE_)
-						if (globalData.DwmExtendFrameIntoClientArea (GetSafeHwnd (), &margins))
-#else
-						if (SUCCEEDED(DwmExtendFrameIntoClientArea (GetSafeHwnd (), &margins)))
-#endif
+						if (BCGCBProDwmExtendFrameIntoClientArea(GetSafeHwnd(), &margins))
 						{
 							m_bGlassArea = TRUE;
 						}
@@ -1038,7 +1179,7 @@ BOOL CBCGPPropertySheet::OnInitDialog()
 			CRect rectWindow;
 			GetWindowRect (rectWindow);
 
-			const int nVertMargin = (m_look == PropSheetLook_AeroWizard) ? 5 : 0;
+			const int nVertMargin = (m_look == PropSheetLook_AeroWizard) ? globalUtils.ScaleByDPI(5) : 0;
 
 			if (!bIsCtrl)
 			{
@@ -1084,6 +1225,11 @@ BOOL CBCGPPropertySheet::OnInitDialog()
 		m_Impl.m_LayoutMMI.ptMinTrackSize.y = rectWindow.Height ();
 
 		GetLayout ()->SetMinSize (m_sizePrev);
+
+		if (m_Impl.m_bResizeBox)
+		{
+			ReposButtons(TRUE);
+		}
 	}
 
 	m_bIsReady = TRUE;
@@ -1092,8 +1238,8 @@ BOOL CBCGPPropertySheet::OnInitDialog()
 //***************************************************************************************
 void CBCGPPropertySheet::AdjustControlsLayout()
 {
-	const int nHorzMargin = 5;
-	const int nVertMargin = 5;
+	const int nHorzMargin = globalUtils.ScaleByDPI(5);
+	const int nVertMargin = globalUtils.ScaleByDPI(5);
 
 	m_Impl.AdjustControlsLayout();
 
@@ -1210,7 +1356,7 @@ void CBCGPPropertySheet::AdjustControlsLayout()
 		RedrawWindow (rectRedraw, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ERASENOW);
 
 		rectFrame.InflateRect(nHorzMargin, nVertMargin);
-		RedrawWindow (rectFrame, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ERASENOW);
+		RedrawWindow (rectFrame, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ERASENOW | RDW_ALLCHILDREN);
 	}
 
 	m_bInAdjustLayout = FALSE;
@@ -1218,13 +1364,18 @@ void CBCGPPropertySheet::AdjustControlsLayout()
 //***************************************************************************************
 int CBCGPPropertySheet::ReposButtons (BOOL bRedraw)
 {
-	const int nHorzMargin = 5;
-	const int nVertMargin = 5;
+	const int nHorzMargin = globalUtils.ScaleByDPI(5);
+	const int nVertMargin = globalUtils.ScaleByDPI(5);
 
 	int nButtonsHeight = 0;
 
 	CRect rectClient;
 	GetClientRect (rectClient);
+
+	if (m_Impl.m_bResizeBox)
+	{
+		rectClient.right -= m_Impl.m_rectResizeBox.Width();
+	}
 
 	int ids[] = { IDOK, ID_WIZBACK, ID_WIZNEXT, ID_WIZFINISH, IDCANCEL, ID_APPLY_NOW, IDHELP };
 
@@ -1264,7 +1415,8 @@ int CBCGPPropertySheet::ReposButtons (BOOL bRedraw)
 					}
 
 					m_btnBack.m_bOnGlass = m_bGlassArea;
-					CSize sizeImage = m_NavImages.GetImageSize ();
+
+					CSize sizeImage = m_bSimplifiedBackIcon ? CSize(globalData.GetTextHeight(), globalData.GetTextHeight()) : m_NavImages.GetImageSize ();
 
 					m_btnBack.SetWindowPos (NULL, sizeImage.cx / 4, (m_nAeroHeight - sizeImage.cy) / 2,
 						sizeImage.cx, sizeImage.cy, SWP_NOACTIVATE | SWP_NOZORDER);
@@ -1343,15 +1495,15 @@ CWnd* CBCGPPropertySheet::InitNavigationControl ()
 
 		pWndTab->HideSingleTab ();
 
+#ifndef _BCGSUITE_
+		m_wndPane1.SetLocalImages();
+#endif
 		m_wndPane1.Create (&m_wndOutlookBar, dwDefaultToolbarStyle, 1);
 		m_wndPane1.m_pParent = this;
 		m_wndOutlookBar.AddTab (&m_wndPane1);
 
 		m_wndPane1.EnableTextLabels (TRUE);
 		m_wndPane1.SetOwner (this);
-
-		ASSERT (m_Icons.GetSafeHandle () != NULL);
-		ASSERT (m_Icons.GetImageCount () >= pTab->GetItemCount ());
 
 		for (int nTab = 0; nTab < pTab->GetItemCount (); nTab++)
 		{
@@ -1410,25 +1562,7 @@ CWnd* CBCGPPropertySheet::InitNavigationControl ()
 
 	if (m_look == PropSheetLook_List)
 	{
-		CRect rectDummy (0, 0, 0, 0);
-		const DWORD dwListStyle = 
-			LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT | WS_CHILD | WS_VSCROLL | WS_VISIBLE | LBS_NOTIFY | WS_TABSTOP;
-
-		m_wndList.m_bPropertySheetNavigator = TRUE;
-		m_wndList.m_bBackstageMode = m_bBackstageMode;
-		m_wndList.m_bVisualManagerStyle = TRUE;
-
-		m_wndList.Create (dwListStyle, rectDummy, this, (UINT) idList);
-
-		if ((GetStyle() & WS_CHILD) == 0)
-		{
-			m_wndList.ModifyStyleEx (0, WS_EX_CLIENTEDGE);
-		}
-
-		if (m_Icons.GetSafeHandle () != NULL)
-		{
-			m_wndList.SetImageList (m_Icons.GetSafeHandle ());
-		}
+		CreateListBox();
 
 		//-----------
 		// Add pages:
@@ -1441,21 +1575,35 @@ CWnd* CBCGPPropertySheet::InitNavigationControl ()
 		return &m_wndList;
 	}
 
-	if (m_look == PropSheetLook_OneNoteTabs || m_look == PropSheetLook_Pointer || IsVisualManagerStyle ())
+	if (m_look == PropSheetLook_OneNoteTabs || m_look == PropSheetLook_Pointer || m_look == PropSheetLook_Slider || IsVisualManagerStyle ())
 	{
 		const int nActiveTab = GetActiveIndex ();
-
 		CRect rectDummy (0, 0, 0, 0);
 
+		CBCGPTabWnd::Style tabStyle = m_bIsTabsScrolling ? CBCGPTabWnd::STYLE_3D_SCROLLED : CBCGPTabWnd::STYLE_3D;
+		CBCGPTabWnd::Location tabLocation = CBCGPTabWnd::LOCATION_TOP;
+
+		switch (m_look)
+		{
+		case PropSheetLook_OneNoteTabs:
+			tabStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
+			break;
+			
 #ifndef _BCGSUITE_
-		m_wndTab.Create (
-			m_look == PropSheetLook_Pointer ? CBCGPTabWnd::STYLE_POINTER : m_look == PropSheetLook_OneNoteTabs ? CBCGPTabWnd::STYLE_3D_ONENOTE : (m_bIsTabsScrolling ? CBCGPTabWnd::STYLE_3D_SCROLLED : CBCGPTabWnd::STYLE_3D),
-			rectDummy, this, (UINT) idTab, CBCGPTabWnd::LOCATION_TOP, FALSE);
-#else
-		m_wndTab.Create (
-			m_look == PropSheetLook_OneNoteTabs ? CBCGPTabWnd::STYLE_3D_ONENOTE : (m_bIsTabsScrolling ? CBCGPTabWnd::STYLE_3D_SCROLLED : CBCGPTabWnd::STYLE_3D),
-			rectDummy, this, (UINT) idTab, CBCGPTabWnd::LOCATION_TOP, FALSE);
+		case PropSheetLook_Slider:
+			tabStyle = CBCGPTabWnd::STYLE_DOTS;
+			tabLocation = CBCGPTabWnd::LOCATION_BOTTOM;
+			m_wndTab.EnableTabsHandCursor();
+			break;
+
+		case PropSheetLook_Pointer:
+			tabStyle = CBCGPTabWnd::STYLE_POINTER;
+			break;
 #endif
+		}
+
+		m_wndTab.Create(tabStyle, rectDummy, this, (UINT) idTab, tabLocation, FALSE);
+
 		m_wndTab.m_pParent = this;
 		m_wndTab.EnableTabSwap (FALSE);
 		m_wndTab.AutoDestroyWindow (FALSE);
@@ -1498,13 +1646,41 @@ CWnd* CBCGPPropertySheet::InitNavigationControl ()
 	return NULL;
 }
 //****************************************************************************************
-void CBCGPPropertySheet::SetIconsList (HIMAGELIST hIcons)
+void CBCGPPropertySheet::SetIconsList (HIMAGELIST hIcons, BOOL bIsDPIScale)
 {
 	ASSERT_VALID(this);
 	ASSERT (hIcons != NULL);
 	ASSERT (m_Icons.GetSafeHandle () == NULL);
 
-	m_Icons.Create (CImageList::FromHandle (hIcons));
+	CImageList* pImageList = CImageList::FromHandle(hIcons);
+	ASSERT_VALID(pImageList);
+
+#if (!defined _BCGSUITE_)
+	IMAGEINFO info;
+	if (pImageList->GetImageInfo(0, &info))
+	{
+		BITMAP bmpObj;
+		::GetObject(info.hbmImage, sizeof (BITMAP), &bmpObj);
+		
+		m_bAlphaBlendIcons = bmpObj.bmBitsPixel >= 32;
+	}
+
+	if (bIsDPIScale && m_bAlphaBlendIcons)
+	{
+		CBCGPToolBarImages images;
+		images.CreateFromImageList(*pImageList);
+
+		globalUtils.ScaleByDPI(images);
+
+		images.ExportToImageList(m_Icons);
+	}
+	else
+#else
+	UNREFERENCED_PARAMETER(bIsDPIScale);
+#endif
+	{
+		m_Icons.Create(pImageList);
+	}
 }
 //******************************************************************************************
 void CBCGPPropertySheet::AddCategoryToTree (CBCGPPropSheetCategory* pCategory)
@@ -1529,8 +1705,7 @@ void CBCGPPropertySheet::AddCategoryToTree (CBCGPPropSheetCategory* pCategory)
 	}
 }
 //***************************************************************************************
-BOOL CBCGPPropertySheet::SetIconsList (UINT uiImageListResID, int cx,
-							  COLORREF clrTransparent)
+BOOL CBCGPPropertySheet::SetIconsList (UINT uiImageListResID, int cx, COLORREF clrTransparent, BOOL bIsDPIScale)
 {
 	ASSERT_VALID(this);
 
@@ -1599,7 +1774,7 @@ BOOL CBCGPPropertySheet::SetIconsList (UINT uiImageListResID, int cx,
 	icons.Create (cx, bmpObj.bmHeight, nFlags, 0, 0);
 	icons.Add (CBitmap::FromHandle (hbmp), clrTransparent);
 
-	SetIconsList (icons);
+	SetIconsList (icons, bIsDPIScale && m_bAlphaBlendIcons);
 
 	::DeleteObject (hbmp);
 	return TRUE;
@@ -1698,7 +1873,7 @@ void CBCGPPropertySheet::OnActivatePage (CPropertyPage* pPage)
 			CRect rectPage;
 			GetClientRect(rectPage);
 
-			rectPage.left += nNavBarWidth;
+			rectPage.OffsetRect(nNavBarWidth, 0);
 
 			m_bIsReady = TRUE;
 
@@ -2060,6 +2235,7 @@ void CBCGPPropertySheet::OnSysColorChange()
 	if (AfxGetMainWnd()->GetSafeHwnd() == GetSafeHwnd())
 	{
 		globalData.UpdateSysColors ();
+		CBCGPVisualManager::GetInstance ()->OnUpdateSystemColors ();
 	}
 }
 //********************************************************************************
@@ -2071,6 +2247,8 @@ void CBCGPPropertySheet::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
 	{
 		globalData.OnSettingChange ();
 	}
+
+	UpdateListBoxFont();
 }
 //********************************************************************************
 int CBCGPPropertySheet::FindPageIndexInList (CPropertyPage* pPage)
@@ -2096,7 +2274,7 @@ void CBCGPPropertySheet::OnSelectList()
 	}
 
 	CPropertyPage* pPage = (CPropertyPage*) m_wndList.GetItemData (nCurSel);
-	if (pPage == NULL)
+	if (pPage == NULL || pPage == GetActivePage())
 	{
 		return;
 	}
@@ -2310,7 +2488,34 @@ LRESULT CBCGPPropertySheet::OnChangeVisualManager (WPARAM, LPARAM)
 		m_wndPane1.RedrawWindow();
 	}
 
+	UpdateListBoxFont();
 	return 0;
+}
+//**************************************************************************
+void CBCGPPropertySheet::UpdateListBoxFont()
+{
+	m_fntList.DeleteObject();
+
+	if (m_wndList.GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	if (!IsVisualManagerStyle() || !CBCGPVisualManager::GetInstance()->IsLargePropertySheetListFont(this))
+	{
+		m_wndList.SetFont(NULL);	// Use default font
+		return;
+	}
+
+	LOGFONT lf;
+	memset(&lf, 0, sizeof (LOGFONT));
+	
+	globalData.fontRegular.GetLogFont(&lf);
+
+	lf.lfHeight = (long) (1.25 * lf.lfHeight);
+	
+	m_fntList.CreateFontIndirect (&lf);
+	m_wndList.SetFont(&m_fntList);
 }
 //**************************************************************************
 void CBCGPPropertySheet::DrawWizardGutter(CDC* pDC)
@@ -2350,7 +2555,7 @@ void CBCGPPropertySheet::DrawWizardGutter(CDC* pDC)
 			pDC->MoveTo(x1, y);
 			pDC->LineTo(x2, y);
 
-			CBCGPPenSelector pen1 (*pDC, IsVisualManagerStyle () ? globalData.clrBarHilite : globalData.clrBtnHilite);
+			CBCGPPenSelector pen1 (*pDC, IsVisualManagerStyle () ? globalData.clrBarLight : globalData.clrBtnHilite);
 
 			pDC->MoveTo(x1, y + 1);
 			pDC->LineTo(x2, y + 1);
@@ -2399,6 +2604,10 @@ void CBCGPPropertySheet::DrawWizardAero(CDC* pDC)
 			CBCGPPenSelector pen (*pDC, IsVisualManagerStyle () ? globalData.clrBarShadow : globalData.clrBtnShadow);
 
 			int y = rectAero.bottom;
+			if (bDrawLine == 2)
+			{
+				y++;
+			}
 
 			int x1 = rectAero.left;
 			int x2 = rectAero.right;
@@ -2406,10 +2615,13 @@ void CBCGPPropertySheet::DrawWizardAero(CDC* pDC)
 			pDC->MoveTo(x1, y);
 			pDC->LineTo(x2, y);
 
-			CBCGPPenSelector pen1 (*pDC, IsVisualManagerStyle () ? globalData.clrBarHilite : globalData.clrBtnHilite);
+			if (bDrawLine != 2)
+			{
+				CBCGPPenSelector pen1 (*pDC, IsVisualManagerStyle () ? globalData.clrBarLight : globalData.clrBtnHilite);
 
-			pDC->MoveTo(x1, y + 1);
-			pDC->LineTo(x2, y + 1);
+				pDC->MoveTo(x1, y + 1);
+				pDC->LineTo(x2, y + 1);
+			}
 		}
 	}
 
@@ -2420,7 +2632,7 @@ void CBCGPPropertySheet::DrawWizardAero(CDC* pDC)
 		ScreenToClient(&rectBtnBack);
 
 		CRect rectHeader = rectAero;
-		rectHeader.left = rectBtnBack.right + 4;
+		rectHeader.left = rectBtnBack.right + globalUtils.ScaleByDPI(4);
 
 		if (GetExStyle() & WS_EX_LAYOUTRTL)
 		{
@@ -2461,6 +2673,7 @@ BOOL CBCGPPropertySheet::OnEraseBkgnd(CDC* pDC)
 			DrawWizardGutter(pDC);
 			DrawWizardAero(pDC);
 
+			m_Impl.DrawResizeBox(pDC);
 			return bRes;
 		}
 	}
@@ -2497,6 +2710,7 @@ BOOL CBCGPPropertySheet::OnEraseBkgnd(CDC* pDC)
 	DrawWizardGutter(pDC);
 	DrawWizardAero(pDC);
 
+	m_Impl.DrawResizeBox(pDC);
 	return TRUE;
 }
 //**************************************************************************
@@ -2523,6 +2737,7 @@ LRESULT CBCGPPropertySheet::OnAdjustButtons(WPARAM wp, LPARAM)
 	if (bBackBtnOnly)
 	{
 		m_btnBack.RedrawWindow ();
+		m_btnBack.m_bNotifyCommandOnDblClick = FALSE;
 		return 0;
 	}
 
@@ -2533,6 +2748,7 @@ LRESULT CBCGPPropertySheet::OnAdjustButtons(WPARAM wp, LPARAM)
 		{
 			ASSERT_VALID (pBtn);
 
+			pBtn->m_bNotifyCommandOnDblClick = FALSE;
 			pBtn->ModifyStyle (BS_DEFPUSHBUTTON, BS_OWNERDRAW);
 			pBtn->RedrawWindow ();
 		}
@@ -2619,9 +2835,9 @@ HBRUSH CBCGPPropertySheet::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 	return CPropertySheet::OnCtlColor(pDC, pWnd, nCtlColor);
 }
 //*****************************************************************************************
-void CBCGPPropertySheet::EnableLayout(BOOL bEnable, CRuntimeClass* pRTC)
+void CBCGPPropertySheet::EnableLayout(BOOL bEnable, CRuntimeClass* pRTC, BOOL bResizeBox)
 {
-	m_Impl.EnableLayout(bEnable, pRTC, FALSE);
+	m_Impl.EnableLayout(bEnable, pRTC, bResizeBox);
 }
 //****************************************************************************
 void CBCGPPropertySheet::EnableDragClientArea(BOOL bEnable)
@@ -2634,9 +2850,11 @@ void CBCGPPropertySheet::EnableTabsScrolling(BOOL bEnable)
 	m_bIsTabsScrolling = bEnable;
 }
 //*****************************************************************************************
-void CBCGPPropertySheet::EnablePageTransitionEffect(CBCGPPageTransitionManager::BCGPPageTransitionEffect effect, int nTime)
+void CBCGPPropertySheet::EnablePageTransitionEffect(CBCGPPageTransitionManager::BCGPPageTransitionEffect effect, int nTime,
+													BCGPAnimationType animationType,
+													CBCGPAnimationManagerOptions* pAnimationOptions)
 {
-	SetPageTransitionEffect(effect, nTime);
+	SetPageTransitionEffect(effect, nTime, animationType, pAnimationOptions);
 }
 //*****************************************************************************************
 BOOL CBCGPPropertySheet::OnWizardChangePageWidthTransitionEffect(CBCGPPropertyPage* pCurrPage, BOOL bNext)
@@ -2653,6 +2871,11 @@ BOOL CBCGPPropertySheet::OnWizardChangePageWidthTransitionEffect(CBCGPPropertyPa
 BOOL CBCGPPropertySheet::SetActivePageWithEffects(int nPage)
 {
 	if (GetSafeHwnd() == NULL || GetActivePage()->GetSafeHwnd() == NULL || !IsPageTransitionAvailable())
+	{
+		return SetActivePage(nPage);
+	}
+
+	if ((m_psh.dwFlags & PSH_WIZARD) && !CBCGPAnimationManager::IsAnimationSupportedByOS())
 	{
 		return SetActivePage(nPage);
 	}
@@ -2732,6 +2955,8 @@ BOOL CBCGPPropertySheet::SetActivePageWithEffects(int nPage)
 //*****************************************************************************************
 int CBCGPPropertySheet::OnCreate(LPCREATESTRUCT lpCreateStruct) 
 {
+	m_Impl.m_bDisableShadows = m_bDisableShadows;
+
 	if (CPropertySheet::OnCreate(lpCreateStruct) == -1)
 		return -1;
 	
@@ -2786,6 +3011,11 @@ BOOL CBCGPPropertySheet::OnCommand(WPARAM wParam, LPARAM lParam)
 	}
 
 	UINT nCmdID = LOWORD(wParam);
+
+	if ((nCmdID == ID_WIZNEXT || nCmdID == ID_WIZBACK) && nNotifyCode == BN_DBLCLK)
+	{
+		return TRUE;
+	}
 
 	if (GetPageTransitionEffect() != CBCGPPageTransitionManager::BCGPPageTransitionNone &&
 		(nCmdID == ID_WIZNEXT || nCmdID == ID_WIZBACK))
@@ -2849,8 +3079,10 @@ int CBCGPPropertySheet::CalcNavBarWidth()
 	int nMaxWidth = 0;
 
 	CClientDC dc(this);
-	CFont* pOldFont = dc.SelectObject(&globalData.fontRegular);
+	CFont* pOldFont = dc.SelectObject(m_fntList.GetSafeHandle() != NULL ? &m_fntList : &globalData.fontRegular);
 	ASSERT_VALID(pOldFont);
+
+	int nHorzMargin = globalUtils.ScaleByDPI(10);
 
 	CTabCtrl* pTab = GetTabControl ();
 	ASSERT_VALID (pTab);
@@ -2868,16 +3100,31 @@ int CBCGPPropertySheet::CalcNavBarWidth()
 
 		CString strName = szTab;
 
-		nMaxWidth = max(nMaxWidth, dc.GetTextExtent(strName).cx);
+		int nOffset = 0;
+
+		if (m_look == PropSheetLook_Tree)
+		{
+			nOffset = globalUtils.ScaleByDPI(50);
+		}
+
+		nMaxWidth = max(nMaxWidth, dc.GetTextExtent(strName).cx + nOffset);
 	}	
 
-	if (m_Icons.GetSafeHandle () != NULL)
+	if (m_Icons.GetSafeHandle () != NULL && m_look != PropSheetLook_Tree)
 	{
 		IMAGEINFO info;
 		m_Icons.GetImageInfo (0, &info);
 
 		CRect rectImage = info.rcImage;
-		nMaxWidth += rectImage.Width();
+
+		if (m_look == PropSheetLook_OutlookBar)
+		{
+			nMaxWidth = max(rectImage.Width() + nHorzMargin, nMaxWidth);
+		}
+		else
+		{
+			nMaxWidth += rectImage.Width() + nHorzMargin;
+		}
 	}
 
 #ifndef _BCGSUITE_
@@ -2890,7 +3137,7 @@ int CBCGPPropertySheet::CalcNavBarWidth()
 
 	dc.SelectObject(pOldFont);
 
-	nMaxWidth += m_bBackstageMode ? 82 : 10;
+	nMaxWidth += m_bBackstageMode ? 82 : (2 * nHorzMargin);
 
 	return nMaxWidth;
 }
@@ -3076,4 +3323,86 @@ void CBCGPPropertySheet::OnPageTransitionFinished()
 void CBCGPPropertySheet::SetActiveMenu (CBCGPPopupMenu* pMenu)
 {
 	m_Impl.SetActiveMenu (pMenu);
+}
+//**************************************************************************************
+void CBCGPPropertySheet::OnSysCommand(UINT nID, LPARAM lParam)
+{
+	m_Impl.OnSysCommand(nID, lParam);
+	CPropertySheet::OnSysCommand(nID, lParam);
+}
+//**************************************************************************
+void CBCGPPropertySheet::OnStyleChanged(int nStyleType, LPSTYLESTRUCT lpStyleStruct)
+{
+	CWnd::OnStyleChanged(nStyleType, lpStyleStruct);
+	
+	if (nStyleType == GWL_EXSTYLE)
+	{
+		if (((lpStyleStruct->styleOld & WS_EX_LAYOUTRTL) != 0 && 
+			(lpStyleStruct->styleNew & WS_EX_LAYOUTRTL) == 0 ||
+			(lpStyleStruct->styleOld & WS_EX_LAYOUTRTL) == 0 && 
+			(lpStyleStruct->styleNew & WS_EX_LAYOUTRTL) != 0))
+		{
+			OnRTLChanged ((lpStyleStruct->styleNew & WS_EX_LAYOUTRTL) != 0);
+		}
+	}
+}
+//*****************************************************************************
+void CBCGPPropertySheet::OnRTLChanged (BOOL bIsRTL)
+{
+	if (AfxGetMainWnd() == this)
+	{
+		globalData.m_bIsRTL = bIsRTL;
+		CBCGPToolBarImages::EnableRTL(globalData.m_bIsRTL);
+	}
+}
+//*****************************************************************************
+BOOL CBCGPPropertySheet::CreateListBox()
+{
+	if (m_wndList.GetSafeHwnd() != NULL)
+	{
+		return TRUE;
+	}
+
+	CRect rectDummy (0, 0, 0, 0);
+	const DWORD dwListStyle = 
+		LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT | WS_CHILD | WS_VSCROLL | WS_VISIBLE | LBS_NOTIFY | WS_TABSTOP;
+	
+	m_wndList.m_bPropertySheetNavigator = TRUE;
+	m_wndList.m_bBackstageMode = m_bBackstageMode;
+	m_wndList.m_bVisualManagerStyle = TRUE;
+	
+	if (!m_wndList.Create (dwListStyle, rectDummy, this, (UINT) idList))
+	{
+		return FALSE;
+	}
+	
+	if ((GetStyle() & WS_CHILD) == 0)
+	{
+		m_wndList.ModifyStyleEx (0, WS_EX_CLIENTEDGE);
+	}
+	
+	if (m_Icons.GetSafeHandle () != NULL)
+	{
+		m_wndList.SetImageList (m_Icons.GetSafeHandle ());
+	}
+	
+	UpdateListBoxFont();
+	return TRUE;
+}
+//*****************************************************************************************
+LRESULT CBCGPPropertySheet::OnDPIChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+	
+	OnChangeVisualManager(0, 0);
+	return lRes;
+}
+//*****************************************************************************************
+LRESULT CBCGPPropertySheet::OnThemeChanged(WPARAM, LPARAM)
+{
+	LRESULT lRes = Default();
+	
+	CBCGPVisualManager::GetInstance()->OnUpdateSystemColors();
+	OnChangeVisualManager(0, 0);
+	return lRes;
 }

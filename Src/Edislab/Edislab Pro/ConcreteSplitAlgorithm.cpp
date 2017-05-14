@@ -276,11 +276,12 @@ void CThreeWidgetSplitAlgorithm::AdjustLayout( int nWidth,int nHeight )
 	{
 		return;
 	}
-
+	//大窗口在前
 	if (m_bWndFront)
 	{
 		AdjustLayoutFront(nWidth,nHeight);
 	}
+	//大窗口在后
 	else
 	{
 		AdjustLayoutBack(nWidth,nHeight);
@@ -406,7 +407,7 @@ void CThreeWidgetSplitAlgorithm::CalculateLayoutSize( int nWidth,int nHeight,std
 		WidgetRect1.left = 0;
 		WidgetRect1.top = m_HorSplitBarRect[0].top;
 		WidgetRect1.right = m_HorSplitBarRect[0].left;
-		WidgetRect1.bottom = m_HorSplitBarRect[0].bottom;
+		WidgetRect1.bottom = nHeight;
 
 		LayoutSizeArray.push_back(WidgetRect1);
 

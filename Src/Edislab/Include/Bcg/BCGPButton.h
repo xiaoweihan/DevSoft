@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -66,7 +66,8 @@ public:
 	BOOL			m_bOnGlass;
 	BOOL			m_bBackstageMode;
 	BOOL			m_bDontAutoGrayImage;
-
+	BOOL			m_bCheckBoxExpandCollapseMode;
+	BOOL			m_bNotifyCommandOnDblClick;
 	BOOL			m_bWasDblClk;
 
 	CToolTipCtrl& GetToolTipCtrl ()
@@ -122,12 +123,18 @@ public:
 		return m_bIndeterminate;
 	}
 
-	BOOL IsDefaultButton () const
-	{
-		return m_bDefaultButton;
-	}
+	BOOL IsDefaultButton (BOOL bCheckForOtherButtonFocus = TRUE) const;
 
 	static BOOL		m_bDontSkin;
+	static BOOL		m_bDontScaleCheckRadio;
+
+#if (!defined _BCGSUITE_) && (!defined _BCGSUITE_INC_)
+	void SetImageAutoScale();
+	BOOL IsImageAutoScale() const
+	{
+		return m_bImageAutoScale;
+	}
+#endif
 
 protected:
 	BOOL			m_bPushed;
@@ -146,13 +153,16 @@ protected:
 	BOOL			m_bDrawText;
 	CString			m_strDescription;
 
+	BOOL						m_bImageAutoScale;
 	CSize						m_sizeImage;
 	CBCGPToolBarImages			m_Image;
 	CBCGPToolBarImages			m_ImageHot;
 	CBCGPToolBarImages			m_ImageDisabled;
+	CBCGPToolBarImages			m_ImagePressed;
 	CBCGPToolBarImages			m_ImageChecked;
 	CBCGPToolBarImages			m_ImageCheckedHot;
 	CBCGPToolBarImages			m_ImageCheckedDisabled;
+	CBCGPToolBarImages			m_ImageCheckedPressed;
 	BOOL						m_bAutoDestroyImage;
 	BOOL						m_bFullTextTooltip;
 	BOOL						m_bDelayFullTextTooltipSet;
@@ -171,6 +181,7 @@ protected:
 	COLORREF		m_clrRegular;
 	COLORREF		m_clrHover;
 	COLORREF		m_clrFace;
+	BOOL			m_bMixFaceColorWithTheme;
 	COLORREF		m_clrText;
 
 	HFONT			m_hFont;
@@ -181,13 +192,13 @@ protected:
 
 // Operations
 public:
-	void SetImage (HICON hIcon, BOOL bAutoDestroy = TRUE, HICON hIconHot = NULL, HICON hIconDisabled = NULL, BOOL bAlphaBlend = FALSE);
-	void SetImage (HBITMAP hBitmap, BOOL bAutoDestroy = TRUE, HBITMAP hBitmapHot = NULL, BOOL bMap3dColors = TRUE, HBITMAP hBitmapDisabled = NULL);
-	void SetImage (UINT uiBmpResId, UINT uiBmpHotResId = 0, UINT uiBmpDsblResID = 0);
+	void SetImage (HICON hIcon, BOOL bAutoDestroy = TRUE, HICON hIconHot = NULL, HICON hIconDisabled = NULL, BOOL bAlphaBlend = FALSE, HICON hIconPressed = NULL);
+	void SetImage (HBITMAP hBitmap, BOOL bAutoDestroy = TRUE, HBITMAP hBitmapHot = NULL, BOOL bMap3dColors = TRUE, HBITMAP hBitmapDisabled = NULL, HBITMAP hBitmapPressed = NULL);
+	void SetImage (UINT uiBmpResId, UINT uiBmpHotResId = 0, UINT uiBmpDsblResID = 0, UINT uiBmpPressedResId = 0);
 
-	void SetCheckedImage (HICON hIcon, BOOL bAutoDestroy = TRUE, HICON hIconHot = NULL, HICON hIconDisabled = NULL, BOOL bAlphaBlend = FALSE);
-	void SetCheckedImage (HBITMAP hBitmap, BOOL bAutoDestroy = TRUE, HBITMAP hBitmapHot = NULL, BOOL bMap3dColors = TRUE, HBITMAP hBitmapDisabled = NULL);
-	void SetCheckedImage (UINT uiBmpResId, UINT uiBmpHotResId = 0, UINT uiBmpDsblResID = 0);
+	void SetCheckedImage (HICON hIcon, BOOL bAutoDestroy = TRUE, HICON hIconHot = NULL, HICON hIconDisabled = NULL, BOOL bAlphaBlend = FALSE, HICON hIconPressed = NULL);
+	void SetCheckedImage (HBITMAP hBitmap, BOOL bAutoDestroy = TRUE, HBITMAP hBitmapHot = NULL, BOOL bMap3dColors = TRUE, HBITMAP hBitmapDisabled = NULL, HBITMAP hBitmapPressed = NULL);
+	void SetCheckedImage (UINT uiBmpResId, UINT uiBmpHotResId = 0, UINT uiBmpDsblResID = 0, UINT uiBmpPressedResId = 0);
 
 	void SetStdImage (CBCGPMenuImages::IMAGES_IDS id, CBCGPMenuImages::IMAGE_STATE state = CBCGPMenuImages::ImageBlack,
 		CBCGPMenuImages::IMAGES_IDS idDisabled = (CBCGPMenuImages::IMAGES_IDS) -1,
@@ -212,7 +223,7 @@ public:
 		m_clrHover = clrTextHot;
 	}
 
-	void SetFaceColor (COLORREF crFace, BOOL bRedraw = TRUE);
+	void SetFaceColor (COLORREF crFace, BOOL bRedraw = TRUE, BOOL bMixFaceColorWithTheme = TRUE);
 
 	void EnableMenuFont (BOOL bOn = TRUE, BOOL bRedraw = TRUE);
 	void EnableFullTextTooltip (BOOL bOn = TRUE);
@@ -248,6 +259,12 @@ public:
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 	//}}AFX_VIRTUAL
 
+	//Accessibility
+#if _MSC_VER > 1300
+	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+#endif
+
 // Implementation
 public:
 	virtual ~CBCGPButton();
@@ -267,6 +284,7 @@ protected:
 							UINT uiDTFlags, UINT uiState);
 
 	virtual CFont* SelectFont (CDC* pDC);
+	virtual void OnUpdateFont() {}
 
 	virtual int GetImageHorzMargin() const;
 	virtual int GetVertMargin() const;
@@ -288,6 +306,7 @@ protected:
 	afx_msg void OnDestroy();
 	afx_msg UINT OnGetDlgCode();
 	afx_msg void OnPaint();
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	//}}AFX_MSG
 	afx_msg LRESULT OnPrintClient(WPARAM, LPARAM);
 	afx_msg LRESULT OnSetFont (WPARAM, LPARAM);
@@ -308,13 +327,15 @@ protected:
 	void UncheckRadioButtonsInGroup ();
 
 	void SetImageInternal (HICON hIcon, BOOL bAutoDestroy, HICON hIconHot, BOOL bChecked, HICON hIconDisabled = NULL,
-		BOOL bAlphaBlend = FALSE);
-	void SetImageInternal (HBITMAP hBitmap, BOOL bAutoDestroy, HBITMAP hBitmapHot, BOOL bMap3dColors, BOOL bChecked, HBITMAP hBitmapDisabled = NULL);
-	void SetImageInternal (UINT uiBmpResId, UINT uiBmpHotResId, BOOL bChecked, UINT uiBmpDsblResId = 0);
+		BOOL bAlphaBlend = FALSE, HICON hIconPressed = NULL);
+	void SetImageInternal (HBITMAP hBitmap, BOOL bAutoDestroy, HBITMAP hBitmapHot, BOOL bMap3dColors, BOOL bChecked, HBITMAP hBitmapDisabled = NULL, HBITMAP hBitmapPressed = NULL);
+	void SetImageInternal (UINT uiBmpResId, UINT uiBmpHotResId, BOOL bChecked, UINT uiBmpDsblResId = 0, UINT uiBmpPressedResId = 0);
 
 	void ClearImages (BOOL bChecked);
 
 	void DrawBorder (CDC* pDC, CRect& rectClient, UINT uiState);
+
+	BOOL IsNonParentPopupMenu();
 };
 
 /////////////////////////////////////////////////////////////////////////////

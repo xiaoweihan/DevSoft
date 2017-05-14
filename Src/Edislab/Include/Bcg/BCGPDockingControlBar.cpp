@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -55,6 +55,7 @@ int  CBCGPDockingControlBar::m_nSlideDefaultTimeOut		= 1;
 BOOL CBCGPDockingControlBar::m_bHideInAutoHideMode		= FALSE;
 int  CBCGPDockingControlBar::m_nSlideSteps				= 12;
 int  CBCGPDockingControlBar::m_nScrollTimeOut			= 50;
+BOOL CBCGPDockingControlBar::m_bIgnoreRectOnShow		= FALSE;
 
 static int g_nCloseButtonMargin = 1;
 static int g_nCaptionVertMargin = 2;
@@ -124,6 +125,9 @@ CBCGPDockingControlBar::CBCGPDockingControlBar()
 	m_arScrollButtons.Add(new CBCGPDockingBarScrollButton(HTSCROLLDOWNBUTTON_BCG));
 	m_arScrollButtons.Add(new CBCGPDockingBarScrollButton(HTSCROLLLEFTBUTTON_BCG));
 	m_arScrollButtons.Add(new CBCGPDockingBarScrollButton(HTSCROLLRIGHTBUTTON_BCG));
+
+	m_bOnShow = FALSE;
+	m_bDisableOnShow = FALSE;
 }
 
 CBCGPDockingControlBar::~CBCGPDockingControlBar()
@@ -260,25 +264,30 @@ BOOL CBCGPDockingControlBar::CreateEx (DWORD dwStyleEx,
 	return TRUE;
 }
 //***********************************************************************
-void CBCGPDockingControlBar::EnableGripper (BOOL bEnable)
+int CBCGPDockingControlBar::CalcGripperHeight() const
 {
-	if (bEnable && m_bHasGripper)
+	int cyGripper = 0;
+
+	if (m_bHasGripper)
 	{
 		if (CBCGPVisualManager::GetInstance()->UseLargeCaptionFontInDockingCaptions())
 		{
-			m_cyGripper = globalData.GetCaptionTextHeight();
+			cyGripper = globalData.GetCaptionTextHeight();
 		}
 		else
 		{
-			m_cyGripper = globalData.GetTextHeight ();
+			cyGripper = globalData.GetTextHeight ();
 		}
+		
+		cyGripper = max(CBCGPCaptionButton::GetSize().cy, cyGripper - globalData.GetTextMargins () + g_nCaptionVertMargin * 2 + 3);
+	}
 
-		m_cyGripper = m_cyGripper - globalData.GetTextMargins () + g_nCaptionVertMargin * 2 + 3;
-	}
-	else
-	{
-		m_cyGripper = 0;
-	}
+	return cyGripper;
+}
+//***********************************************************************
+void CBCGPDockingControlBar::EnableGripper (BOOL bEnable)
+{
+	m_cyGripper = bEnable ? CalcGripperHeight() : 0;
 
 	BOOL bClosing = FALSE;
 	CWnd* pFrame = AfxGetMainWnd ();
@@ -341,9 +350,15 @@ BOOL CBCGPDockingControlBar::IsDocked () const
 	ASSERT_VALID (this);
 	CBCGPMiniFrameWnd* pParent = GetParentMiniFrame ();
 	
-	if (pParent != NULL && pParent->GetControlBarCount () == 1)
+	if (pParent != NULL)
 	{
-		return FALSE;
+		ASSERT_VALID(pParent);
+
+		int nCount = pParent->IsKindOf(RUNTIME_CLASS(CBCGPMultiMiniFrameWnd)) ? pParent->GetVisibleBarCount() : pParent->GetControlBarCount();
+		if (nCount == 1)
+		{
+			return FALSE;
+		}
 	}
 
 	return TRUE;
@@ -577,9 +592,9 @@ void CBCGPDockingControlBar::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAM
 	UpdateTooltips ();
 }
 //***********************************************************************
-void CBCGPDockingControlBar::DoNcPaint(CDC* pDCPaiint) 
+void CBCGPDockingControlBar::DoNcPaint(CDC* pDCPaint) 
 {
-	ASSERT_VALID(pDCPaiint);
+	ASSERT_VALID(pDCPaint);
 
 	CRect rectUpd;
 	GetUpdateRect (rectUpd);
@@ -592,14 +607,14 @@ void CBCGPDockingControlBar::DoNcPaint(CDC* pDCPaiint)
     rcClient.OffsetRect(-rcBar.TopLeft());
     rcBar.OffsetRect(-rcBar.TopLeft());
 
-	CDC*		pDC = pDCPaiint;
+	CDC*		pDC = pDCPaint;
 	BOOL		m_bMemDC = FALSE;
 	CDC			dcMem;
 	CBitmap		bmp;
 	CBitmap*	pOldBmp = NULL;
 
-	if (dcMem.CreateCompatibleDC (pDCPaiint) &&
-		bmp.CreateCompatibleBitmap (pDCPaiint, rcBar.Width (), rcBar.Height ()))
+	if (dcMem.CreateCompatibleDC (pDCPaint) &&
+		bmp.CreateCompatibleBitmap (pDCPaint, rcBar.Width (), rcBar.Height ()))
 	{
 		//-------------------------------------------------------------
 		// Off-screen DC successfully created. Better paint to it then!
@@ -609,18 +624,18 @@ void CBCGPDockingControlBar::DoNcPaint(CDC* pDCPaiint)
 		pDC = &dcMem;
 	}
 
-    // client area is not our bussiness :)
-    pDCPaiint->ExcludeClipRect(rcClient);
+    // client area is not our business :)
+    pDCPaint->ExcludeClipRect(rcClient);
 
 	CRgn rgn;
 	if (!m_rectRedraw.IsRectEmpty ())
 	{
 		rgn.CreateRectRgnIndirect (m_rectRedraw);
-		pDCPaiint->SelectClipRgn (&rgn);
+		pDCPaint->SelectClipRgn (&rgn);
 	}
 
     // erase parts not drawn
-    pDCPaiint->IntersectClipRect(rcBar);
+    pDCPaint->IntersectClipRect(rcBar);
 
     // erase NC background the hard way
 	OnEraseNCBackground (pDC, rcBar);
@@ -685,13 +700,13 @@ void CBCGPDockingControlBar::DoNcPaint(CDC* pDCPaiint)
 		//--------------------------------------
 		// Copy the results to the on-screen DC:
 		//-------------------------------------- 
-		pDCPaiint->BitBlt (rcBar.left, rcBar.top, rcBar.Width(), rcBar.Height(),
+		pDCPaint->BitBlt (rcBar.left, rcBar.top, rcBar.Width(), rcBar.Height(),
 					   &dcMem, rcBar.left, rcBar.top, SRCCOPY);
 
 		dcMem.SelectObject(pOldBmp);
 	}
 
-	pDCPaiint->SelectClipRgn (NULL);
+	pDCPaint->SelectClipRgn (NULL);
 }
 //***********************************************************************
 void CBCGPDockingControlBar::OnNcPaint() 
@@ -1050,7 +1065,15 @@ void CBCGPDockingControlBar::OnMouseMove(UINT nFlags, CPoint point)
 				}
 				else
 				{
-					FloatControlBar (m_recentDockInfo.m_rectRecentFloatingRect, BCGP_DM_MOUSE);			
+					CRect rectFloat = m_recentDockInfo.m_rectRecentFloatingRect;
+
+					if (CBCGPDockManager::m_bKeepBarSizeOnFloating)
+					{
+						GetWindowRect(rectFloat);
+						rectFloat.InflateRect(m_nBorderSize + 1, m_nBorderSize + 1);
+					}
+
+					FloatControlBar (rectFloat, BCGP_DM_MOUSE);	
 					CBCGPDockManager* pDockManager = globalUtils.GetDockManager (GetDockSite ());
 					globalUtils.ForceAdjustLayout (pDockManager);
 				}
@@ -1410,8 +1433,10 @@ void CBCGPDockingControlBar::UnSetAutoHideMode (CBCGPDockingControlBar* pFirstBa
 	{
 		AttachToTabWnd (pFirstBarInGroup, BCGP_DM_SHOW, bWasActive);
 	}
+	m_bDisableOnShow = TRUE;
 	ShowControlBar (TRUE, FALSE, bWasActive);
 	AdjustDockingLayout ();
+	m_bDisableOnShow = FALSE;
 }
 //***********************************************************************
 void CBCGPDockingControlBar::OnTimer(UINT_PTR nIDEvent) 
@@ -2219,6 +2244,22 @@ void CBCGPDockingControlBar::OnClose()
 	DestroyWindow ();
 }
 //***********************************************************************
+BOOL CBCGPDockingControlBar::AddTabbed(CBCGPDockingControlBar* pBar, BOOL bSetActive)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pBar);
+
+	if (GetSafeHwnd() == NULL || pBar->GetSafeHwnd() == NULL)
+	{
+		return FALSE;
+	}
+
+	CBCGPDockingControlBar* pTabbedControlBar = DYNAMIC_DOWNCAST(CBCGPDockingControlBar, GetParentTabbedBar());
+
+	return pBar->AttachToTabWnd(pTabbedControlBar->GetSafeHwnd() == NULL ? this : pTabbedControlBar, 
+		BCGP_DM_SHOW, bSetActive, &pTabbedControlBar) != NULL;
+}
+//***********************************************************************
 CBCGPDockingControlBar* CBCGPDockingControlBar::AttachToTabWnd (CBCGPDockingControlBar* pTabControlBarAttachTo, 
 																BCGP_DOCK_METHOD dockMethod,
 																BOOL bSetActive, 
@@ -2588,7 +2629,7 @@ BOOL CBCGPDockingControlBar::DockToFrameWindow (DWORD dwAlignment,
 	// create a slider with a control bar container
 	if ((pDefaultSlider = CreateDefaultSlider (dwAlignment, GetDockSite ())) == NULL)
 	{
-		TRACE0 ("Failde to create default slider");
+		TRACE0 ("failed to create default slider");
 		ShowWindow (SW_SHOW);
 		return FALSE;
 	}
@@ -2827,6 +2868,13 @@ void CBCGPDockingControlBar::SetCaptionStyle (BOOL bDrawText, BOOL /*bForceGradi
 void CBCGPDockingControlBar::AdjustBarWindowToContainer (CBCGPSlider* pSlider)
 {
 	CRect rectContainer = pSlider->GetRootContainerRect ();
+	if (rectContainer.IsRectEmpty () && m_bOnShow)
+	{
+		m_bOnShow = FALSE;
+		rectContainer = pSlider->GetRootContainerRect ();
+		m_bOnShow = TRUE;
+	}
+
 	if (!rectContainer.IsRectEmpty ())
 	{
 		CFrameWnd* pFrame = GetParentFrame ();
@@ -2845,18 +2893,18 @@ void CBCGPDockingControlBar::AdjustBarWindowToContainer (CBCGPSlider* pSlider)
 			{
 				rectWnd.OffsetRect (rectContainer.left - rectWnd.left, 
 									rectContainer.top - rectWnd.top); 
-			if (rectWnd.Width () > rectContainer.Width ())
-			{
-				rectWnd.right = rectWnd.left + rectContainer.Width ();
-			}
-			if (rectWnd.Height () > rectContainer.Height ())
-			{
-				rectWnd.bottom = rectWnd.top + rectContainer.Height ();
-			}
+				if (rectWnd.Width () > rectContainer.Width ())
+				{
+					rectWnd.right = rectWnd.left + rectContainer.Width ();
+				}
+				if (rectWnd.Height () > rectContainer.Height ())
+				{
+					rectWnd.bottom = rectWnd.top + rectContainer.Height ();
+				}
 
-			SetWindowPos (NULL, rectWnd.left, rectWnd.top, 
-				 rectContainer.Width (), rectContainer.Height (),  
-				 SWP_NOZORDER | SWP_NOACTIVATE);
+				SetWindowPos (NULL, rectWnd.left, rectWnd.top, 
+					 rectContainer.Width (), rectContainer.Height (),  
+					 SWP_NOZORDER | SWP_NOACTIVATE);
 			}
 		}
 	}
@@ -2908,7 +2956,7 @@ void CBCGPDockingControlBar::ShowControlBar (BOOL bShow, BOOL bDelay, BOOL bActi
 		CWnd* pParent = GetParent ();
 		if (bShow)
 		{
-			ConvertToTabbedDocument ();			
+			ConvertToTabbedDocument ();
 			ShowWindow (SW_SHOW);
 		}
 		else 
@@ -2924,7 +2972,9 @@ void CBCGPDockingControlBar::ShowControlBar (BOOL bShow, BOOL bDelay, BOOL bActi
 		{
 			// adjust rect to fit the container, otherwise it will break the size 
 			// of container;
+			m_bOnShow = CBCGPDockingControlBar::m_bIgnoreRectOnShow && !m_bDisableOnShow;
 			AdjustBarWindowToContainer (pDefaultSlider);
+			m_bOnShow = FALSE;
 		}
 		
 		CBCGPMiniFrameWnd* pMiniFrame = GetParentMiniFrame ();
@@ -3439,7 +3489,7 @@ LRESULT CBCGPDockingControlBar::OnSetText(WPARAM, LPARAM lParam)
 		CWnd* pWndTabbedControlBar = 
 			DYNAMIC_DOWNCAST(CBCGPBaseTabbedBar, pParentTabWnd->GetParent());
 
-		if (pWndTabbedControlBar != NULL)
+		if (pWndTabbedControlBar != NULL && m_strTabCustomLabel.IsEmpty())
 		{
 			LPCTSTR	lpcszTitle	= reinterpret_cast<LPCTSTR> (lParam);
 			int		iTab	= pParentTabWnd->GetTabFromHwnd(GetSafeHwnd());
@@ -4009,7 +4059,7 @@ void CBCGPDockingControlBar::CalcScrollButtons()
 //**************************************************************************
 int CBCGPDockingControlBar::GetScrollButtonSize() const
 {
-	return max(CBCGPMenuImages::Size().cx, CBCGPMenuImages::Size().cy) + 2;
+	return max(CBCGPMenuImages::Size().cx, CBCGPMenuImages::Size().cy) + globalUtils.ScaleByDPI(4);
 }
 //**************************************************************************
 BOOL CBCGPDockingControlBar::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt) 
@@ -4071,4 +4121,60 @@ LRESULT CBCGPDockingControlBar::OnChangeVisualManager (WPARAM, LPARAM)
 	}
 
 	return 0;
+}
+//**************************************************************************
+void CBCGPDockingControlBar::GetPaneInfo(CString& strName, CString& strInfo, HICON& hIcon, BOOL& bAutoDestroyIcon)
+{
+	GetWindowText(strName);
+	strInfo.Empty();
+
+	hIcon = GetBarIcon(FALSE);
+	bAutoDestroyIcon = FALSE;
+}
+//**************************************************************************
+void CBCGPDockingControlBar::SetTabCustomLabel(const CString& strLabel)
+{
+	BOOL bForceClear = !m_strTabCustomLabel.IsEmpty() && strLabel.IsEmpty();
+	m_strTabCustomLabel = strLabel;
+
+	UpdateTabLabel(bForceClear);
+}
+//**************************************************************************
+void CBCGPDockingControlBar::UpdateTabLabel(BOOL bForceClear)
+{
+	if (GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	CString strLabel = m_strTabCustomLabel;
+	if (bForceClear)
+	{
+		GetWindowText(strLabel);
+	}
+
+	if (IsTabbed() && !strLabel.IsEmpty())
+	{
+		HWND hWndTab = NULL;
+		
+		CBCGPBaseTabWnd* pTabParent = GetParentTabWnd(hWndTab);
+		ASSERT_VALID(pTabParent);
+		
+		int iTab = pTabParent->GetTabFromHwnd(GetSafeHwnd());
+		
+		if (iTab >= 0 && iTab < (int)pTabParent->m_arTabs.GetSize())
+		{
+			CBCGPTabInfo* pTab = (CBCGPTabInfo*)pTabParent->m_arTabs[iTab];
+			ASSERT_VALID(pTab);
+
+			pTab->m_strText = strLabel;
+			pTabParent->RecalcLayout();
+		}
+	}
+}
+//**************************************************************************
+CBCGPMDIChildWnd* CBCGPDockingControlBar::OnNewMDITabbedChildWnd(CBCGPMDIFrameWnd* pMainFrame) const
+{
+	UNREFERENCED_PARAMETER(pMainFrame);
+	return new CBCGPMDIChildWnd;
 }

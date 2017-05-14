@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -65,7 +65,7 @@ protected:
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	afx_msg void OnSysColorChange();
 	//}}AFX_MSG
-
+	afx_msg LRESULT OnChangeVisualManager (WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 
 	void Init();

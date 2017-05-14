@@ -5,7 +5,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -58,6 +58,12 @@ typedef struct tagBREADCRUMBITEMINFO {
 	LPARAM          lParam;
 	DWORD_PTR       dwReserved;
 } BREADCRUMBITEMINFO, *PBREADCRUMBITEMINFO;
+
+typedef struct tagBREADCRUMBMENUICONDRAWINFO {
+	HDC				hdc;
+	int				iIndex;
+	RECT			rectIcon;
+} BREADCRUMBMENUICONDRAWINFO, *PBREADCRUMBMENUICONDRAWINFO;
 
 #define BCCIF_PARENT        0x0001
 #define BCCIF_TEXT          0x0002
@@ -246,7 +252,20 @@ typedef struct tagBREADCRUMBITEMINFO {
 //      Returns TRUE if successful.
 #define BCCM_GETINPLACEEDITRECT     0x241BL
 
+// BCCM_DRAWMENUITEMICON
+//      wParam = 0
+//      lParam = Pointer to BREADCRUMBMENUICONDRAWINFO structure.
+//      Returns TRUE if successful.
+#define BCCM_DRAWMENUITEMICON		0x241CL
 
+// BCCM_SETPROGRESS
+//      wParam = progress percent
+//      lParam = progress background color.
+#define BCCM_SETPROGRESS			0x241DL
+
+// BCCM_GETPROGRESS
+//      Returns progress percent.
+#define BCCM_GETPROGRESS			0x241EL
 
 #define BCCHT_OUT           0       // the point is out of control client area
 #define BCCHT_EMPTY         1       // the hit-test point is in an empty area

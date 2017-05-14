@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -54,6 +54,7 @@ public:
 	{
 		UNREFERENCED_PARAMETER(bSet);
 	}
+
 	virtual BOOL IsRenderToWindow() const {return FALSE;}
 
 	CBCGPGraphicsManager* GetDefaultManager() const {return m_pDefaultGM;}
@@ -76,6 +77,11 @@ public:
 	virtual void BeginDraw(CBCGPGraphicsManager* pGMTarget = NULL) 
 	{
 		m_pDefaultGM = pGMTarget;
+
+		if (m_dblCurrentOpacity >= 0.0)
+		{
+			m_pDefaultGM->SetCurrentOpacity(m_dblCurrentOpacity);
+		}
 	}
 
 	virtual void EndDraw(const CBCGPRect& rectTarget, CBCGPGraphicsManager* pGMTarget = NULL) 
@@ -97,6 +103,21 @@ public:
 		const CBCGPBrush& brFill, const CBCGPBrush& brLine, double dblLineWidth = 1.,
 		BOOL bFill = TRUE, BOOL bDrawLine = TRUE);
 
+	void SetCurrentOpacity(double dblOpacity)
+	{
+		m_dblCurrentOpacity = dblOpacity;
+
+		if (m_pDefaultGM != NULL)
+		{
+			m_pDefaultGM->SetCurrentOpacity(m_dblCurrentOpacity);
+		}
+	}
+
+	double GetCurrentOpacity() const
+	{
+		return m_dblCurrentOpacity;
+	}
+
 public:
 	BOOL		m_bForceDisableDepthTest;
 	BOOL		m_bForceEnableDepthTest;
@@ -106,8 +127,7 @@ protected:
 	BOOL		m_bInitialized;
 	CBCGPRect	m_rectScene;
 	CBCGPColor	m_clrClear;
-
-	
+	double		m_dblCurrentOpacity;
 
 	CBCGPGraphicsManager* m_pDefaultGM;
 };

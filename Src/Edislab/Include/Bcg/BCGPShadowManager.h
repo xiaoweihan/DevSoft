@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -25,9 +25,11 @@
 
 class CBCGPShadowSideWnd;
 
-class CBCGPShadowManager  
+class BCGCBPRODLLEXPORT CBCGPShadowManager  
 {
 	friend class CBCGPShadowSideWnd;
+	friend class CBCGPFrameImpl;
+	friend class CBCGPDlgImpl;
 
 public:
 	CBCGPShadowManager(CWnd* pOwner, BOOL bInteraction = TRUE);

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -56,6 +56,7 @@ BEGIN_MESSAGE_MAP(CBCGPListCtrl, CListCtrl)
 	ON_NOTIFY_REFLECT(NM_CUSTOMDRAW, OnCustomDraw)
 	ON_MESSAGE(WM_STYLECHANGED, OnStyleChanged)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -71,6 +72,7 @@ LRESULT CBCGPListCtrl::OnBCGSetControlVMMode (WPARAM wp, LPARAM)
 		wndHeader.SendMessage(BCGM_ONSETCONTROLVMMODE, wp);
 	}
 
+	SetBkColor(m_bVisualManagerStyle ? GetDefaultBkColor() : ::GetSysColor(COLOR_WINDOW));
 	return 0;
 }
 //**************************************************************************
@@ -419,5 +421,24 @@ LRESULT CBCGPListCtrl::OnPrint(WPARAM wp, LPARAM lp)
 
 	return lRes;
 }
+//**************************************************************************
+LRESULT CBCGPListCtrl::OnChangeVisualManager(WPARAM, LPARAM)
+{
+	if (m_bVisualManagerStyle)
+	{
+		SetBkColor(GetDefaultBkColor());
+	}
 
+	return 0;	
+}
+//************************************************************************
+BOOL CBCGPListCtrl::IsInternalScrollBarThemed() const
+{
+	if (GetSafeHwnd() != NULL && (GetStyle() & LVS_AUTOARRANGE) != 0)
+	{
+		return FALSE;
+	}
+
+	return (globalData.m_nThemedScrollBars & BCGP_THEMED_SCROLLBAR_LISTCTRL) != 0 && m_bVisualManagerStyle;
+}
 

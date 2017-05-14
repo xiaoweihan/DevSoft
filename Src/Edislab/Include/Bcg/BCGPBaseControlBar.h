@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -31,7 +31,8 @@
 #include "BCGPWnd.h"
 #include "BCGGlobals.h"
 
-#pragma warning( disable : 4100 34 )
+#pragma warning (push)
+#pragma warning (disable : 4100 34)
 
 class CBCGPSlider;
 class CBCGPMiniFrameWnd;
@@ -50,7 +51,8 @@ typedef enum BCGP_DOCK_METHOD
 	BCGP_DM_SHOW,
 	BCGP_DM_RECT,
 	BCGP_DM_STANDARD
-};
+}
+BCGP_DOCK_METHOD;
 
 // DT - dock type
 typedef enum BCGP_DOCK_TYPES
@@ -60,7 +62,8 @@ typedef enum BCGP_DOCK_TYPES
 	BCGP_DT_DOCK_BEFORE,
 	BCGP_DT_DOCK_AFTER,
 	BCGP_DT_DOCK_BY_INDEX
-};
+}
+BCGP_DOCK_TYPES;
 
 static const DWORD CBRS_BCGP_FLOAT			= 0x1;
 static const DWORD CBRS_BCGP_AUTOHIDE		= 0x2;
@@ -99,7 +102,7 @@ public:
 	virtual BOOL IsVisible () const;
 	virtual BOOL DoesAllowDynInsertBefore () const {return CanFloat ();}
 	virtual BOOL CanAcceptBar (const CBCGPBaseControlBar* pBar) const;
-	virtual BOOL CanBeDocked (CBCGPBaseControlBar* /*pDockBar*/) const {return FALSE;}
+	virtual BOOL CanBeDocked(CBCGPBaseControlBar* pDockBar) const { UNREFERENCED_PARAMETER(pDockBar);  return FALSE; }
 	virtual BOOL CanBeAttached () const {return FALSE;}
 	virtual BOOL CanBeTabbedDocument () const {return FALSE;};
 	virtual DWORD GetCurrentAlignment () const;
@@ -145,6 +148,7 @@ public:
 		return FALSE;
 	}
 
+	virtual BOOL IsTabStop() const { return FALSE; }
 
 	CBCGPDockBarRow* GetDockRow () {return m_pDockBarRow;}
 
@@ -345,6 +349,16 @@ public:
 
 	virtual CFont* SelectDefaultFont (CDC* pDC)
 	{
+		if (m_hFont != NULL && ::GetObjectType (m_hFont) != OBJ_FONT)
+		{
+			m_hFont = NULL;
+		}
+
+		if (m_hFont != NULL)
+		{
+			return pDC->SelectObject(CFont::FromHandle(m_hFont));
+		}
+
 		if (m_bIsDlgControl)
 		{
 			return (CFont*) pDC->SelectStockObject (DEFAULT_GUI_FONT);
@@ -367,7 +381,7 @@ _inline BOOL CBCGPBaseControlBar::CanAcceptBar (const CBCGPBaseControlBar* /* pB
 	return FALSE;
 }
 
-#pragma warning( default : 4100 34 )
+#pragma warning (pop)
 
 /////////////////////////////////////////////////////////////////////////////
 

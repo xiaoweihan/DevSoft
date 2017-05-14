@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,6 +28,8 @@ class CBCGPRotationCtrl;
 
 class BCGCBPRODLLEXPORT CBCGPRotationObject : public CBCGPRadialMenuObject  
 {
+	DECLARE_DYNCREATE(CBCGPRotationObject)
+
 	friend class CBCGPRotationCtrl;
 
 public:
@@ -68,6 +70,8 @@ public:
 		return m_nNotifyCmdID;
 	}
 
+	void EnableFlatIcons(BOOL bEnable = TRUE);
+
 protected:
 	virtual BOOL NotifyCommand();
 
@@ -99,7 +103,7 @@ public:
 		if (m_pRotationObject == NULL)
 		{
 			m_pRotationObject = new CBCGPRotationObject();
-			m_pRotationObject->m_pCtrl = this;
+			m_pRotationObject->SetParentCtrl(this);
 		}
 
 		return m_pRotationObject;

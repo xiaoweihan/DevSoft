@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -63,6 +63,14 @@ public:
 		return m_curAccentColor;
 	}
 
+	static void SetStateColor(AccentColor color);
+	static void SetStateColorRGB(COLORREF color);
+    static COLORREF GetStateColorRGB();
+    static AccentColor GetStateColor()
+	{
+		return m_curStateColor;
+	}
+
 	static void SetFrameColor(COLORREF colorFill, COLORREF clrTextActive, COLORREF clrTextInactive, BOOL bRedraw = TRUE);
 	static COLORREF GetFrameColor() { return m_clrFrame; }
 	static COLORREF GetFrameTextColor(BOOL bActive) { return bActive ? m_clrFrameTextActive : m_clrFrameTextInactive; }
@@ -81,6 +89,8 @@ public:
 		return FALSE;
 	}
 
+	virtual COLORREF GetHighlightedColor(UINT nType);
+
 	virtual BOOL IsOwnerDrawCaption ();
 	virtual BOOL OnSetWindowRegion (CWnd* pWnd, CSize sizeWindow);
 
@@ -88,13 +98,18 @@ public:
 	virtual BOOL OnNcActivate(CWnd* pWnd, BOOL bActive);
 	virtual BOOL OnNcPaint (CWnd* pWnd, const CObList& lstSysButtons, CRect rectRedraw);
 	virtual CSize GetNcBtnSize (BOOL bSmall) const;
+	virtual COLORREF GetNCBorderColor(BOOL bActive);
 
 	virtual CFont& GetNcCaptionTextFont();
 	virtual COLORREF GetNcCaptionTextColor(BOOL bActive, BOOL bTitle = TRUE) const;
 
+	virtual CBrush* GetNcCaptionBrush(BOOL bActive, BOOL bSmallDlgCaption);
+
 	virtual void DrawNcBtn (CDC* pDC, const CRect& rect, UINT nButton, 
 		BCGBUTTON_STATE state, BOOL bSmall, 
 		BOOL bActive, BOOL bMDI = FALSE, BOOL bEnabled = TRUE);
+	
+	virtual CBCGPMenuImages::IMAGE_STATE GetNcBtnState(BCGBUTTON_STATE state, BOOL bActive, BOOL bEnabled);
 
 	virtual void DrawNcText (CDC* pDC, CRect& rect, const CString& strTitle, BOOL bActive, BOOL bIsRTL);
 
@@ -117,6 +132,7 @@ public:
 	virtual void OnDrawShowAllMenuItems (CDC* pDC, CRect rect, CBCGPVisualManager::BCGBUTTON_STATE state);
 	virtual int GetShowAllMenuItemsHeight (CDC* pDC, const CSize& sizeDefault);
 	virtual void OnDrawSeparator (CDC* pDC, CBCGPBaseControlBar* pBar, CRect rect, BOOL bIsHoriz);
+	virtual void OnDrawMenuResizeBar (CDC* pDC, CRect rect, int nResizeFlags);
 
 	virtual int GetMenuDownArrowState (CBCGPToolbarMenuButton* pButton, BOOL bHightlight, BOOL bPressed, BOOL bDisabled);
 	virtual COLORREF GetMenuItemTextColor (CBCGPToolbarMenuButton* pButton, BOOL bHighlighted, BOOL bDisabled);
@@ -141,6 +157,7 @@ public:
 	virtual BOOL IsMinFrameCaptionBold(CBCGPMiniFrameWnd* /* pFrame */) { return FALSE; }
 
 	virtual void OnDrawBarGripper (CDC* pDC, CRect rectGripper, BOOL bHorz, CBCGPBaseControlBar* pBar);
+	virtual BOOL IsDrawLineOnTopOfMenuBar() { return TRUE; }
 
 	virtual CRect GetMenuImageFrameOffset () const
 	{
@@ -192,6 +209,8 @@ public:
 				   CBrush*& pbrFace,
 				   CBrush*& pbrBlack);
 
+	virtual COLORREF GetActiveTabBackColor(const CBCGPBaseTabWnd* pTabWnd) const;
+
 	virtual void OnDrawTabResizeBar (CDC* pDC, CBCGPBaseTabWnd* pWndTab, 
 									BOOL bIsVert, CRect rect,
 									CBrush* pbrFace, CPen* pPen);
@@ -205,6 +224,7 @@ public:
 											   BOOL bIsPressed,
 											   BOOL bIsDisabled);
 	virtual BOOL IsTabColorBar(CBCGPTabWnd* pTab, int iTab);
+	virtual void OnDrawTabDot(CDC* pDC, CBCGPBaseTabWnd* pWndTab, int nShape, const CRect& rect, int iTab, BOOL bIsActive, BOOL bIsHighlighted);
 
 	// Auto-hide buttons:
 	virtual void OnDrawAutoHideButtonBorder (CDC* pDC, CRect rectBounds, CRect rectBorderSize, CBCGPAutoHideButton* pButton);
@@ -217,6 +237,8 @@ public:
 
 	virtual COLORREF GetStatusBarPaneTextColor (CBCGPStatusBar* pStatusBar, CBCGStatusBarPaneInfo* pPane);
 	virtual void OnDrawStatusBarPaneBorder (CDC* pDC, CBCGPStatusBar* pBar, CRect rectPane, UINT uiID, UINT nStyle);
+
+	virtual void OnFillStatusBarFrame(CDC* pDC, CRect rectStatus, BOOL bActive);
 
 	virtual void OnDrawComboDropButton (CDC* pDC, CRect rect,
 										BOOL bDisabled,
@@ -262,6 +284,10 @@ public:
 
 	virtual BOOL OnEraseMDIClientArea (CDC* pDC, CRect rectClient);
 
+	virtual COLORREF GetPrintPreviewBackgroundColor(CBCGPPrintPreviewView* pPrintPreview);
+	virtual BOOL IsPrintPreviewShadow() { return FALSE; }
+	virtual COLORREF GetPrintPreviewFrameColor(BOOL bIsActive);
+
 	virtual BOOL AreCustomToolbarCtrlColors()	{	return TRUE;	}
 
 	virtual CSize GetButtonExtraBorder () const	{	return CSize(0, 0);	}
@@ -281,9 +307,12 @@ public:
 		return m_brDlgBackground.GetSafeHandle () == NULL ? CBCGPVisualManagerVS2008::GetDlgBackBrush (pDlg) : m_brDlgBackground;
 	}
 
+	virtual COLORREF GetDlgHeaderTextColor(CWnd* pDlg);
+
 	// Push button:
 	virtual BOOL OnDrawPushButton (CDC* pDC, CRect rect, CBCGPButton* pButton, COLORREF& clrText);
 	virtual BOOL IsDrawFocusRectOnPushButton(CBCGPButton* /*pButton*/) 	{ return FALSE; }
+	virtual int GetPushButtonStdImageState(CBCGPButton* pButton, BOOL bIsDisabled);
 
 #ifndef BCGP_EXCLUDE_PROP_LIST
 	virtual COLORREF OnFillPropList(CDC* pDC, CBCGPPropList* pList, const CRect& rectClient, COLORREF& clrFill);
@@ -325,6 +354,7 @@ public:
 	virtual void OnDrawOutlookBarFrame(CDC* pDC, CRect rectFrame);
 
 	virtual void OnFillOutlookBarCaption (CDC* pDC, CRect rectCaption, COLORREF& clrText);
+	virtual COLORREF OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption);
 
 	virtual COLORREF GetCaptionBarTextColor (CBCGPCaptionBar* pBar);
 
@@ -337,6 +367,7 @@ public:
 #ifndef BCGP_EXCLUDE_POPUP_WINDOW
 	virtual COLORREF GetPopupWindowLinkTextColor(CBCGPPopupWindow* pPopupWnd, BOOL bIsHover);
 	virtual void OnFillPopupWindowBackground (CDC* pDC, CRect rect);
+	virtual COLORREF GetPopupWindowBorderBorderColor();
 	virtual void OnDrawPopupWindowBorder (CDC* pDC, CRect rect);
 	virtual void OnDrawPopupWindowRoundedBorder (CDC* pDC, CRect rect, CBCGPPopupWindow* pPopupWnd, int nCornerRadius);
 	virtual COLORREF OnDrawPopupWindowCaption (CDC* pDC, CRect rectCaption, CBCGPPopupWindow* pPopupWnd);
@@ -359,6 +390,8 @@ public:
 	virtual COLORREF GetListControlMarkedColor(CBCGPListCtrl* pListCtrl);
 	virtual COLORREF GetListControlTextColor(CBCGPListCtrl* pListCtrl);
 
+	virtual COLORREF OnDrawEditListCaption(CDC* pDC, CBCGPEditListBase* pList, CRect rect);
+
 	// Date/time controls:
 	virtual void GetCalendarColors (const CBCGPCalendar* pCalendar, CBCGPCalendarColors& colors);
 	virtual void OnDrawDateTimeDropButton (CDC* pDC, CRect rect, BOOL bDisabled, BOOL bPressed, BOOL bHighlighted, CBCGPDateTimeCtrl* pCtrl);
@@ -374,12 +407,22 @@ public:
 		BOOL bIsDisabled, BOOL bHasDropDownArrow,
 		BOOL bIsSysButton);
 
+	// Edit box:
+	virtual void OnDrawEditClearButton(CDC* pDC, CBCGPButton* pButton, CRect rect);
+
     // Gantt control:
 #if !defined (BCGP_EXCLUDE_GRID_CTRL) && !defined (BCGP_EXCLUDE_GANTT)
 	virtual void GetGanttColors (const CBCGPGanttChart* pChart, BCGP_GANTT_CHART_COLORS& colors, COLORREF clrBack = CLR_DEFAULT) const;
     virtual void DrawGanttHeaderCell (const CBCGPGanttChart* pChart, CDC& dc, const BCGP_GANTT_CHART_HEADER_CELL_INFO& cellInfo, BOOL bHilite);
 #endif // !defined (BCGP_EXCLUDE_GRID_CTRL) && !defined (BCGP_EXCLUDE_GANTT)
 
+	// Chart:
+	virtual void GetChartColors(CBCGPChartColors& colors);
+
+	// Gauges:
+	virtual void GetCircularGaugeColors(CBCGPCircularGaugeColors& colors);
+	virtual void GetLinearGaugeColors(CBCGPLinearGaugeColors& colors);
+	
 public:
 	static BOOL	m_bAutoGrayscaleImages;
 
@@ -408,6 +451,7 @@ public:
 	virtual void OnDrawGridSelectionBorder (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect);
 	virtual void OnDrawGridDataBar (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect);
 	virtual void GetGridColorScaleBaseColors(CBCGPGridCtrl* pCtrl, COLORREF& clrLow, COLORREF& clrMid, COLORREF& clrHigh);
+	virtual COLORREF GetGridTreeLineColor (CBCGPGridCtrl* pCtrl);
 
 	virtual BOOL OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_GRID_COLOR_DATA& theme);
 
@@ -435,11 +479,16 @@ public:
 	virtual COLORREF GetTreeControlFillColor(CBCGPTreeCtrl* pTreeCtrl, BOOL bIsSelected = FALSE, BOOL bIsFocused = FALSE, BOOL bIsDisabled = FALSE);
 	virtual COLORREF GetTreeControlTextColor(CBCGPTreeCtrl* pTreeCtrl, BOOL bIsSelected = FALSE, BOOL bIsFocused = FALSE, BOOL bIsDisabled = FALSE);
 
+	// IntelliSense window:
+	virtual COLORREF GetIntelliSenseFillColor(CBCGPBaseIntelliSenseLB* pCtrl, BOOL bIsSelected = FALSE);
+	virtual COLORREF GetIntelliSenseTextColor(CBCGPBaseIntelliSenseLB* pTreeCtrl, BOOL bIsSelected = FALSE);
+
 	virtual CBrush& GetEditCtrlBackgroundBrush(CBCGPEdit* pEdit);
 	virtual COLORREF GetEditCtrlTextColor(CBCGPEdit* pEdit);
 
 	// Breadcrumb control:
 	virtual COLORREF BreadcrumbFillBackground (CDC& dc, CBCGPBreadcrumb* pControl, CRect rectFill);
+	virtual void BreadcrumbFillProgress (CDC& dc, CBCGPBreadcrumb* pControl, CRect rectProgress, CRect rectChunk, int nValue);
 
 	// Scrollbar
 	virtual BOOL IsOwnerDrawScrollBar () const;
@@ -464,6 +513,13 @@ public:
 	virtual void OnDrawPlannerCaptionText (CDC* pDC, 
 		CBCGPPlannerView* pView, CRect rect, const CString& strText, 
 		COLORREF clrText, int nAlign, BOOL bHighlight);
+
+	virtual void GetPlannerAppointmentColors (CBCGPPlannerView* pView,
+		BOOL bSelected, BOOL bSimple, DWORD dwDrawFlags, 
+		COLORREF& clrBack1, COLORREF& clrBack2,
+		COLORREF& clrFrame1, COLORREF& clrFrame2, COLORREF& clrText);
+
+	virtual COLORREF GetPlannerAppointmentDurationColor (CBCGPPlannerView* pView, const CBCGPAppointment* pApp) const;
 
 	virtual COLORREF GetPlannerAppointmentTimeColor (CBCGPPlannerView* pView,
 		BOOL bSelected, BOOL bSimple, DWORD dwDrawFlags);
@@ -509,6 +565,8 @@ public:
 	virtual BOOL IsRibbonScenicLook()					{	return TRUE;	}
 	virtual BOOL IsRibbonBackgroundImage()				{	return TRUE;	}
 
+	virtual void OnDrawRibbonMainButtonLabel(CDC* pDC, CBCGPRibbonButton* pButton, CRect rectText, const CString strText);
+
 	virtual COLORREF OnFillRibbonButton (
 		CDC* pDC, 
 		CBCGPRibbonButton* pButton);
@@ -527,6 +585,11 @@ public:
 		CBCGPRibbonPanel* pPanel, 
 		CRect rectPanel,
 		CRect rectCaption);
+
+	virtual BOOL IsSimplifiedBackstageViewIcon(CBCGPRibbonButton* pButton);
+
+	virtual COLORREF OnFillRibbonBackstageLeftPane(CDC* pDC, CRect rectPanel);
+	virtual COLORREF OnGetRibbonBackstageLeftPaneTextColor();
 
 	virtual COLORREF OnFillRibbonPanelCaption (
 		CDC* pDC,
@@ -551,11 +614,19 @@ public:
 		CBCGPRibbonBar* pWndRibbonBar, 
 		CRect rectTab);
 
+	virtual BOOL IsMainRibbonButtonColored() { return TRUE; }
+	virtual COLORREF GetRibbonFrameColor(CBCGPRibbonBar* /*pWndRibbonBar*/)	{ return (COLORREF)-1; }
+
 	virtual BOOL IsRibbonBackstageHideTabs()			{	return TRUE;	}
+	virtual BOOL IsRibbonBackstageHighCommands()		{	return TRUE;	}
 	virtual BOOL IsRibbonBackstageWhiteBackground()		{	return FALSE;	}
 	virtual COLORREF GetRibbonBackstageTextColor();
+	virtual COLORREF GetRibbonBackstageInfoTextColor();
 
 	virtual COLORREF OnDrawRibbonStatusBarPane(CDC* pDC, CBCGPRibbonStatusBar* pBar, CBCGPRibbonStatusBarPane* pPane);
+	virtual COLORREF OnFillRibbonStatusBarButton(CDC* pDC, CBCGPRibbonButton* pButton);
+
+	virtual BOOL IsRibbonStatusBarDark();
 
 	virtual void OnDrawRibbonButtonBorder (
 		CDC* pDC, 
@@ -571,6 +642,13 @@ public:
 		BOOL bIsDisabled = FALSE,
 		BOOL bIsPressed = FALSE,
 		BOOL bIsHighlighted = FALSE);
+
+	virtual void GetRibbonSliderColors (CBCGPRibbonSlider* pSlider, 
+		BOOL bIsHighlighted, 
+		BOOL bIsPressed,
+		BOOL bIsDisabled,
+		COLORREF& clrLine,
+		COLORREF& clrFill);
 
 	virtual void OnDrawRibbonSliderZoomButton (
 					CDC* pDC, CBCGPRibbonSlider* pSlider, 
@@ -606,6 +684,7 @@ public:
 		BOOL bIsDisabled);
 
 	virtual COLORREF GetRibbonQATTextColor (BOOL bDisabled = FALSE);
+	virtual void OnDrawRibbonQATSeparator (CDC* pDC, CBCGPRibbonSeparator* pSeparator, CRect rect);
 
 	virtual void OnFillRibbonPanelMenuBarInCtrlMode(CDC* pDC, CBCGPRibbonPanelMenuBar* pBar, CRect rectClient);
 
@@ -622,6 +701,15 @@ public:
 
 	virtual COLORREF GetRibbonHyperlinkTextColor (CBCGPRibbonHyperlink* pHyperLink);
 
+	virtual int GetRibbonPopupBorderSize (const CBCGPRibbonPanelMenu* pPopup) const;
+
+	virtual void OnDrawRibbonCategoryScroll (
+		CDC* pDC, 
+		CBCGPRibbonCategoryScroll* pScroll);
+
+	virtual void OnDrawRibbonColorPaletteBoxHotBorder (CDC* pDC, CBCGPRibbonColorButton* pColorButton,
+		CBCGPRibbonPaletteIcon* pIcon, CRect rect, BOOL bIsHighlighted, BOOL bIsChecked);
+
 #endif
 
 	virtual BOOL DrawCheckBox (CDC *pDC, CRect rect, 
@@ -636,9 +724,19 @@ public:
 		BOOL bEnabled,
 		BOOL bPressed);
 	
+	virtual CSize GetExpandButtonDefaultSize();
+	
+	virtual void OnDrawGroupExpandCollapse(CDC* pDC, CRect rect, 
+		BOOL bIsExpanded,
+		BOOL bHighlighted, 
+		BOOL bPressed,
+		BOOL bEnabled);
+
 	// Calculator:
 	virtual BOOL OnDrawCalculatorDisplay (CDC* pDC, CRect rect, const CString& strText, BOOL bMem, CBCGPCalculator* pCalculator);
+	virtual BOOL OnDrawCalculatorButton (CDC* pDC, CRect rect, CBCGPToolbarButton* pButton, CBCGPVisualManager::BCGBUTTON_STATE state, int cmd /* CBCGPCalculator::CalculatorCommands */, CBCGPCalculator* pCalculator);
 	virtual COLORREF GetCalculatorDisplayTextColor();
+	virtual COLORREF GetCalculatorButtonTextColor (BOOL bIsUserCommand, int cmd /* CBCGPCalculator::CalculatorCommands */);
 
 	// Slider:
 	virtual void OnDrawSliderChannel (CDC* pDC, CBCGPSliderCtrl* pSlider, BOOL bVert, CRect rect, BOOL bDrawOnGlass);
@@ -652,10 +750,24 @@ public:
 	virtual UINT GetNavButtonsID(BOOL bIsLarge);
 	virtual UINT GetNavFrameID(BOOL bIsLarge);
 
+	// Breadcrumb control:
+	virtual void BreadcrumbDrawItem (CDC& dc, CBCGPBreadcrumb* pControl, BREADCRUMBITEMINFO* pItemInfo, CRect rectItem, UINT uState, COLORREF color);
+	virtual void BreadcrumbDrawArrow (CDC& dc, CBCGPBreadcrumb* pControl, BREADCRUMBITEMINFO* pItemInfo, CRect rect, UINT uState, COLORREF color);
+	virtual void BreadcrumbDrawLeftArrow (CDC& dc, CBCGPBreadcrumb* pControl, CRect rect, UINT uState, COLORREF color);
+	virtual void BreadcrumbDrawItemBackground (CDC& dc, CBCGPBreadcrumb* pControl, BREADCRUMBITEMINFO* pItemInfo, CRect rectItem, UINT uState, COLORREF color);
+	virtual void BreadcrumbDrawArrowBackground (CDC& dc, CBCGPBreadcrumb* pControl, BREADCRUMBITEMINFO* pItemInfo, CRect rectArrow, UINT uState, COLORREF color);
+	virtual void BreadcrumbDrawLeftArrowBackground (CDC& dc, CBCGPBreadcrumb* pControl, CRect rect, UINT uState, COLORREF color);
+
+	// Progress bar:
+	virtual void OnDrawProgressMarqueeDot(CDC* pDC, CBCGPProgressCtrl* pProgressCtrl, CRect rect, int nIndex);
+	virtual COLORREF GetProgressMarqueeColor(CBCGPProgressCtrl* /*pProgressCtrl*/) { return m_clrAccentHilight; }
+
 	virtual BOOL IsDWMCaptionSupported() const { return FALSE; }
 	virtual BOOL IsSmallSystemBorders() const { return TRUE; }
 	virtual BOOL IsStatusBarCoversFrame() { return TRUE; }
 	virtual void SetupColors();
+
+	void RedrawAppStatusBar();
 
 protected:
 	static COLORREF		m_clrAccent;
@@ -663,6 +775,8 @@ protected:
 	static COLORREF		m_clrFrameTextActive;
 	static COLORREF		m_clrFrameTextInactive;
 	static AccentColor	m_curAccentColor;
+	static AccentColor	m_curStateColor;
+	static COLORREF		m_clrState;
 	static Style		m_Style;
 	CBrush				m_brAccent;
 	CBrush				m_brAccentHighlight;
@@ -683,6 +797,7 @@ protected:
 	CBrush				m_brControl;
 	COLORREF			m_clrDlgBackground;
 	COLORREF			m_clrEditPrompt;
+	COLORREF			m_clrBorderActive;
 	COLORREF			m_clrButtonsArea;
 
 	COLORREF			m_clrNcTextActive;
@@ -697,6 +812,13 @@ protected:
 
 	COLORREF			m_clrHighlightNC;
 	CBrush				m_brHighlightNC;
+
+	COLORREF			m_clrHighlightDnNC;
+	CBrush				m_brHighlightDnNC;
+
+	COLORREF			m_clrMenuImage;
+
+	CWnd*				m_pCurrentNcWnd;
 };
 
 class BCGCBPRODLLEXPORT CBCGPVisualManagerVS2013 : public CBCGPVisualManagerVS2012

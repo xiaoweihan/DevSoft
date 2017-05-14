@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,6 +27,7 @@
 #include "BCGPPropertySheet.h"
 #include "BCGPPropertyPage.h"
 #include "BCGPButton.h"
+#include "BCGPComboBox.h"
 #include "BCGPRibbonCommandsListBox.h"
 #include "bcgprores.h"
 
@@ -52,11 +53,11 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPRibbonCustomizeQATPage)
 	enum { IDD = IDD_BCGBARRES_PROPPAGE8 };
-	CButton	m_wndKbdCustomize;
-	CButton	m_wndAdd;
-	CButton	m_wndRemove;
+	CBCGPButton	m_wndKbdCustomize;
+	CBCGPButton	m_wndAdd;
+	CBCGPButton	m_wndRemove;
 	CBCGPRibbonCommandsListBox	m_wndCommandsList;
-	CComboBox	m_wndCategoryCombo;
+	CBCGPComboBox	m_wndCategoryCombo;
 	CBCGPRibbonCommandsListBox	m_wndQATList;
 	CBCGPButton	m_wndUp;
 	CBCGPButton	m_wndDown;
@@ -97,6 +98,7 @@ protected:
 	CBCGPRibbonBar*											m_pRibbonBar;
 	CList<CBCGPRibbonCustomGroup*,CBCGPRibbonCustomGroup*>	m_lstCustomCategories;
 	BOOL													m_bIsCustomizeKeyboard;
+	BOOL													m_bCanAdd;
 };
 
 // For the backward compatibility:

@@ -1,7 +1,7 @@
 // BCGPCaptionBar.cpp: implementation of the CBCGPCaptionBar class.
 //
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,8 +26,9 @@
 #include "BCGPLocalResource.h"
 #include "BCGProRes.h"
 
-const int nMenuArrowWidth = 10;
-const int nButtonHorzMargin = 10;
+#define MENU_ARROW_WIDTH	globalUtils.ScaleByDPI(10)
+#define BUTTON_HORZ_MARGIN	globalUtils.ScaleByDPI(10)
+#define CLOSE_BUTTON_MARGIN	globalUtils.ScaleByDPI(4)
 
 const int nIdToolTipClose = 1;
 const int nIdToolTipText = 2;
@@ -50,12 +51,13 @@ CBCGPCaptionBar::CBCGPCaptionBar()
 	m_clrBarBackground		= (COLORREF)-1;
 	m_clrBarBorder			= (COLORREF)-1;
 
-	m_nBorderSize			= 4;
-	m_nMargin				= 4;
-	m_nHorzElementOffset	= 4;
+	m_nBorderSize			= globalUtils.ScaleByDPI(4);
+	m_nMargin				= globalUtils.ScaleByDPI(4);
+	m_nHorzElementOffset	= globalUtils.ScaleByDPI(4);
 
 	m_hIcon					= NULL;
 	m_hFont					= NULL;
+	m_bUseCaptionFont		= FALSE;
 
 	m_nDefaultHeight		= -1;
 	m_nCurrentHeight		= 0;
@@ -233,12 +235,9 @@ void CBCGPCaptionBar::DoPaint(CDC* pDCIn)
 	OnDrawBackground (pDC, rectClient);
 
 	int nOldBkMode = pDC->SetBkMode (TRANSPARENT);
-	COLORREF clrOldText = 
-		pDC->SetTextColor (m_clrBarText != (COLORREF) -1 ? m_clrBarText : 
-		CBCGPVisualManager::GetInstance ()->GetCaptionBarTextColor (this));
+	COLORREF clrOldText = pDC->SetTextColor(m_clrBarText != (COLORREF) -1 ? m_clrBarText : CBCGPVisualManager::GetInstance ()->GetCaptionBarTextColor (this));
 
-	CFont* pOldFont = pDC->SelectObject (
-		m_hFont == NULL ? &globalData.fontRegular : CFont::FromHandle (m_hFont));
+	CFont* pOldFont = SelectFont(pDC);
 
 	CRect rectButton = m_rectButton;
 	rectButton.top = max(rectClient.top + 1, rectButton.top);
@@ -257,6 +256,11 @@ void CBCGPCaptionBar::DoPaint(CDC* pDCIn)
 		COLORREF clrText = CBCGPVisualManager::GetInstance ()->OnFillCaptionBarButton (pDC, this,
 			m_rectClose, m_bIsCloseBtnPressed, m_bIsCloseBtnHighlighted, FALSE,
 			FALSE, TRUE);
+
+		if (m_bIsMessageBarMode && !CBCGPVisualManager::GetInstance()->IsCaptionBarCloseButtonOutsideMessageBar() && !m_bIsCloseBtnPressed && !m_bIsCloseBtnHighlighted)
+		{
+			clrText = pDC->GetTextColor();
+		}
 
 		CBCGPVisualManager::GetInstance ()->OnDrawCaptionBarCloseButton(pDC, this, 
 			m_rectClose, m_bIsCloseBtnPressed, m_bIsCloseBtnHighlighted, clrText);
@@ -323,7 +327,11 @@ void CBCGPCaptionBar::OnDrawBackground (CDC* pDC, CRect rect)
 
 		CRect rectInfo = rect;
 		rectInfo.DeflateRect (nMessageBarMargin, nMessageBarMargin);
-		rectInfo.right -= m_rectClose.Width ();
+
+		if (CBCGPVisualManager::GetInstance()->IsCaptionBarCloseButtonOutsideMessageBar())
+		{
+			rectInfo.right = m_rectClose.left - CLOSE_BUTTON_MARGIN;
+		}
 
 		CBCGPVisualManager::GetInstance ()->OnDrawCaptionBarInfoArea (pDC, this, rectInfo);
 	}
@@ -353,12 +361,12 @@ void CBCGPCaptionBar::OnDrawButton (CDC* pDC, CRect rect,
 
 	if (m_bIsMessageBarMode)
 	{
-		rectText.DeflateRect (nButtonHorzMargin, 0);
+		rectText.DeflateRect (BUTTON_HORZ_MARGIN, 0);
 	}
 
 	if (m_uiBtnID != 0 && bEnabled && m_bBtnHasDropDownArrow)
 	{
-		rectText.right -= nMenuArrowWidth;
+		rectText.right -= MENU_ARROW_WIDTH;
 	}
 
 	COLORREF clrTextOld = (COLORREF)-1;
@@ -381,8 +389,8 @@ void CBCGPCaptionBar::OnDrawButton (CDC* pDC, CRect rect,
 		{
 			// Draw menu triangle:
 			CRect rectArrow = rect;
-			rectArrow.top = rectArrow.CenterPoint().y - nMenuArrowWidth / 2;
-			rectArrow.bottom = rectArrow.top + nMenuArrowWidth;
+			rectArrow.top = rectArrow.CenterPoint().y - MENU_ARROW_WIDTH / 2;
+			rectArrow.bottom = rectArrow.top + MENU_ARROW_WIDTH;
 			rectArrow.left = rectText.right;
 
 			int iXMiddle = rectArrow.left + rectArrow.Width () / 2;
@@ -404,7 +412,7 @@ void CBCGPCaptionBar::OnDrawButton (CDC* pDC, CRect rect,
 			pts[2].x = rectArrow.left + iHalfWidth;
 			pts[2].y = rectArrow.bottom + 1;
 
-			CBrush brArrow (globalData.IsHighContastMode() ? globalData.clrWindowText : pDC->GetTextColor ());
+			CBrush brArrow (globalData.IsHighContastMode() ? globalData.clrWindowText : (clrText != (COLORREF)-1 ? clrText : pDC->GetTextColor()));
 
 			CPen* pOldPen = (CPen*) pDC->SelectStockObject (NULL_PEN);
 			CBrush* pOldBrush = (CBrush*) pDC->SelectObject(&brArrow);
@@ -589,7 +597,8 @@ void CBCGPCaptionBar::RemoveIcon ()
 }
 //*****************************************************************************
 void CBCGPCaptionBar::SetBitmap (HBITMAP hBitmap, COLORREF clrTransparent, 
-								BOOL bStretch, BarElementAlignment bmpAlignment)
+								BOOL bStretch, BarElementAlignment bmpAlignment,
+								BOOL bAutoScale)
 {
 	ASSERT (hBitmap != NULL);
 
@@ -602,6 +611,11 @@ void CBCGPCaptionBar::SetBitmap (HBITMAP hBitmap, COLORREF clrTransparent,
 	m_Bitmap.SetImageSize (CSize (bmp.bmWidth, bmp.bmHeight));
 	m_Bitmap.SetTransparentColor (clrTransparent);
 	m_Bitmap.AddImage (hBitmap, clrTransparent == (COLORREF)-1);
+
+	if (bAutoScale)
+	{
+		globalUtils.ScaleByDPI(m_Bitmap);
+	}
 	
 	m_bStretchImage = bStretch;
 
@@ -611,15 +625,21 @@ void CBCGPCaptionBar::SetBitmap (HBITMAP hBitmap, COLORREF clrTransparent,
 }
 //*****************************************************************************
 void CBCGPCaptionBar::SetBitmap (UINT uiBmpResID, COLORREF clrTransparent, 
-								BOOL bStretch, BarElementAlignment bmpAlignment)
+								BOOL bStretch, BarElementAlignment bmpAlignment,
+								BOOL bAutoScale)
 {
 	m_hIcon = NULL;
 	m_Bitmap.Clear ();
 
 	m_Bitmap.SetTransparentColor (clrTransparent);
 	m_Bitmap.Load (uiBmpResID);
-	m_Bitmap.SetSingleImage ();
+	m_Bitmap.SetSingleImage (FALSE);
 	
+	if (bAutoScale)
+	{
+		globalUtils.ScaleByDPI(m_Bitmap);
+	}
+
 	m_bStretchImage = bStretch;
 
 	m_iconAlignment = bmpAlignment;
@@ -688,7 +708,13 @@ void CBCGPCaptionBar::RemoveText ()
 	AdjustLayout ();
 }
 //*****************************************************************************
-afx_msg LRESULT CBCGPCaptionBar::OnSetFont (WPARAM wParam, LPARAM /*lParam*/)
+void CBCGPCaptionBar::SetCaptionFont(BOOL bSet)
+{
+	m_bUseCaptionFont = bSet;
+	AdjustLayout();
+}
+//*****************************************************************************
+LRESULT CBCGPCaptionBar::OnSetFont (WPARAM wParam, LPARAM /*lParam*/)
 {
 	m_hFont = (HFONT) wParam;
 
@@ -696,7 +722,7 @@ afx_msg LRESULT CBCGPCaptionBar::OnSetFont (WPARAM wParam, LPARAM /*lParam*/)
 	return 0;
 }
 //*****************************************************************************
-afx_msg LRESULT CBCGPCaptionBar::OnGetFont (WPARAM, LPARAM)
+LRESULT CBCGPCaptionBar::OnGetFont (WPARAM, LPARAM)
 {
 	return (LRESULT) m_hFont;
 }
@@ -723,14 +749,13 @@ void CBCGPCaptionBar::RecalcLayout ()
 {
 	CClientDC dc (NULL);
 
-	CFont* pOldFont = dc.SelectObject (
-		m_hFont == NULL ? &globalData.fontRegular : CFont::FromHandle (m_hFont));
+	CFont* pOldFont = SelectFont(&dc);
 	ASSERT (pOldFont != NULL);
 
 	TEXTMETRIC tm;
 	dc.GetTextMetrics (&tm);
 
-	int nTextHeight = tm.tmHeight + 2;
+	int nTextHeight = tm.tmHeight + globalUtils.ScaleByDPI(2);
 	CSize sizeImage = GetImageSize ();
 
 	const int nButtonVertMargin = CBCGPVisualManager::GetInstance()->GetMessageBarMargin();
@@ -775,19 +800,18 @@ void CBCGPCaptionBar::RecalcLayout ()
 	if (m_bIsMessageBarMode)
 	{
 		CSize sizeImage = CBCGPMenuImages::Size ();
-		const int nCloseButtonMargin = 4;
+		sizeImage.cx += 2 * CLOSE_BUTTON_MARGIN;
+		sizeImage.cy += 2 * CLOSE_BUTTON_MARGIN;
 
-		sizeImage.cx += 2 * nCloseButtonMargin;
-		sizeImage.cy += 2 * nCloseButtonMargin;
+		const int nHorzOffset = CBCGPVisualManager::GetInstance()->IsCaptionBarCloseButtonOutsideMessageBar() ? 0 : CLOSE_BUTTON_MARGIN;
+		const int nVertOffset = CBCGPVisualManager::GetInstance()->IsCaptionBarCloseButtonOutsideMessageBar() ? CLOSE_BUTTON_MARGIN : max(0, (rectClient.Height() - sizeImage.cy) / 2);
 
 		m_rectClose = CRect (
-			CPoint (rectClient.right - sizeImage.cx, rectClient.top + nCloseButtonMargin),
+			CPoint (rectClient.right - sizeImage.cx - nHorzOffset - CLOSE_BUTTON_MARGIN, rectClient.top + nVertOffset),
 			sizeImage);
 
-		m_rectClose.right--;
-
-		rectClient.DeflateRect (nCloseButtonMargin, nCloseButtonMargin);
-		rectClient.right -= m_rectClose.Width ();
+		rectClient.right = m_rectClose.left;
+		rectClient.DeflateRect (CLOSE_BUTTON_MARGIN, CLOSE_BUTTON_MARGIN);
 	}
 	else
 	{
@@ -820,7 +844,7 @@ void CBCGPCaptionBar::RecalcLayout ()
 		}
 		else
 		{
-			// otherwise, clip it from the buttom
+			// otherwise, clip it from the bottom
 			m_rectImage.top = rectClient.top + m_nMargin;
 		}
 
@@ -882,12 +906,12 @@ void CBCGPCaptionBar::RecalcLayout ()
 
 		if (m_bIsMessageBarMode)
 		{
-			nButtonWidth += 2 * nButtonHorzMargin;
+			nButtonWidth += 2 * BUTTON_HORZ_MARGIN;
 		}
 
 		if (m_uiBtnID != 0 && m_bBtnEnabled && m_bBtnHasDropDownArrow)
 		{
-			nButtonWidth += nMenuArrowWidth;
+			nButtonWidth += MENU_ARROW_WIDTH;
 		}
 
 		// the button always has a height equivalent to the bar's height
@@ -1153,24 +1177,7 @@ CSize CBCGPCaptionBar::GetImageSize () const
 		return m_Bitmap.GetImageSize ();
 	}
 
-	if (m_hIcon == NULL)
-	{
-		return CSize (0, 0);
-	}
-
-	ICONINFO info;
-	memset (&info, 0, sizeof (ICONINFO));
-
-	::GetIconInfo (m_hIcon, &info);
-	HBITMAP hBmp = info.hbmColor;
-
-	BITMAP bmp;
-	::GetObject (hBmp, sizeof (BITMAP), (LPVOID) &bmp);
-
-	::DeleteObject (info.hbmColor);
-	::DeleteObject (info.hbmMask);
-
-	return CSize (bmp.bmWidth, bmp.bmHeight);
+	return globalUtils.GetIconSize(m_hIcon);
 }
 //*****************************************************************************
 BOOL CBCGPCaptionBar::OnEraseBkgnd(CDC* /*pDC*/)
@@ -1238,7 +1245,7 @@ void CBCGPCaptionBar::OnLButtonUp(UINT nFlags, CPoint point)
 		if (m_nHyperlinkPressed == m_nHyperlinkHighlighted)
 		{
 			ASSERT_VALID (GetOwner ());
-			GetOwner()->SendMessage(BCGM_ON_CLICK_CAPTIONBAR_HYPERLINK, m_nHyperlinkPressed);
+			GetOwner()->SendMessage(BCGM_ON_CLICK_CAPTIONBAR_HYPERLINK, m_nHyperlinkPressed, (LPARAM)this);
 		}
 
 		m_nHyperlinkPressed = -1;
@@ -1315,7 +1322,7 @@ void CBCGPCaptionBar::OnMouseMove(UINT nFlags, CPoint point)
 	}
 }
 //*****************************************************************************************
-afx_msg LRESULT CBCGPCaptionBar::OnMouseLeave(WPARAM,LPARAM)
+LRESULT CBCGPCaptionBar::OnMouseLeave(WPARAM,LPARAM)
 {
 	m_bTracked = FALSE;
 
@@ -1614,3 +1621,332 @@ void CBCGPCaptionBar::SetMessageBarMode(BOOL bIsMessageBarMode)
 	AdjustLayout();
 	RedrawWindow();
 }
+//***************************************************************************
+CString CBCGPCaptionBar::GetLinkText (int nIndex)
+{
+	int count = -1;
+	for (int i=0; i<m_arTextParts.GetSize (); i++)
+	{
+		if (m_arTextPartTypes [i] == 1)
+		{
+			count++;
+			if (count == nIndex)
+			{
+				return m_arTextParts [i];
+			}
+		}
+	}
+
+	return _T("");
+}
+//***************************************************************************
+BOOL CBCGPCaptionBar::OnSetAccData (long lVal)
+{
+	ASSERT_VALID (this);
+
+	m_AccData.Clear ();
+
+	int nObjectId = AccGetObjectByChildId(lVal);
+	if (nObjectId != -1)
+	{
+		if (nObjectId == ACC_BUTTON)	
+		{
+			m_AccData.m_strAccName = m_strBtnText;
+			m_AccData.m_strAccDefAction = m_bBtnHasDropDownArrow ? _T("Open") : _T("Press");
+			m_AccData.m_strDescription = m_strButtonDescription;
+			m_AccData.m_nAccHit = 1;
+			m_AccData.m_nAccRole = m_bBtnHasDropDownArrow ? ROLE_SYSTEM_BUTTONDROPDOWN : ROLE_SYSTEM_PUSHBUTTON;
+			m_AccData.m_bAccState = STATE_SYSTEM_FOCUSABLE;
+
+			if (!m_bBtnEnabled)
+			{
+				m_AccData.m_bAccState |= STATE_SYSTEM_UNAVAILABLE;
+			}
+
+			if (m_bIsBtnPressed || m_bIsBtnForcePressed)
+			{
+			  m_AccData.m_bAccState |= STATE_SYSTEM_FOCUSED | STATE_SYSTEM_PRESSED;
+			}
+			
+			if (m_bIsBtnHighlighted)
+			{
+				m_AccData.m_bAccState |= STATE_SYSTEM_HOTTRACKED;
+			}
+			
+			m_AccData.m_rectAccLocation = m_rectButton;
+			ClientToScreen (&m_AccData.m_rectAccLocation);
+			return TRUE;
+		}
+
+		if (nObjectId >= ACC_LINK)	
+		{
+			int nHyperLink = nObjectId - ACC_LINK;
+
+			m_AccData.m_strAccName = GetLinkText (nHyperLink);
+			m_AccData.m_strAccDefAction = _T("Jump");
+			m_AccData.m_nAccHit = 1;
+			m_AccData.m_nAccRole = ROLE_SYSTEM_LINK;
+			m_AccData.m_bAccState = STATE_SYSTEM_FOCUSABLE;
+
+			if (m_nHyperlinkPressed == nHyperLink)
+			{
+			  m_AccData.m_bAccState |= STATE_SYSTEM_FOCUSED;
+			}
+			
+			if (m_nHyperlinkHighlighted == nHyperLink)
+			{
+				m_AccData.m_bAccState |= STATE_SYSTEM_HOTTRACKED;
+			}
+			
+			m_AccData.m_rectAccLocation = m_arHyperlinksRects [nHyperLink];
+			ClientToScreen (&m_AccData.m_rectAccLocation);
+			return TRUE;
+		}
+
+		if (nObjectId == ACC_CLOSE_BUTTON)
+		{
+			m_AccData.m_strAccName = _T("Close");
+			m_AccData.m_strAccDefAction = _T("Press");
+			m_AccData.m_strDescription = _T("Close CaptionBar button");
+			m_AccData.m_nAccHit = 1;
+			m_AccData.m_nAccRole = ROLE_SYSTEM_PUSHBUTTON;
+			m_AccData.m_bAccState = STATE_SYSTEM_FOCUSABLE;
+
+			if (m_bIsCloseBtnPressed)
+			{
+				m_AccData.m_bAccState |= STATE_SYSTEM_FOCUSED | STATE_SYSTEM_PRESSED;
+			}
+			
+			if (m_bIsCloseBtnHighlighted || m_bCloseTracked)
+			{
+				m_AccData.m_bAccState |= STATE_SYSTEM_HOTTRACKED;
+			}
+			
+			m_AccData.m_rectAccLocation = m_rectClose;
+			ClientToScreen (&m_AccData.m_rectAccLocation);
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+//*****************************************************************************
+HRESULT CBCGPCaptionBar::get_accChildCount(long *pcountChildren)
+{
+	if(!pcountChildren )
+    {
+        return E_INVALIDARG;
+    }
+
+	int count = 0;
+
+	m_mapObjectToIndex.RemoveAll ();
+	
+	if (m_uiBtnID != 0 &&  !m_rectButton.IsRectEmpty ())
+	{
+		count++;
+		m_mapObjectToIndex.SetAt (ACC_BUTTON, count);
+	}
+
+	if (!m_rectClose.IsRectEmpty ())
+	{
+		count++;
+		m_mapObjectToIndex.SetAt (ACC_CLOSE_BUTTON, count);
+	}
+
+	for (int i=0; i<m_arHyperlinksRects.GetSize (); i++)
+	{
+		count++;
+		int nIndex =ACC_LINK+i;
+		m_mapObjectToIndex.SetAt (nIndex, count);
+	}
+
+	*pcountChildren = count;
+	return S_OK;
+}
+//***************************************************************************
+int CBCGPCaptionBar::AccGetObjectByChildId(long lVal)
+{
+	POSITION pos = 0;
+
+	pos = m_mapObjectToIndex.GetStartPosition ();
+	while (pos != NULL)
+	{
+		int nObjectId = 0;
+		int nIndex = 0;
+
+		m_mapObjectToIndex.GetNextAssoc (pos, nObjectId, nIndex);
+		if (lVal == nIndex)
+		{
+			return nObjectId;
+		}
+	}
+
+	return -1;
+}
+//***************************************************************************
+int CBCGPCaptionBar::AccGetChildIdByObjectId(int nObjectId)
+{
+	int nIndex = -1;
+	m_mapObjectToIndex.Lookup (nObjectId, nIndex);
+	return nIndex;
+}
+//***************************************************************************
+HRESULT CBCGPCaptionBar::get_accChild(VARIANT /*varChild*/, IDispatch **ppdispChild)
+{
+	if(!ppdispChild )
+    {
+        return E_INVALIDARG;
+    }
+
+	*ppdispChild = NULL;
+
+	return S_FALSE;
+}
+//***************************************************************************
+HRESULT CBCGPCaptionBar::get_accName(VARIANT varChild, BSTR *pszName)
+{
+	if (varChild.vt == VT_I4 && varChild.lVal == CHILDID_SELF)
+	{
+		CString strText = _T("Caption Bar");
+		*pszName = strText.AllocSysString();
+		return S_OK;
+	}
+
+	return CBCGPControlBar::get_accName(varChild, pszName);
+}
+//***************************************************************************
+HRESULT CBCGPCaptionBar::get_accValue(VARIANT varChild, BSTR *pszValue)
+{
+	if (varChild.vt == VT_I4 && varChild.lVal == CHILDID_SELF)
+	{
+		CString strText = m_strText;
+		strText.Replace(_T("\a"), _T(""));
+		strText.Replace(_T("\b"), _T(""));
+		*pszValue = strText.AllocSysString();
+		return S_OK;
+	}
+
+	return CBCGPControlBar::get_accValue(varChild, pszValue);
+}
+//***************************************************************************
+HRESULT CBCGPCaptionBar::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	if (pvarRole == NULL)
+    {
+        return E_INVALIDARG;
+    }
+
+	if (varChild.vt == VT_I4 && varChild.lVal == CHILDID_SELF)
+	{
+		pvarRole->vt = VT_I4;
+		pvarRole->lVal = ROLE_SYSTEM_CLIENT;
+		return S_OK;
+	}
+
+	return CBCGPControlBar::get_accRole(varChild, pvarRole);
+}
+//***************************************************************************
+HRESULT CBCGPCaptionBar::get_accState(VARIANT varChild, VARIANT *pvarState)
+{
+	if (pvarState == NULL)
+    {
+        return E_INVALIDARG;
+    }
+
+	if (varChild.vt == VT_I4 && varChild.lVal == CHILDID_SELF)
+	{
+		pvarState->vt = VT_I4;
+		pvarState->lVal = STATE_SYSTEM_NORMAL;
+		return S_OK;
+	}
+
+	return CBCGPControlBar::get_accState(varChild, pvarState);
+
+}
+//***************************************************************************
+HRESULT CBCGPCaptionBar::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
+{
+	if( !pvarChild )
+    {
+        return E_INVALIDARG;
+    }
+
+	pvarChild->vt = VT_I4;
+	pvarChild->lVal = CHILDID_SELF;
+
+	CPoint pt (xLeft, yTop);
+	ScreenToClient (&pt);
+
+	if (m_uiBtnID != 0 && m_rectButton.PtInRect (pt))
+	{
+		int nIndex = AccGetChildIdByObjectId(ACC_BUTTON);
+		pvarChild->lVal = nIndex;
+		OnSetAccData (nIndex);
+		return S_OK;
+	}	
+
+	if (m_rectClose.PtInRect (pt))
+	{
+		int nIndex = AccGetChildIdByObjectId(ACC_CLOSE_BUTTON);
+		pvarChild->lVal = nIndex;
+		OnSetAccData (nIndex);
+		return S_OK;
+	}
+
+	int nLink = HitTestHyperlink(pt);
+	if (nLink != -1)
+	{
+		int nIndex = AccGetChildIdByObjectId(ACC_LINK + nLink);
+		pvarChild->lVal = nIndex;
+		OnSetAccData (nIndex);
+		return S_OK;
+	}
+
+	return S_OK;
+}
+//***************************************************************************
+HRESULT CBCGPCaptionBar::accDoDefaultAction(VARIANT varChild)
+{
+	if (varChild.vt != VT_I4)
+    {
+        return E_INVALIDARG;
+    }
+
+	int nObjectId = AccGetObjectByChildId(varChild.lVal);
+	if (nObjectId != -1)
+	{
+		if (nObjectId == ACC_BUTTON)
+		{
+			if (m_uiBtnID != 0)
+			{
+				ASSERT_VALID (GetOwner ());
+				GetOwner()->SendMessage (WM_COMMAND, m_uiBtnID);
+			}
+		}
+
+		if (nObjectId == ACC_CLOSE_BUTTON)
+		{
+			if (OnClickCloseButton())
+			{
+				ShowControlBar (FALSE, FALSE, FALSE);
+			}
+		}
+
+		if (nObjectId >= ACC_LINK)
+		{
+			ASSERT_VALID (GetOwner ());
+
+			int nHyperLink = nObjectId - ACC_LINK;
+			GetOwner()->SendMessage(BCGM_ON_CLICK_CAPTIONBAR_HYPERLINK, nHyperLink, (LPARAM)this);
+		}
+	}
+
+    return S_OK;
+}
+//***************************************************************************
+CFont* CBCGPCaptionBar::SelectFont(CDC* pDC)
+{
+	return pDC->SelectObject(m_hFont == NULL ? (m_bUseCaptionFont ? &globalData.fontCaption : &globalData.fontRegular) : CFont::FromHandle (m_hFont));
+}
+

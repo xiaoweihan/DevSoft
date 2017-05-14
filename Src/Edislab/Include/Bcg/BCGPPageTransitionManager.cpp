@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -15,6 +15,7 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
+#include "math.h"
 #include "BCGPDrawManager.h"
 #include "BCGPPageTransitionManager.h"
 
@@ -24,9 +25,6 @@ static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
 
-CMap<UINT,UINT,CBCGPPageTransitionManager*,CBCGPPageTransitionManager*> CBCGPPageTransitionManager::m_mapManagers;
-CCriticalSection CBCGPPageTransitionManager::g_cs;
-
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -34,6 +32,7 @@ CCriticalSection CBCGPPageTransitionManager::g_cs;
 CBCGPPageTransitionManager::CBCGPPageTransitionManager()
 {
 	m_PageTransitionEffect = BCGPPageTransitionNone;
+	m_animationType = CBCGPAnimationManager::BCGPANIMATION_Legacy;
 	m_nPageTransitionTime = 300;
 	m_nPageTransitionOffset = 0;
 	m_nPageTransitionStep = 0;
@@ -41,7 +40,6 @@ CBCGPPageTransitionManager::CBCGPPageTransitionManager()
 	m_nPageScreenshot1 = 0;
 	m_nPageScreenshot2 = 0;
 	m_rectPageTransition.SetRectEmpty();
-	m_nTimerID = 0;
 	m_hwndHost = NULL;
 	m_clrFillFrame = (COLORREF)-1;
 }
@@ -51,18 +49,9 @@ CBCGPPageTransitionManager::~CBCGPPageTransitionManager()
 	StopPageTransition();
 }
 //*****************************************************************************************
-void CBCGPPageTransitionManager::StopPageTransition()
+void CBCGPPageTransitionManager::StopPageTransition(BOOL bNotify)
 {
-	if (m_nTimerID != 0)
-	{
-		::KillTimer(NULL, m_nTimerID);
-		
-		g_cs.Lock ();
-		m_mapManagers.RemoveKey(m_nTimerID);
-		g_cs.Unlock ();
-
-		m_nTimerID = 0;
-	}
+	StopAnimation(bNotify);
 
 	m_nPageTransitionOffset = 0;
 	m_nPageTransitionStep = 0;
@@ -74,7 +63,7 @@ void CBCGPPageTransitionManager::StopPageTransition()
 BOOL CBCGPPageTransitionManager::StartPageTransition(HWND hwdHost, const CArray<HWND, HWND>& arPages, BOOL bReverseOrder, 
 													 const CSize& szPageOffset, const CSize& szPageMax)
 {
-	StopPageTransition();
+	StopPageTransition(FALSE);
 
 	if (hwdHost == NULL || arPages.GetSize() < 2 || m_nPageTransitionTime < 1 || m_PageTransitionEffect == BCGPPageTransitionNone)
 	{
@@ -106,10 +95,12 @@ BOOL CBCGPPageTransitionManager::StartPageTransition(HWND hwdHost, const CArray<
 
 	pWndHost->ScreenToClient(&m_rectPageTransition);
 
-	// Create panarama bitmap:
+	// Create panorama bitmap:
 	m_Panorama.SetImageSize(CSize(cx, cy));
 
 	pWndHost->SetRedraw(FALSE);
+
+	BOOL bOnePageTransition = m_PageTransitionEffect == BCGPPageTransitionAppear;
 
 	BOOL bTwoPagesTransition = 
 		m_PageTransitionEffect != BCGPPageTransitionSlide && 
@@ -127,9 +118,16 @@ BOOL CBCGPPageTransitionManager::StartPageTransition(HWND hwdHost, const CArray<
 
 	CDC dcMem;
 	dcMem.CreateCompatibleDC(NULL);
+
+	int nFinishPage = bReverseOrder ? 0 : (int)arPages.GetSize() - 1;
 	
 	for (int i = 0; i < arPages.GetSize(); i++)
 	{
+		if (bOnePageTransition && i != nFinishPage)
+		{
+			continue;
+		}
+
 		if (bTwoPagesTransition && (i != 0 && i != arPages.GetSize() - 1))
 		{
 			continue;
@@ -151,6 +149,11 @@ BOOL CBCGPPageTransitionManager::StartPageTransition(HWND hwdHost, const CArray<
 		m_Panorama.AddImage(hbmp, TRUE);
 	}
 
+	if (bIsRTL)
+	{
+		m_Panorama.Mirror();
+	}
+
 	::DeleteObject(hbmp);
 
 	pWndCurrPage->ShowWindow(SW_HIDE);
@@ -162,19 +165,24 @@ BOOL CBCGPPageTransitionManager::StartPageTransition(HWND hwdHost, const CArray<
 //*****************************************************************************************
 BOOL CBCGPPageTransitionManager::StartInternal(BOOL bReverseOrder)
 {
-	int nElapse = 10;
+	int nFinishValue = 0;
 
 	if (m_PageTransitionEffect == BCGPPageTransitionFade)
 	{
-		m_nPageTransitionTotal = 255;
-		m_nPageTransitionStep = max(1, m_nPageTransitionTotal * nElapse / m_nPageTransitionTime);
+		nFinishValue = m_nPageTransitionTotal = 255;
 		m_nPageTransitionOffset = 0;
 	}
 	else if (m_PageTransitionEffect == BCGPPageTransitionPop)
 	{
-		m_nPageTransitionTotal = min(m_rectPageTransition.Width(), m_rectPageTransition.Height()); 
-		m_nPageTransitionStep = max(1, m_nPageTransitionTotal * nElapse / m_nPageTransitionTime);
+		nFinishValue = m_nPageTransitionTotal = min(m_rectPageTransition.Width(), m_rectPageTransition.Height()); 
 		m_nPageTransitionOffset = 0;
+	}
+	else if (m_PageTransitionEffect == BCGPPageTransitionAppear)
+	{
+		m_nPageTransitionTotal = m_rectPageTransition.Width() / 10;
+		m_nPageTransitionOffset = bReverseOrder ? m_nPageTransitionTotal : -m_nPageTransitionTotal;
+
+		nFinishValue = 0;
 	}
 	else
 	{
@@ -191,34 +199,32 @@ BOOL CBCGPPageTransitionManager::StartInternal(BOOL bReverseOrder)
 			m_nPageTransitionTotal = (m_Panorama.GetCount() - 1) * m_Panorama.GetImageSize().cx;
 		}
 
-		m_nPageTransitionStep = m_nPageTransitionTotal * nElapse / m_nPageTransitionTime;
-
 		if (!bReverseOrder)
 		{
 			m_nPageTransitionOffset = 0;
-			m_nPageTransitionStep = max(1, m_nPageTransitionStep);
+			nFinishValue = m_nPageTransitionTotal;
 		}
 		else
 		{
 			m_nPageTransitionOffset = m_nPageTransitionTotal;
-			m_nPageTransitionStep = -m_nPageTransitionStep;
-			m_nPageTransitionStep = min(-1, m_nPageTransitionStep);
+			nFinishValue = 0;
 		}
 	}
 
-	if (m_nPageTransitionStep == 0 || m_nPageTransitionTotal == 0)
+	if (m_nPageTransitionTotal == 0)
 	{
 		StopPageTransition();
 		return FALSE;
 	}
 
-	m_nTimerID = (UINT)::SetTimer (NULL, 0, nElapse, PageTransitionTimerProc);
+	if (!StartAnimation(m_nPageTransitionOffset, nFinishValue, .001 * m_nPageTransitionTime,
+		m_animationType, &m_animationOptions))
+	{
+		StopPageTransition();
+		return FALSE;
+	}
 
-	g_cs.Lock ();
-	m_mapManagers.SetAt(m_nTimerID, this);
-	g_cs.Unlock ();
-
-	OnTimerEvent();
+	::RedrawWindow(m_hwndHost, m_rectPageTransition, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
 	return TRUE;
 }
 //*****************************************************************************************
@@ -243,7 +249,7 @@ BOOL CBCGPPageTransitionManager::StartPageTransition(HWND hwdHost, HWND hwndPage
 //*****************************************************************************************
 BOOL CBCGPPageTransitionManager::StartBitmapTransition(HWND hwdHost, const CArray<HBITMAP, HBITMAP>& arPages, const CRect& rectPageTransition, BOOL bReverseOrder)
 {
-	StopPageTransition();
+	StopPageTransition(FALSE);
 
 	if (hwdHost == NULL || arPages.GetSize() < 2 || m_nPageTransitionTime < 1 || m_PageTransitionEffect == BCGPPageTransitionNone)
 	{
@@ -256,7 +262,7 @@ BOOL CBCGPPageTransitionManager::StartBitmapTransition(HWND hwdHost, const CArra
 	int cx = m_rectPageTransition.Width();
 	int cy = m_rectPageTransition.Height();
 
-	// Create panarama bitmap:
+	// Create panorama bitmap:
 	m_Panorama.SetImageSize(CSize(cx, cy));
 
 	BOOL bTwoPagesTransition = 
@@ -327,55 +333,22 @@ BOOL CBCGPPageTransitionManager::StartBitmapTransition(HWND hwdHost, HBITMAP hbm
 	return StartBitmapTransition(hwdHost, arPages, rectPageTransition, bReverseOrder);
 }
 //*****************************************************************************************
-VOID CALLBACK CBCGPPageTransitionManager::PageTransitionTimerProc(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR idEvent, DWORD /*dwTime*/)
+void CBCGPPageTransitionManager::OnAnimationValueChanged(double /*dblOldValue*/, double dblNewValue)
 {
-	CBCGPPageTransitionManager* pObject = NULL;
+	m_nPageTransitionOffset = (int)dblNewValue;
 	
-	g_cs.Lock ();
-	
-	if (!m_mapManagers.Lookup((UINT)idEvent, pObject))
-	{
-		g_cs.Unlock ();
-		return;
-	}
-	
-	ASSERT(pObject != NULL);
-	
-	g_cs.Unlock ();
-	
-	pObject->OnTimerEvent();
+	::RedrawWindow(m_hwndHost, m_rectPageTransition, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
 }
 //*****************************************************************************************
-void CBCGPPageTransitionManager::OnTimerEvent()
-{
-	m_nPageTransitionOffset += m_nPageTransitionStep;
-	
-	BOOL bStopTransition = FALSE;
-	
-	if (m_nPageTransitionStep < 0)
-	{
-		if (m_nPageTransitionOffset <= 0)
-		{
-			bStopTransition = TRUE;
-		}
-	}
-	else
-	{
-		if (m_nPageTransitionOffset >= m_nPageTransitionTotal)
-		{
-			bStopTransition = TRUE;
-		}
-	}
-	
-	CRect rectPageTransition = m_rectPageTransition;
-	
-	if (bStopTransition)
-	{
-		StopPageTransition();
-		OnPageTransitionFinished();
-	}
-	
-	::RedrawWindow(m_hwndHost, rectPageTransition, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+void CBCGPPageTransitionManager::OnAnimationFinished() 
+{ 
+	OnPageTransitionFinished(); 
+
+	m_nPageTransitionOffset = 0;
+	m_nPageTransitionStep = 0;
+	m_nPageTransitionTotal = 0;
+	m_rectPageTransition.SetRectEmpty();
+	m_Panorama.Clear();
 }
 //*****************************************************************************************
 void CBCGPPageTransitionManager::DoDrawTransition(CDC* pDC, BOOL bIsMemDC)
@@ -392,11 +365,13 @@ void CBCGPPageTransitionManager::DoDrawTransition(CDC* pDC, BOOL bIsMemDC)
 	
 	if (m_PageTransitionEffect == BCGPPageTransitionFade)
 	{
+		int nPageTransitionOffset = min(255, max(0, m_nPageTransitionOffset));
+
 		m_Panorama.DrawEx(pDC, m_rectPageTransition, m_nPageScreenshot1, CBCGPToolBarImages::ImageAlignHorzLeft, CBCGPToolBarImages::ImageAlignVertTop, 
-			NULL, (BYTE)(255 - m_nPageTransitionOffset), TRUE);
+			NULL, (BYTE)(255 - nPageTransitionOffset), TRUE);
 		
 		m_Panorama.DrawEx(pDC, m_rectPageTransition, m_nPageScreenshot2, CBCGPToolBarImages::ImageAlignHorzLeft, CBCGPToolBarImages::ImageAlignVertTop, 
-			NULL, (BYTE)m_nPageTransitionOffset, TRUE);
+			NULL, (BYTE)nPageTransitionOffset, TRUE);
 	}
 	else if (m_PageTransitionEffect == BCGPPageTransitionPop)
 	{
@@ -432,7 +407,11 @@ void CBCGPPageTransitionManager::DoDrawTransition(CDC* pDC, BOOL bIsMemDC)
 			CRect rectInter;
 			if (rectInter.IntersectRect(rectFrame, m_rectPageTransition))
 			{
-				m_Panorama.DrawEx(pDC, rectFrame, i, CBCGPToolBarImages::ImageAlignHorzLeft, CBCGPToolBarImages::ImageAlignVertTop, NULL, 255, TRUE);
+				BYTE bAlpha = m_PageTransitionEffect == BCGPPageTransitionAppear ?
+					(BYTE)min(255, max(0, (255 - (int)fabs(255.0 * (double)m_nPageTransitionOffset / m_nPageTransitionTotal)))) : (BYTE)255;
+
+				Sleep(1);
+				m_Panorama.DrawEx(pDC, rectFrame, i, CBCGPToolBarImages::ImageAlignHorzLeft, CBCGPToolBarImages::ImageAlignVertTop, NULL, bAlpha, TRUE);
 			}
 		}
 	}

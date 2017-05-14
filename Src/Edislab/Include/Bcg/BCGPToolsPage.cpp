@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -39,7 +39,7 @@ static const int iBtnMoveDn = 3;
 #pragma warning (disable : 4355)
 
 CBCGPToolsPage::CBCGPToolsPage() : 
-	CPropertyPage(CBCGPToolsPage::IDD),
+	CBCGPPropertyPage(CBCGPToolsPage::IDD),
 	m_wndToolsList (this)
 {
 	//{{AFX_DATA_INIT(CBCGPToolsPage)
@@ -60,7 +60,7 @@ CBCGPToolsPage::~CBCGPToolsPage()
 
 void CBCGPToolsPage::DoDataExchange(CDataExchange* pDX)
 {
-	CPropertyPage::DoDataExchange(pDX);
+	CBCGPPropertyPage::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPToolsPage)
 	DDX_Control(pDX, IDD_BCGBARRES_MENU_INITIAL_DIRECTORY, m_wndInitialDirBtn);
 	DDX_Control(pDX, IDD_BCGBARRES_MENU_ARGUMENTS, m_wndArgumentsBtn);
@@ -76,7 +76,7 @@ void CBCGPToolsPage::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CBCGPToolsPage, CPropertyPage)
+BEGIN_MESSAGE_MAP(CBCGPToolsPage, CBCGPPropertyPage)
 	//{{AFX_MSG_MAP(CBCGPToolsPage)
 	ON_BN_CLICKED(IDD_BCGBARRES_BROWSE_COMMAND, OnBcgbarresBrowseCommand)
 	ON_EN_UPDATE(IDD_BCGBARRES_ARGUMENTS, OnUpdateTool)
@@ -92,7 +92,7 @@ END_MESSAGE_MAP()
 
 BOOL CBCGPToolsPage::OnInitDialog() 
 {
-	CPropertyPage::OnInitDialog();
+	CBCGPPropertyPage::OnInitDialog();
 
 	VERIFY (g_pUserToolsManager != NULL);
 
@@ -293,7 +293,7 @@ CBCGPUserTool* CBCGPToolsPage::CreateNewTool ()
 void CBCGPToolsPage::OnOK() 
 {
 	OnUpdateTool();
-	CPropertyPage::OnOK();
+	CBCGPPropertyPage::OnOK();
 }
 //******************************************************************************
 BOOL CBCGPToolsPage::OnKillActive() 
@@ -307,7 +307,7 @@ BOOL CBCGPToolsPage::OnKillActive()
 		return FALSE;
 	}
 
-	return CPropertyPage::OnKillActive();
+	return CBCGPPropertyPage::OnKillActive();
 }
 //******************************************************************************
 void CBCGPToolsPage::EnableControls ()

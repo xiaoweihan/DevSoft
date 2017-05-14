@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -177,6 +177,9 @@ public:
 	virtual void OnDrawGridDataBar (CBCGPGridCtrl* pCtrl, CDC* pDC, CRect rect);
 	virtual void GetGridColorScaleBaseColors(CBCGPGridCtrl* pCtrl, COLORREF& clrLow, COLORREF& clrMid, COLORREF& clrHigh);
 
+	virtual COLORREF GetOutOffFilterTextColor(CBCGPGridCtrl* pCtrl);
+	virtual COLORREF GetGridDragHeaderTextColor(CBCGPGridCtrl* pCtrl);
+
 	// Report control:
 	virtual COLORREF OnFillReportCtrlRowBackground (CBCGPGridCtrl* pCtrl, CDC* pDC,
 		CRect rectFill, BOOL bSelected, BOOL bGroup);
@@ -208,6 +211,7 @@ public:
 	virtual BOOL IsDrawFocusRectOnPushButton(CBCGPButton* /*pButton*/) 	{ return TRUE; }
 
 #ifndef BCGP_EXCLUDE_RIBBON
+	virtual COLORREF OnFillRibbonBackstageLeftPane(CDC* pDC, CRect rectPanel);
 	virtual COLORREF OnDrawRibbonPanel (CDC* pDC, CBCGPRibbonPanel* pPanel, CRect rectPanel, CRect rectCaption);
 	virtual COLORREF OnFillRibbonButton (CDC* pDC, CBCGPRibbonButton* pButton);
 	virtual COLORREF OnFillRibbonMainPanelButton (CDC* pDC, CBCGPRibbonButton* pButton);
@@ -226,6 +230,10 @@ public:
 #ifndef BCGP_EXCLUDE_POPUP_WINDOW
 	virtual COLORREF GetPopupWindowLinkTextColor(CBCGPPopupWindow* pPopupWnd, BOOL bIsHover);
 #endif
+
+	// Gauges:
+	virtual void GetCircularGaugeColors(CBCGPCircularGaugeColors& colors);
+	virtual void GetLinearGaugeColors(CBCGPLinearGaugeColors& colors);
 
 protected:
 

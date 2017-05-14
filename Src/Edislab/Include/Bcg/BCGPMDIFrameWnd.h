@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -37,6 +37,8 @@ static const DWORD BCGP_MDI_CAN_MOVE_PREV		= 0x004;
 static const DWORD BCGP_MDI_CAN_MOVE_NEXT		= 0x008;
 static const DWORD BCGP_MDI_CAN_BE_DOCKED		= 0x010;
 
+BCGCBPRODLLEXPORT extern UINT BCGM_ON_ACTIVATE_MDI_TEAR_OFF_FRAME;
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMDIFrameWnd frame
 
@@ -56,6 +58,9 @@ class BCGCBPRODLLEXPORT CBCGPMDIFrameWnd : public CMDIFrameWnd
 	friend class CBCGPRibbonButton;
 	friend class CBCGPWinApp;
 	friend class CBCGPShadowManager;
+	friend class CBCGPMDIChildDragWnd;
+	friend class CBCGPFrameImpl;
+	friend class CBCGPRibbonBar;
 
 	DECLARE_DYNCREATE(CBCGPMDIFrameWnd)
 
@@ -108,6 +113,24 @@ public:
 	void ActiveItemRecalcLayout ();
 
 	static BOOL m_bDisableSetRedraw;
+	static HWND m_hwndLastActiveDetachedMDIFrame;
+	static HWND m_hwndActiveDetachedMDIFrame;
+
+	static CBCGPMDIFrameWnd* GetActiveTearOffFrame()
+	{
+		HWND hWndFrame = m_hwndLastActiveDetachedMDIFrame;
+		if (hWndFrame == NULL)
+		{
+			hWndFrame = m_hwndActiveDetachedMDIFrame;
+		}
+
+		if (hWndFrame != NULL && ::IsWindow(hWndFrame))
+		{
+			return DYNAMIC_DOWNCAST(CBCGPMDIFrameWnd, CWnd::FromHandlePermanent(hWndFrame));
+		}
+
+		return NULL;
+	}
 
 	CBCGPRibbonBar* GetRibbonBar ()
 	{
@@ -136,15 +159,22 @@ protected:
 	CString					m_strWindowsDlgMenuText;
 	BOOL					m_bShowWindowsDlgAlways;
 	BOOL					m_bShowWindowsDlgHelpButton;
+	BOOL					m_bResizableWindowsDlg;
 	BOOL					m_bCanCovertControlBarToMDIChild;
 
 	BOOL					m_bWasMaximized;
 	BOOL					m_bIsMinimized;
 
 	BOOL					m_bClosing;
+	BOOL					m_bAutoPaneActivation;
+
+	BOOL					m_bActivatedBySysKey;
+	BOOL					m_bIsMDIChildDetached;
+	BOOL					m_bIsInternalEnable;
+
 	int						m_nFrameID; // need for uniqueness when saving state in MTI 
 
-	// workaround for Pront Preview bug in VS 7.1
+	// workaround for Print Preview bug in VS 7.1
 	CFrameWnd*				m_pPrintPreviewFrame;
 
 // Operations
@@ -174,7 +204,7 @@ public:
 	BOOL EnableDocking (DWORD dwDockStyle);	
 	BOOL EnableAutoHideBars (DWORD dwDockStyle, BOOL bActivateOnMouseClick = FALSE);
 
-	void EnableMaximizeFloatingBars(BOOL bEnable = TRUE, BOOL bMaximizeByDblClick = FALSE);
+	void EnableMaximizeFloatingBars(BOOL bEnable = TRUE, BOOL bMaximizeByDblClick = FALSE, BOOL bRestoreMaximizeFloatingBars = FALSE);
 	BOOL AreFloatingBarsCanBeMaximized() const;
 
 	CBCGPBaseControlBar* GetControlBar (UINT nID);
@@ -183,6 +213,11 @@ public:
 	virtual BOOL OnMoveMiniFrame	(CWnd* pFrame);
 	virtual void RecalcLayout (BOOL bNotify = TRUE);
 	
+	BOOL ActivateNextPane(BOOL bPrev = FALSE)
+	{
+		return m_Impl.ActivateNextPane(bPrev, MDIGetActive());
+	}
+
 	//-------------------- MDI Tab Groups interface ---
 	DWORD GetMDITabsContextMenuAllowedItems ()
 	{
@@ -227,20 +262,38 @@ public:
 		m_Impl.SetupToolbarMenu (menu, uiViewUserToolbarCmdFirst, uiViewUserToolbarCmdLast);
 	}
 
+	// Navigation:
 	void EnableWindowsDialog (UINT uiMenuId, 
 		LPCTSTR lpszMenuText,
 		BOOL bShowAllways = FALSE,
-		BOOL bShowHelpButton = FALSE);
+		BOOL bShowHelpButton = FALSE,
+		BOOL bResizable = FALSE);
+
 	void EnableWindowsDialog (UINT uiMenuId, 
 		UINT uiMenuTextResId,
 		BOOL bShowAllways = FALSE,
-		BOOL bShowHelpButton = FALSE);
+		BOOL bShowHelpButton = FALSE,
+		BOOL bResizable = FALSE);
 		// Enable built-in CBCGPWindowsManagerDlg dialog. When bShowAllways
 		// is TRUE, show windows dialog everytime; otherwise only instead of
 		// the statndard "Windows..." dialog (appear if more than 9 windows 
 		// are open)
-	void ShowWindowsDialog ();
+
+	void ShowWindowsDialog();
 	
+	void EnableWindowsNavigator(BOOL bEnable = TRUE);
+	void EnableWindowsNavigator(UINT nNextCmdID, UINT nPrevCmdID);
+
+	BOOL IsWindowsNavigatorEnabled() const
+	{
+		return m_Impl.m_bIsWindowsNavigatorEnabled;
+	}
+
+	virtual CBCGPMDIFrameWnd* DetachMDIChild(CBCGPMDIChildWnd* pMDIChildWnd, CRect rectNewFrame);
+	virtual BOOL AttachMDIChild(CBCGPMDIChildWnd* pMDIChildWnd);
+
+	static void RestoreDetachedFrameActivation();
+
 	// Enable/Disable MDI child tabs:
 	void EnableMDITabs (BOOL bEnable = TRUE, BOOL bIcons = TRUE,
 						CBCGPTabWnd::Location tabLocation = CBCGPTabWnd::LOCATION_BOTTOM,
@@ -277,6 +330,23 @@ public:
 		return m_wndClientArea.IsMDITabbedGroup ();
 	}
 
+	// Tear-off MDI child windows support:
+	void EnableTearOffMDIChildren(BOOL bEnable = TRUE)
+	{
+		m_wndClientArea.m_bEnableTearOffMDIChildren = bEnable;
+	}
+
+	BOOL AreMDIChildrenTearOff() const
+	{
+		return m_wndClientArea.m_bEnableTearOffMDIChildren;
+	}
+
+	BOOL IsTearOff() const
+	{
+		return m_bIsMDIChildDetached;
+	}
+
+	HMENU GetActiveMDITearOffMenu() const;
 
 	CBCGPTabWnd& GetMDITabs ()
 	{
@@ -349,10 +419,7 @@ public:
 		return m_bCanCovertControlBarToMDIChild;
 	}
 
-	void SetRibbonBackstageView (CBCGPRibbonBackstageView* pView)
-	{
-		m_Impl.SetRibbonBackstageView(pView);
-	}
+	void SetRibbonBackstageView (CBCGPRibbonBackstageView* pView);
 
 	BOOL IsRibbonBackstageView() const
 	{
@@ -367,6 +434,18 @@ public:
 		m_Impl.m_bDisableThemeCaption = TRUE;
 	}
 
+	int GetSelectedMDIChildren(CList<HWND, HWND>& lstSelected) const;
+
+	void SetPersistantFrame(BOOL bSet)
+	{
+		m_Impl.m_bIsPersistantFrame = bSet;
+	}
+	
+	BOOL IsPersistantFrame() const
+	{
+		return m_Impl.m_bIsPersistantFrame;
+	}
+
 	// Win 7 taskbar interaction:
 	BOOL SetTaskBarProgressValue(int nCompleted, int nTotal);
 	BOOL SetTaskBarProgressState(BCGP_TBPFLAG tbpFlags);
@@ -376,6 +455,7 @@ public:
 
 protected:
 	virtual BOOL OnSetMenu (HMENU hmenu);
+	virtual void OnMDIClientAreaStyleChanging(int /*nStyleType*/, LPSTYLESTRUCT /*lpStyleStruct*/)	{}
 
 // Implementation:
 	void InitUserToolbars (LPCTSTR lpszRegEntry, UINT uiUserToolbarFirst, UINT uiUserToolbarLast)
@@ -432,6 +512,7 @@ protected:
 	virtual BOOL OnCreateClient(LPCREATESTRUCT lpcs, CCreateContext* pContext);
 	virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
 	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam);
 	//}}AFX_VIRTUAL
 
 	virtual HMENU GetWindowMenuPopup (HMENU hMenuBar);
@@ -441,8 +522,10 @@ protected:
 
 	BOOL ShowPopupMenu (CBCGPPopupMenu* pMenuPopup);
 
+	void CleanUpLastMDIChild();
+
 public:
-	virtual BOOL OnShowPopupMenu (CBCGPPopupMenu* /*pMenuPopup*/);
+	virtual BOOL OnShowPopupMenu (CBCGPPopupMenu* pMenuPopup);
 
 	virtual BOOL OnShowCustomizePane(CBCGPPopupMenu* pMenuPane, UINT uiToolbarID)
 	{
@@ -456,8 +539,11 @@ public:
 									const CBCGPToolbarMenuButton* pMenuButton, 
 									const CRect& rectImage);
 
-	virtual BOOL OnMenuButtonToolHitTest (CBCGPToolbarButton* /*pButton*/, TOOLINFO* /*pTI*/)
+	virtual BOOL OnMenuButtonToolHitTest (CBCGPToolbarButton* pButton, TOOLINFO* pTI)
 	{
+		UNREFERENCED_PARAMETER(pButton);
+		UNREFERENCED_PARAMETER(pTI);
+
 		return FALSE;
 	}
 
@@ -500,6 +586,11 @@ public:
 		return TRUE;
 	}
 
+	virtual HICON OnGetRecentFileIcon(CBCGPRecentFilesListBox* pWndListBox, const CString& strPath, int nIndex) const
+	{
+		return m_Impl.OnGetRecentFileIcon(pWndListBox, strPath, nIndex);
+	}
+
 	virtual BOOL LoadMDIState (LPCTSTR lpszProfileName);
 	virtual BOOL SaveMDIState (LPCTSTR lpszProfileName);
 
@@ -507,6 +598,9 @@ public:
 	virtual CBCGPMDIChildWnd* CreateNewWindow (LPCTSTR lpcszDocName, CObject* pObj);
 
 	virtual void OnCancelWndCapture(CWnd* pWndCapture);
+
+	BOOL LoadDockingLayout(LPCTSTR lpszProfileName = _T("DefaultLayout"));
+	BOOL SaveDockingLayout(LPCTSTR lpszProfileName = _T("DefaultLayout"));
 
 	// Taskbar interaction support:
 	void RegisterAllMDIChildrenWithTaskbar(BOOL bRegister = TRUE);
@@ -536,6 +630,9 @@ protected:
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnWindowPosChanging(WINDOWPOS FAR* lpwndpos);
+	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
+	afx_msg void OnEnable(BOOL bEnable);
 	//}}AFX_MSG
 	#if _MSC_VER >= 1300
 	afx_msg void OnActivateApp(BOOL bActive, DWORD dwThreadID);
@@ -558,6 +655,13 @@ protected:
 	afx_msg LRESULT OnDWMCompositionChanged(WPARAM,LPARAM);
 	afx_msg LRESULT OnPowerBroadcast(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnAfterTaskbarActivate(WPARAM, LPARAM);
+	afx_msg LRESULT OnReactivateDetachedFrame(WPARAM, LPARAM);
+	afx_msg LRESULT OnCleanDetachedFrame(WPARAM, LPARAM);
+	afx_msg LRESULT OnSyncFrameOptions(WPARAM, LPARAM);
+	afx_msg LRESULT OnChangeBackstagePropHighlighting(WPARAM, LPARAM);
+	afx_msg LRESULT OnPostMDITearOffFrame(WPARAM wp, LPARAM);
+	afx_msg LRESULT OnDPIChanged(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnThemeChanged(WPARAM wp, LPARAM lp);
 	DECLARE_MESSAGE_MAP()
 };
 

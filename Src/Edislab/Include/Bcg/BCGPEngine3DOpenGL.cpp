@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -437,26 +437,6 @@ void CBCGPEngine3DOpenGL::InitGL()
 
 	(*CBCGPOpenGLWrapper::m_pglEnable)(GL_LINE_SMOOTH);  
   	(*CBCGPOpenGLWrapper::m_pglHint)(GL_LINE_SMOOTH_HINT, GL_NICEST);
-
-
-// 	glEnable(GL_LIGHT0);
-// 	glEnable(GL_LIGHTING);
-// 	glEnable(GL_COLOR_MATERIAL);
-
-
-//     GLfloat light_ambient[] = { 0.1, 0.1, 0.1, 1.0 };
-//     GLfloat light_diffuse[] = { 1.0, 1.0, 1.0, 1.0 };
-//     GLfloat light_specular[] = { 1.0, 1.0, 1.0, 1.0 };
-//     GLfloat light_position[] = { 1.0, 3.5, 0.8, 0.0 };
-// 
-//     GLfloat global_ambient[] = { 0.1, 0.1, 0.1, 1.0 };
-// 
-//     glLightfv (GL_LIGHT0, GL_AMBIENT, light_ambient);
-//     glLightfv (GL_LIGHT0, GL_DIFFUSE, light_diffuse);
-//     glLightfv (GL_LIGHT0, GL_SPECULAR, light_specular);
-//     glLightfv (GL_LIGHT0, GL_POSITION, light_position);
-//     glLightModelfv (GL_LIGHT_MODEL_AMBIENT, global_ambient);
-
 }
 //****************************************************************************************
 void CBCGPEngine3DOpenGL::ShutDown()

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -30,7 +30,9 @@ IMPLEMENT_DYNAMIC(CBCGPLinearGaugeCtrl, CBCGPVisualCtrl)
 
 void CBCGPLinearGaugeColors::SetTheme(BCGP_LINEAR_GAUGE_COLOR_THEME theme)
 {
-	switch(theme)
+	m_bIsVisualManagerTheme = FALSE;
+
+	switch (theme)
 	{
 	case BCGP_LINEAR_GAUGE_SILVER:
 		m_brPointerOutline.SetColor(CBCGPColor::DarkGray);
@@ -85,6 +87,11 @@ void CBCGPLinearGaugeColors::SetTheme(BCGP_LINEAR_GAUGE_COLOR_THEME theme)
 		m_brFill.SetColor(CBCGPColor::FloralWhite);
 		m_brTickMarkFill.SetColors(CBCGPColor::LightGray, CBCGPColor::White, CBCGPBrush::BCGP_GRADIENT_RADIAL_TOP_LEFT);
 		m_brTickMarkOutline.SetColor(CBCGPColor::Gray);
+		break;
+	
+	case BCGP_LINEAR_GAUGE_VISUAL_MANAGER:
+		CBCGPVisualManager::GetInstance()->GetLinearGaugeColors(*this);
+		m_bIsVisualManagerTheme = TRUE;
 		break;
 	}
 }
@@ -272,7 +279,11 @@ void CBCGPLinearGaugeImpl::OnDraw(CBCGPGraphicsManager* pGMSrc, const CBCGPRect&
 	if (dwFlags & BCGP_DRAW_DYNAMIC)
 	{
 		CBCGPRect rectSaved = m_rect;
-		m_rect.OffsetRect(-m_ptScrollOffset);
+
+		if (m_bIsSubGauge)
+		{
+			m_rect.OffsetRect(-m_ptScrollOffset);
+		}
 
 		int i = 0;
 
@@ -333,17 +344,22 @@ void CBCGPLinearGaugeImpl::OnDrawScale(CBCGPGraphicsManager* pGM, int nScale)
 	}
 
 	int i = 0;
-	double dblStep = (pScale->m_dblFinish > pScale->m_dblStart) ? pScale->m_dblStep : -pScale->m_dblStep;
 
-	double dblMinorTickSize = pScale->m_dblMinorTickMarkSize * scaleRatio;
-	double dblMajorTickSize = pScale->m_dblMajorTickMarkSize * scaleRatio;
+	const double dblValuePower = pow(10.0, bcg_round(log10(max(1.0, 1.0 / fabs(pScale->m_dblStep)))));
+
+	const double dblStart = pScale->m_dblStart * dblValuePower;
+	const double dblFinish = pScale->m_dblFinish * dblValuePower;
+	const double dblStep = ((dblFinish > dblStart) ? pScale->m_dblStep : -pScale->m_dblStep) * dblValuePower;
+
+	const double dblMinorTickSize = pScale->m_dblMinorTickMarkSize * scaleRatio;
+	const double dblMajorTickSize = pScale->m_dblMajorTickMarkSize * scaleRatio;
 	CBCGPGaugeScaleObject::BCGP_TICKMARK_POSITION position = pScale->m_MinorTickMarkPosition;
 	
-	for (double dblVal = pScale->m_dblStart; 
-		(dblStep > 0. && dblVal <= pScale->m_dblFinish) || (dblStep < 0. && dblVal >= pScale->m_dblFinish); 
+	for (double dblVal = dblStart; 
+		(dblStep > 0. && dblVal <= dblFinish) || (dblStep < 0. && dblVal >= dblFinish); 
 		dblVal += dblStep, i++)
 	{
-		const BOOL bIsLastTick = (pScale->m_dblFinish > pScale->m_dblStart && dblVal + dblStep > pScale->m_dblFinish);
+		const BOOL bIsLastTick = (dblFinish > dblStart && (dblVal + dblStep) > dblFinish);
 		BOOL bIsMajorTick = pScale->m_dblMajorTickMarkStep != 0. && ((i % bcg_round(pScale->m_dblMajorTickMarkStep)) == 0);
 
 		if (!bIsMajorTick && (i == 0 || bIsLastTick))
@@ -354,8 +370,13 @@ void CBCGPLinearGaugeImpl::OnDrawScale(CBCGPGraphicsManager* pGM, int nScale)
 
 		double dblCurrTickSize = bIsMajorTick ? dblMajorTickSize : dblMinorTickSize;
 
+		const double dblVal2 = dblVal / dblValuePower;
+
 		CBCGPPoint ptFrom;
-		ValueToPoint(dblVal, ptFrom, nScale);
+		if (!ValueToPoint(dblVal2, ptFrom, nScale))
+		{
+			continue;
+		}
 
 		if (!bIsMajorTick && position != CBCGPGaugeScaleObject::BCGP_TICKMARK_POSITION_NEAR && 
 			dblCurrTickSize < dblMajorTickSize)
@@ -392,7 +413,7 @@ void CBCGPLinearGaugeImpl::OnDrawScale(CBCGPGraphicsManager* pGM, int nScale)
 		{
 			OnDrawTickMark(pGM, ptFrom, ptTo, 
 				bIsMajorTick ? pScale->m_MajorTickMarkStyle : pScale->m_MinorTickMarkStyle,
-				bIsMajorTick, dblVal, nScale,
+				bIsMajorTick, dblVal2, nScale,
 				bIsMajorTick ? pScale->m_brTickMarkMajor : pScale->m_brTickMarkMinor,
 				bIsMajorTick ? pScale->m_brTickMarkMajorOutline : pScale->m_brTickMarkMinorOutline);
 		}
@@ -400,7 +421,7 @@ void CBCGPLinearGaugeImpl::OnDrawScale(CBCGPGraphicsManager* pGM, int nScale)
 		if (bIsMajorTick)
 		{
 			CString strLabel;
-			GetTickMarkLabel(strLabel, pScale->m_strLabelFormat, dblVal, nScale);
+			GetTickMarkLabel(strLabel, pScale->m_strLabelFormat, dblVal2, nScale);
 
 			if (!strLabel.IsEmpty())
 			{
@@ -432,7 +453,7 @@ void CBCGPLinearGaugeImpl::OnDrawScale(CBCGPGraphicsManager* pGM, int nScale)
 				rectText.right = rectText.left + sizeText.cx;
 				rectText.bottom = rectText.top + sizeText.cy;
 
-				OnDrawTickMarkTextLabel(pGM, m_textFormat, rectText, strLabel, dblVal, nScale, 
+				OnDrawTickMarkTextLabel(pGM, m_textFormat, rectText, strLabel, dblVal2, nScale, 
 					pScale->m_brText.IsEmpty() ? m_Colors.m_brText : pScale->m_brText);
 			}
 		}
@@ -666,7 +687,7 @@ void CBCGPLinearGaugeImpl::CreatePointerPoints(CBCGPPointsArray& arPoints, int n
 
 	const double scaleRatio = GetScaleRatioMid();
 
-	double dblValue = pData->m_nAnimTimerID != 0 ? pData->m_dblAnimatedValue : pData->m_dblValue;
+	double dblValue = pData->IsAnimated() ? pData->m_dblAnimatedValue : pData->m_dblValue;
 
 	double dblSizeMax = max(pScale->m_dblMajorTickMarkSize, 2. * pScale->m_dblMinorTickMarkSize) * scaleRatio;
 	double dblSize = dblSizeMax;
@@ -823,8 +844,6 @@ BOOL CBCGPLinearGaugeImpl::RemovePointer(int nIndex, BOOL bRedraw)
 	{
 		return FALSE;
 	}
-
-	StopAnimation(m_arData[nIndex]->GetAnimationID(), FALSE);
 
 	delete m_arData[nIndex];
 	m_arData.RemoveAt(nIndex);
@@ -1020,17 +1039,31 @@ BOOL CBCGPLinearGaugeImpl::ValueToPoint(double dblValue, CBCGPPoint& point, int 
 		return FALSE;
 	}
 
-	double dblStart = min(pScale->m_dblStart, pScale->m_dblFinish);
-	double dblFinish = max(pScale->m_dblStart, pScale->m_dblFinish);
+	const double dblValuePower = pow(10.0, bcg_round(log10(max(1.0, 1.0 / fabs(pScale->m_dblStep)))));
 
-	if (dblValue < dblStart || dblValue > dblFinish)
+	dblValue *= dblValuePower;
+
+	double dblStart = pScale->m_dblStart * dblValuePower;
+	double dblFinish = pScale->m_dblFinish * dblValuePower;
+
+	if (dblStart == dblFinish)
 	{
 		return FALSE;
 	}
 
-	if (pScale->m_dblFinish == pScale->m_dblStart)
+	if (dblStart < dblFinish)
 	{
-		return FALSE;
+		if (dblValue < dblStart || dblValue > dblFinish)
+		{
+			return FALSE;
+		}
+	}
+	else
+	{
+		if (dblValue < dblFinish || dblValue > dblStart)
+		{
+			return FALSE;
+		}
 	}
 
 	CBCGPRect rect = m_rect;
@@ -1045,7 +1078,7 @@ BOOL CBCGPLinearGaugeImpl::ValueToPoint(double dblValue, CBCGPPoint& point, int 
 	}
 
 	const double dblTotalSize = m_bIsVertical ? rect.Height() : rect.Width();
-	const double delta = dblTotalSize * fabs(dblValue - pScale->m_dblStart) / fabs(pScale->m_dblFinish - pScale->m_dblStart);
+	const double delta = dblTotalSize * fabs(dblValue - dblStart) / fabs(dblFinish - dblStart);
 
 	point.x = m_bIsVertical ? rect.left : rect.left + delta;
 	point.y = m_bIsVertical ? rect.bottom - delta : rect.top;
@@ -1132,15 +1165,26 @@ BOOL CBCGPLinearGaugeImpl::HitTestValue(const CBCGPPoint& pt, double& dblValue, 
 		return FALSE;
 	}
 
+	double delta = 0;
+
 	if (m_bIsVertical)
 	{
 		const double dblTotalSize = rect.Height();
-		dblValue = pScale->m_dblStart + (rect.bottom - pt.y) * fabs(pScale->m_dblFinish - pScale->m_dblStart) / dblTotalSize;
+		delta = (rect.bottom - pt.y) * fabs(pScale->m_dblFinish - pScale->m_dblStart) / dblTotalSize;
 	}
 	else
 	{
 		const double dblTotalSize = rect.Width();
-		dblValue = pScale->m_dblStart + (pt.x - rect.left) * fabs(pScale->m_dblFinish - pScale->m_dblStart) / dblTotalSize;
+		delta = (pt.x - rect.left) * fabs(pScale->m_dblFinish - pScale->m_dblStart) / dblTotalSize;
+	}
+
+	if (pScale->m_dblStart < pScale->m_dblFinish)
+	{
+		dblValue = pScale->m_dblStart + delta;
+	}
+	else
+	{
+		dblValue = pScale->m_dblStart - delta;
 	}
 
 	return TRUE;
@@ -1151,6 +1195,8 @@ BOOL CBCGPLinearGaugeImpl::OnSetMouseCursor(const CBCGPPoint& pt)
 	if (m_bIsInteractiveMode)
 	{
 		CBCGPRect rect = m_rect;
+		rect.OffsetRect(-m_ptScrollOffset);
+
 		rect.DeflateRect(m_nFrameSize, m_nFrameSize);
 
 		if (rect.PtInRect(pt))

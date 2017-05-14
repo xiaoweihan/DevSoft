@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -114,21 +114,44 @@ extern BCGCBPRODLLEXPORT UINT BCGP_PLANNER_END_CHANGE_OPERATION;
 #define BCGP_PLANNER_RULE_MONTHLY 3
 #define BCGP_PLANNER_RULE_YEARLY  4
 
-#define BCGP_PLANNER_DRAW_APP_GRADIENT_FILL			0x0001
-#define BCGP_PLANNER_DRAW_APP_ROUNDED_CORNERS		0x0002
-#define BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION	0x0004
-#define BCGP_PLANNER_DRAW_APP_NO_MULTIDAY_CLOCKS	0x0008
-#define BCGP_PLANNER_DRAW_APP_DURATION_SHAPE		0x0010
-#define BCGP_PLANNER_DRAW_APP_NO_DURATION			0x0020
-#define BCGP_PLANNER_DRAW_APP_NO_IMAGES				0x0040
-#define BCGP_PLANNER_DRAW_APP_NO_RECURRENCE_IMAGE	0x0080
-#define BCGP_PLANNER_DRAW_VIEW_NO_DURATION			0x0100
-#define BCGP_PLANNER_DRAW_VIEW_WEEK_BAR				0x0200
-#define BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD		0x0400
-#define BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT	0x0800
-#define BCGP_PLANNER_DRAW_VIEW_NO_UPDOWN			0x1000
-#define BCGP_PLANNER_DRAW_VIEW_DAYS_UPDOWN			0x2000
-#define BCGP_PLANNER_DRAW_VIEW_DAYS_UPDOWN_VCENTER	0x4000
+#define BCGP_PLANNER_DRAW_APP_GRADIENT_FILL				0x00000001
+#define BCGP_PLANNER_DRAW_APP_ROUNDED_CORNERS			0x00000002
+#define BCGP_PLANNER_DRAW_APP_OVERRIDE_SELECTION		0x00000004
+#define BCGP_PLANNER_DRAW_APP_NO_MULTIDAY_CLOCKS		0x00000008
+#define BCGP_PLANNER_DRAW_APP_DURATION_SHAPE			0x00000010
+#define BCGP_PLANNER_DRAW_APP_NO_DURATION				0x00000020
+#define BCGP_PLANNER_DRAW_APP_NO_IMAGES					0x00000040
+#define BCGP_PLANNER_DRAW_APP_NO_RECURRENCE_IMAGE		0x00000080
+#define BCGP_PLANNER_DRAW_VIEW_NO_DURATION				0x00000100
+#define BCGP_PLANNER_DRAW_VIEW_WEEK_BAR					0x00000200
+#define BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD			0x00000400
+#define BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_COMPACT		0x00000800
+#define BCGP_PLANNER_DRAW_VIEW_NO_UPDOWN				0x00001000
+#define BCGP_PLANNER_DRAW_VIEW_DAYS_UPDOWN				0x00002000
+#define BCGP_PLANNER_DRAW_VIEW_DAYS_UPDOWN_VCENTER		0x00004000
+
+#define BCGP_PLANNER_DRAW_APP_NO_SHADOW					0x00008000
+#define BCGP_PLANNER_DRAW_APP_NO_BORDER					0x00010000
+#define BCGP_PLANNER_DRAW_APP_DEFAULT_BKGND				0x00020000
+#define BCGP_PLANNER_DRAW_APP_DURATION_MULTIDAY			0x00040000
+#define BCGP_PLANNER_DRAW_APP_DURATION_WEEK_MONTH		0x00080000
+
+#define BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_BOLD_FC		0x00100000
+#define BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_EXTENDED		0x00200000
+#define BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_UPPER		0x00400000
+#define BCGP_PLANNER_DRAW_VIEW_CAPTION_DAY_WITH_HEADER	0x00800000
+
+#define BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD				0x01000000
+#define BCGP_PLANNER_DRAW_VIEW_HEADER_BOLD_CUR			0x02000000
+#define BCGP_PLANNER_DRAW_VIEW_HEADER_EXTENDED			0x04000000
+#define BCGP_PLANNER_DRAW_VIEW_HEADER_UPPER				0x08000000
+
+#define BCGP_PLANNER_DRAW_VIEW_WEEK_BAR_FULL_WIDTH		0x10000000
+#define BCGP_PLANNER_DRAW_VIEW_WEEK_BAR_FULL_HEIGHT		0x20000000
+
+#define BCGP_PLANNER_DRAW_VIEW_TIME_BAR_NO_MINUTS		0x40000000
+#define BCGP_PLANNER_DRAW_VIEW_TIMELINE_FULL_WIDTH		0x80000000
+
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPPlannerManagerCtrl window
@@ -146,7 +169,7 @@ public:
 	CBCGPPlannerManagerCtrl(CRuntimeClass* pStorageClass = NULL, 
 							CRuntimeClass* pClockIconsClass = NULL);
 	virtual ~CBCGPPlannerManagerCtrl();
-	
+
 	void SetStorageRTC (CRuntimeClass* pStorageClass = NULL, BOOL bDelete = TRUE);
 	void SetClockIconsRTC (CRuntimeClass* pClockIconsClass = NULL, BOOL bDelete = TRUE);
 
@@ -293,8 +316,20 @@ public:
 	void SetDrawTimeAsIcons (BOOL bDraw);
 	BOOL IsDrawTimeAsIcons () const;
 
+	BOOL IsDrawTime () const;
+	void SetDrawTime (BOOL bDraw);
+	BOOL IsDrawTimeMulti () const;
+	void SetDrawTimeMulti (BOOL bDraw);
+	BOOL IsDrawTimeSmart () const;
+	void SetDrawTimeSmart (BOOL bDraw);
+
 	void SetCompressWeekend (BOOL bCompress);
 	BOOL IsCompressWeekend () const;
+
+	void SetWeekBarType (CBCGPPlannerView::BCGP_PLANNER_WEEKBAR type);
+	CBCGPPlannerView::BCGP_PLANNER_WEEKBAR GetWeekBarType () const;
+
+	virtual void GetWeekBarText(const COleDateTime& day1, const COleDateTime& day2, CString& strText) const;
 
 	void SetBackgroundColor (COLORREF clr, BOOL bRedraw = TRUE);
 	COLORREF GetBackgroundColor () const
@@ -323,6 +358,9 @@ public:
 
 	void SetDrawFlags (DWORD dwFlags, BOOL bRedraw = TRUE);
 	DWORD GetDrawFlags () const;
+
+	void SetDrawTimeFlags (BCGP_PLANNER_TYPE type, DWORD dwFlags, BOOL bRedraw = TRUE);
+	DWORD GetDrawTimeFlags (BCGP_PLANNER_TYPE type) const;
 
 	void SetUseDayViewInsteadWeekView (BOOL bUse);
 	BOOL IsUseDayViewInsteadWeekView () const
@@ -366,8 +404,8 @@ public:
 
 	static void DrawImageIcon (CDC* pDC, const CPoint& pt, int nIndex);
 
-	static void SetImages (UINT nResID, int cxImage, COLORREF clrTransparent = RGB (255, 0, 255));
-	static void SetImages (LPCTSTR szResID, int cxImage, COLORREF clrTransparent = RGB (255, 0, 255));
+	static void SetImages (UINT nResID, int cxImage, COLORREF clrTransparent = RGB (255, 0, 255), BOOL bAutoScale = TRUE);
+	static void SetImages (LPCTSTR szResID, int cxImage, COLORREF clrTransparent = RGB (255, 0, 255), BOOL bAutoScale = TRUE);
 
 	static DWORD RegisterRule (CRuntimeClass* pRuleClass);
 	static CBCGPRecurrenceBaseRule* CreateRule (DWORD ID);
@@ -501,8 +539,8 @@ public:
 		return CSize (0, 0);
 	}
 
-	BOOL SetUpDownIcons(UINT nResID, COLORREF clrTransparent = RGB (255, 0, 255));
-	BOOL SetUpDownIcons(LPCTSTR szResID, COLORREF clrTransparent = RGB (255, 0, 255));
+	BOOL SetUpDownIcons(UINT nResID, COLORREF clrTransparent = RGB (255, 0, 255), BOOL bAutoScale = TRUE);
+	BOOL SetUpDownIcons(LPCTSTR szResID, COLORREF clrTransparent = RGB (255, 0, 255), BOOL bAutoScale = TRUE);
 
 	// 0 - up; 1 - down
 	HICON GetUpDownIcon(int nType);

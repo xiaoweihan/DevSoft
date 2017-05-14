@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -27,17 +27,19 @@ static char THIS_FILE[] = __FILE__;
 
 
 CToolbarNameDlg::CToolbarNameDlg(CWnd* pParent /*=NULL*/)
-	: CDialog(CToolbarNameDlg::IDD, pParent)
+	: CBCGPDialog(CToolbarNameDlg::IDD, pParent)
 {
 	//{{AFX_DATA_INIT(CToolbarNameDlg)
 	m_strToolbarName = _T("");
 	//}}AFX_DATA_INIT
+
+	EnableVisualManagerStyle (globalData.m_bUseVisualManagerInBuiltInDialogs, TRUE);
 }
 
 
 void CToolbarNameDlg::DoDataExchange(CDataExchange* pDX)
 {
-	CDialog::DoDataExchange(pDX);
+	CBCGPDialog::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CToolbarNameDlg)
 	DDX_Control(pDX, IDOK, m_btnOk);
 	DDX_Text(pDX, IDC_BCGBARRES_TOOLBAR_NAME, m_strToolbarName);
@@ -45,7 +47,7 @@ void CToolbarNameDlg::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CToolbarNameDlg, CDialog)
+BEGIN_MESSAGE_MAP(CToolbarNameDlg, CBCGPDialog)
 	//{{AFX_MSG_MAP(CToolbarNameDlg)
 	ON_EN_UPDATE(IDC_BCGBARRES_TOOLBAR_NAME, OnUpdateToolbarName)
 	//}}AFX_MSG_MAP
@@ -62,7 +64,7 @@ void CToolbarNameDlg::OnUpdateToolbarName()
 //**********************************************************************************
 BOOL CToolbarNameDlg::OnInitDialog() 
 {
-	CDialog::OnInitDialog();
+	CBCGPDialog::OnInitDialog();
 	
 	if (AfxGetMainWnd () != NULL && 
 		(AfxGetMainWnd ()->GetExStyle () & WS_EX_LAYOUTRTL))

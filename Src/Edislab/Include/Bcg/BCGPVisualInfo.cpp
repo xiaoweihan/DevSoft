@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -124,6 +124,40 @@ static LPCTSTR s_szTag_FillOn_Brush           = _T("FILL_ON_BRUSH");
 static LPCTSTR s_szTag_LabelOff_Brush         = _T("LABEL_OFF_BRUSH");
 static LPCTSTR s_szTag_LabelOn_Brush          = _T("LABEL_ON_BRUSH");
 static LPCTSTR s_szTag_Focus_Brush            = _T("FOCUS_BRUSH");
+static LPCTSTR s_szTag_Normal_Brush           = _T("NORMAL_BRUSH");
+static LPCTSTR s_szTag_Pressed_Brush          = _T("PRESSED_BRUSH");
+
+static LPCTSTR s_szTag_Background_Color       = _T("BACKGROUND_COLOR");
+static LPCTSTR s_szTag_Text_Color             = _T("TEXT_COLOR");
+static LPCTSTR s_szTag_TextPreview_Color      = _T("TEXTPREVIEW_COLOR");
+static LPCTSTR s_szTag_TextHighlighted_Color  = _T("TEXTHIGHLIGHTED_COLOR");
+static LPCTSTR s_szTag_Highlighted_Color      = _T("HIGHLIGHTED_COLOR");
+static LPCTSTR s_szTag_Prompt_Color           = _T("PROMPT_COLOR");
+static LPCTSTR s_szTag_Border_Color           = _T("BORDER_COLOR");
+static LPCTSTR s_szTag_BorderFocused_Color    = _T("BORDERFOCUSED_COLOR");
+static LPCTSTR s_szTag_Header_Color           = _T("HEADER_COLOR");
+static LPCTSTR s_szTag_HorzLine_Color         = _T("HORZLINE_COLOR");
+static LPCTSTR s_szTag_VertLine_Color         = _T("VERTLINE_COLOR");
+static LPCTSTR s_szTag_Gradient_Color         = _T("GRADIENT_COLOR");
+static LPCTSTR s_szTag_Gradient_Angle         = _T("GRADIENT_ANGLE");
+static LPCTSTR s_szTag_EvenColors             = _T("COLORS_EVEN");
+static LPCTSTR s_szTag_OddColors              = _T("COLORS_ODD");
+static LPCTSTR s_szTag_GroupColors            = _T("COLORS_GROUP");
+static LPCTSTR s_szTag_GroupSelColors         = _T("COLORS_GROUP_SEL");
+static LPCTSTR s_szTag_GroupSelInactiveColors = _T("COLORS_GROUP_SEL_INACTIVE");
+static LPCTSTR s_szTag_SelColors              = _T("COLORS_SEL");
+static LPCTSTR s_szTag_SelInactiveColors      = _T("COLORS_SEL_INACTIVE");
+static LPCTSTR s_szTag_HeaderColors           = _T("COLORS_HEADER");
+static LPCTSTR s_szTag_HeaderSelColors        = _T("COLORS_HEADER_SEL");
+static LPCTSTR s_szTag_LeftOffsetColors       = _T("COLORS_LEFTOFFSET");
+static LPCTSTR s_szTag_Face_Color                = _T("FACE_COLOR");
+static LPCTSTR s_szTag_FacePressed_Color         = _T("FACE_PRESSED_COLOR");
+static LPCTSTR s_szTag_Button_Color              = _T("BUTTON_COLOR");
+static LPCTSTR s_szTag_ButtonPressed_Color       = _T("BUTTON_PRESSED_COLOR");
+static LPCTSTR s_szTag_ButtonBorder_Color        = _T("BUTTON_BORDER_COLOR");
+static LPCTSTR s_szTag_ButtonBorderPressed_Color = _T("BUTTON_BORDER_PRESSED_COLOR");
+static LPCTSTR s_szTag_HighlightEffect        = _T("HIGHLIGHT_EFFECT");
+static LPCTSTR s_szTag_3DEffect               = _T("3D_EFFECT");
 
 static LPCTSTR s_szTag_MajorTickMarkStep      = _T("MAJOR_TICKMARK_STEP");
 static LPCTSTR s_szTag_MinorTickMarkSize      = _T("MINOR_TICKMARK_SIZE");
@@ -151,6 +185,9 @@ static LPCTSTR s_szTag_DrawLeadingZeros       = _T("LEADING_ZEROS");
 static LPCTSTR s_szTag_DrawDynamicObjectsOnTop= _T("DYNAMIC_OBJECTS_ON_TOP");
 static LPCTSTR s_szTag_DrawFlags              = _T("DRAW_FLAGS");
 static LPCTSTR s_szTag_DrawLabel              = _T("DRAW_LABEL");
+static LPCTSTR s_szTag_ScrollBars             = _T("SCROLLBARS");
+static LPCTSTR s_szTag_Enable                 = _T("ENABLE");
+static LPCTSTR s_szTag_Enabled                = _T("ENABLED");
 
 static LPCTSTR s_szTag_TextFormat             = _T("TEXTFORMAT");
 static LPCTSTR s_szTag_Stretched              = _T("STRETCHED");
@@ -216,6 +253,7 @@ static LPCTSTR s_szTag_GroupCaption           = _T("GROUP_CAPTION");
 static LPCTSTR s_szTag_CaptionButtons         = _T("CAPTION_BUTTONS");
 static LPCTSTR s_szTag_CaptionButton          = _T("CAPTION_BUTTON");
 static LPCTSTR s_szTag_RTC_Name               = _T("RTC_NAME");
+static LPCTSTR s_szTag_RTC_Control_Name       = _T("RTC_CONTROL_NAME");
 static LPCTSTR s_szTag_View                   = _T("VIEW");
 static LPCTSTR s_szTag_Clickable              = _T("CLICKABLE");
 static LPCTSTR s_szTag_ImageStretch           = _T("IMAGE_STRETCH");
@@ -225,6 +263,14 @@ static LPCTSTR s_szTag_Tiles_DragAndDrop      = _T("TILES_DND");
 static LPCTSTR s_szTag_ID_View                = _T("ID_VIEW");
 static LPCTSTR s_szTag_ID_Command             = _T("ID_CMD");
 static LPCTSTR s_szTag_Text_View              = _T("TEXT_VIEW");
+static LPCTSTR s_szTag_Header                 = _T("HEADER");
+static LPCTSTR s_szTag_SelectAllMarker        = _T("SELECT_ALL_MARKER");
+static LPCTSTR s_szTag_DragItems              = _T("DRAG_ITEMS");
+static LPCTSTR s_szTag_Flags                  = _T("FLAGS");
+
+static LPCTSTR s_szTag_Category               = _T("CATEGORY");
+static LPCTSTR s_szTag_Type                   = _T("TYPE");
+static LPCTSTR s_szTag_Theme                  = _T("THEME");
 
 LPCTSTR CBCGPVisualInfo::s_szDataPointerCircular   = _T("PointerCircular");
 LPCTSTR CBCGPVisualInfo::s_szDataPointerKnob       = _T("PointerKnob");
@@ -253,6 +299,10 @@ LPCTSTR CBCGPVisualInfo::s_szDiagramShape          = _T("DiagramShape");
 LPCTSTR CBCGPVisualInfo::s_szDiagramTable          = _T("DiagramTable");
 LPCTSTR CBCGPVisualInfo::s_szDiagramImage          = _T("DiagramImage");
 LPCTSTR CBCGPVisualInfo::s_szDiagramCustom         = _T("DiagramCustom");
+LPCTSTR CBCGPVisualInfo::s_szControlHost           = _T("ControlHost");
+LPCTSTR CBCGPVisualInfo::s_szControlEdit           = _T("ControlEdit");
+LPCTSTR CBCGPVisualInfo::s_szControlGrid           = _T("ControlGrid");
+LPCTSTR CBCGPVisualInfo::s_szChart                 = _T("Chart");
 LPCTSTR CBCGPVisualInfo::s_szContainer             = _T("Container");
 
 static LPCTSTR s_szConnector_Old = _T("Connector");
@@ -390,6 +440,7 @@ CBCGPVisualInfo::XElement::XElement(const CString& strElementName)
 	: CBCGPBaseInfo::XBase (strElementName)
 	, m_Rect               (0, 0, 0, 0)
 	, m_bIsVisible         (TRUE)
+	, m_bIsEnabled         (TRUE)
 	, m_bIsAutoDestroy     (TRUE)
 {
 }
@@ -410,6 +461,7 @@ BOOL CBCGPVisualInfo::XElement::FromTag (const CString& strTag)
 
 	tm.ReadRect (s_szTag_Rect, m_Rect);
 	tm.ReadBool (s_szTag_Visible, m_bIsVisible);
+	tm.ReadBool (s_szTag_Enabled, m_bIsEnabled);
 	tm.ReadBool (s_szTag_AutoDestroy, m_bIsAutoDestroy);
 
 	return TRUE;
@@ -425,8 +477,120 @@ void CBCGPVisualInfo::XElement::ToTag (CString& strTag) const
 
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteRect (s_szTag_Rect, m_Rect, CRect (0, 0, 0, 0)));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_Visible, m_bIsVisible, TRUE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_Enabled, m_bIsEnabled, TRUE));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_AutoDestroy, m_bIsAutoDestroy, TRUE));
 }
+
+CBCGPVisualInfo::XScrollBars::XScrollBars()
+	: m_Enabled(FALSE)
+	, m_Style  (CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_FLAT)
+{
+}
+
+CBCGPVisualInfo::XScrollBars::~XScrollBars()
+{
+}
+
+BOOL CBCGPVisualInfo::XScrollBars::FromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	tm.ReadBool(s_szTag_Enable, m_Enabled);
+
+	int nStyle = CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE_FIRST;
+	tm.ReadInt(s_szTag_Style, nStyle);
+	m_Style = (CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE)bcg_clamp(nStyle, (int)CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE_FIRST, (int)CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_STYLE_LAST);
+
+	CString strColors;
+	if (tm.ExcludeTag (s_szTag_Colors, strColors))
+	{
+		CBCGPTagManager tmColors (strColors);
+
+		tmColors.ReadBrush(s_szTag_Fill_Brush, m_Colors.m_brFace);
+		tmColors.ReadBrush(s_szTag_Fill_Outline, m_Colors.m_brBorder);
+		tmColors.ReadBrush(s_szTag_Normal_Brush, m_Colors.m_brButton);
+		tmColors.ReadBrush(s_szTag_Pressed_Brush, m_Colors.m_brButtonPressed);
+	}
+
+	return TRUE;
+}
+
+void CBCGPVisualInfo::XScrollBars::ToTag (CString& strTag) const
+{
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_Enable, m_Enabled, FALSE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_Style, (int)m_Style, (int)CBCGPVisualScrollBar::BCGP_VISUAL_SCROLLBAR_FLAT));
+
+	{
+		CString strColors;
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteBrush (s_szTag_Fill_Brush, m_Colors.m_brFace));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteBrush (s_szTag_Fill_Outline, m_Colors.m_brBorder));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteBrush (s_szTag_Normal_Brush, m_Colors.m_brButton));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteBrush (s_szTag_Pressed_Brush, m_Colors.m_brButtonPressed));
+
+		CBCGPTagManager::WriteItem (strTag, s_szTag_Colors, strColors);
+	}
+}
+
+
+CBCGPVisualInfo::XWinScrollBars::XWinScrollBars()
+	: m_Style  (CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER)
+{
+}
+
+CBCGPVisualInfo::XWinScrollBars::~XWinScrollBars()
+{
+}
+
+BOOL CBCGPVisualInfo::XWinScrollBars::FromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	int nStyle = CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER;
+	tm.ReadInt(s_szTag_Style, nStyle);
+	m_Style = (CBCGPScrollBar::BCGPSB_STYLE)bcg_clamp(nStyle, (int)CBCGPScrollBar::BCGP_SBSTYLE_FIRST, (int)CBCGPScrollBar::BCGP_SBSTYLE_LAST);
+
+	CString strColors;
+	if (tm.ExcludeTag (s_szTag_Colors, strColors))
+	{
+		CBCGPTagManager tmColors (strColors);
+
+		tmColors.ReadColor(s_szTag_Face_Color, m_Colors.m_clrFace);
+		tmColors.ReadColor(s_szTag_FacePressed_Color, m_Colors.m_clrFacePressed);
+		tmColors.ReadColor(s_szTag_Border_Color, m_Colors.m_clrBorder);
+		tmColors.ReadColor(s_szTag_Button_Color, m_Colors.m_clrButton);
+		tmColors.ReadColor(s_szTag_ButtonPressed_Color, m_Colors.m_clrButtonPressed);
+		tmColors.ReadColor(s_szTag_ButtonBorder_Color, m_Colors.m_clrButtonBorder);
+		tmColors.ReadColor(s_szTag_ButtonBorderPressed_Color, m_Colors.m_clrButtonBorderPressed);
+
+		tmColors.ReadBool(s_szTag_HighlightEffect, m_Colors.m_bHighlightEffect);
+		tmColors.ReadBool(s_szTag_3DEffect, m_Colors.m_b3DEffect);
+	}
+
+	return TRUE;
+}
+
+void CBCGPVisualInfo::XWinScrollBars::ToTag (CString& strTag) const
+{
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_Style, (int)m_Style, (int)CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER));
+
+	{
+		CString strColors;
+
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteColor(s_szTag_Face_Color, m_Colors.m_clrFace, (COLORREF)-1));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteColor(s_szTag_FacePressed_Color, m_Colors.m_clrFacePressed, (COLORREF)-1));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteColor(s_szTag_Border_Color, m_Colors.m_clrBorder, (COLORREF)-1));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteColor(s_szTag_Button_Color, m_Colors.m_clrButton, (COLORREF)-1));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteColor(s_szTag_ButtonPressed_Color, m_Colors.m_clrButtonPressed, (COLORREF)-1));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteColor(s_szTag_ButtonBorder_Color, m_Colors.m_clrButtonBorder, (COLORREF)-1));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteColor(s_szTag_ButtonBorderPressed_Color, m_Colors.m_clrButtonBorderPressed, (COLORREF)-1));
+
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteBool(s_szTag_HighlightEffect, m_Colors.m_bHighlightEffect, FALSE));
+		CBCGPTagManager::WriteTag (strColors, CBCGPTagManager::WriteBool(s_szTag_3DEffect, m_Colors.m_b3DEffect, FALSE));
+
+		CBCGPTagManager::WriteItem (strTag, s_szTag_Colors, strColors);
+	}
+}
+
 
 CBCGPVisualInfo::XContainer::XContainer()
 	: CBCGPBaseInfo::XBase (CBCGPVisualInfo::s_szContainer)
@@ -450,6 +614,12 @@ CBCGPVisualInfo::XContainer::~XContainer()
 BOOL CBCGPVisualInfo::XContainer::FromTag (const CString& strTag)
 {
 	CBCGPTagManager tm (strTag);
+
+	CString strScrollBars;
+	if (tm.ExcludeTag (s_szTag_ScrollBars, strScrollBars))
+	{
+		m_ScrollBars.FromTag(strScrollBars);
+	}
 
 	CString strElements;
 	if (tm.ExcludeTag (s_szTag_Elements, strElements))
@@ -484,6 +654,10 @@ void CBCGPVisualInfo::XContainer::ToTag (CString& strTag) const
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBrush (s_szTag_Fill_Brush, m_brFill));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBrush (s_szTag_Fill_Outline, m_brOutline));
 
+	CString strScrollBars;
+	m_ScrollBars.ToTag(strScrollBars);
+	CBCGPTagManager::WriteItem (strTag, s_szTag_ScrollBars, strScrollBars);
+
 	CString strElements;
 	for (int i = 0; i < (int)m_arElements.GetSize (); i++)
 	{
@@ -510,6 +684,10 @@ CBCGPBaseInfo::XBase* CBCGPVisualInfo::CreateBaseFromName (const CString& name)
 	{
 		element = new CBCGPVisualInfo::XElementWinUITiles;
 	}
+	else if (name.Compare (CBCGPVisualInfo::s_szChart) == 0)
+	{
+		element = new CBCGPVisualInfo::XElementChart;
+	}
 	else
 	{
 		element = CBCGPVisualInfo::XGaugeElement::CreateFromName(name);
@@ -517,6 +695,11 @@ CBCGPBaseInfo::XBase* CBCGPVisualInfo::CreateBaseFromName (const CString& name)
 		if (element == NULL)
 		{
 			element = CBCGPVisualInfo::XDiagramElement::CreateFromName(name);
+		}
+
+		if (element == NULL)
+		{
+			element = CBCGPVisualInfo::XControlElement::CreateFromName(name);
 		}
 	}
 
@@ -614,6 +797,27 @@ CBCGPVisualInfo::XDiagramElement* CBCGPVisualInfo::XDiagramElement::CreateFromNa
 
 	return element;
 }
+
+CBCGPVisualInfo::XControlElement* CBCGPVisualInfo::XControlElement::CreateFromName (const CString& name)
+{
+	CBCGPVisualInfo::XControlElement* element = NULL;
+
+	if (name.Compare (CBCGPVisualInfo::s_szControlHost) == 0)
+	{
+		element = new CBCGPVisualInfo::XElementControlHost;
+	}
+	else if (name.Compare (CBCGPVisualInfo::s_szControlEdit) == 0)
+	{
+		element = new CBCGPVisualInfo::XElementControlEdit;
+	}
+	else if (name.Compare (CBCGPVisualInfo::s_szControlGrid) == 0)
+	{
+		element = new CBCGPVisualInfo::XElementControlGrid;
+	}
+
+	return element;
+}
+
 
 CBCGPVisualInfo::XGaugeScale::XGaugeScale ()
 	: m_dblStart             (0.0)
@@ -980,6 +1184,15 @@ CBCGPVisualInfo::XDiagramElementConnector::~XDiagramElementConnector()
 		}
 	}
 	m_arPoints.RemoveAll ();
+}
+
+CBCGPVisualInfo::XControlElement::XControlElement(const CString& strElementName)
+	: CBCGPVisualInfo::XElement(strElementName)
+{
+}
+
+CBCGPVisualInfo::XControlElement::~XControlElement()
+{
 }
 
 CBCGPVisualInfo::XCircularScale::XCircularScale()
@@ -1974,6 +2187,65 @@ CBCGPVisualInfo::XElementDiagramCustom::~XElementDiagramCustom()
 {
 }
 
+CBCGPVisualInfo::XElementControlHost::XElementControlHost()
+	: CBCGPVisualInfo::XControlElement (CBCGPVisualInfo::s_szControlHost)
+{
+}
+
+CBCGPVisualInfo::XElementControlHost::~XElementControlHost()
+{
+}
+
+CBCGPVisualInfo::XElementControlEdit::XElementControlEdit()
+	: CBCGPVisualInfo::XControlElement (CBCGPVisualInfo::s_szControlEdit)
+{
+}
+
+CBCGPVisualInfo::XElementControlEdit::~XElementControlEdit()
+{
+}
+
+CBCGPVisualInfo::XControlGridHeader::XControlGridHeader()
+	: m_bEnable         (TRUE)
+	, m_bSelectAllMarker(TRUE)
+	, m_bDragItems      (TRUE)
+	, m_dwFlags         ((DWORD)-1)
+{
+}
+
+CBCGPVisualInfo::XControlGridHeader::~XControlGridHeader()
+{
+}
+
+BOOL CBCGPVisualInfo::XControlGridHeader::FromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	tm.ReadBool(s_szTag_Enable, m_bEnable);
+	tm.ReadBool(s_szTag_SelectAllMarker, m_bSelectAllMarker);
+	tm.ReadBool(s_szTag_DragItems, m_bDragItems);
+	tm.ReadDword(s_szTag_Flags, m_dwFlags);
+
+	return TRUE;
+}
+
+void CBCGPVisualInfo::XControlGridHeader::ToTag (CString& strTag) const
+{
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_Enable, m_bEnable, TRUE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_SelectAllMarker, m_bSelectAllMarker, TRUE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_DragItems, m_bDragItems, TRUE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteDword (s_szTag_Flags, m_dwFlags, (DWORD)-1));
+}
+
+CBCGPVisualInfo::XElementControlGrid::XElementControlGrid()
+	: CBCGPVisualInfo::XControlElement (CBCGPVisualInfo::s_szControlGrid)
+{
+}
+
+CBCGPVisualInfo::XElementControlGrid::~XElementControlGrid()
+{
+}
+
 BOOL CBCGPVisualInfo::XGaugeElement::FromTag (const CString& strTag)
 {
 	CBCGPTagManager tm (strTag);
@@ -2178,6 +2450,36 @@ void CBCGPVisualInfo::XDiagramElementConnector::ToTag (CString& strTag) const
 		CBCGPTagManager::WriteItem (strAnchors, s_szTag_Anchor, strAnchor, TRUE);
 	}
 	CBCGPTagManager::WriteItem (strTag, s_szTag_Anchors, strAnchors);
+}
+
+BOOL CBCGPVisualInfo::XControlElement::FromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	tm.ReadString (s_szTag_RTC_Control_Name, m_strRTIControl);
+
+	CString strColors;
+	if (tm.ExcludeTag (s_szTag_Colors, strColors))
+	{
+		ColorsFromTag (strColors);
+	}
+
+	tm.ReadTextFormat (s_szTag_TextFormat, m_fmtText);	
+
+	return XElement::FromTag(strTag);
+}
+
+void CBCGPVisualInfo::XControlElement::ToTag (CString& strTag) const
+{
+	XElement::ToTag (strTag);
+
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteString (s_szTag_RTC_Control_Name, m_strRTIControl));
+
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteTextFormat (s_szTag_TextFormat, m_fmtText));
+
+	CString strColors;
+	ColorsToTag (strColors);
+	CBCGPTagManager::WriteItem (strTag, s_szTag_Colors, strColors);
 }
 
 BOOL CBCGPVisualInfo::XElementCircular::FromTag (const CString& strTag)
@@ -3212,6 +3514,285 @@ void CBCGPVisualInfo::XElementDiagramImage::ToTag (CString& strTag) const
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_AlignHorz, (int)m_AlignHorz, (int)CBCGPDiagramImageObject::HA_Left));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_AlignVert, (int)m_AlignVert, (int)CBCGPDiagramImageObject::VA_Top));
 	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteBool (s_szTag_LockAspectRatio, m_bLockAspectRatio, TRUE));
+}
+
+BOOL CBCGPVisualInfo::XElementControlHost::FromTag (const CString& strTag)
+{
+	return XControlElement::FromTag (strTag);
+}
+
+void CBCGPVisualInfo::XElementControlHost::ToTag (CString& strTag) const
+{
+	XControlElement::ToTag (strTag);
+}
+
+BOOL CBCGPVisualInfo::XElementControlHost::ColorsFromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	tm.ReadColor (s_szTag_Background_Color, m_Colors.m_clrBackground);
+	tm.ReadColor (s_szTag_Text_Color, m_Colors.m_clrText);
+	tm.ReadColor (s_szTag_Highlighted_Color, m_Colors.m_clrHighlighted);
+	tm.ReadColor (s_szTag_TextHighlighted_Color, m_Colors.m_clrHighlightedText);
+	tm.ReadColor (s_szTag_Border_Color, m_Colors.m_clrBorder);
+
+	return TRUE;
+}
+
+void CBCGPVisualInfo::XElementControlHost::ColorsToTag (CString& strTag) const
+{
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Background_Color, m_Colors.m_clrBackground, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Text_Color, m_Colors.m_clrText, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Highlighted_Color, m_Colors.m_clrHighlighted, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_TextHighlighted_Color, m_Colors.m_clrHighlightedText, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Border_Color, m_Colors.m_clrBorder, (COLORREF)-1));
+}
+
+BOOL CBCGPVisualInfo::XElementControlEdit::FromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	tm.ReadEntityString (s_szTag_TextValue, m_strText);
+
+	return XControlElement::FromTag (strTag);
+}
+
+void CBCGPVisualInfo::XElementControlEdit::ToTag (CString& strTag) const
+{
+	XControlElement::ToTag (strTag);
+
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteEntityString (s_szTag_TextValue, m_strText));
+}
+
+BOOL CBCGPVisualInfo::XElementControlEdit::ColorsFromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	tm.ReadColor (s_szTag_Background_Color, m_Colors.m_clrBackground);
+	tm.ReadColor (s_szTag_Text_Color, m_Colors.m_clrText);
+	tm.ReadColor (s_szTag_Prompt_Color, m_Colors.m_clrPrompt);
+	tm.ReadColor (s_szTag_Border_Color, m_Colors.m_clrBorder);
+	tm.ReadColor (s_szTag_BorderFocused_Color, m_Colors.m_clrBorderFocused);
+
+	return TRUE;
+}
+
+void CBCGPVisualInfo::XElementControlEdit::ColorsToTag (CString& strTag) const
+{
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Background_Color, m_Colors.m_clrBackground, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Text_Color, m_Colors.m_clrText, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Prompt_Color, m_Colors.m_clrPrompt, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Border_Color, m_Colors.m_clrBorder, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_BorderFocused_Color, m_Colors.m_clrBorderFocused, (COLORREF)-1));
+}
+
+BOOL CBCGPVisualInfo::XElementControlGrid::FromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+
+	CString strScrollBars;
+	if (tm.ExcludeTag(s_szTag_ScrollBars, strScrollBars))
+	{
+		XWinScrollBars sb;
+		if (sb.FromTag(strScrollBars))
+		{
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+			m_Colors.m_ScrollBarColors = sb.m_Colors;
+#endif
+		}
+	}
+
+	CString strHeader;
+	if (tm.ExcludeTag(s_szTag_Header, strHeader))
+	{
+		m_Header.FromTag(strHeader);
+	}
+
+	return XControlElement::FromTag (tm.GetBuffer());
+}
+
+void CBCGPVisualInfo::XElementControlGrid::ToTag (CString& strTag) const
+{
+	XControlElement::ToTag (strTag);
+
+	CString strScrollBars;
+	XWinScrollBars sb;
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+	sb.m_Colors = m_Colors.m_ScrollBarColors;
+#endif
+	sb.ToTag(strScrollBars);
+	CBCGPTagManager::WriteItem (strTag, s_szTag_ScrollBars, strScrollBars);
+
+	CString strHeader;
+	m_Header.ToTag(strHeader);
+	CBCGPTagManager::WriteItem (strTag, s_szTag_Header, strHeader);
+}
+
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
+static BOOL ColorDataFromTag (const CString& strTag, BCGP_GRID_COLOR_DATA::ColorData& colors)
+{
+	CBCGPTagManager tm (strTag);
+
+	tm.ReadColor (s_szTag_Background_Color, colors.m_clrBackground);
+	tm.ReadColor (s_szTag_Text_Color, colors.m_clrText);
+	tm.ReadColor (s_szTag_Gradient_Color, colors.m_clrGradient);
+	tm.ReadInt (s_szTag_Gradient_Angle, colors.m_nGradientAngle);
+	tm.ReadColor (s_szTag_Border_Color, colors.m_clrBorder);
+
+	return TRUE;
+}
+
+static BOOL ColorDataFromTag (CBCGPTagManager& tm, LPCTSTR szTagName, BCGP_GRID_COLOR_DATA::ColorData& colors)
+{
+	CString strColors;
+	if (!tm.ExcludeTag (szTagName, strColors))
+	{
+		return FALSE;
+	}
+
+	return ColorDataFromTag (strColors, colors);
+}
+
+static void ColorDataToTag (CString& strTag, const BCGP_GRID_COLOR_DATA::ColorData& colors)
+{
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Background_Color, colors.m_clrBackground, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Text_Color, colors.m_clrText, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Gradient_Color, colors.m_clrGradient, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_Gradient_Angle, colors.m_nGradientAngle, 90));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Border_Color, colors.m_clrBorder, (COLORREF)-1));
+}
+
+static void ColorDataToTag (CString& strTag, LPCTSTR szTagName, const BCGP_GRID_COLOR_DATA::ColorData& colors)
+{
+	CString strColors;
+
+	ColorDataToTag(strColors, colors);
+
+	CBCGPTagManager::WriteItem (strTag, szTagName, strColors);
+}
+
+#endif
+
+BOOL CBCGPVisualInfo::XElementControlGrid::ColorsFromTag (const CString& strTag)
+{
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
+	CBCGPTagManager tm (strTag);
+
+	ColorDataFromTag(tm, s_szTag_EvenColors, m_Colors.m_EvenColors);
+	ColorDataFromTag(tm, s_szTag_OddColors, m_Colors.m_OddColors);
+	ColorDataFromTag(tm, s_szTag_GroupColors, m_Colors.m_GroupColors);
+	ColorDataFromTag(tm, s_szTag_GroupSelColors, m_Colors.m_GroupSelColors);
+	ColorDataFromTag(tm, s_szTag_GroupSelInactiveColors, m_Colors.m_GroupSelColorsInactive);
+	ColorDataFromTag(tm, s_szTag_SelColors, m_Colors.m_SelColors);
+	ColorDataFromTag(tm, s_szTag_SelInactiveColors, m_Colors.m_SelColorsInactive);
+	ColorDataFromTag(tm, s_szTag_HeaderColors, m_Colors.m_HeaderColors);
+	ColorDataFromTag(tm, s_szTag_HeaderSelColors, m_Colors.m_HeaderSelColors);
+	ColorDataFromTag(tm, s_szTag_LeftOffsetColors, m_Colors.m_LeftOffsetColors);
+
+	tm.ReadColor (s_szTag_Background_Color, m_Colors.m_clrBackground);
+	tm.ReadColor (s_szTag_Text_Color, m_Colors.m_clrText);
+	tm.ReadColor (s_szTag_Header_Color, m_Colors.m_clrHeader);
+	tm.ReadColor (s_szTag_HorzLine_Color, m_Colors.m_clrHorzLine);
+	tm.ReadColor (s_szTag_VertLine_Color, m_Colors.m_clrVertLine);
+	tm.ReadColor (s_szTag_TextPreview_Color, m_Colors.m_clrPreviewText);
+	tm.ReadColor (s_szTag_Border_Color, m_Colors.m_clrBorder);
+
+#else
+
+	UNREFERENCED_PARAMETER(strTag);
+
+#endif
+
+	return TRUE;
+}
+
+void CBCGPVisualInfo::XElementControlGrid::ColorsToTag (CString& strTag) const
+{
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Background_Color, m_Colors.m_clrBackground, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Text_Color, m_Colors.m_clrText, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Header_Color, m_Colors.m_clrHeader, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_HorzLine_Color, m_Colors.m_clrHorzLine, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_VertLine_Color, m_Colors.m_clrVertLine, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_TextPreview_Color, m_Colors.m_clrPreviewText, (COLORREF)-1));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteColor (s_szTag_Border_Color, m_Colors.m_clrBorder, (COLORREF)-1));
+
+	ColorDataToTag(strTag, s_szTag_EvenColors, m_Colors.m_EvenColors);
+	ColorDataToTag(strTag, s_szTag_OddColors, m_Colors.m_OddColors);
+	ColorDataToTag(strTag, s_szTag_GroupColors, m_Colors.m_GroupColors);
+	ColorDataToTag(strTag, s_szTag_GroupSelColors, m_Colors.m_GroupSelColors);
+	ColorDataToTag(strTag, s_szTag_GroupSelInactiveColors, m_Colors.m_GroupSelColorsInactive);
+	ColorDataToTag(strTag, s_szTag_SelColors, m_Colors.m_SelColors);
+	ColorDataToTag(strTag, s_szTag_SelInactiveColors, m_Colors.m_SelColorsInactive);
+	ColorDataToTag(strTag, s_szTag_HeaderColors, m_Colors.m_HeaderColors);
+	ColorDataToTag(strTag, s_szTag_HeaderSelColors, m_Colors.m_HeaderSelColors);
+	ColorDataToTag(strTag, s_szTag_LeftOffsetColors, m_Colors.m_LeftOffsetColors);
+
+#else
+
+	UNREFERENCED_PARAMETER(strTag);
+
+#endif
+}
+
+CBCGPVisualInfo::XElementChart::XElementChart()
+	: CBCGPVisualInfo::XElement (CBCGPVisualInfo::s_szChart)
+	, m_Category (BCGPChartLine)
+	, m_Type     (BCGP_CT_SIMPLE)
+	, m_Theme    (CBCGPChartTheme::CT_DEFAULT)
+{
+}
+
+CBCGPVisualInfo::XElementChart::~XElementChart()
+{
+}
+
+BOOL CBCGPVisualInfo::XElementChart::FromTag (const CString& strTag)
+{
+	CBCGPTagManager tm (strTag);
+/*
+	CString strRoot;
+	if (tm.ExcludeTag(s_szTag_Root, strRoot))
+	{
+		m_Root.FromTag (strRoot);
+	}
+
+	int layoutType = (int)CBCGPTreeMap::Squarified;
+	tm.ReadInt (s_szTag_LayoutType, layoutType);
+	m_LayoutType = (CBCGPTreeMap::LayoutType)bcg_clamp(layoutType, (int)CBCGPTreeMap::LayoutType_First, (int)CBCGPTreeMap::LayoutType_Last);
+*/
+	int value = (int)BCGPChartLine;
+	tm.ReadInt (s_szTag_Category, value);
+	m_Category = (BCGPChartCategory)value;
+
+	value = (int)BCGP_CT_SIMPLE;
+	tm.ReadInt (s_szTag_Type, value);
+	m_Type = (BCGPChartType)value;
+
+	value = (int)CBCGPChartTheme::CT_DEFAULT;
+	tm.ReadInt (s_szTag_Theme, value);
+	m_Theme = (CBCGPChartTheme::ChartTheme)value;
+
+	return XElement::FromTag (tm.GetBuffer ());
+}
+
+void CBCGPVisualInfo::XElementChart::ToTag (CString& strTag) const
+{
+	XElement::ToTag (strTag);
+
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_Category, (int)m_Category, (int)BCGPChartLine));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_Type, (int)m_Type, (int)BCGP_CT_SIMPLE));
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_Theme, (int)m_Theme, (int)CBCGPChartTheme::CT_DEFAULT));
+/*
+	CBCGPTagManager::WriteTag (strTag, CBCGPTagManager::WriteInt (s_szTag_LayoutType, (int)m_LayoutType, (int)CBCGPTreeMap::Squarified));
+	
+	CString strRoot;
+	m_Root.ToTag (strRoot);
+	CBCGPTagManager::WriteItem (strTag, s_szTag_Root, strRoot);
+*/
 }
 
 

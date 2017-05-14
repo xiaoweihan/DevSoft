@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -273,8 +273,8 @@ HRESULT CBCGPShellManager::ItemFromPath (LPCTSTR lpszPath, LPITEMIDLIST& pidl)
 	//-----------------------------------
 	// Convert the path to an ITEMIDLIST.
 	//-----------------------------------
-	ULONG chEaten;
-	ULONG dwAttributes;
+	ULONG chEaten = 0;
+	ULONG dwAttributes = 0;
 	hr = pDesktopFolder->ParseDisplayName (
 		NULL,
 		NULL,

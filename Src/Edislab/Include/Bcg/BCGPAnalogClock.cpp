@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "stdafx.h"
 #include "BCGPAnalogClock.h"
 #include "BCGPNumericIndicatorImpl.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -111,7 +112,7 @@ void CBCGPAnalogClock::EnableDate(BOOL bEnable, BCGP_SUB_GAUGE_POS pos)
 
 		m_pDate->SetColors(colors);
 
-		AddSubGauge(m_pDate, pos, CBCGPSize(20, 15), CBCGPPoint(-5, 0));
+		AddSubGauge(m_pDate, pos, CBCGPSize(globalUtils.ScaleByDPI(20), globalUtils.ScaleByDPI(15)), CBCGPPoint(-5, 0));
 	}
 	else
 	{
@@ -198,7 +199,7 @@ void CBCGPAnalogClock::OnSetClockTime(BOOL bRedraw)
 	if (m_bSecondHand)
 	{
 		double sec = currTime.GetSecond() / 5.;
-		SetValue(sec, 2, GetValue(2) != 0. ? 500 : 0, FALSE);
+		SetValue(sec, 2, 0, FALSE);
 	}
 
 	if (bRedraw)

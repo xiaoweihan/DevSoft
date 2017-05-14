@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -68,8 +68,8 @@ static char THIS_FILE[]=__FILE__;
 
 IMPLEMENT_DYNAMIC(CBCGPWinApp, CWinApp)
 
-CBCGPWinApp::CBCGPWinApp() :
-	CBCGPWorkspace(TRUE),
+CBCGPWinApp::CBCGPWinApp(BOOL bResourceSmartUpdate) :
+	CBCGPWorkspace(bResourceSmartUpdate),
 	m_bDPIAware(TRUE),
 	m_bMSAASupport(TRUE),
 	m_bKeyboardManager(TRUE),
@@ -147,10 +147,10 @@ int CBCGPWinApp::ExitInstance()
 	return CWinApp::ExitInstance();
 }
 //*************************************************************************************
-void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
+void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme, CRuntimeClass* pRTICustom)
 {
 	CWaitCursor* pWaitCursor = NULL;
-	if (afxData.hcurWait != NULL)
+	if (afxData.hcurWait != NULL && m_nWaitCursorCount == 0)
 	{
 		pWaitCursor = new CWaitCursor;
 	}
@@ -169,25 +169,30 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 
 	BOOL bWereSmallBorders = CBCGPVisualManager::GetInstance()->IsSmallSystemBorders();
 
+	if (pRTICustom == NULL)
+	{
+		pRTICustom = m_mapCustomVisualManagers[theme];
+	}
+
 	switch (theme)
 	{
 	case BCGP_VISUAL_THEME_DEFAULT:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPWinXPVisualManager));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPWinXPVisualManager));
 		CBCGPWinXPVisualManager::m_b3DTabsXPTheme = TRUE;
 		break;
 
 	case BCGP_VISUAL_THEME_OFFICE_2000:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager));
 		dockMode = BCGP_DT_STANDARD;
 		break;
 		
 	case BCGP_VISUAL_THEME_OFFICE_XP:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManagerXP));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManagerXP));
 		dockMode = BCGP_DT_STANDARD;
 		break;
 		
 	case BCGP_VISUAL_THEME_OFFICE_2003:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2003));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2003));
 
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
 		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
@@ -196,14 +201,14 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		break;
 		
 	case BCGP_VISUAL_THEME_VS_2005:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManagerVS2005));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManagerVS2005));
 
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_VS2005;
 		break;
 		
 	case BCGP_VISUAL_THEME_OFFICE_2007_BLUE:
 		CBCGPVisualManager2007::SetStyle (CBCGPVisualManager2007::VS2007_LunaBlue);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2007));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2007));
 		
 		m_AppOptions.m_bMDITabsAutoColor = TRUE;
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
@@ -212,7 +217,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2007_BLACK:
 		CBCGPVisualManager2007::SetStyle (CBCGPVisualManager2007::VS2007_ObsidianBlack);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2007));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2007));
 		
 		m_AppOptions.m_bMDITabsAutoColor = TRUE;
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
@@ -221,7 +226,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2007_SILVER:
 		CBCGPVisualManager2007::SetStyle (CBCGPVisualManager2007::VS2007_Silver);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2007));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2007));
 		
 		m_AppOptions.m_bMDITabsAutoColor = TRUE;
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
@@ -230,7 +235,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2007_AQUA:
 		CBCGPVisualManager2007::SetStyle (CBCGPVisualManager2007::VS2007_Aqua);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2007));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2007));
 		
 		m_AppOptions.m_bMDITabsAutoColor = TRUE;
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
@@ -238,24 +243,24 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		break;
 		
 	case BCGP_VISUAL_THEME_CARBON:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManagerCarbon));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManagerCarbon));
 		break;
 		
 	case BCGP_VISUAL_THEME_VS_2008:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManagerVS2008));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManagerVS2008));
 
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_VS2005;
 		break;
 		
 	case BCGP_VISUAL_THEME_VS_2010:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManagerVS2010));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManagerVS2010));
 		
 		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_HIGHLIGHTED;
 		m_AppOptions.m_bMDIActiveTabBold = FALSE;
 		break;
 		
 	case BCGP_VISUAL_THEME_SCENIC:
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManagerScenic));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManagerScenic));
 
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
 		m_AppOptions.m_bMDITabsAutoColor = TRUE;
@@ -272,7 +277,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2010_BLUE:
 		CBCGPVisualManager2010::SetStyle (CBCGPVisualManager2010::VS2010_Blue);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2010));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2010));
 		
 		m_AppOptions.m_bMDITabsAutoColor = TRUE;
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
@@ -285,7 +290,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2010_BLACK:
 		CBCGPVisualManager2010::SetStyle (CBCGPVisualManager2010::VS2010_Black);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2010));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2010));
 		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
 		
 		m_AppOptions.m_strScenicRibbonLabel = _T("File");
@@ -295,7 +300,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2010_SILVER:
 		CBCGPVisualManager2010::SetStyle (CBCGPVisualManager2010::VS2010_Silver);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2010));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2010));
 		
 		m_AppOptions.m_bMDITabsAutoColor = TRUE;
 		m_AppOptions.m_MDITabsStyle = CBCGPTabWnd::STYLE_3D_ONENOTE;
@@ -310,7 +315,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 	case BCGP_VISUAL_THEME_VS_2013_LIGHT:
 		CBCGPVisualManagerVS2012::SetStyle(CBCGPVisualManagerVS2012::VS2012_Light);
 		
-		CBCGPVisualManager::SetDefaultManager(theme == BCGP_VISUAL_THEME_VS_2012_LIGHT ? 
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : theme == BCGP_VISUAL_THEME_VS_2012_LIGHT ? 
 			RUNTIME_CLASS(CBCGPVisualManagerVS2012) :
 			RUNTIME_CLASS(CBCGPVisualManagerVS2013));
 		
@@ -326,7 +331,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 	case BCGP_VISUAL_THEME_VS_2013_DARK:
 		CBCGPVisualManagerVS2012::SetStyle(CBCGPVisualManagerVS2012::VS2012_Dark);
 
-		CBCGPVisualManager::SetDefaultManager(theme == BCGP_VISUAL_THEME_VS_2012_DARK ? 
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : theme == BCGP_VISUAL_THEME_VS_2012_DARK ? 
 			RUNTIME_CLASS(CBCGPVisualManagerVS2012) :
 			RUNTIME_CLASS(CBCGPVisualManagerVS2013));
 		
@@ -342,7 +347,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 	case BCGP_VISUAL_THEME_VS_2013_BLUE:
 		CBCGPVisualManagerVS2012::SetStyle(CBCGPVisualManagerVS2012::VS2012_LightBlue);
 
-		CBCGPVisualManager::SetDefaultManager(theme == BCGP_VISUAL_THEME_VS_2012_BLUE ? 
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : theme == BCGP_VISUAL_THEME_VS_2012_BLUE ? 
 			RUNTIME_CLASS(CBCGPVisualManagerVS2012) :
 			RUNTIME_CLASS(CBCGPVisualManagerVS2013));
 		
@@ -356,7 +361,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2013_WHITE:
 		CBCGPVisualManager2013::SetStyle(CBCGPVisualManager2013::Office2013_White);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2013));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2013));
 
 		m_AppOptions.m_bMDIActiveTabBold = FALSE;
 		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
@@ -369,7 +374,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2013_GRAY:
 		CBCGPVisualManager2013::SetStyle(CBCGPVisualManager2013::Office2013_Gray);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2013));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2013));
 
 		m_AppOptions.m_bMDIActiveTabBold = FALSE;
 		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
@@ -382,7 +387,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		
 	case BCGP_VISUAL_THEME_OFFICE_2013_DARK_GRAY:
 		CBCGPVisualManager2013::SetStyle(CBCGPVisualManager2013::Office2013_DarkGray);
-		CBCGPVisualManager::SetDefaultManager(RUNTIME_CLASS(CBCGPVisualManager2013));
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2013));
 		
 		m_AppOptions.m_bMDIActiveTabBold = FALSE;
 		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
@@ -393,6 +398,58 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		m_AppOptions.m_bRibbonMinimizeButton = TRUE;
 		break;
 
+	case BCGP_VISUAL_THEME_OFFICE_2016_WHITE:
+		CBCGPVisualManager2016::SetStyle(CBCGPVisualManager2016::Office2016_White);
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2016));
+		
+		m_AppOptions.m_bMDIActiveTabBold = FALSE;
+		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
+		m_AppOptions.m_bMDITabsLargeFont = TRUE;
+		
+		m_AppOptions.m_strScenicRibbonLabel = _T("File");
+		m_AppOptions.m_bScenicRibbon = TRUE;
+		m_AppOptions.m_bRibbonMinimizeButton = TRUE;
+		break;
+		
+	case BCGP_VISUAL_THEME_OFFICE_2016_DARK_GRAY:
+		CBCGPVisualManager2016::SetStyle(CBCGPVisualManager2016::Office2016_DarkGray);
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2016));
+		
+		m_AppOptions.m_bMDIActiveTabBold = FALSE;
+		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
+		m_AppOptions.m_bMDITabsLargeFont = TRUE;
+		
+		m_AppOptions.m_strScenicRibbonLabel = _T("File");
+		m_AppOptions.m_bScenicRibbon = TRUE;
+		m_AppOptions.m_bRibbonMinimizeButton = TRUE;
+		break;
+
+	case BCGP_VISUAL_THEME_OFFICE_2016_COLORFUL:
+		CBCGPVisualManager2016::SetStyle(CBCGPVisualManager2016::Office2016_Colorful);
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2016));
+		
+		m_AppOptions.m_bMDIActiveTabBold = FALSE;
+		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
+		m_AppOptions.m_bMDITabsLargeFont = TRUE;
+		
+		m_AppOptions.m_strScenicRibbonLabel = _T("File");
+		m_AppOptions.m_bScenicRibbon = TRUE;
+		m_AppOptions.m_bRibbonMinimizeButton = TRUE;
+		break;
+		
+	case BCGP_VISUAL_THEME_OFFICE_2016_BLACK:
+		CBCGPVisualManager2016::SetStyle(CBCGPVisualManager2016::Office2016_Black);
+		CBCGPVisualManager::SetDefaultManager(pRTICustom != NULL ? pRTICustom : RUNTIME_CLASS(CBCGPVisualManager2016));
+		
+		m_AppOptions.m_bMDIActiveTabBold = FALSE;
+		m_AppOptions.m_MDITabsCloseButtonMode = CBCGPTabWnd::TAB_CLOSE_BUTTON_ACTIVE;
+		m_AppOptions.m_bMDITabsLargeFont = TRUE;
+		
+		m_AppOptions.m_strScenicRibbonLabel = _T("File");
+		m_AppOptions.m_bScenicRibbon = TRUE;
+		m_AppOptions.m_bRibbonMinimizeButton = TRUE;
+		break;
+		
 	case BCGP_VISUAL_THEME_CUSTOM:
 		break;
 
@@ -460,6 +517,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 		}
 	}
 
+#ifndef BCGP_EXCLUDE_RIBBON
 	if (pRibbonBar->GetSafeHwnd() != NULL)
 	{
 		pRibbonBar->SetScenicLook(m_AppOptions.m_bScenicRibbon, FALSE);
@@ -472,6 +530,7 @@ void CBCGPWinApp::SetVisualTheme(BCGP_VISUAL_THEME theme)
 
 		pRibbonBar->RecalcLayout();
 	}
+#endif
 
 	if (pDockManager != NULL)
 	{
@@ -520,9 +579,22 @@ UINT CBCGPWinApp::GetVisualThemeCommandID(BCGP_VISUAL_THEME theme) const
 	return (UINT)-1;
 }
 //*************************************************************************************
-void CBCGPWinApp::AddVisualTheme(BCGP_VISUAL_THEME theme, UINT nID, BOOL bActive)
+void CBCGPWinApp::AddVisualTheme(BCGP_VISUAL_THEME theme, UINT nID, BOOL bActive, CRuntimeClass* pRTICustom)
 {
 	m_mapVisualThemeCmds.SetAt(nID, theme);
+
+	if (pRTICustom != NULL)
+	{
+		if (!pRTICustom->IsDerivedFrom(RUNTIME_CLASS(CBCGPVisualManager)))
+		{
+			TRACE0("CBCGPWinApp::AddVisualTheme: the custom visual manager class should be derived from CBCGPVisualManager\n");
+			ASSERT(FALSE);
+			
+			pRTICustom = NULL;
+		}
+	}
+
+	m_mapCustomVisualManagers.SetAt(theme, pRTICustom);
 
 	if (bActive)
 	{
@@ -638,6 +710,103 @@ BOOL CBCGPWinApp::LoadState(LPCTSTR lpszSectionName, CBCGPFrameImpl* pFrameImpl)
 	
 	return TRUE;
 }
+//*************************************************************************************
+int CBCGPWinApp::GetRecentFilesCount() const
+{
+	return (m_pRecentFileList == NULL) ? 0 : m_pRecentFileList->GetSize();
+}
+//*************************************************************************************
+BOOL CBCGPWinApp::GetRecentFileDisplayName(	CString& strName, int nIndex,
+											LPCTSTR lpszCurDir, int nCurDir, 
+											BOOL bAtLeastName) const
+{
+	return (m_pRecentFileList == NULL)
+		? FALSE
+		: m_pRecentFileList->GetDisplayName(strName, nIndex, lpszCurDir, nCurDir, bAtLeastName);
+}
+//*************************************************************************************
+CString CBCGPWinApp::GetRecentFilePath(int nIndex) const
+{
+	return (m_pRecentFileList == NULL || nIndex < 0 || nIndex >= m_pRecentFileList->GetSize())
+		? _T("")
+		: (*m_pRecentFileList)[nIndex];
+}
+//*************************************************************************************
+int CBCGPWinApp::_GetRecentFilesCount()
+{
+	CWinApp* pWinApp = AfxGetApp();
+	if (pWinApp == NULL)
+	{
+		return 0;
+	}
+
+	CBCGPWinApp* pApp = DYNAMIC_DOWNCAST(CBCGPWinApp, pWinApp);
+	if (pApp != NULL)
+	{
+		ASSERT_VALID(pApp);
+		return pApp->GetRecentFilesCount();
+	}
+	
+	CRecentFileList* pMRUFiles = ((CBCGPWinApp*)pWinApp)->m_pRecentFileList;
+	if (pMRUFiles != NULL)
+	{
+		return pMRUFiles->GetSize();
+	}
+
+	return 0;
+}
+//*************************************************************************************
+CString CBCGPWinApp::_GetRecentFilePath(int nIndex)
+{
+	CWinApp* pWinApp = AfxGetApp();
+	if (pWinApp == NULL)
+	{
+		return _T("");
+	}
+	
+	CBCGPWinApp* pApp = DYNAMIC_DOWNCAST(CBCGPWinApp, pWinApp);
+	if (pApp != NULL)
+	{
+		ASSERT_VALID(pApp);
+		return pApp->GetRecentFilePath(nIndex);
+	}
+
+	CRecentFileList* pMRUFiles = ((CBCGPWinApp*)pWinApp)->m_pRecentFileList;
+	if (pMRUFiles != NULL)
+	{
+		if (nIndex >= 0 && nIndex < pMRUFiles->GetSize())
+		{
+			return (*pMRUFiles)[nIndex];
+		}
+	}
+	
+	return _T("");
+}
+//*************************************************************************************
+BOOL CBCGPWinApp::_GetRecentFileDisplayName(CString& strName, int nIndex,
+											LPCTSTR lpszCurDir, int nCurDir, BOOL bAtLeastName)
+{
+	CWinApp* pWinApp = AfxGetApp();
+	if (pWinApp == NULL)
+	{
+		return FALSE;
+	}
+	
+	CBCGPWinApp* pApp = DYNAMIC_DOWNCAST(CBCGPWinApp, pWinApp);
+	if (pApp != NULL)
+	{
+		ASSERT_VALID(pApp);
+		return pApp->GetRecentFileDisplayName(strName, nIndex, lpszCurDir, nCurDir, bAtLeastName);
+	}
+	
+	CRecentFileList* pMRUFiles = ((CBCGPWinApp*)pWinApp)->m_pRecentFileList;
+	if (pMRUFiles != NULL)
+	{
+		return pMRUFiles->GetDisplayName(strName, nIndex, lpszCurDir, nCurDir, bAtLeastName);
+	}
+	
+	return FALSE;
+}
 
 //////////////////////////////////////////////////////////////////////////
 // CBCGPWorkspace
@@ -697,7 +866,7 @@ extern CObList	gAllToolbars;
 //*************************************************************************************
 BOOL CBCGPWorkspace::UseWorkspaceManager(LPCTSTR lpszSectionName /*=NULL*/, BOOL bResourceSmartUpdate)
 {
-	if(g_pWorkspace != NULL)
+	if (g_pWorkspace != NULL)
 	{
 		return FALSE;	// already exists
 	}
@@ -755,9 +924,12 @@ CBCGPWorkspace::CBCGPWorkspace (BOOL bResourceSmartUpdate /*= FALSE*/) :
 	m_bLoadUserToolbars	= TRUE;
 
 	m_bLoadWindowPlacement = TRUE;
+	m_bLoadWindowPlacementBeforeLoadState = FALSE;
 
 	m_bTaskBarInteraction = TRUE;
 	m_bMouseWheelInInactiveWindow = FALSE;
+
+	m_bIsAeroSnapPlacement = FALSE;
 }
 //*************************************************************************************
 CBCGPWorkspace::~CBCGPWorkspace()
@@ -1050,6 +1222,14 @@ BOOL CBCGPWorkspace::LoadState (LPCTSTR lpszSectionName /*=NULL*/, CBCGPFrameImp
 	//-----------------------------
 	PreLoadState();
 
+	if (m_bLoadWindowPlacementBeforeLoadState)
+	{
+		//--------------------------------------------------------
+		// Restore window size and position before loading state:
+		//--------------------------------------------------------
+		ReloadWindowPlacement (pFrameImpl->m_pFrame);
+	}
+
 	//------------------------
 	// Loaded library version:
 	//------------------------
@@ -1109,6 +1289,7 @@ BOOL CBCGPWorkspace::LoadState (LPCTSTR lpszSectionName /*=NULL*/, CBCGPFrameImp
 		//-----------------------------------------------------
 		// Load all toolbars, menubar and docking control bars:
 		//-----------------------------------------------------
+
 		for (POSITION posTlb = gAllToolbars.GetHeadPosition (); posTlb != NULL;)
 		{
 			CBCGPToolBar* pToolBar = (CBCGPToolBar*) gAllToolbars.GetNext (posTlb);
@@ -1404,6 +1585,7 @@ BOOL CBCGPWorkspace::SaveState (LPCTSTR lpszSectionName  /*=NULL*/, CBCGPFrameIm
 		ASSERT_VALID (CBCGPToolBar::m_pUserImages);
 		CBCGPToolBar::m_pUserImages->Save ();
 	}
+
 
 	//--------------------------------------
 	// Save mouse/keyboard/menu managers:
@@ -1988,55 +2170,82 @@ void CBCGPWorkspace::PinPath(BOOL bFile, LPCTSTR lpszPath, BOOL bPin)
 //***********************************************************************************
 BOOL CBCGPWorkspace::CreateScreenshot(CBitmap& bmpScreenshot, CWnd* pWnd)
 {
-	if (bmpScreenshot.GetSafeHandle() != NULL)
-	{
-		bmpScreenshot.DeleteObject();
-	}
+	return globalUtils.CreateScreenshot(bmpScreenshot, pWnd);
+}
+//***********************************************************************************
+BOOL CBCGPWorkspace::LoadDockingLayout(LPCTSTR lpszSectionName, CBCGPFrameImpl* pFrameImpl)
+{
+	ASSERT(pFrameImpl != NULL);
+	ASSERT_VALID(pFrameImpl->m_pFrame);
+	ASSERT(lpszSectionName != NULL);
 
-	if (pWnd == NULL)
-	{
-		pWnd = AfxGetMainWnd();
-	}
+	CString strRegSection = m_strRegSection;
+	m_strRegSection = lpszSectionName;
 
-	if (pWnd->GetSafeHwnd() == NULL)
-	{
-		return FALSE;
-	}
-	
-	CRect rectWnd;
-	pWnd->GetWindowRect(rectWnd);
-	rectWnd.OffsetRect(-rectWnd.left, -rectWnd.top);
+	CString strSection = GetRegSectionPath ();
 
-	BOOL bRes = FALSE;
-	
-	CDC dc;
-	if (dc.CreateCompatibleDC(NULL))
-	{
-		LPBYTE pBitsWnd = NULL;
-		HBITMAP hBitmap = CBCGPDrawManager::CreateBitmap_32 (rectWnd.Size(), (void**)&pBitsWnd);
+	pFrameImpl->m_pFrame->LockWindowUpdate();
 
-		if (hBitmap != NULL)
+	if (pFrameImpl->m_pDockManager != NULL)
+	{
+		const CObList& lstMiniFrames = pFrameImpl->m_pDockManager->GetMiniFrames();
+		for (POSITION pos = lstMiniFrames.GetHeadPosition (); pos != NULL;)
 		{
-			HBITMAP hBitmapOld = (HBITMAP)dc.SelectObject(hBitmap);
-			if (hBitmapOld != NULL)
+			CBCGPMiniFrameWnd* pMiniFrame = DYNAMIC_DOWNCAST (CBCGPMiniFrameWnd, lstMiniFrames.GetNext (pos));
+			if (pMiniFrame != NULL)
 			{
-				dc.FillRect(rectWnd, &globalData.brWindow);
-				pWnd->SendMessage(WM_PRINT, (WPARAM)dc.GetSafeHdc(), (LPARAM)(PRF_CLIENT | PRF_CHILDREN | PRF_NONCLIENT | PRF_ERASEBKGND));
-	
-				for (int i = 0; i < rectWnd.Width() * rectWnd.Height(); i++)
-				{
-					pBitsWnd[3] = 255;
-					pBitsWnd += 4;
-				}
-	
-				dc.SelectObject (hBitmapOld);
-
-				bRes = TRUE;
+				ASSERT_VALID(pMiniFrame);
+				pMiniFrame->OnDockToRecentPos();
 			}
-	
-			bmpScreenshot.Attach(hBitmap);
 		}
 	}
 
-	return bRes;
+	CDockState dockState;
+	
+	if (m_bAfxStoreDockSate)
+	{
+		dockState.LoadState(m_strRegSection + strRegEntryNameControlBars);
+	}
+	
+	if (m_bForceDockStateLoad || pFrameImpl->IsDockStateValid (dockState))
+	{
+		if ((GetDataVersionMajor() != -1) && (GetDataVersionMinor() != -1))
+		{
+			pFrameImpl->LoadDockState (strSection);
+			pFrameImpl->SetDockState (dockState);
+		}
+	}
+
+	pFrameImpl->m_pFrame->RecalcLayout ();
+	pFrameImpl->m_pFrame->UnlockWindowUpdate();
+
+	pFrameImpl->m_pFrame->RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+	
+	m_strRegSection = strRegSection;
+	return TRUE;
+}
+//***********************************************************************************
+BOOL CBCGPWorkspace::SaveDockingLayout(LPCTSTR lpszSectionName, CBCGPFrameImpl* pFrameImpl)
+{
+	ASSERT(pFrameImpl != NULL);
+	ASSERT_VALID(pFrameImpl->m_pFrame);
+	ASSERT(lpszSectionName != NULL);
+
+	CString strRegSection = m_strRegSection;
+	m_strRegSection = lpszSectionName;
+
+	CString strSection = GetRegSectionPath();
+
+	if (m_bAfxStoreDockSate)
+	{
+		CDockState dockState;
+		
+		pFrameImpl->m_pFrame->GetDockState (dockState);
+		dockState.SaveState (m_strRegSection + strRegEntryNameControlBars);
+	}
+
+	pFrameImpl->SaveDockState(strSection);
+
+	m_strRegSection = strRegSection;
+	return TRUE;
 }

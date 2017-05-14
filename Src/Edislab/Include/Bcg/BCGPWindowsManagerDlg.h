@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -40,7 +40,7 @@ class BCGCBPRODLLEXPORT CBCGPWindowsManagerDlg : public CBCGPDialog
 {
 // Construction
 public:
-	CBCGPWindowsManagerDlg(CBCGPMDIFrameWnd* pMDIFrame, BOOL bHelpButton = FALSE);   // standard constructor
+	CBCGPWindowsManagerDlg(CBCGPMDIFrameWnd* pMDIFrame, BOOL bHelpButton = FALSE, BOOL bResizable = FALSE);   // standard constructor
 
 // Dialog Data
 	//{{AFX_DATA(CBCGPWindowsManagerDlg)
@@ -59,9 +59,10 @@ public:
 // Implementation
 protected:
 	void			MDIMessage(UINT uMsg,WPARAM flag);
-	void			FillWindowList(void);
-	void			SelActive(void);
-	void			UpdateButtons(void);
+	void			FillWindowList();
+	void			AddMDIChildren(CBCGPMDIFrameWnd* pMDIFrame, CDC& dcList, int& cxExtent);
+	void			SelActive();
+	void			UpdateButtons();
 
 	CBCGPMDIFrameWnd*	m_pMDIFrame;
 	const BOOL			m_bHelpButton;

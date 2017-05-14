@@ -1,5 +1,5 @@
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -61,6 +61,21 @@ public:
 		clrInactiveText = (COLORREF)-1;
 		clrLine = (COLORREF)-1;
 	}
+
+	const CBCGPCalendarColors& operator= (const CBCGPCalendarColors& src)
+	{
+		clrCaption = src.clrCaption;
+		clrCaptionText = src.clrCaptionText;
+		clrSelected = src.clrSelected;
+		clrSelectedText = src.clrSelectedText;
+		clrTodayBorder = src.clrTodayBorder;
+		clrBackground = src.clrBackground;
+		clrText = src.clrText;
+		clrInactiveText = src.clrInactiveText;
+		clrLine = src.clrLine;
+		
+		return *this;
+	}
 };
 
 class BCGCBPRODLLEXPORT CBCGPCalendar : public CWnd
@@ -70,7 +85,7 @@ class BCGCBPRODLLEXPORT CBCGPCalendar : public CWnd
 	friend class CBCGPMonthPickerWnd;
 	friend class CBCGPCalendarXCtrl;
 
-	DECLARE_DYNAMIC(CBCGPCalendar)
+	DECLARE_SERIAL(CBCGPCalendar)
 
 // Construction
 public:
@@ -111,6 +126,30 @@ public:
 	//------------------
 	void SetDateColor (COleDateTime date, COLORREF color, BOOL bRedraw = TRUE);
 	COLORREF GetDateColor (COleDateTime date);
+
+	void SetCustomColors(const CBCGPCalendarColors* pColors /* NULL - reset */)
+	{
+		if (pColors == NULL)
+		{
+			m_bCustomColors = FALSE;
+			m_Colors.Reset();
+		}
+		else
+		{
+			m_bCustomColors = TRUE;
+			m_Colors = *pColors;
+		}
+	}
+	
+	BOOL IsCustomColors() const
+	{
+		return m_bCustomColors;
+	}
+	
+	const CBCGPCalendarColors& GetColors() const
+	{
+		return m_Colors;
+	}
 
 	static int GetMaxMonthDay (int nMonth, int nYear);
 	static int GetMaxMonthDay (COleDateTime date)
@@ -201,6 +240,13 @@ public:
 		return m_nFirstDayOfWeek;
 	}
 
+	void SetFirstWeekOfYear(int nVal);	// 0 - week of Jan 1, 1 - first full week, 2 - First week containing at least four days is the first week of the year.
+	
+	int GetFirstWeekOfYear() const
+	{
+		return m_nFirstWeekOfYear;
+	}
+
 	COleDateTime GetFirstWeekDay (const COleDateTime& day)
 	{
 		return day - COleDateTimeSpan((day.GetDayOfWeek () - GetFirstDayOfWeek() + 6) % 7, 0, 0, 0);
@@ -234,6 +280,17 @@ public:
 		return m_bIsPopup;
 	}
 
+	void SetMaxWeekDayCharacters(int nMaxWeekDayCharacters)
+	{
+		ASSERT(nMaxWeekDayCharacters > 0);
+		m_nMaxWeekDayCharacters = nMaxWeekDayCharacters;
+	}
+
+	int GetMaxWeekDayCharacters() const
+	{
+		return m_nMaxWeekDayCharacters;
+	}
+
 protected:
 	CMap<DATE, DATE&, BOOL, BOOL> 	
 								m_SelectedDates;
@@ -241,6 +298,10 @@ protected:
 								m_MarkedDates;
 	CMap<DATE, DATE&, COLORREF, COLORREF> 	
 								m_DateColors;
+
+	HFONT						m_hFont;
+	CFont						m_fontBold;
+	CSize						m_szCellPad;
 
 	BOOL						m_bSingleMonth;
 	BOOL						m_bWeekNumbers;
@@ -255,8 +316,10 @@ protected:
 	int							m_nStartYear;
 
 	int							m_nFirstDayOfWeek;
+	int							m_nFirstWeekOfYear;
 
 	CStringArray				m_arWeekDays;
+	int							m_nMaxWeekDayCharacters;
 
 	CRect						m_rectBtnPrev;
 	CRect						m_rectBtnNext;
@@ -288,6 +351,7 @@ protected:
 	CRect						m_rectDrag;
 
 	CBCGPCalendarColors			m_Colors;
+	BOOL						m_bCustomColors;
 
 	COleDateTime				m_dateTrack;
 	COleDateTime				m_dateStartDrag;
@@ -315,6 +379,8 @@ protected:
 	BOOL						m_bDontChangeLocale;
 
 protected:
+	CFont* SelectFont(CDC* pDC, BOOL bBold = FALSE);
+
 	BOOL GetMonthRect (int nMonthIndex, CRect& rect) const;
 	int GetMonthRect (int nYear, int nMonth, CRect& rect) const;
 
@@ -349,6 +415,7 @@ protected:
 	virtual DROPEFFECT OnDragOver(COleDataObject* pDataObject, DWORD dwKeyState, CPoint point);
 
 	virtual void OnDraw(CDC* pDCPaint);
+	virtual void NotifyCloseCalendar(COleDateTime date = COleDateTime());
 
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPCalendar)
@@ -391,6 +458,8 @@ protected:
 	afx_msg LRESULT OnPrintClient(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnPrint(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnBCGSetControlVMMode (WPARAM wp, LPARAM);
+	afx_msg LRESULT OnSetFont (WPARAM, LPARAM);
+	afx_msg LRESULT OnGetFont (WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 };
 
@@ -542,7 +611,7 @@ protected:
 	
 	virtual void Serialize (CArchive& ar);
 	virtual void ShowCommandMessageString (UINT uiCmdId);
-	
+
 	CBCGPCalendar		m_wndCalendar;
 	UINT				m_nCommandID;
 	BOOL				m_bIsTearOff;
@@ -552,7 +621,7 @@ protected:
 
 BCGCBPRODLLEXPORT extern UINT BCGM_CALENDAR_ON_SELCHANGED;
 
-class CBCGPMonthPickerWnd : public CMiniFrameWnd
+class BCGCBPRODLLEXPORT CBCGPMonthPickerWnd : public CMiniFrameWnd
 {
 // Construction
 public:

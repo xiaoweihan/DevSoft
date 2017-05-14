@@ -2,20 +2,15 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
 // only under terms and conditions 
 // of the accompanying license agreement.
 //*******************************************************************************
-
 //
-// bcgtoolbar.h : definition of CBCGPToolBar
-//
-// This code is based on the Microsoft Visual C++ sample file
-// TOOLBAR.C from the OLDBARS example
-//
+// bcgptoolbar.h : definition of CBCGPToolBar
 
 #ifndef _TOOLBAR_H_
 #define _TOOLBAR_H_
@@ -49,14 +44,15 @@ class BCGCBPRODLLEXPORT CBCGPToolBarParams
 public:
 	CBCGPToolBarParams();
 
-	UINT	m_uiColdResID;			// Toolbar regular images
-	UINT	m_uiHotResID;			// Toolbar "hot" images
-	UINT	m_uiDisabledResID;		// Toolbar disabled images
-	UINT	m_uiLargeColdResID;		// Toolbar large regular images
-	UINT	m_uiLargeHotResID;		// Toolbar large "hot" images
-	UINT	m_uiLargeDisabledResID;	// Toolbar large disabled images
-	UINT	m_uiMenuResID;			// Menu images
-	UINT	m_uiMenuDisabledResID;	// Menu disabled images
+	UINT		m_uiColdResID;			// Toolbar regular images
+	UINT		m_uiHotResID;			// Toolbar "hot" images
+	UINT		m_uiDisabledResID;		// Toolbar disabled images
+	UINT		m_uiLargeColdResID;		// Toolbar large regular images
+	UINT		m_uiLargeHotResID;		// Toolbar large "hot" images
+	UINT		m_uiLargeDisabledResID;	// Toolbar large disabled images
+	UINT		m_uiMenuResID;			// Menu images
+	UINT		m_uiMenuDisabledResID;	// Menu disabled images
+	HINSTANCE	m_hResourceHandle;		// HANDLE of the resources
 };
 
 //----------------------------------
@@ -118,6 +114,12 @@ public:
 	//------------------------------
 	static void ResetAllImages();
 
+	static void SetGrayDisabledImages(BOOL bSet = TRUE);	// Should be called prior toolbars loading!
+	static BOOL IsGrayDisabledImages()
+	{
+		return m_bGrayDisabledImages;
+	}
+
 	//--------------------------------
 	// Dimension manipulation methods:
 	//--------------------------------
@@ -138,7 +140,7 @@ public:
 	virtual BOOL LoadToolBar (UINT uiResID, UINT uiColdResID = 0, 
 					UINT uiMenuResID = 0, BOOL bLocked = FALSE,
 					UINT uiDisabledResID = 0, UINT uiMenuDisabledResID = 0,
-  				    UINT uiHotResID = 0);
+					UINT uiHotResID = 0);
 	virtual BOOL LoadBitmapEx (CBCGPToolBarParams& params, BOOL bLocked = FALSE);
 	virtual BOOL LoadToolBarEx (UINT uiToolbarResID, CBCGPToolBarParams& params, 
 								BOOL bLocked = FALSE);
@@ -242,11 +244,17 @@ public:
 		return m_bAutoGrayInactiveImages;
 	}
 
-	CSize GetButtonSize () const
+	static void UseDefaultResourceHandle(BOOL bDefaultResourceHandle = TRUE);
+	static BOOL IsDefaultResourceHandle()
+	{
+		return m_bDefaultResourceHandle;
+	}
+
+	CSize GetButtonSize (BOOL bCurr = TRUE) const
 	{
 		CSize size = m_bLocked ?
-			(m_bLargeIconsAreEnbaled ? m_sizeCurButtonLocked : m_sizeButtonLocked) :
-			(m_bLargeIconsAreEnbaled ? m_sizeCurButton : m_sizeButton);
+			((m_bLargeIconsAreEnbaled && bCurr) ? m_sizeCurButtonLocked : m_sizeButtonLocked) :
+			((m_bLargeIconsAreEnbaled && bCurr) ? m_sizeCurButton : m_sizeButton);
 		
 		if (IsButtonExtraSizeAvailable ())
 		{
@@ -371,9 +379,9 @@ public:
 	{
 		return &m_DisabledMenuImages;
 	}
-	static CBCGPToolBarImages* GetUserImages ()
+	static CBCGPToolBarImages* GetUserImages (BOOL bScaled = TRUE)
 	{
-		return m_pUserImages;
+		return (bScaled && m_UserImagesScaled.GetCount() > 0) ? &m_UserImagesScaled : m_pUserImages;
 	}
 
 	CBCGPToolBarImages*	GetLockedImages ()
@@ -613,6 +621,7 @@ public:
 
 	virtual void AdjustLayout ();
 	virtual int HitTest(CPoint point);
+	virtual void GetMessageString(UINT nID, CString& strMessageString) const;
 	virtual BOOL TranslateChar (UINT nChar);
 	virtual void OnUpdateCmdUI(CFrameWnd* pTarget, BOOL bDisableIfNoHndler);
 
@@ -630,7 +639,11 @@ public:
 		return pButton == m_pDragButton;
 	}
 
-	virtual void  OnFillBackground (CDC* /*pDC*/) {}
+	virtual void  OnFillBackground (CDC* pDC) 
+	{
+		UNREFERENCED_PARAMETER(pDC);
+	}
+
 	virtual void OnGlobalFontsChanged ();
 
 	static BOOL		m_bExtCharTranslation;
@@ -643,6 +656,7 @@ public:
 
 	void AdjustSize ();
 
+	virtual void AdjustLocations ();
 	virtual BOOL OnUserToolTip (CBCGPToolbarButton* pButton, CString& strTTText) const;
 
 	virtual BOOL IsPopupMode() const
@@ -712,11 +726,14 @@ protected:
 	virtual void OnAfterDock  (CBCGPBaseControlBar* /*pBar*/, LPCRECT /*lpRect*/, BCGP_DOCK_METHOD /*dockMethod*/);
 	virtual void OnBeforeChangeParent (CWnd* pWndNewParent, BOOL bDelay = FALSE);
 
+	virtual BOOL GetButtonKeyboardAccelerator(const CBCGPToolbarButton* pButton, CString& strLabel) const;
+
 protected:
 	friend class CBCGPWorkspace;
 
 	static CBCGPToolBar*		m_pSelToolbar;			// "Selected" toolbar in the customization mode
 
+	static BOOL					m_bGrayDisabledImages;
 	static CBCGPToolBarImages	m_Images;				// Shared toolbar images
 	static CBCGPToolBarImages	m_ColdImages;			// Shared toolbar "cold" images
 	static CBCGPToolBarImages	m_DisabledImages;		// Shared disabled images
@@ -732,6 +749,7 @@ protected:
 	static int	m_nGrayImagePercentage;
 
 	static CBCGPToolBarImages*	m_pUserImages;			// Shared user-defined images
+	static CBCGPToolBarImages	m_UserImagesScaled;		// Shared user-defined images (scaled for the current DPI or NULL is DPI == 100%)
 
 	CBCGPToolBarImages	m_ImagesLocked;					// "Locked" toolbar images
 	CBCGPToolBarImages	m_ColdImagesLocked;				// "Locked" toolbar "cold" images
@@ -832,6 +850,7 @@ protected:
 	static BOOL m_bShowTooltips;
 	static BOOL m_bShowShortcutKeys;
 	static BOOL m_bLargeIcons;
+	static BOOL m_bDefaultResourceHandle;
 
 	static CList<UINT, UINT>	m_lstUnpermittedCommands;
 	static CList<UINT, UINT>	m_lstBasicCommands;
@@ -862,6 +881,8 @@ protected:
 	BOOL				m_bRoundShape;
 	BOOL				m_bInUpdateShadow;
 
+	BOOL				m_bIsLocal;
+
 	virtual BOOL OnDrop(COleDataObject* pDataObject, DROPEFFECT dropEffect, CPoint point);
 	virtual DROPEFFECT OnDragEnter(COleDataObject* pDataObject, DWORD dwKeyState, CPoint point);
 	virtual void OnDragLeave();
@@ -879,7 +900,6 @@ protected:
 										 LPARAM lParam);
 
 	virtual int FindDropIndex (const CPoint point, CRect& rectDrag) const;
-	virtual void AdjustLocations ();
 
 	virtual BOOL OnSendCommand (const CBCGPToolbarButton* /*pButton*/)	{	return FALSE;	}
 

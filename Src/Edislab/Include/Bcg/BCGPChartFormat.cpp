@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -14,6 +14,7 @@
 
 #include "stdafx.h"
 #include "BCGPChartFormat.h"
+#include "BCGPVisualManager.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -22,6 +23,7 @@ static char THIS_FILE[] = __FILE__;
 #endif
 
 CString BCGPChartFormatLabel::m_strDefaultFontFamily = _T("Calibri");
+BOOL BCGPChartFormatLabel::m_bDefaultFontIsScaledByDPI = TRUE;
 
 //*******************************************************************************
 // Global method to generate 3D colors;
@@ -285,13 +287,14 @@ void CBCGPChartSeriesColorTheme::ApplyColors(BCGPSeriesColorsPtr& colors, BCGPSe
 	}
 }
 //*******************************************************************************
-// Global Colors Colors
+// Global Colors
 //*******************************************************************************
 CBCGPChartTheme::CBCGPChartTheme(CBCGPChartTheme::ChartTheme chartTheme)
 {
+	m_bIsFlatTheme = FALSE;
+
 	SetTheme(chartTheme);
 	m_dblOpacity = 1.;
-	m_bIsFlatTheme = FALSE;
 }
 //*******************************************************************************
 CBCGPChartTheme::CBCGPChartTheme(const CBCGPChartTheme& src)
@@ -302,15 +305,40 @@ CBCGPChartTheme::CBCGPChartTheme(const CBCGPChartTheme& src)
 
 static CBCGPColor colorNull;
 
-void CBCGPChartTheme::InitChartColors(CBCGPChartTheme& theme, const CBCGPColor& colorFill, 
-							 const CBCGPColor& colorOutline,
+void CBCGPChartTheme::InitChartColors(CBCGPChartTheme& theme, const CBCGPColor& colorFillIn, 
+							 const CBCGPColor& colorOutlineIn,
 							 const CBCGPColor& colorTextIn,
 							 const CBCGPColor& colorSelIn,
 							 const CBCGPColor& colorPlotterIn,
 							 double dblInterlaceOpacity,
 							 BOOL bIsDarkBackground)
 {
+	CBCGPColor colorOutline = colorOutlineIn;
 	CBCGPColor colorText = colorTextIn;
+	CBCGPColor colorFill = colorFillIn;
+	CBCGPColor colorPlotter = colorPlotterIn;
+	CBCGPColor colorSel = colorSelIn;
+	CBCGPColor colorScrollBar;
+	CBCGPColor colorScrollBarGradient;
+
+	if (theme.IsVisualManagerTheme())
+	{
+		CBCGPChartColors colors;
+		CBCGPVisualManager::GetInstance()->GetChartColors(colors);
+
+		colorFill = colors.m_clrFill;
+		colorText = colors.m_clrText;
+		colorOutline = colors.m_clrOutline;
+		colorPlotter = colors.m_clrPlotter;
+		colorSel = colors.m_clrSel;
+		colorScrollBar = colors.m_colorScrollBar;
+		colorScrollBarGradient = colors.m_colorScrollBarGradient;
+		
+		dblInterlaceOpacity = colors.m_dblInterlaceOpacity;
+
+		bIsDarkBackground = CBCGPVisualManager::GetInstance()->IsDarkTheme() || globalData.m_bIsBlackHighContrast;
+	}
+
 	if (colorText.IsNull())
 	{
 		colorText = colorOutline;
@@ -339,7 +367,7 @@ void CBCGPChartTheme::InitChartColors(CBCGPChartTheme& theme, const CBCGPColor& 
 
 	if (bIsDarkBackground)
 	{
-		theme.m_brAxisInterlaceColor.SetColor(colorPlotterIn.IsNull() ? colorFill : colorPlotterIn);
+		theme.m_brAxisInterlaceColor.SetColor(colorPlotter.IsNull() ? colorFill : colorPlotter);
 		theme.m_brAxisInterlaceColor.MakeLighter(dblInterlaceOpacity);
 	}
 	else
@@ -347,7 +375,7 @@ void CBCGPChartTheme::InitChartColors(CBCGPChartTheme& theme, const CBCGPColor& 
 		theme.m_brAxisInterlaceColor.SetColor(colorOutline, dblInterlaceOpacity);
 	}
 
-	if (colorPlotterIn.IsNull())
+	if (colorPlotter.IsNull())
 	{
 		theme.m_brPlotFillColor = theme.m_brAxisInterlaceColor;
 		theme.m_brPlotFillColor.MakePale(.99);
@@ -357,9 +385,9 @@ void CBCGPChartTheme::InitChartColors(CBCGPChartTheme& theme, const CBCGPColor& 
 	}
 	else
 	{
-		theme.m_brPlotFillColor.SetColor(colorPlotterIn);
+		theme.m_brPlotFillColor.SetColor(colorPlotter);
 
-		theme.m_brAxisInterlaceColorGDI.SetColor(colorPlotterIn);
+		theme.m_brAxisInterlaceColorGDI.SetColor(colorPlotter);
 		theme.m_brAxisInterlaceColorGDI.MakeLighter();
 	}
 
@@ -394,14 +422,14 @@ void CBCGPChartTheme::InitChartColors(CBCGPChartTheme& theme, const CBCGPColor& 
 	theme.m_brLegendLineColor = theme.m_brAxisMajorGridLineColor;
 	theme.m_brLegendEntryTextColor.SetColor(colorText);
 
-	if (colorSelIn.IsNull())
+	if (colorSel.IsNull())
 	{
 		theme.m_brSelectionFillColor.SetColor(colorOutline, 0.5);
 		theme.m_brSelectionFillColor.MakePale(.8);
 	}
 	else
 	{
-		theme.m_brSelectionFillColor.SetColor(colorSelIn, 0.5);
+		theme.m_brSelectionFillColor.SetColor(colorSel, 0.5);
 	}
 
 	theme.m_brSelectionLineColor = theme.m_brSelectionFillColor;
@@ -419,8 +447,15 @@ void CBCGPChartTheme::InitChartColors(CBCGPChartTheme& theme, const CBCGPColor& 
 	CBCGPColor clrScrollBarLight = clrScrollBar;
 	clrScrollBarLight.MakePale();
 
-	theme.m_brScrollBarVert.SetColors(clrScrollBarLight, clrScrollBar, CBCGPBrush::BCGP_GRADIENT_VERTICAL);
-	theme.m_brScrollBarHorz.SetColors(clrScrollBar, clrScrollBarLight, CBCGPBrush::BCGP_GRADIENT_HORIZONTAL);
+	if (colorScrollBar.IsNull() || colorScrollBarGradient.IsNull())
+	{
+		colorScrollBar = theme.m_brSelectionFillColor.GetColor();
+		colorScrollBarGradient = colorScrollBar;
+		colorScrollBarGradient.MakePale();
+	}
+
+	theme.m_brScrollBarVert.SetColors(colorScrollBarGradient, colorScrollBar, CBCGPBrush::BCGP_GRADIENT_VERTICAL);
+	theme.m_brScrollBarHorz.SetColors(colorScrollBar, colorScrollBarGradient, CBCGPBrush::BCGP_GRADIENT_HORIZONTAL);
 }
 //********************************************************************************
 void CBCGPChartTheme::PrepareWallBrushes(CBCGPChartTheme& theme, const CBCGPBrush& brBase, BOOL bIsDarkBackground)
@@ -498,7 +533,7 @@ static void InitSeriesColors2(BCGPSeriesColors& sc, const CBCGPColor& color,
 	if (colorGradient.IsNull())
 	{
 		colorGradient = color;
-		colorGradient.MakeLighter(.5);
+		colorGradient.MakeLighter(.3);
 	}
 
 	sc.m_brElementFillColor.SetColors(color, colorGradient, (CBCGPBrush::BCGP_GRADIENT_TYPE)-1);
@@ -685,9 +720,9 @@ void CBCGPChartTheme::SetTheme(CBCGPChartTheme::ChartTheme chartTheme)
 		InitChartColors(*this, CBCGPColor::Black, CBCGPColor::Brown, CBCGPColor::LightCoral, colorNull, colorPlotBlack, .2, TRUE);
 
 		InitSeriesColors(m_seriesColors[0], CBCGPColor::IndianRed, CBCGPColor::LightSalmon);
-		InitSeriesColors(m_seriesColors[1], CBCGPColor::Black);
+		InitSeriesColors(m_seriesColors[1], CBCGPColor::DimGray);
 		InitSeriesColors(m_seriesColors[2], CBCGPColor::Firebrick);
-		InitSeriesColors(m_seriesColors[3], CBCGPColor::DimGray);
+		InitSeriesColors(m_seriesColors[3], CBCGPColor::Gray);
 		InitSeriesColors(m_seriesColors[4], CBCGPColor::Red);
 		break;
 
@@ -772,7 +807,7 @@ void CBCGPChartTheme::SetTheme(CBCGPChartTheme::ChartTheme chartTheme)
 		break;
 
 	case CT_BLACK_AND_GREEN:
-		InitChartColors(*this, CBCGPColor::Black, CBCGPColor::DarkOliveGreen, CBCGPColor::YellowGreen, colorNull, CBCGPColor::Black, 0.1, TRUE);
+		InitChartColors(*this, CBCGPColor::Black, CBCGPColor::DarkOliveGreen, CBCGPColor::YellowGreen, colorNull, CBCGPColor::Black, 0.095, TRUE);
 
 		InitSeriesColors(m_seriesColors[0], CBCGPColor::YellowGreen);
 		InitSeriesColors(m_seriesColors[1], CBCGPColor::MediumSeaGreen);
@@ -782,7 +817,7 @@ void CBCGPChartTheme::SetTheme(CBCGPChartTheme::ChartTheme chartTheme)
 		break;
 
 	case CT_BLACK_AND_BLUE:
-		InitChartColors(*this, CBCGPColor::Black, CBCGPColor::SlateGray, CBCGPColor::CadetBlue, colorNull, CBCGPColor::Black, 0.1, TRUE);
+		InitChartColors(*this, CBCGPColor::Black, CBCGPColor::SlateGray, CBCGPColor::CadetBlue, colorNull, CBCGPColor::Black, 0.095, TRUE);
 
 		InitSeriesColors(m_seriesColors[0], CBCGPColor::DeepSkyBlue);
 		InitSeriesColors(m_seriesColors[1], CBCGPColor::DodgerBlue);
@@ -838,6 +873,123 @@ void CBCGPChartTheme::SetTheme(CBCGPChartTheme::ChartTheme chartTheme)
 		InitSeriesColors(m_seriesColors[3], RGB(163, 0, 192));
 		InitSeriesColors(m_seriesColors[4], RGB(165, 165, 165));
 		break;
+
+	case CT_FLAT_2015_1:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(49, 182, 253));
+		InitSeriesColors(m_seriesColors[1], RGB(245, 192, 64));
+		InitSeriesColors(m_seriesColors[2], RGB(91, 208, 120));
+		InitSeriesColors(m_seriesColors[3], RGB(37, 219, 210));
+		InitSeriesColors(m_seriesColors[4], RGB(204, 204, 204));
+		break;
+		
+	case CT_FLAT_2015_2:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(114, 124, 163));
+		InitSeriesColors(m_seriesColors[1], RGB(159, 184, 205));
+		InitSeriesColors(m_seriesColors[2], RGB(210, 218, 122));
+		InitSeriesColors(m_seriesColors[3], RGB(250, 218, 122));
+		InitSeriesColors(m_seriesColors[4], RGB(184, 132, 114));
+		break;
+
+	case CT_FLAT_2015_3:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(96, 118, 180));
+		InitSeriesColors(m_seriesColors[1], RGB(156, 82, 82));
+		InitSeriesColors(m_seriesColors[2], RGB(230, 132, 34));
+		InitSeriesColors(m_seriesColors[3], RGB(132, 102, 72));
+		InitSeriesColors(m_seriesColors[4], RGB(99, 137, 31));
+		break;
+
+	case CT_FLAT_2015_4:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(56, 145, 167));
+		InitSeriesColors(m_seriesColors[1], RGB(254, 184, 10));
+		InitSeriesColors(m_seriesColors[2], RGB(195, 45, 46));
+		InitSeriesColors(m_seriesColors[3], RGB(132, 170, 51));
+		InitSeriesColors(m_seriesColors[4], RGB(150, 67, 5));
+		break;
+
+	case CT_FLAT_2015_5:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(113, 178, 60));
+		InitSeriesColors(m_seriesColors[1], RGB(171, 136, 178));
+		InitSeriesColors(m_seriesColors[2], RGB(65, 198, 193));
+		InitSeriesColors(m_seriesColors[3], RGB(144, 233, 82));
+		InitSeriesColors(m_seriesColors[4], RGB(146, 90, 202));
+		break;
+
+	case CT_FLAT_2016_1:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(106, 176, 255));
+		InitSeriesColors(m_seriesColors[1], RGB(234, 171, 168));
+		InitSeriesColors(m_seriesColors[2], RGB(0, 190, 182));
+		InitSeriesColors(m_seriesColors[3], RGB(211, 211, 211));
+		InitSeriesColors(m_seriesColors[4], RGB(255, 144, 0));
+		break;
+		
+	case CT_FLAT_2016_2:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB (72, 209, 254));
+		InitSeriesColors(m_seriesColors[1], RGB (88, 132, 126));
+		InitSeriesColors(m_seriesColors[2], RGB (155, 64, 131));
+		InitSeriesColors(m_seriesColors[3], RGB (125, 125, 125));
+		break;
+		
+	case CT_FLAT_2016_3:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(91, 155, 213));
+		InitSeriesColors(m_seriesColors[1], RGB(165, 165, 165));
+		InitSeriesColors(m_seriesColors[2], RGB(68, 114, 196));
+		break;
+		
+	case CT_FLAT_2016_4:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(102, 86, 201));
+		InitSeriesColors(m_seriesColors[1], RGB(2, 139, 244));
+		InitSeriesColors(m_seriesColors[2], RGB(18, 210, 177));
+		InitSeriesColors(m_seriesColors[3], RGB(1, 106, 149));
+		InitSeriesColors(m_seriesColors[4], RGB(42, 179, 235));
+		break;
+
+	case CT_FLAT_2016_5:
+		m_bIsFlatTheme = TRUE;
+		
+		InitChartColors(*this, CBCGPColor::White, CBCGPColor::DimGray, colorNull, CBCGPColor::LightBlue);
+		
+		InitSeriesColors(m_seriesColors[0], RGB(205, 182, 232));
+		InitSeriesColors(m_seriesColors[1], RGB(108, 167, 163));
+		InitSeriesColors(m_seriesColors[2], RGB(233, 184, 186));
+		InitSeriesColors(m_seriesColors[3], RGB(232, 220, 221));
+		InitSeriesColors(m_seriesColors[4], RGB(255, 171, 17));
+		break;
 	}
 
 	m_seriesThemeColors.CreateFrom(m_seriesColors, m_dblColorChangeStep);
@@ -851,6 +1003,8 @@ void CBCGPChartTheme::SetOpacity(double dblOpacity)
 //*******************************************************************************
 void CBCGPChartTheme::CopyFrom(const CBCGPChartTheme& src)
 {
+	m_bVisualManagerTheme = src.m_bVisualManagerTheme;
+
 	m_brChartFillColor = src.m_brChartFillColor;
 	m_brChartLineColor = src.m_brChartLineColor;
 
@@ -919,6 +1073,7 @@ void CBCGPChartTheme::CopyFrom(const CBCGPChartTheme& src)
 
 	m_dblOpacity = src.GetOpacity();
 	m_bIsFlatTheme = src.m_bIsFlatTheme;
+	m_themeType = src.m_themeType;
 }
 
 void CBCGPChartTheme::GetSeriesColors(BCGPSeriesColorsPtr& seriesColors, int nColorIndex, CBCGPBrush::BCGP_GRADIENT_TYPE type) const

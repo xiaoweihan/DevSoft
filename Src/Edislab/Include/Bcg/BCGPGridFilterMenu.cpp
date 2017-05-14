@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,8 @@
 
 #define ID_DEFAULTFILTER_APPLY	102
 
+#ifndef BCGP_EXCLUDE_GRID_CTRL
+
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPGridFilterListDlg dialog
 
@@ -37,7 +39,12 @@ CBCGPGridFilterListDlg::CBCGPGridFilterListDlg(UINT uiFilterCmd,
 
 	EnableVisualManagerStyle();
 	EnableLayout();
+
+#ifndef _BCGSUITE_
+	SetBackgroundColor(CBCGPVisualManager::GetInstance()->GetPopupMenuBackgroundColor());
+#else
 	SetWhiteBackground();
+#endif
 
 	m_lstValues.AddHead((CStringList*)&lstValues);
 
@@ -279,7 +286,7 @@ void CBCGPGridFilterListDlg::OnOK()
 	//----------------------------
 	if (pMenu != NULL)
 	{
-		pMenu->SendFilterCommand (GetOwner (), m_uiFilterCmd);
+		pMenu->SendFilterCommand (pMenu->GetMessageWnd() != NULL ? pMenu->GetMessageWnd() : GetOwner (), m_uiFilterCmd);
 	}
 }
 //*********************************************************************************************************
@@ -562,3 +569,5 @@ void CBCGPGridFilterPopupMenu::SendFilterCommand (CWnd* pDestWnd, UINT uiFilterC
 
 	CBCGPBaseFilterPopupMenu::SendFilterCommand (pDestWnd, uiFilterCmd);
 }
+
+#endif

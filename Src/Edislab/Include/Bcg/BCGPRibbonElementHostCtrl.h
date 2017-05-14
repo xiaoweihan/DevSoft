@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -26,6 +26,7 @@
 
 #include "BCGPRibbonPanelMenu.h"
 #include "BCGPRibbonPaletteButton.h"
+#include "BCGPMultiDocTemplate.h"
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPRibbonGalleryCtrl window
@@ -53,6 +54,26 @@ public:
 	BOOL IsMouseClicked() const
 	{
 		return m_bIsMouseClicked;
+	}
+
+	void SetNotifyBySingleClick(BOOL bSet = TRUE)
+	{
+		m_bNotifyBySingleClick = bSet;
+	}
+
+	BOOL IsNotifyBySingleClick() const
+	{
+		return m_bNotifyBySingleClick;
+	}
+
+	void SetDrawSelectionAlways(BOOL bSet = TRUE)
+	{
+		m_PaletteButton.m_bDrawSelectionAlways = bSet;
+	}
+
+	BOOL IsDrawSelectionAlways() const
+	{
+		return m_PaletteButton.m_bDrawSelectionAlways;
 	}
 
 // Operations
@@ -101,19 +122,28 @@ public:
 	void RemoveAll(BOOL bRecalcLayout = TRUE);
 	void RecalcLayout();
 
+	void EnsureVisible(int nItemIndex);
+
 // Overrides
-	virtual void OnDrawGalleryItem (CDC*, CRect, int, CBCGPRibbonPaletteIcon*, COLORREF)
+	virtual void OnDrawGalleryItem(CDC* pDC, CRect rect, int nIndex, CBCGPRibbonPaletteIcon* pIcon, COLORREF clr)
 	{
+		UNREFERENCED_PARAMETER(pDC);
+		UNREFERENCED_PARAMETER(rect);
+		UNREFERENCED_PARAMETER(nIndex);
+		UNREFERENCED_PARAMETER(pIcon);
+		UNREFERENCED_PARAMETER(clr);
+
 		// Should be implemented in derived class!
 		ASSERT(FALSE);
 	}
 
 	virtual BOOL OnKey (UINT nChar);
+	virtual void NotifyCommand(BOOL bByMouseClick);
 
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CBCGPRibbonGalleryCtrl)
 	public:
-	virtual BOOL Create(const RECT& rect, CWnd* pParentWnd, UINT nID, DWORD dwStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP);
+	virtual BOOL Create(const RECT& rect, CWnd* pParentWnd, UINT nID, DWORD dwStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER);
 	protected:
 	virtual void PreSubclassWindow();
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
@@ -134,11 +164,40 @@ protected:
 	afx_msg void OnDestroy();
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
+	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnCancelMode();
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
+	afx_msg void OnKillFocus(CWnd* pNewWnd);
+	afx_msg void OnEnable(BOOL bEnable);
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
 	CBCGPRibbonPaletteButton	m_PaletteButton;
 	BOOL						m_bIsMouseClicked;
+	BOOL						m_bNotifyBySingleClick;
+	CBCGPBaseRibbonElement*		m_pClicked;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CNewDocumentGallery control
+
+class BCGCBPRODLLEXPORT CBCGPNewDocumentGalleryCtrl : public CBCGPRibbonGalleryCtrl
+{
+	DECLARE_DYNAMIC(CBCGPNewDocumentGalleryCtrl)
+
+public:
+	CBCGPNewDocumentGalleryCtrl();
+
+	int AddApplicationDocTemplates(const CString strGroupName, CSize sizeItem = CSize(96, 96), CSize sizePadding = CSize(10, 10));
+	BOOL CloseBackstageView();
+
+protected:
+	virtual void NotifyCommand(BOOL bByMouseClick);
+	virtual void OnDrawGalleryItem (CDC* pDC, CRect rectIcon, int nIconIndex, CBCGPRibbonPaletteIcon* pIcon, COLORREF clrText);
+
+	CArray<CBCGPMultiDocTemplate*, CBCGPMultiDocTemplate*>	m_arTemplates;
+	int														m_nTemplatesGroupStartIndex;
+	CSize													m_sizeTemplatePadding;
 };
 
 #endif // BCGP_EXCLUDE_RIBBON

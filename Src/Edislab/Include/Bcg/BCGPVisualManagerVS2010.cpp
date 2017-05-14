@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -41,6 +41,9 @@
 #include "BCGPCaptionBar.h"
 #include "BCGPGanttItem.h"
 #include "BCGPGanttChart.h"
+#include "BCGPPopupWindow.h"
+#include "BCGPStatic.h"
+#include "BCGPBreadcrumb.h"
 
 #ifndef BCGP_EXCLUDE_RIBBON
 #include "BCGPRibbonCategory.h"
@@ -317,7 +320,7 @@ void CBCGPVisualManagerVS2010::OnEraseTabsButton (CDC* pDC, CRect rect,
 	}
 	else
 	{
-		if (!pBaseTab->IsDialogControl ())
+		if (!pBaseTab->IsDialogControl (TRUE))
 		{
 			OnFillBackground(pDC, rect, pButton);
 		}
@@ -334,7 +337,7 @@ BOOL CBCGPVisualManagerVS2010::OnEraseTabsFrame (CDC* pDC, CRect rect, const CBC
 	ASSERT_VALID (pTabWnd);
 
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
-		(pTabWnd->IsDialogControl () && !pTabWnd->IsVisualManagerStyle ()) || !pTabWnd->IsMDITab() ||
+		pTabWnd->IsDialogControl (TRUE) || !pTabWnd->IsMDITab() ||
 		pTabWnd->IsFlatTab () || pTabWnd->IsOneNoteStyle () || pTabWnd->IsVS2005Style ())
 	{
 		return CBCGPVisualManagerVS2008::OnEraseTabsFrame (pDC, rect, pTabWnd);
@@ -351,7 +354,7 @@ void CBCGPVisualManagerVS2010::OnDrawTabBorder(CDC* pDC, CBCGPTabWnd* pTabWnd, C
 	ASSERT_VALID (pTabWnd);
 
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
-		pTabWnd->IsDialogControl () || !pTabWnd->IsMDITab() ||
+		pTabWnd->IsDialogControl (TRUE) || !pTabWnd->IsMDITab() ||
 		pTabWnd->IsFlatTab () || pTabWnd->IsOneNoteStyle () || pTabWnd->IsVS2005Style ())
 	{
 		CBCGPVisualManagerVS2008::OnDrawTabBorder(pDC, pTabWnd, rectBorder, clrBorder, penLine);
@@ -409,7 +412,7 @@ void CBCGPVisualManagerVS2010::OnDrawTab (CDC* pDC, CRect rectTab,
 	const BOOL bIsHighlight = (iTab == pTabWnd->GetHighlightedTab ());
 
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
-		pTabWnd->IsDialogControl () ||
+		pTabWnd->IsDialogControl (TRUE) ||
 		pTabWnd->IsFlatTab () || pTabWnd->IsOneNoteStyle () || pTabWnd->IsVS2005Style () || pTabWnd->IsLeftRightRounded() || pTabWnd->IsPointerStyle())
 	{
 		CBCGPVisualManagerVS2008::OnDrawTab (pDC, rectTab, iTab, bIsActive, pTabWnd);
@@ -418,6 +421,16 @@ void CBCGPVisualManagerVS2010::OnDrawTab (CDC* pDC, CRect rectTab,
 
 	COLORREF clrTab = pTabWnd->GetTabBkColor(iTab);
 	BOOL bDefaultTabColor = (clrTab == (COLORREF)-1);
+
+	BOOL bIsActiveInMDITabGroup = pTabWnd->IsActiveInMDITabGroup();
+	if (pTabWnd->IsMultipleSelection() && pTabWnd->IsMultipleSelectionSupported() && bIsActive)
+	{
+		if (pTabWnd->GetActiveTab() != iTab)
+		{
+			// Tab is selected
+			bIsActiveInMDITabGroup = FALSE;
+		}
+	}
 
 	if (bIsActive || bIsHighlight || !bDefaultTabColor)
 	{
@@ -444,7 +457,7 @@ void CBCGPVisualManagerVS2010::OnDrawTab (CDC* pDC, CRect rectTab,
 		{
 			if (pTabWnd->IsMDITab())
 			{
-				clrTab =  pTabWnd->IsMDIFocused() && pTabWnd->IsActiveInMDITabGroup() ? 
+				clrTab =  pTabWnd->IsMDIFocused() && bIsActiveInMDITabGroup ? 
 					(m_bTabFillGradient ? m_clrHighlightDn : m_clrHighlight) : m_clrMenuLight;
 			}
 			else
@@ -549,7 +562,21 @@ void CBCGPVisualManagerVS2010::OnDrawTab (CDC* pDC, CRect rectTab,
 	COLORREF clrTabText = pTabWnd->GetTabTextColor(iTab);
 	if (clrTabText == (COLORREF)-1)
 	{
-		clrTabText = bIsActive ? RGB(0, 0, 0) : (bDefaultTabColor ? RGB(255, 255, 255) : bIsHighlight ? RGB(50, 50, 50) : RGB(128, 128, 128));
+		if (bIsActive)
+		{
+			clrTabText = RGB(0, 0, 0);
+		}
+		else
+		{
+			if (pTabWnd->IsDialogControl())
+			{
+				clrTabText = bIsHighlight ? globalData.clrBarLight : globalData.clrBarText;
+			}
+			else
+			{
+				clrTabText = (bDefaultTabColor ? RGB(255, 255, 255) : bIsHighlight ? RGB(50, 50, 50) : RGB(128, 128, 128));
+			}
+		}
 	}
 
 	OnDrawTabContent(pDC, rectTab, iTab, bIsActive, pTabWnd, clrTabText);
@@ -563,7 +590,7 @@ void CBCGPVisualManagerVS2010::OnDrawTabButton (CDC* pDC, CRect rect,
 											   BOOL bIsDisabled)
 {
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () ||
-		pTabWnd->IsDialogControl () || pTabWnd->IsPointerStyle() ||
+		pTabWnd->IsDialogControl (TRUE) || pTabWnd->IsPointerStyle() ||
 		pTabWnd->IsFlatTab () || pTabWnd->IsOneNoteStyle () || pTabWnd->IsVS2005Style () || pTabWnd->IsLeftRightRounded())
 	{
 		CBCGPVisualManagerVS2008::OnDrawTabButton (pDC, rect, pTabWnd, nID, bIsHighlighted, bIsPressed, bIsDisabled);
@@ -580,7 +607,7 @@ void CBCGPVisualManagerVS2010::OnDrawTabButton (CDC* pDC, CRect rect,
 	BOOL bIsInactiveTab = m_nCurrDrawedTab != pTabWnd->GetActiveTab();
 
 	CBCGPMenuImages::Draw (pDC, (CBCGPMenuImages::IMAGES_IDS)nID, rect, 
-		bIsInactiveTab && !bIsHighlighted ? CBCGPMenuImages::ImageLtGray : CBCGPMenuImages::ImageBlack);
+		bIsInactiveTab && !bIsHighlighted && !pTabWnd->IsDialogControl() ? CBCGPMenuImages::ImageLtGray : CBCGPMenuImages::ImageBlack);
 
 	if (bIsHighlighted)
 	{
@@ -687,6 +714,7 @@ void CBCGPVisualManagerVS2010::OnUpdateSystemColors ()
 
 	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
 	{
+		m_brDlgBackground.DeleteObject();
 		return;
 	}
 
@@ -902,7 +930,7 @@ void CBCGPVisualManagerVS2010::OnDrawSlider (CDC* pDC, CBCGPSlider* pSlider, CRe
 //*********************************************************************************************************
 int CBCGPVisualManagerVS2010::GetTabButtonState (CBCGPTabWnd* pTab, CBCGTabButton* pButton)
 {
-	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || pButton->IsHighlighted () || pButton->IsPressed () || pTab == NULL || pTab->IsDialogControl() || pTab->IsPointerStyle())
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || pButton->IsHighlighted () || pButton->IsPressed () || pTab == NULL || pTab->IsDialogControl(TRUE) || pTab->IsPointerStyle())
 	{
 		return CBCGPVisualManagerVS2008::GetTabButtonState (pTab, pButton);
 	}
@@ -1224,6 +1252,16 @@ BOOL CBCGPVisualManagerVS2010::OnEraseMDIClientArea (CDC* pDC, CRect rectClient)
 
 	return CBCGPVisualManagerVS2008::OnEraseMDIClientArea (pDC, rectClient);
 }
+//*******************************************************************************
+COLORREF CBCGPVisualManagerVS2010::GetPrintPreviewBackgroundColor(CBCGPPrintPreviewView* pPrintPreview)
+{
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
+	{
+		return CBCGPVisualManagerVS2008::GetPrintPreviewBackgroundColor(pPrintPreview);
+	}
+
+	return RGB(73, 100, 143);
+}
 //*************************************************************************************
 HBRUSH CBCGPVisualManagerVS2010::GetToolbarEditColors(CBCGPToolbarButton* pButton, COLORREF& clrText, COLORREF& clrBk)
 {
@@ -1374,7 +1412,7 @@ COLORREF CBCGPVisualManagerVS2010::GetToolbarButtonTextColor (CBCGPToolbarButton
 //**************************************************************************************
 BOOL CBCGPVisualManagerVS2010::OnFillDialog (CDC* pDC, CWnd* pDlg, CRect rect)
 {
-	if (m_brDlgBackground.GetSafeHandle () == NULL)
+	if (m_brDlgBackground.GetSafeHandle () == NULL || globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
 	{
 		return CBCGPVisualManagerVS2008::OnFillDialog (pDC, pDlg, rect);
 	}
@@ -1403,11 +1441,13 @@ void CBCGPVisualManagerVS2010::OnDrawDlgSeparator(CDC* pDC, CBCGPStatic* pCtrl, 
 		return;
 	}
 
+#ifndef BCGP_EXCLUDE_RIBBON
 	if (pCtrl->m_bBackstageMode && IsRibbonBackstageWhiteBackground())
 	{
 		::FillRect (pDC->GetSafeHdc (), rect, (HBRUSH)::GetStockObject (WHITE_BRUSH));
 	}
 	else
+#endif
 	{
 		pDC->FillRect(rect, &m_brDlgBackground);
 	}
@@ -1464,10 +1504,10 @@ void CBCGPVisualManagerVS2010::OnDrawGroup (CDC* pDC, CBCGPGroup* pGroup, CRect 
 	pDC->SelectObject(pOldPen);
 	pDC->SelectObject(pOldBrush);
 
-	pDC->SelectClipRgn (NULL);
-
 	if (!strName.IsEmpty ())
 	{
+		pDC->SelectClipRgn (NULL);
+
 		CString strCaption = strName;
 		pDC->DrawText (strCaption, rectText, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_NOCLIP);
 	}
@@ -1519,14 +1559,25 @@ BOOL CBCGPVisualManagerVS2010::OnDrawPushButton (CDC* pDC, CRect rect, CBCGPButt
 
 	if (pButton->GetSafeHwnd() != NULL && pButton->IsWindowEnabled ())
 	{
-		if (pButton->IsPressed () || pButton->GetCheck ())
+		BOOL bIsFocused = CWnd::GetFocus () == pButton;
+
+		if (pButton->GetCheck() && !bIsFocused && !pButton->IsPressed () && !pButton->IsHighlighted())
+		{
+			pDC->SelectObject(&m_brHighlightChecked);
+			pDC->SelectObject(&m_penSeparator);
+		}
+		else if (pButton->IsPressed ())
 		{
 			pDC->SelectObject(&m_brHighlightDn);
 			pDC->SelectObject(&m_penMenuItemBorder);
 		}
-		else if (pButton->IsHighlighted () || CWnd::GetFocus () == pButton)
+		else if (pButton->IsHighlighted () || bIsFocused)
 		{
 			pDC->SelectObject(&m_brHighlight);
+			pDC->SelectObject(&m_penMenuItemBorder);
+		}
+		else if (pButton->IsDefaultButton())
+		{
 			pDC->SelectObject(&m_penMenuItemBorder);
 		}
 	}
@@ -1665,12 +1716,22 @@ BOOL CBCGPVisualManagerVS2010::OnDrawGridSelectAllAreaBorder (CBCGPGridCtrl* pCt
 //**************************************************************************************
 COLORREF CBCGPVisualManagerVS2010::OnFillGridGroupByBoxBackground (CDC* pDC, CRect rect)
 {
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || m_brDlgBackground.GetSafeHandle() == NULL)
+	{
+		return CBCGPVisualManagerVS2008::OnFillGridGroupByBoxBackground(pDC, rect);
+	}
+
 	pDC->FillRect(rect, &m_brDlgBackground);
 	return globalData.clrBarText;
 }
 //**************************************************************************************
 COLORREF CBCGPVisualManagerVS2010::OnFillGridGroupByBoxTitleBackground (CDC* pDC, CRect rect)
 {
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || m_brDlgBackground.GetSafeHandle() == NULL)
+	{
+		return CBCGPVisualManagerVS2008::OnFillGridGroupByBoxTitleBackground(pDC, rect);
+	}
+
 	pDC->FillRect(rect, &m_brDlgBackground);
 	return globalData.clrBarText;
 }
@@ -1794,6 +1855,8 @@ BOOL CBCGPVisualManagerVS2010::OnSetGridColorTheme (CBCGPGridCtrl* pCtrl, BCGP_G
 	theme.m_OddColors.m_clrBackground       = globalData.clrBarLight;
 	theme.m_OddColors.m_clrText             = globalData.clrBarText;
 
+	theme.m_GroupSelColors.m_clrText = globalData.clrBarText;
+
 	return TRUE;
 }
 //**************************************************************************************
@@ -1826,7 +1889,7 @@ CBrush& CBCGPVisualManagerVS2010::GetGridCaptionBrush(CBCGPGridCtrl* pCtrl)
 
 	if (pCtrl != NULL && !pCtrl->IsVisualManagerStyle())
 	{
-		return globalData.brBtnFace;
+		return globalData.brBarFace;
 	}
 
 	return CBCGPVisualManagerVS2008::GetGridCaptionBrush(pCtrl);
@@ -1843,7 +1906,7 @@ COLORREF CBCGPVisualManagerVS2010::OnFillGridCaptionRow (CBCGPGridCtrl* pCtrl, C
 
 	if (pCtrl != NULL && !pCtrl->IsVisualManagerStyle())
 	{
-		clrText = globalData.clrBtnText;
+		clrText = globalData.clrBarText;
 	}
 
 	return clrText;
@@ -1957,28 +2020,19 @@ void CBCGPVisualManagerVS2010::GetRibbonSliderColors (CBCGPRibbonSlider* pSlider
 		return;
 	}
 
+	clrLine = globalData.clrBarDkShadow;
+
 	if (bIsPressed && bIsHighlighted)
 	{
 		clrFill = m_clrHighlightDn;
-		clrLine = m_clrMenuBorder;
 	}
 	else if (bIsHighlighted)
 	{
 		clrFill = m_clrHighlight;
-		clrLine = m_clrMenuBorder;
 	}
 	else
 	{
 		clrFill = globalData.clrBarFace;
-
-		if (DYNAMIC_DOWNCAST(CBCGPRibbonStatusBar, pSlider->GetParentRibbonBar()) != NULL)
-		{
-			clrLine = RGB(255, 255, 255);
-		}
-		else
-		{
-			clrLine = globalData.clrBarText;
-		}
 	}
 }
 //**************************************************************************************
@@ -2075,6 +2129,8 @@ void CBCGPVisualManagerVS2010::OnDrawExpandingBox (CDC* pDC, CRect rect, BOOL bI
 
 	if (bIsOpened)
 	{
+		rect.DeflateRect(0, 0, 1, 1);
+
 		#define POINTS_NUM	3
 		POINT pts[POINTS_NUM] = {
 			{ rect.left, rect.bottom},
@@ -2085,10 +2141,26 @@ void CBCGPVisualManagerVS2010::OnDrawExpandingBox (CDC* pDC, CRect rect, BOOL bI
 		CRgn rgnClip;
 		rgnClip.CreatePolygonRgn (pts, POINTS_NUM, WINDING);
 
-		pDC->SelectClipRgn (&rgnClip);
+		CRect rectClip;
+		if (pDC->GetClipBox(&rectClip) != ERROR && !rectClip.IsRectEmpty())
+		{
+			if (rectClip.IntersectRect(&rect, &rectClip))
+			{
+				int nSaveDC = pDC->SaveDC();
+				pDC->SelectClipRgn (&rgnClip, RGN_AND);
 
-		dm.DrawRect(rect, colorBox, (COLORREF)-1);
-		pDC->SelectClipRgn (NULL);
+				dm.DrawRect(rect, colorBox, (COLORREF)-1);
+
+				pDC->RestoreDC(nSaveDC);
+			}
+		}
+		else
+		{
+			pDC->SelectClipRgn (&rgnClip);
+
+			dm.DrawRect(rect, colorBox, (COLORREF)-1);
+			pDC->SelectClipRgn (NULL);
+		}
 	}
 	else
 	{
@@ -2098,6 +2170,7 @@ void CBCGPVisualManagerVS2010::OnDrawExpandingBox (CDC* pDC, CRect rect, BOOL bI
 		}
 
 		rect.right = rect.left + rect.Height() * 5 / 7;
+		rect.OffsetRect(rect.Height() / 7, 0);
 
 		if ((rect.Width() % 2) == 0)
 		{
@@ -2176,5 +2249,122 @@ void CBCGPVisualManagerVS2010::OnDrawCaptionBarBorder (CDC* pDC,
 	if (!bFlatBorder)
 	{
 		pDC->Draw3dRect (rect, m_clrBarGradientLight, m_clrToolBarBottomLine);
+	}
+}
+//*******************************************************************************
+void CBCGPVisualManagerVS2010::OnFillOutlookBarCaption (CDC* pDC, CRect rectCaption, COLORREF& clrText)
+{
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
+	{
+		CBCGPVisualManagerVS2008::OnFillOutlookBarCaption (pDC, rectCaption, clrText);
+		return;
+	}
+
+	CBCGPDrawManager dm (*pDC);
+	rectCaption.right++;
+
+	dm.FillGradient(rectCaption, m_clrInactiveCaptionGradient1, m_clrInactiveCaptionGradient2);
+
+	clrText = RGB(255, 255, 255);
+}
+//****************************************************************************************
+void CBCGPVisualManagerVS2010::OnFillOutlookPageButton (CDC* pDC, const CRect& rect,
+										BOOL bIsHighlighted, BOOL bIsPressed,
+										COLORREF& clrText)
+{
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
+	{
+		CBCGPVisualManagerVS2008::OnFillOutlookPageButton (pDC, rect,
+										bIsHighlighted, bIsPressed, clrText);
+		return;
+	}
+
+	ASSERT_VALID (pDC);
+
+	if (bIsPressed || bIsHighlighted)
+	{
+		OnFillHighlightedArea (pDC, rect, bIsPressed ? &m_brHighlightDn : &m_brHighlight, NULL);
+		clrText = globalData.clrBarText;
+	}
+	else
+	{
+		CBCGPVisualManagerVS2008::OnFillOutlookPageButton (pDC, rect,
+			bIsHighlighted, bIsPressed, clrText);
+	}
+}
+//********************************************************************************
+COLORREF CBCGPVisualManagerVS2010::OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption)
+{
+	COLORREF clr = CBCGPVisualManagerVS2008::OnDrawOutlookPopupButton(pDC, rectBtn, bIsHighlighted, bIsPressed, bIsOnCaption);
+
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode ())
+	{
+		return clr;
+	}
+
+	return !bIsHighlighted && !bIsPressed && bIsOnCaption? RGB(255, 255, 255) : globalData.clrBarText;
+}
+//********************************************************************************
+void CBCGPVisualManagerVS2010::OnFillPropSheetHeaderArea(CDC* pDC, CBCGPPropertySheet* pPropSheet, CRect rect, BOOL& bDrawBottomLine)
+{
+	CBCGPVisualManagerVS2008::OnFillPropSheetHeaderArea(pDC, pPropSheet, rect, bDrawBottomLine);
+	bDrawBottomLine = 2;
+}
+
+#ifndef BCGP_EXCLUDE_POPUP_WINDOW
+
+COLORREF CBCGPVisualManagerVS2010::OnDrawPopupWindowCaption (CDC* pDC, CRect rectCaption, CBCGPPopupWindow* pPopupWnd)
+{
+	ASSERT_VALID(pDC);
+	ASSERT_VALID(pPopupWnd);
+	
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || pPopupWnd->HasSmallCaption())
+	{
+		return CBCGPVisualManagerVS2008::OnDrawPopupWindowCaption (pDC, rectCaption, pPopupWnd);
+	}
+	
+	switch (pPopupWnd->GetStemLocation())
+	{
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopCenter:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopLeft:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopRight:
+		rectCaption.top -= pPopupWnd->GetStemSize();
+		break;
+
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_Left:
+		rectCaption.left -= pPopupWnd->GetStemSize();
+		break;
+	}
+
+	CBCGPDrawManager dm (*pDC);
+	dm.FillGradient (rectCaption, m_clrMenuLight, m_clrMenuLightGradient, TRUE);
+	
+	return globalData.clrBarText;
+}
+
+#endif	// BCGP_EXCLUDE_POPUP_WINDOW
+
+void CBCGPVisualManagerVS2010::OnDrawBreadcrumbButton(CDC& dc, CBCGPBreadcrumb* pControl, CRect rect, UINT uState)
+{
+	if (globalData.m_nBitsPerPixel <= 8 || globalData.IsHighContastMode () || !pControl->m_bVisualManagerStyle)
+	{
+		CBCGPVisualManagerVS2008::OnDrawBreadcrumbButton(dc, pControl, rect, uState);
+		return;
+	}
+
+	rect.DeflateRect(1, 1);
+
+	if (pControl->GetSafeHwnd() != NULL && !pControl->IsWindowEnabled ())
+	{
+	}
+	else if (uState == CDIS_SELECTED)
+	{
+		OnFillHighlightedArea (&dc, rect, &m_brHighlightDn, NULL);
+		dc.Draw3dRect(rect, m_clrMenuItemBorder, m_clrMenuItemBorder);
+	}
+	else if (uState == CDIS_HOT || uState == CDIS_OTHERSIDEHOT)
+	{
+		OnFillHighlightedArea (&dc, rect, &m_brHighlight, NULL);
+		dc.Draw3dRect(rect, m_clrMenuItemBorder, m_clrMenuItemBorder);
 	}
 }

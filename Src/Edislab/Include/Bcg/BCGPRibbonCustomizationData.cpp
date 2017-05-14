@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -192,6 +192,12 @@ void CBCGPRibbonCustomizationData::ResetAll(CBCGPRibbonBar* pRibbonBar)
 				pPanel->m_bToBeDeleted = TRUE;
 			}
 		}
+	}
+
+	if (pRibbonBar != NULL)
+	{
+		pRibbonBar->m_nNextCategoryKey -= (int)m_arCustomTabs.GetSize();
+		pRibbonBar->m_nNextCategoryKey = max(1, pRibbonBar->m_nNextCategoryKey);
 	}
 
 	m_arCustomTabs.RemoveAll();
@@ -788,7 +794,6 @@ void CBCGPRibbonCustomizationData::PrepareTabsArray(const CArray<CBCGPRibbonCate
 			int nKey = pTab->GetKey();
 			if (nKey <= 0)
 			{
-				ASSERT(FALSE);
 				continue;
 			}
 			
@@ -1672,7 +1677,6 @@ CBCGPRibbonPanel* CBCGPRibbonCustomPanel::CreateRibbonPanel(CBCGPRibbonBar* pRib
 
 		if (pOriginalPanel == NULL)
 		{
-			ASSERT(FALSE);
 			return NULL;
 		}
 
@@ -1790,9 +1794,11 @@ CBCGPBaseRibbonElement* CBCGPRibbonCustomElement::CreateRibbonElement(CBCGPRibbo
 	ASSERT_VALID (pSrcElem);
 
 	CBCGPBaseRibbonElement* pElem = pSrcElem->CreateCustomCopy();
-	ASSERT_VALID(pElem);
-
-	pElem->ApplyCustomizationData(*this);
+	if (pElem != NULL)
+	{
+		ASSERT_VALID(pElem);
+		pElem->ApplyCustomizationData(*this);
+	}
 
 	return pElem;
 }

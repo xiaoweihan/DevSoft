@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -29,9 +29,9 @@ static char THIS_FILE[] = __FILE__;
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMousePage property page
 
-IMPLEMENT_DYNCREATE(CBCGPMousePage, CPropertyPage)
+IMPLEMENT_DYNCREATE(CBCGPMousePage, CBCGPPropertyPage)
 
-CBCGPMousePage::CBCGPMousePage() : CPropertyPage(CBCGPMousePage::IDD)
+CBCGPMousePage::CBCGPMousePage() : CBCGPPropertyPage(CBCGPMousePage::IDD)
 {
 	//{{AFX_DATA_INIT(CBCGPMousePage)
 	m_strCommandDescription = _T("");
@@ -46,7 +46,7 @@ CBCGPMousePage::~CBCGPMousePage()
 
 void CBCGPMousePage::DoDataExchange(CDataExchange* pDX)
 {
-	CPropertyPage::DoDataExchange(pDX);
+	CBCGPPropertyPage::DoDataExchange(pDX);
 	//{{AFX_DATA_MAP(CBCGPMousePage)
 	DDX_Control(pDX, IDC_BCGBARRES_LIST_VIEWS, m_wndListOfViews);
 	DDX_Control(pDX, IDC_BCGBARRES_LIST_OF_COMMANDS, m_wndListOfCommands);
@@ -56,7 +56,7 @@ void CBCGPMousePage::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(CBCGPMousePage, CPropertyPage)
+BEGIN_MESSAGE_MAP(CBCGPMousePage, CBCGPPropertyPage)
 	//{{AFX_MSG_MAP(CBCGPMousePage)
 	ON_BN_CLICKED(IDC_BCGBARRES_NO_DBLCLIICK, OnNoDblcliick)
 	ON_BN_CLICKED(IDC_BCGBARRES_USE_DBLCLIICK, OnUseDblcliick)
@@ -165,7 +165,7 @@ BOOL CBCGPMousePage::OnInitDialog()
 {
 	ASSERT (g_pMouseManager != NULL);
 
-	CPropertyPage::OnInitDialog();
+	CBCGPPropertyPage::OnInitDialog();
 
 	CStringList listOfViewNames;
 	g_pMouseManager->GetViewNames (listOfViewNames);
@@ -236,7 +236,7 @@ BOOL CBCGPMousePage::OnInitDialog()
 	}
 
 	//----------------------------------
-	// Add icon width pluse some pixels:
+	// Add icon width plus some pixels:
 	//----------------------------------
 	IMAGEINFO info;
 	m_ViewsImages.GetImageInfo (0, &info);

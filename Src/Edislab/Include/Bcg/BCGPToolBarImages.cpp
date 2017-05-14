@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -209,6 +209,8 @@ CBCGPToolBarImages::CBCGPToolBarImages()
 	m_bCreateMonoDC = TRUE;
 
 	m_dblScale = 1.0;
+	m_bAutoGrayAfterReLoad = FALSE;
+	m_dblGrayLumRatio = 1.0;
 
 	OnSysColorChange ();
 }
@@ -845,6 +847,11 @@ BOOL CBCGPToolBarImages::Draw (CDC* pDCDest,
 			BLENDFUNCTION pixelblend = { AC_SRC_OVER, 0, 
 				alphaSrc, (BYTE)(bIsIgnoreAlpha ? 0 : 1 /*AC_SRC_ALPHA*/ ) };
 
+			if (bShadowTrueColor)
+			{
+				pixelblend.SourceConstantAlpha = 80;
+			}
+
 			if (bDisabledTrueColor)
 			{
 				pixelblend.SourceConstantAlpha = m_nDisabledImageAlpha;
@@ -1450,6 +1457,11 @@ void CBCGPToolBarImages::OnSysColorChange()
 				::DeleteObject (hbmp);
 			}
 		}
+
+		if (m_bAutoGrayAfterReLoad)
+		{
+			ConvertToGrayScale(m_dblGrayLumRatio, TRUE);
+		}
 	}
 
 	UpdateCount ();
@@ -1553,7 +1565,7 @@ int CBCGPToolBarImages::AddImage (HBITMAP hbmp, BOOL bSetBitPerPixel/* = FALSE*/
 		return -1;
 	}
 
-	if (bSetBitPerPixel)
+	if (bSetBitPerPixel)	
 	{
 		m_nBitsPerPixel = bmp.bmBitsPixel;
 	}
@@ -1941,57 +1953,74 @@ BOOL CBCGPToolBarImages::DeleteImage (int iImage)
 	return TRUE;
 }
 //*******************************************************************************
-HICON CBCGPToolBarImages::ExtractIcon (int nIndex)
+HICON CBCGPToolBarImages::ExtractIcon(int nIndex)
 {
 	if (nIndex < 0 || nIndex >= GetCount ())	// Wrong index
 	{
 		return NULL;
 	}
 
-	UINT nFlags = (m_nBitsPerPixel == 32) ? 0 : ILC_MASK;
 
-	switch (m_nBitsPerPixel)
+	CImageList imageList;
+	if (ExportToImageList(imageList))
 	{
-	case 4:
-	default:
-		nFlags |= ILC_COLOR4;
-		break;
-
-	case 8:
-		nFlags |= ILC_COLOR8;
-		break;
-
-	case 16:
-		nFlags |= ILC_COLOR16;
-		break;
-
-	case 24:
-		nFlags |= ILC_COLOR24;
-		break;
-
-	case 32:
-		nFlags |= ILC_COLOR32;
-		break;
+		return imageList.ExtractIcon (nIndex);
 	}
 
-	CImageList images;
-	images.Create (m_sizeImage.cx, m_sizeImage.cy, nFlags, 0, 0);
-
-	HBITMAP hbmImageWellCopy = Copy (m_hbmImageWell);
-
-	if ((nFlags & ILC_COLOR32) == ILC_COLOR32)
+	return NULL;
+}
+//*******************************************************************************
+HBITMAP CBCGPToolBarImages::ExtractBitmap(int nIndex)
+{
+	HICON hIcon = ExtractIcon(nIndex);
+	if (hIcon == NULL)
 	{
-		images.Add (CBitmap::FromHandle (hbmImageWellCopy), (CBitmap*)NULL);
+		return NULL;
+	}
+
+	BOOL bAlphaBlend = m_nBitsPerPixel >= 32;
+
+	CWindowDC dc(NULL);
+	
+	CDC dcMem;
+	dcMem.CreateCompatibleDC(NULL);
+	
+	CBitmap bmpMem;
+	
+	if (bAlphaBlend)
+	{
+		HBITMAP hbmp = CBCGPDrawManager::CreateBitmap_32(m_sizeImage, NULL);
+		if (hbmp == NULL)
+		{
+			ASSERT (FALSE);
+			return NULL;
+		}
+		
+		bmpMem.Attach(hbmp);
 	}
 	else
 	{
-		images.Add (CBitmap::FromHandle (hbmImageWellCopy), 
-			m_clrTransparent == -1 ? globalData.clrBtnFace : m_clrTransparent);
+		bmpMem.CreateCompatibleBitmap(&dc, m_sizeImage.cx, m_sizeImage.cy);
+	}
+	
+	CBitmap* pBmpOriginal = dcMem.SelectObject(&bmpMem);
+	
+	if (!bAlphaBlend)
+	{
+		dcMem.FillRect(CRect (0, 0, m_sizeImage.cx, m_sizeImage.cy), &globalData.brBtnFace);
+	}
+	
+	dcMem.DrawState(CPoint (0, 0), m_sizeImage, hIcon, DSS_NORMAL, (CBrush*)NULL);
+	dcMem.SelectObject(pBmpOriginal);
+
+	::DestroyIcon(hIcon);
+	
+	if (bAlphaBlend)
+	{
+		PreMultiplyAlpha(bmpMem, TRUE);
 	}
 
-	AfxDeleteObject((HGDIOBJ*)&hbmImageWellCopy);
-
-	return images.ExtractIcon (nIndex);
+	return (HBITMAP)bmpMem.Detach();
 }
 //*******************************************************************************
 COLORREF CBCGPToolBarImages::MapToSysColor (COLORREF color, BOOL bUseRGBQUAD)
@@ -2112,6 +2141,29 @@ BOOL CBCGPToolBarImages::Save (LPCTSTR lpszBmpFileName)
 	if (!m_bModified && strFile == m_strUDLPath)
 	{
 		return TRUE;
+	}
+
+	CString ext;
+	
+#if _MSC_VER < 1400
+	_tsplitpath(strFile, NULL, NULL, NULL, ext.GetBuffer (_MAX_EXT));
+#else
+	_tsplitpath_s(strFile, NULL, 0, NULL, 0, NULL, 0, ext.GetBuffer (_MAX_EXT), _MAX_EXT);
+#endif
+	
+	ext.ReleaseBuffer ();
+	
+	if (ext.CompareNoCase (_T(".png")) == 0 && m_nBitsPerPixel >= 24)
+	{
+		CBCGPPngImage pngImage;
+		pngImage.Attach(m_hbmImageWell);
+
+		BOOL bRes = pngImage.SaveToFile(strFile);
+
+		pngImage.Detach();
+		
+		m_bModified = !bRes;
+		return bRes;
 	}
 
 	HANDLE hDib = DDBToDIB (m_hbmImageWell, 0);
@@ -2561,6 +2613,8 @@ BOOL CBCGPToolBarImages::CopyTo (CBCGPToolBarImages& dest)
 	dest.m_nBitsPerPixel = m_nBitsPerPixel;
 	dest.m_dblScale = m_dblScale;
 	dest.m_sizeImageOriginal = m_sizeImageOriginal;
+	dest.m_bAutoGrayAfterReLoad = m_bAutoGrayAfterReLoad;
+	dest.m_dblGrayLumRatio = m_dblGrayLumRatio;
 
 	for (POSITION pos = m_lstOrigResIds.GetHeadPosition (); pos != NULL;)
 	{
@@ -2985,14 +3039,14 @@ BOOL CBCGPToolBarImages::UpdateInternalImage (int nIndex)
 //*******************************************************************************
 BOOL CBCGPToolBarImages::PreMultiplyAlpha (HBITMAP hbmp, BOOL bAutoCheckPremlt)
 {
-	DIBSECTION ds;
-	if (::GetObject (hbmp, sizeof (DIBSECTION), &ds) == 0)
+	DIBSECTION ds = {0};
+	if (::GetObject (hbmp, sizeof (DIBSECTION), &ds) != sizeof (DIBSECTION))
 	{
 		ASSERT (FALSE);
 		return FALSE;
 	}
 
-	if (ds.dsBm.bmBitsPixel != 32)
+	if (ds.dsBm.bmBits == NULL || ds.dsBm.bmBitsPixel != 32)
 	{
 		return FALSE;
 	}
@@ -3043,6 +3097,44 @@ BOOL CBCGPToolBarImages::PreMultiplyAlpha (HBITMAP hbmp, BOOL bAutoCheckPremlt)
 	return TRUE;
 }
 //*******************************************************************************
+BOOL CBCGPToolBarImages::MultiplyAlpha (HBITMAP hbmp)
+{
+	DIBSECTION ds = {0};
+	if (::GetObject (hbmp, sizeof (DIBSECTION), &ds) != sizeof (DIBSECTION))
+	{
+		ASSERT (FALSE);
+		return FALSE;
+	}
+
+	if (ds.dsBm.bmBits == NULL || ds.dsBm.bmBitsPixel != 32)
+	{
+		return FALSE;
+	}
+
+	RGBQUAD* pBits = (RGBQUAD*)ds.dsBm.bmBits;
+	const int length = ds.dsBm.bmWidth * ds.dsBm.bmHeight;
+
+	//----------------------------------------------------------------
+	// Multiply the R,G and B values with the Alpha channel values:
+	//----------------------------------------------------------------
+	RGBQUAD* pBit = pBits;
+	for (int i = 0; i < length; i++)
+	{
+		if (pBit->rgbReserved != 0 && pBit->rgbReserved != 255)
+		{
+			double alpha = 255.0 / (double)pBit->rgbReserved;
+
+			pBit->rgbRed   = (BYTE)min(bcg_round(pBit->rgbRed   * alpha), 255.0);
+			pBit->rgbGreen = (BYTE)min(bcg_round(pBit->rgbGreen * alpha), 255.0);
+			pBit->rgbBlue  = (BYTE)min(bcg_round(pBit->rgbBlue  * alpha), 255.0);
+		}
+
+		pBit++;
+	}
+
+	return TRUE;
+}
+//*******************************************************************************
 BOOL CBCGPToolBarImages::PreMultiplyAlpha (HBITMAP hbmp)
 {
 	return PreMultiplyAlpha (hbmp, m_bAutoCheckPremlt);
@@ -3061,12 +3153,17 @@ BOOL CBCGPToolBarImages::CreateFromImageList (const CImageList& imageList)
 	CRect rectImage = info.rcImage;
 	m_sizeImage = rectImage.Size ();
 
+	BITMAP bmpObj;
+	::GetObject(info.hbmImage, sizeof (BITMAP), &bmpObj);
+
+	m_nBitsPerPixel = bmpObj.bmBitsPixel;
+
 	for (int i = 0; i < imageList.GetImageCount (); i++)
 	{
 		HICON hIcon = ((CImageList&) imageList).ExtractIcon (i);
 		ASSERT (hIcon != NULL);
 
-		AddIcon (hIcon);
+		AddIcon (hIcon, m_nBitsPerPixel == 32);
 
 		::DestroyIcon (hIcon);
 	}
@@ -3087,14 +3184,7 @@ BOOL CBCGPToolBarImages::ExportToImageList (CImageList& imageList)
 		return FALSE;
 	}
 
-	COLORREF clrTransparent = m_clrTransparent;
-
-	if (clrTransparent == (COLORREF)-1)
-	{
-		clrTransparent = globalData.clrBtnFace;
-	}
-
-	UINT nFlags = (clrTransparent == (COLORREF) -1) ? 0 : ILC_MASK;
+	UINT nFlags = (m_nBitsPerPixel == 32) ? 0 : ILC_MASK;
 
 	switch (bmp.bmBitsPixel)
 	{
@@ -3125,7 +3215,28 @@ BOOL CBCGPToolBarImages::ExportToImageList (CImageList& imageList)
 		return FALSE;
 	}
 
-	imageList.Add(CBitmap::FromHandle(m_hbmImageWell), clrTransparent);
+	HBITMAP hbmImageWellCopy = Copy(m_hbmImageWell);
+
+	if (hbmImageWellCopy != NULL)
+	{
+		if ((nFlags & ILC_COLOR32) == ILC_COLOR32)
+		{
+			MultiplyAlpha(hbmImageWellCopy);
+			imageList.Add(CBitmap::FromHandle(hbmImageWellCopy), (CBitmap*)NULL);
+		}
+		else
+		{
+			imageList.Add(CBitmap::FromHandle (hbmImageWellCopy), 
+				m_clrTransparent == -1 ? globalData.clrBtnFace : m_clrTransparent);
+		}
+
+		AfxDeleteObject((HGDIOBJ*)&hbmImageWellCopy);
+	}
+	else
+	{
+		imageList.Add(CBitmap::FromHandle (m_hbmImageWell), 
+			m_clrTransparent == -1 ? globalData.clrBtnFace : m_clrTransparent);
+	}
 
 	return TRUE;
 }
@@ -3262,6 +3373,136 @@ BOOL CBCGPToolBarImages::GrayImages (int nGrayPercentage)
 		dm.GrayRect (CRect (0, 0, iBitmapWidth, iBitmapHeight),
 			nPercentage,
 			m_clrTransparent == -1 ? globalData.clrBtnFace : m_clrTransparent);
+	}
+
+	memDCDst.SelectObject (hOldBitmapDst);
+	memDCSrc.SelectObject (hOldBitmapSrc);
+
+	::DeleteObject (m_hbmImageWell);
+	m_hbmImageWell = hNewBitmap;
+
+	return TRUE;
+}
+//********************************************************************************
+BOOL CBCGPToolBarImages::Simplify()
+{
+	if (m_hbmImageWell == NULL)
+	{
+		return TRUE;
+	}
+
+	if (globalData.m_nBitsPerPixel <= 8 || !globalData.bIsWindows2000 || m_nBitsPerPixel < 32)
+	{
+		return TRUE;
+	}
+
+	//-------------------------------------------------------
+	// Create memory source DC and select an original bitmap:
+	//-------------------------------------------------------
+	CDC memDCSrc;
+	memDCSrc.CreateCompatibleDC (NULL);
+
+	BITMAP bmp;
+	if (::GetObject (m_hbmImageWell, sizeof (BITMAP), &bmp) == 0)
+	{
+		return FALSE;
+	}
+
+	int iBitmapWidth = bmp.bmWidth;
+	int iBitmapHeight = bmp.bmHeight;
+
+	HBITMAP hOldBitmapSrc = (HBITMAP) memDCSrc.SelectObject (m_hbmImageWell);
+	if (hOldBitmapSrc == NULL)
+	{
+		return FALSE;
+	}
+
+	//------------------------------------------------------
+	// Create memory destination DC and select a new bitmap:
+	//------------------------------------------------------
+	CDC memDCDst;
+	memDCDst.CreateCompatibleDC (&memDCSrc);
+	
+	BITMAPINFO bi;
+
+	// Fill in the BITMAPINFOHEADER
+	bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth = iBitmapWidth;
+	bi.bmiHeader.biHeight = iBitmapHeight;
+	bi.bmiHeader.biPlanes = 1;
+	bi.bmiHeader.biBitCount = 32;
+	bi.bmiHeader.biCompression = BI_RGB;
+	bi.bmiHeader.biSizeImage = iBitmapWidth * iBitmapHeight;
+	bi.bmiHeader.biXPelsPerMeter = 0;
+	bi.bmiHeader.biYPelsPerMeter = 0;
+	bi.bmiHeader.biClrUsed = 0;
+	bi.bmiHeader.biClrImportant = 0;
+
+	COLORREF* pBits = NULL;
+	HBITMAP hNewBitmap = CreateDIBSection (
+		memDCDst.m_hDC, &bi, DIB_RGB_COLORS, (void **)&pBits,
+		NULL, NULL);
+
+	if (hNewBitmap == NULL)
+	{
+		memDCSrc.SelectObject (hOldBitmapSrc);
+		return FALSE;
+	}
+
+	HBITMAP hOldBitmapDst = (HBITMAP) memDCDst.SelectObject (hNewBitmap);
+	if (hOldBitmapDst == NULL)
+	{
+		memDCSrc.SelectObject (hOldBitmapSrc);
+		::DeleteObject (hNewBitmap);
+		hNewBitmap = NULL;
+		return FALSE;
+	}
+
+	//-----------------------------
+	// Copy original bitmap to new:
+	//-----------------------------
+	memDCDst.BitBlt (0, 0, iBitmapWidth, iBitmapHeight, &memDCSrc, 0, 0, SRCCOPY);
+
+	if (m_nBitsPerPixel == 32 && m_pfAlphaBlend != NULL)
+	{
+		DIBSECTION ds;
+		if (::GetObject (hNewBitmap, sizeof (DIBSECTION), &ds) == 0)
+		{
+			ASSERT (FALSE);
+			return FALSE;
+		}
+
+		if (ds.dsBm.bmBitsPixel != 32)
+		{
+			ASSERT (FALSE);
+			return FALSE;
+		}
+
+		RGBQUAD* pBits32 = (RGBQUAD*) ds.dsBm.bmBits;
+
+		for (int i = 0; i < ds.dsBm.bmWidth * ds.dsBm.bmHeight; i++)
+		{
+			RGBQUAD* pBit = pBits32 + i;
+
+			COLORREF clrCurr = RGB (pBit->rgbRed, pBit->rgbGreen, pBit->rgbBlue);
+
+			double H,S,L;
+			CBCGPDrawManager::RGBtoHSL (clrCurr, &H, &S, &L);
+
+			if (L >= 0.87)
+			{
+				pBit->rgbReserved = 0;
+				pBit->rgbRed   = 0;
+				pBit->rgbGreen = 0;
+				pBit->rgbBlue  = 0;
+			}
+			else
+			{
+				pBit->rgbRed = pBit->rgbReserved;
+				pBit->rgbGreen = pBit->rgbReserved;
+				pBit->rgbBlue = pBit->rgbReserved;
+			}
+		}
 	}
 
 	memDCDst.SelectObject (hOldBitmapDst);
@@ -3721,9 +3962,7 @@ void CBCGPToolBarImages::AddaptColors (COLORREF clrBase, COLORREF clrTone, BOOL 
 
 	CleanUpInternalImages();
 }
-
 //*****************************************************************************
-
 void CBCGPToolBarImages::AddaptColors (COLORREF clrBase, COLORREF clrTone, double dOpacity/* = 1.0*/)
 {
 	double dH, dS, dL;
@@ -3976,14 +4215,34 @@ void CBCGPToolBarImages::AddaptColors (COLORREF clrBase, COLORREF clrTone, doubl
 
 	CleanUpInternalImages();
 }
-//*****************************************************************************
-void CBCGPToolBarImages::ConvertToGrayScale(double dblLumRatio)
+//****************************************************************************
+void CBCGPToolBarImages::InvertColors()
 {
-	_ConvertToGrayScale(m_hbmImageWell, m_clrTransparent, dblLumRatio);
+	BCGPInvertBitmapColors(m_hbmImageWell, m_clrTransparent == (COLORREF)-1 ? globalData.clrBtnFace : m_clrTransparent);
 	CleanUpInternalImages();
 }
 //*****************************************************************************
+void CBCGPToolBarImages::ConvertToGrayScale(double dblLumRatio, BOOL bAutoConvertAfterReLoad)
+{
+	_ConvertToGrayScale(m_hbmImageWell, m_clrTransparent, dblLumRatio);
+	CleanUpInternalImages();
 
+	m_bAutoGrayAfterReLoad = bAutoConvertAfterReLoad;
+	m_dblGrayLumRatio = dblLumRatio;
+}
+//*****************************************************************************
+void CBCGPToolBarImages::MakeLighter(double dblRatio)
+{
+	BCGPModifyBitmapLuminosity(m_hbmImageWell, m_clrTransparent == (COLORREF)-1 ? globalData.clrBtnFace : m_clrTransparent, dblRatio + 1.0);
+	CleanUpInternalImages();
+}
+//*****************************************************************************
+void CBCGPToolBarImages::MakeDarker(double dblRatio)
+{
+	BCGPModifyBitmapLuminosity(m_hbmImageWell, m_clrTransparent == (COLORREF)-1 ? globalData.clrBtnFace : m_clrTransparent, dblRatio);
+	CleanUpInternalImages();
+}
+//*****************************************************************************
 void CBCGPToolBarImages::_ConvertToGrayScale(HBITMAP& hbmp, COLORREF clrTransparent, double dblLumRatio)
 {
 	BCGPDesaturateBitmap(hbmp, clrTransparent == (COLORREF)-1 ? globalData.clrBtnFace : clrTransparent, FALSE, dblLumRatio);
@@ -4096,11 +4355,35 @@ HBITMAP CBCGPToolBarImages::Copy (HBITMAP hbmpSrc)
 	::GetObject (hbmpSrc, sizeof (BITMAP), &bmp);
 
 	//----------------------------------------------------------
-	// Create a new bitmap compatibel with the source memory DC:
+	// Create a new bitmap compatible with the source memory DC:
 	//----------------------------------------------------------
-	HBITMAP hNewBitmap = (HBITMAP) ::CreateCompatibleBitmap (memDCSrc,
-									bmp.bmWidth,
-									bmp.bmHeight);
+	HBITMAP hNewBitmap = NULL;
+	DIBSECTION ds = {0};
+
+	if (bmp.bmBitsPixel >= 24 &&
+		::GetObject (hbmpSrc, sizeof (DIBSECTION), &ds) != 0)
+	{
+		BITMAPINFO bi = {0};
+		bi.bmiHeader.biSize        = sizeof (BITMAPINFOHEADER);
+		bi.bmiHeader.biWidth       = bmp.bmWidth;
+		bi.bmiHeader.biHeight      = bmp.bmHeight;
+		bi.bmiHeader.biPlanes      = bmp.bmPlanes;
+		bi.bmiHeader.biBitCount    = bmp.bmBitsPixel;
+		bi.bmiHeader.biCompression = BI_RGB;
+
+		COLORREF* pBits = NULL;
+		hNewBitmap = ::CreateDIBSection (
+			memDCSrc, &bi, DIB_RGB_COLORS, (void **)&pBits,
+			NULL, NULL);
+	}
+
+	if (hNewBitmap == NULL)
+	{
+		hNewBitmap = (HBITMAP) ::CreateCompatibleBitmap (memDCSrc,
+											bmp.bmWidth,
+											bmp.bmHeight);
+	}
+
 	if (hNewBitmap == NULL)
 	{
 		memDCSrc.SelectObject (hOldBitmapSrc);
@@ -4170,6 +4453,8 @@ BOOL CBCGPToolBarImages::SmoothResize (double dblImageScale)
 		return TRUE;
 	}
 
+	int nCY = m_sizeImage.cy;
+
 	BOOL bInvert = FALSE;
 	CSize sizeIW(0, 0);
 	{
@@ -4187,10 +4472,17 @@ BOOL CBCGPToolBarImages::SmoothResize (double dblImageScale)
 #ifdef _DEBUG
 		if (sizeIW.cx != nImageCount * m_sizeImage.cx || (sizeIW.cy % m_sizeImage.cy) != 0)
 		{
+			if (nCY != sizeIW.cy)
+			{
+				nCY = sizeIW.cy;
+			}
+
 			TRACE0("CBCGPToolBarImages::SmoothResize: possible incorrect internal size of the image. Please check the image size(s).\n");
 		}
 #endif
 	}
+
+	double dblScaleOld = m_dblScale;
 
 	m_dblScale *= dblImageScale;
 
@@ -4209,7 +4501,8 @@ BOOL CBCGPToolBarImages::SmoothResize (double dblImageScale)
 	HBITMAP hBmpSrc = CBCGPDrawManager::CreateBitmap_32 (m_hbmImageWell, m_clrTransparent);
 	if (hBmpSrc == NULL)
 	{
-		ASSERT(FALSE);
+		m_dblScale = dblScaleOld;
+		TRACE0("CBCGPToolBarImages::SmoothResize: cannot convert 24bpp image list to 32bpp.\n");
 		return FALSE;
 	}
 
@@ -4256,7 +4549,7 @@ BOOL CBCGPToolBarImages::SmoothResize (double dblImageScale)
     KernelX.Create(m_sizeImage.cx, sizeNew.cx, 0, m_sizeImage.cx, ft);
 
     CBCGPZoomKernel KernelY;
-    KernelY.Create(m_sizeImage.cy, sizeNew.cy, 0, m_sizeImage.cy, ft);
+    KernelY.Create(nCY, sizeNew.cy, 0, nCY, ft);
 
     double values[4] = {0.0, 0.0, 0.0, 0.0};
 	double values2[4] = {0.0, 0.0, 0.0, 0.0};

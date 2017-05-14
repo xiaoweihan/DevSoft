@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -143,6 +143,11 @@ void CBCGPRibbonUndoButton::NotifyHighlightListItem (int nIndex)
 {
 	ASSERT_VALID (this);
 
+	if (IsDisabled())
+	{
+		return;
+	}
+
 	if (m_pPopupMenu != NULL)
 	{
 		m_nActionNumber = nIndex + 1;
@@ -235,7 +240,11 @@ void CBCGPRibbonUndoButton::OnDrawPaletteIcon (	CDC* pDC, CRect rectIcon,
 	pIcon->m_bIsChecked = FALSE;
 	pIcon->m_bIsHighlighted = nIconIndex < m_nActionNumber;
 
-	pIcon->OnFillBackground (pDC);
+	COLORREF clrTextDefault = pIcon->OnFillBackground (pDC);
+	if (pIcon->m_bIsHighlighted && clrText == (COLORREF)-1)
+	{
+		clrText = clrTextDefault;
+	}
 
 	CRect rectText = rectIcon;
 	rectText.DeflateRect (nTextMarginHorz, 0);

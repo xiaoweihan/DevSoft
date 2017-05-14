@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -20,11 +20,15 @@
 //
 
 #include "bcgprores.h"
+#include "BCGPPropertyPage.h"
+#include "BCGPListCtrl.h"
+#include "BCGPListBox.h"
+#include "BCGPStatic.h"
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPMousePage dialog
 
-class CBCGPMousePage : public CPropertyPage
+class CBCGPMousePage : public CBCGPPropertyPage
 {
 	DECLARE_DYNCREATE(CBCGPMousePage)
 
@@ -46,9 +50,9 @@ protected:
 // Dialog Data
 	//{{AFX_DATA(CBCGPMousePage)
 	enum { IDD = IDD_BCGBARRES_PROPPAGE4 };
-	CListCtrl	m_wndListOfViews;
-	CListBox	m_wndListOfCommands;
-	CStatic	m_wndCommandDescription;
+	CBCGPListCtrl	m_wndListOfViews;
+	CBCGPListBox	m_wndListOfCommands;
+	CBCGPStatic	m_wndCommandDescription;
 	CString	m_strCommandDescription;
 	//}}AFX_DATA
 

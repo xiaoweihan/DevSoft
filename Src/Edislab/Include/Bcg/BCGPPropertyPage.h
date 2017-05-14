@@ -9,7 +9,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -77,6 +77,33 @@ public:
 		return m_Impl.m_bBackstageMode;
 	}
 
+	void SetPageIcon(HICON hIcon);
+
+	HICON GetPageIcon() const
+	{
+		return m_hIcon;
+	}
+
+	void SetControlInfoTip(UINT nCtrlID, LPCTSTR lpszInfoTip, DWORD dwVertAlign = DT_TOP, BOOL bRedrawInfoTip = FALSE, CBCGPControlInfoTip::BCGPControlInfoTipStyle style = CBCGPControlInfoTip::BCGPINFOTIP_Info, BOOL bIsClickable = FALSE, const CPoint& ptOffset = CPoint(0, 0));
+	void SetControlInfoTip(CWnd* pWndCtrl, LPCTSTR lpszInfoTip, DWORD dwVertAlign = DT_TOP, BOOL bRedrawInfoTip = FALSE, CBCGPControlInfoTip::BCGPControlInfoTipStyle style = CBCGPControlInfoTip::BCGPINFOTIP_Info, BOOL bIsClickable = FALSE, const CPoint& ptOffset = CPoint(0, 0));
+
+	CWnd* GetInfoTipControl() const
+	{
+		return CWnd::FromHandle(m_Impl.m_hwndInfoTipCurr);
+	}
+
+	enum BackgroundLocation
+	{
+		BACKGR_TILE,
+		BACKGR_TOPLEFT,
+		BACKGR_TOPRIGHT,
+		BACKGR_BOTTOMLEFT,
+		BACKGR_BOTTOMRIGHT,
+	};
+
+	void SetBackgroundImage (HBITMAP hBitmap, BackgroundLocation location = BACKGR_TILE, BOOL bAutoDestroy = TRUE, BOOL bRepaint = TRUE);
+	BOOL SetBackgroundImage (UINT uiBmpResId, BackgroundLocation location = BACKGR_TILE, BOOL bRepaint = TRUE);
+
 // Dialog Data
 	//{{AFX_DATA(CBCGPPropertyPage)
 	//}}AFX_DATA
@@ -106,9 +133,13 @@ protected:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
+	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	//}}AFX_MSG
 	afx_msg LRESULT OnRedrawHeader(WPARAM, LPARAM);
 	afx_msg LRESULT OnChangeVisualManager (WPARAM, LPARAM);
+	afx_msg LRESULT OnBCGUpdateToolTips (WPARAM, LPARAM);
+	afx_msg BOOL OnNeedTipText(UINT id, NMHDR* pNMH, LRESULT* pResult);
 	DECLARE_MESSAGE_MAP()
 
 	void SetActiveMenu (CBCGPPopupMenu* pMenu);
@@ -124,6 +155,7 @@ protected:
 	CBCGPDlgImpl			m_Impl;
 	CBCGPPropSheetCategory*	m_pCategory;
 	int						m_nIcon;
+	HICON					m_hIcon;
 	int						m_nSelIconNum;
 	HTREEITEM				m_hTreeNode;
 	BOOL					m_bIsAeroWizardPage;

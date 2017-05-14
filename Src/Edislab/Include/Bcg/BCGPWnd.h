@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -63,8 +63,9 @@ public:
 	}
 
 protected:
-	BOOL				m_bVisualManagerStyle;
-	BOOL				m_bOnGlass;
+	BOOL	m_bVisualManagerStyle;
+	BOOL	m_bOnGlass;
+	HFONT	m_hFont;
 
 // Operations
 public:
@@ -116,6 +117,8 @@ protected:
 	afx_msg LRESULT OnBCGSetControlAero (WPARAM, LPARAM);
 	afx_msg LRESULT OnGestureEvent(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnTabletQuerySystemGestureStatus(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnSetFont(WPARAM, LPARAM);
+	afx_msg LRESULT OnGetFont(WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 
 #if _MSC_VER < 1300

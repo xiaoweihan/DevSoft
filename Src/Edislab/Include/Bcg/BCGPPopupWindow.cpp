@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -16,12 +16,19 @@
 #include "stdafx.h"
 #include "multimon.h"
 #include "BCGPVisualManager.h"
+#include "BCGPMath.h"
 #include "BCGPPopupWindow.h"
+#include "BCGPGlobalUtils.h"
 
 #ifndef BCGP_EXCLUDE_POPUP_WINDOW
 
 #include "BCGPDrawManager.h"
-#include "BCGPContextMenuManager.h"
+
+#ifndef _BCGSUITE_
+	#include "BCGPContextMenuManager.h"
+#else
+	#define IMAGE_MARGIN			4
+#endif
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -96,9 +103,13 @@ void CBCGPPopupWndButton::OnDraw (CDC* pDC, const CRect& rect, UINT uiState)
 CBCGPPopupWindow::CBCGPPopupWindow()
 {
 	m_Theme = BCGPPopupWindowTheme_VisualManager;
+	m_StemLocation = BCGPPopupWindowStemLocation_None;
+	m_nStemSize = globalUtils.ScaleByDPI(15);
+	m_nStemGap = 0;
 
 	m_pWndOwner = NULL;
 	m_bIsActive = FALSE;
+	m_bDontChangeActiveStatus = FALSE;
 
 	m_nAutoCloseTime = 3000;
 	m_bSmallCaption = TRUE;
@@ -110,14 +121,8 @@ CBCGPPopupWindow::CBCGPPopupWindow()
 	m_pWndDlg = NULL;
 	m_uiDlgResID = 0;
 
-	m_nBtnMarginVert = 2;
-	m_nBtnMarginHorz = 2;
-
-	if (globalData.GetRibbonImageScale() != 1.0)
-	{
-		m_nBtnMarginVert = (int)(.5 + globalData.GetRibbonImageScale() * m_nBtnMarginVert);
-		m_nBtnMarginHorz = (int)(.5 + globalData.GetRibbonImageScale() * m_nBtnMarginHorz);
-	}
+	m_nBtnMarginVert = globalUtils.ScaleByDPI(2);
+	m_nBtnMarginHorz = globalUtils.ScaleByDPI(2);
 
 	m_nCornerRadius = 0;
 
@@ -188,6 +193,18 @@ void CBCGPPopupWindow::SetTheme(BCGPPopupWindowTheme theme)
 	}
 }
 //*********************************************************************************************************
+void CBCGPPopupWindow::SetStemLocation(BCGPPopupWindowStemLocation location, int nSize, int nStemGap)
+{
+	m_StemLocation = location;
+
+	if (nSize > 0)
+	{
+		m_nStemSize = nSize;
+	}
+
+	m_nStemGap = nStemGap;
+}
+//*********************************************************************************************************
 void CBCGPPopupWindow::SetCustomTheme(const CBCGPPopupWindowColors& colors)
 {
 	if (globalData.IsHighContastMode() || colors.clrFill == (COLORREF)-1 || colors.clrText == (COLORREF)-1)
@@ -236,7 +253,7 @@ END_MESSAGE_MAP()
 // CBCGPPopupWindow message handlers
 
 BOOL CBCGPPopupWindow::Create(CWnd* pWndOwner, UINT uiDlgResID, HMENU hMenu, CPoint ptPos,
-							  CRuntimeClass* pRTIDlgBar)
+							  CRuntimeClass* pRTIDlgBar, LPARAM lParam)
 {
 	ASSERT (pRTIDlgBar->IsDerivedFrom (RUNTIME_CLASS (CBCGPPopupDlg)));
 
@@ -247,10 +264,12 @@ BOOL CBCGPPopupWindow::Create(CWnd* pWndOwner, UINT uiDlgResID, HMENU hMenu, CPo
 	m_pWndDlg = (CBCGPPopupDlg*) pRTIDlgBar->CreateObject ();
 	ASSERT_VALID (m_pWndDlg);
 
+	m_pWndDlg->m_lCustomParam = lParam;
+
 	return CommonCreate (ptPos);
 }
 //*******************************************************************************
-BOOL CBCGPPopupWindow::Create (CWnd* pWndOwner, CBCGPPopupWndParams& params, HMENU hMenu, CPoint ptPos)
+BOOL CBCGPPopupWindow::Create(CWnd* pWndOwner, CBCGPPopupWndParams& params, HMENU hMenu, CPoint ptPos, LPARAM lParam)
 {
 	m_hMenu = hMenu;
 	m_pWndOwner = pWndOwner;
@@ -259,15 +278,172 @@ BOOL CBCGPPopupWindow::Create (CWnd* pWndOwner, CBCGPPopupWndParams& params, HME
 	ASSERT_VALID (m_pWndDlg);
 
 	m_pWndDlg->m_bDefault = TRUE;
+	m_pWndDlg->m_lCustomParam = lParam;
 
 	return CommonCreate (ptPos, &params);
+}
+//*******************************************************************************
+CRect CBCGPPopupWindow::GetStemPoints(POINT* points, BOOL bForDraw)
+{
+	CRect rectPadding;
+	rectPadding.SetRectEmpty();
+
+	int delta = AreRoundedCorners() ? 0 : 1;
+	int draw_delta = bForDraw ? 1 : 0;
+
+	switch (m_StemLocation)
+	{
+	case BCGPPopupWindowStemLocation_TopCenter:
+		points[0].x = m_FinalSize.cx / 2 - m_nStemSize;
+		points[0].y = m_nStemSize;
+		points[1].x = points[0].x + m_nStemSize;
+		points[1].y = -1 + draw_delta;
+		points[2].x = points[1].x + m_nStemSize;
+		points[2].y = points[0].y;
+		
+		rectPadding.top = m_nStemSize;
+		break;
+		
+	case BCGPPopupWindowStemLocation_TopLeft:
+		points[0].x = m_nStemSize;
+		points[0].y = m_nStemSize;
+		points[1].x = points[0].x;
+		points[1].y = -1 + draw_delta;
+		points[2].x = points[1].x + m_nStemSize;
+		points[2].y = points[0].y;
+		
+		rectPadding.top = m_nStemSize;
+		break;
+		
+	case BCGPPopupWindowStemLocation_TopRight:
+		points[0].x = m_FinalSize.cx - m_nStemSize - draw_delta;
+		points[0].y = m_nStemSize;
+		points[1].x = points[0].x;
+		points[1].y = -1 + draw_delta;
+		points[2].x = points[1].x - m_nStemSize - 1 + draw_delta;
+		points[2].y = points[0].y;
+		
+		rectPadding.top = m_nStemSize;
+		break;
+		
+	case BCGPPopupWindowStemLocation_BottomCenter:
+		points[0].x = m_FinalSize.cx / 2 - m_nStemSize;
+		points[0].y = m_FinalSize.cy - m_nStemSize - 1;
+		points[1].x = points[0].x + m_nStemSize;
+		points[1].y = m_FinalSize.cy - draw_delta;
+		points[2].x = points[1].x + m_nStemSize;
+		points[2].y = points[0].y;
+		
+		rectPadding.bottom = m_nStemSize + delta;
+		break;
+		
+	case BCGPPopupWindowStemLocation_BottomLeft:
+		points[0].x = m_nStemSize;
+		points[0].y = m_FinalSize.cy - m_nStemSize - 1;
+		points[1].x = points[0].x;
+		points[1].y = m_FinalSize.cy - draw_delta;
+		points[2].x = points[1].x + m_nStemSize;
+		points[2].y = points[0].y;
+		
+		rectPadding.bottom = m_nStemSize + delta;
+		break;
+		
+	case BCGPPopupWindowStemLocation_BottomRight:
+		points[0].x = m_FinalSize.cx - m_nStemSize - draw_delta;
+		points[0].y = m_FinalSize.cy - m_nStemSize - 1;
+		points[1].x = points[0].x;
+		points[1].y = m_FinalSize.cy - draw_delta;
+		points[2].x = points[1].x - m_nStemSize - 1 + draw_delta;
+		points[2].y = points[0].y;
+		
+		rectPadding.bottom = m_nStemSize + delta;
+		break;
+		
+	case BCGPPopupWindowStemLocation_Left:
+		points[0].x = m_nStemSize;
+		points[0].y = m_FinalSize.cy / 2 - m_nStemSize;
+		points[1].x = 0;
+		points[1].y = points[0].y + m_nStemSize;
+		points[2].x = points[0].x;
+		points[2].y = points[1].y + m_nStemSize;
+		
+		rectPadding.left = m_nStemSize;
+		break;
+		
+	case BCGPPopupWindowStemLocation_Right:
+		points[0].x = m_FinalSize.cx - m_nStemSize - 1;
+		points[0].y = m_FinalSize.cy / 2 - m_nStemSize;
+		points[1].x = m_FinalSize.cx - draw_delta;
+		points[1].y = points[0].y + m_nStemSize;
+		points[2].x = points[0].x;
+		points[2].y = points[1].y + m_nStemSize;
+		
+		rectPadding.right = m_nStemSize + delta;
+		break;
+	}
+
+	return rectPadding;
+}
+//*******************************************************************************
+int CBCGPPopupWindow::UpdateWindowRgn()
+{
+	CRect rectPadding;
+	rectPadding.SetRectEmpty();
+
+	if (m_StemLocation != BCGPPopupWindowStemLocation_None)
+	{
+		POINT points[3];
+		rectPadding = GetStemPoints(points);
+
+		CRgn rgn1;
+		
+		if (m_nCornerRadius > 0)
+		{
+			rgn1.CreateRoundRectRgn (rectPadding.left, rectPadding.top, m_FinalSize.cx + 1 - rectPadding.right, m_FinalSize.cy + 1 - rectPadding.bottom, m_nCornerRadius, m_nCornerRadius);
+		}
+		else
+		{
+			rgn1.CreateRectRgn (rectPadding.left, rectPadding.top, m_FinalSize.cx + 1 - rectPadding.right, m_FinalSize.cy + 1 - rectPadding.bottom);
+		}
+		
+		CRgn rgn2;
+		rgn2.CreatePolygonRgn (points, 3, WINDING);
+		
+		rgn2.CombineRgn(&rgn1, &rgn2, RGN_OR);
+		SetWindowRgn(rgn2, FALSE);
+	}
+	else
+	{
+		if (m_nCornerRadius > 0)
+		{
+			CRgn rgn;
+			rgn.CreateRoundRectRgn (0, 0, m_FinalSize.cx + 1, m_FinalSize.cy + 1, m_nCornerRadius, m_nCornerRadius);
+			
+			SetWindowRgn(rgn, FALSE);
+		}
+	}
+
+	return rectPadding.left;
 }
 //*******************************************************************************
 BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 {
 	m_ptLastPos = ptPos;
+	m_bDontChangeActiveStatus = TRUE;
+
+	m_nStemSize = bcg_clamp(m_nStemSize, 7, GetSystemMetrics(SM_CYCAPTION));
 
 	int nCaptionHeight = GetCaptionHeight ();
+	int nTopHeight = nCaptionHeight;
+
+	switch (m_StemLocation)
+	{
+	case BCGPPopupWindowStemLocation_TopCenter:
+	case BCGPPopupWindowStemLocation_TopLeft:
+	case BCGPPopupWindowStemLocation_TopRight:
+		nTopHeight += m_nStemSize;
+		break;
+	}
 
 	HWND hwndFocus = ::GetFocus ();
 	HWND hwndForeground = ::GetForegroundWindow ();
@@ -282,6 +458,7 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 
 	if (!CWnd::CreateEx (dwStyleEx, strClassName, _T(""), WS_POPUP, rectDummy, NULL, 0))
 	{
+		m_bDontChangeActiveStatus = FALSE;
 		return FALSE;
 	}
 
@@ -291,8 +468,9 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 
 	if (m_uiDlgResID != 0)
 	{
-		if (!m_pWndDlg->Create (m_uiDlgResID, this))
+		if (!m_pWndDlg->Create (m_uiDlgResID, this) || m_pWndDlg->IsEmptyDlg())
 		{
+			m_bDontChangeActiveStatus = FALSE;
 			return FALSE;
 		}
 
@@ -304,11 +482,15 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 
 		if (!m_pWndDlg->CreateFromParams (*pParams, this))
 		{
+			m_bDontChangeActiveStatus = FALSE;
 			return FALSE;
 		}
 
 		sizeDialog = m_pWndDlg->GetDlgSize ();
 	}
+
+	CSize sizeDlgExtra = m_pWndDlg->GetExtraSize();
+	sizeDialog += sizeDlgExtra;
 
 	m_pWndDlg->m_bDontSetFocus = FALSE;
 
@@ -316,7 +498,7 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 
 	CSize sizeBtn = CSize(
 		CBCGPMenuImages::Size().cx * nMenuImageScale, 
-		CBCGPMenuImages::Size().cy * nMenuImageScale) + CSize (6, 6);
+		CBCGPMenuImages::Size().cy * nMenuImageScale) + globalUtils.ScaleByDPI(CSize(6, 6));
 
 	int nButtonsWidth = 0;
 	BOOL bHasPinButton = m_bHasPinButton && m_nAutoCloseTime > 0;
@@ -354,7 +536,12 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 
 	MONITORINFO mi;
 	mi.cbSize = sizeof (MONITORINFO);
-	if (GetMonitorInfo (MonitorFromPoint (ptPos, MONITOR_DEFAULTTONEAREST), &mi))
+
+	if (ptPos == CPoint(-2, -2) && m_pWndOwner->GetSafeHwnd() != NULL && GetMonitorInfo(MonitorFromWindow(m_pWndOwner->GetSafeHwnd(), MONITOR_DEFAULTTONEAREST), &mi))
+	{
+		rectScreen = mi.rcWork;
+	}
+	else if (ptPos != CPoint(-1, -1) && GetMonitorInfo (MonitorFromPoint (ptPos, MONITOR_DEFAULTTONEAREST), &mi))
 	{
 		rectScreen = mi.rcWork;
 	}
@@ -364,18 +551,45 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 	}
 
 	sizeDialog.cx = min (rectScreen.Width () - 2, sizeDialog.cx);
-	sizeDialog.cy = min (rectScreen.Height () - nCaptionHeight - 2, sizeDialog.cy);
+	sizeDialog.cy = min (rectScreen.Height () - nTopHeight - 2, sizeDialog.cy);
 
 	m_FinalSize = sizeDialog;
-	m_FinalSize.cy += nCaptionHeight + 2;
+	m_FinalSize.cy += nTopHeight + 2;
 	m_FinalSize.cx += 2;
 
+	int nTopButtons = nTopHeight;
+	int nLeftButtons = 0;
+
+	switch (m_StemLocation)
+	{
+	case BCGPPopupWindowStemLocation_TopCenter:
+	case BCGPPopupWindowStemLocation_TopLeft:
+	case BCGPPopupWindowStemLocation_TopRight:
+		nTopButtons += m_nStemSize;
+		break;
+
+	case BCGPPopupWindowStemLocation_BottomCenter:
+	case BCGPPopupWindowStemLocation_BottomLeft:
+	case BCGPPopupWindowStemLocation_BottomRight:
+		m_FinalSize.cy += m_nStemSize;
+		break;
+
+	case BCGPPopupWindowStemLocation_Left:
+		if (bButtonsOnCaption)
+		{
+			nLeftButtons += m_nStemSize;
+		}
+
+	case BCGPPopupWindowStemLocation_Right:
+		m_FinalSize.cx += m_nStemSize;
+		break;
+	}
+
 	CWnd* pBtnParent = bButtonsOnCaption ? (CWnd*) this : m_pWndDlg;
+	
+	int nBtnVertOffset = bButtonsOnCaption ? (nTopButtons - sizeBtn.cy) / 2 + 1 : m_nBtnMarginVert;
 
-	int nBtnVertOffset = bButtonsOnCaption ?
-		(nCaptionHeight - sizeBtn.cy) / 2 + 1 : m_nBtnMarginVert;
-
-	CRect rectBtn = CRect(CPoint (sizeDialog.cx - sizeBtn.cx - m_nBtnMarginHorz, nBtnVertOffset), sizeBtn);
+	CRect rectBtn = CRect(CPoint (sizeDialog.cx - sizeBtn.cx - m_nBtnMarginHorz + nLeftButtons, nBtnVertOffset), sizeBtn);
 	
 	m_btnImageState = CBCGPMenuImages::ImageBlack;
 	
@@ -435,8 +649,31 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 		ptPos.x = rectScreen.right - m_FinalSize.cx;
 		ptPos.y = rectScreen.bottom - m_FinalSize.cy;
 	}
+	else if (ptPos == CPoint (-2, -2))
+	{
+		CRect rectOwner = rectScreen;
+		if (m_pWndOwner->GetSafeHwnd() != NULL)
+		{
+			m_pWndOwner->GetWindowRect(rectOwner);
+		}
+
+		ptPos.x = rectOwner.left + max(0, (rectOwner.Width() - m_FinalSize.cx) / 2);
+		ptPos.y = rectOwner.top + max(0, (rectOwner.Height() - m_FinalSize.cy) / 2);
+
+		if (ptPos.x + m_FinalSize.cx > rectScreen.right)
+		{
+			ptPos.x = rectScreen.right - m_FinalSize.cx;
+		}
+
+		if (ptPos.y + m_FinalSize.cy > rectScreen.bottom)
+		{
+			ptPos.y = rectScreen.bottom - m_FinalSize.cy;
+		}
+	}
 	else
 	{
+		AdjustLocationByStem(ptPos, m_nStemGap);
+
 		if (ptPos.x < rectScreen.left)
 		{
 			ptPos.x = rectScreen.left;
@@ -456,17 +693,19 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 		}
 	}
 
-	if (m_nCornerRadius > 0)
+	int nLeftOffset = UpdateWindowRgn();
+
+	BOOL bIsRTL = FALSE;
+
+	if (m_pWndOwner->GetSafeHwnd() != NULL && (m_pWndOwner->GetExStyle () & WS_EX_LAYOUTRTL))
 	{
-		CRgn rgn;
-		rgn.CreateRoundRectRgn (0, 0, m_FinalSize.cx + 1, m_FinalSize.cy + 1, m_nCornerRadius, m_nCornerRadius);
-	
-		SetWindowRgn(rgn, FALSE);
+		ModifyStyleEx(0, WS_EX_LAYOUTRTL);
+		bIsRTL = TRUE;
 	}
 
 	OnBeforeShow (ptPos);
 
-	if (m_nCornerRadius > 0)
+	if (m_nCornerRadius > 0 && (!bIsRTL || sizeDlgExtra == CSize(0, 0)))
 	{
 		CRgn rgn1;
 		rgn1.CreateRoundRectRgn (0, 0, sizeDialog.cx + 1, sizeDialog.cy + 1, m_nCornerRadius - 1, m_nCornerRadius - 1);
@@ -479,21 +718,30 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 		m_pWndDlg->SetWindowRgn(rgn, FALSE);
 	}
 	
-	SetWindowPos (&wndTop, ptPos.x, ptPos.y, m_FinalSize.cx, m_FinalSize.cy,
-		SWP_NOACTIVATE | SWP_SHOWWINDOW);
+	SetWindowPos (&wndTop, ptPos.x, ptPos.y, m_FinalSize.cx, m_FinalSize.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
 
+#ifndef _BCGSUITE_
 	if (m_bShadow && globalData.IsWindowsLayerSupportAvailable())
 	{
 		int nDepth = m_nCornerRadius != 0 ? m_nCornerRadius : 5;
 
-		m_pWndShadow = new CBCGPShadowWnd(this, 5, nDepth, CSize(nDepth, nDepth));
+		POINT points[3];
+		CRect rectPadding = GetStemPoints(points);
+
+		m_pWndShadow = new CBCGPShadowWnd(this, 5, nDepth, CSize(nDepth, nDepth), rectPadding);
+
+		if (m_StemLocation != BCGPPopupWindowStemLocation_None)
+		{
+			m_pWndShadow->SetStemRegion(points, 3);
+		}
+
 		m_pWndShadow->Create();
 	}
-	
+#endif
+
 	StartAnimation ();
 
-	m_pWndDlg->SetWindowPos (NULL, 1, nCaptionHeight + 1,
-		sizeDialog.cx, sizeDialog.cy, SWP_NOZORDER | SWP_NOACTIVATE);
+	m_pWndDlg->SetWindowPos (NULL, nLeftOffset + 1, nTopHeight + 1, sizeDialog.cx, sizeDialog.cy, SWP_NOZORDER | SWP_NOACTIVATE);
 
 	SetTimer (iCheckActivityTimerId, 100, NULL);
 
@@ -507,12 +755,21 @@ BOOL CBCGPPopupWindow::CommonCreate (CPoint ptPos, CBCGPPopupWndParams* pParams)
 		::SetFocus (hwndFocus);
 	}
 
+#ifndef _BCGSUITE_
+	CBCGPPopupMenu* pActiveMenu = CBCGPPopupMenu::GetSafeActivePopupMenu();
+	if (pActiveMenu != NULL)
+	{
+		pActiveMenu->SetWindowPos(&wndTop, -1, -1, -1, -1, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOREDRAW | SWP_NOSIZE);
+	}
+
 	if (m_pWndShadow->GetSafeHwnd() != NULL && GetActualAnimationType() == CBCGPPopupMenu::NO_ANIMATION)
 	{
 		m_pWndShadow->Repos();
 		m_bShadowIsReady = TRUE;
 	}
+#endif
 
+	m_bDontChangeActiveStatus = FALSE;
 	return TRUE;
 }
 //*******************************************************************************
@@ -607,7 +864,13 @@ void CBCGPPopupWindow::OnTimer(UINT_PTR nIDEvent)
 					m_btnMenu.ShowWindow (SW_SHOWNOACTIVATE);
 				}
 
-				if (globalData.IsWindowsLayerSupportAvailable () && globalData.m_nBitsPerPixel > 8 &&
+#ifndef _BCGSUITE_
+	BOOL bIsWindowsLayerSupportAvailable = globalData.IsWindowsLayerSupportAvailable();
+#else
+	BOOL bIsWindowsLayerSupportAvailable = TRUE;
+#endif
+
+				if (bIsWindowsLayerSupportAvailable && globalData.m_nBitsPerPixel > 8 &&
 					m_nTransparency < 255)
 				{
 					ModifyStyleEx(0, WS_EX_LAYERED);
@@ -615,18 +878,21 @@ void CBCGPPopupWindow::OnTimer(UINT_PTR nIDEvent)
 
 					globalData.SetLayeredAttrib (GetSafeHwnd (), 0, nTransparency, LWA_ALPHA);
 
+#ifndef _BCGSUITE_
 					if (m_pWndShadow->GetSafeHwnd () != NULL)
 					{
 						m_pWndShadow->UpdateTransparency(nTransparency);
 					}
+#endif
 				}
 
+#ifndef _BCGSUITE_
 				if (m_pWndShadow->GetSafeHwnd() != NULL)
 				{
 					m_pWndShadow->Repos();
 					m_bShadowIsReady = TRUE;
 				}
-
+#endif
 				m_pWndDlg->SetWindowPos (NULL,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOREDRAW|SWP_NOZORDER|SWP_SHOWWINDOW | SWP_NOACTIVATE);
 				m_pWndDlg->ValidateRect (NULL);
     
@@ -680,7 +946,7 @@ void CBCGPPopupWindow::OnTimer(UINT_PTR nIDEvent)
 		{
 			KillTimer (iClosePopupTimerId);
 			StartAnimation (FALSE);
-		}
+		} 
 		return;
 
 	case iCheckActivityTimerId:
@@ -697,8 +963,13 @@ void CBCGPPopupWindow::OnTimer(UINT_PTR nIDEvent)
 			m_bIsActive = 
 				rectWnd.PtInRect (ptCursor) || m_pWndDlg->HasFocus ();
 
+#ifndef _BCGSUITE_
+			BOOL bIsWindowsLayerSupportAvailable = globalData.IsWindowsLayerSupportAvailable();
+#else
+			BOOL bIsWindowsLayerSupportAvailable = TRUE;
+#endif
 			if (m_bIsActive != bWasActive &&
-				globalData.IsWindowsLayerSupportAvailable () && 
+				bIsWindowsLayerSupportAvailable && 
 				globalData.m_nBitsPerPixel > 8 &&
 				m_nTransparency < 255)
 			{
@@ -706,6 +977,7 @@ void CBCGPPopupWindow::OnTimer(UINT_PTR nIDEvent)
 				globalData.SetLayeredAttrib (GetSafeHwnd (), 0, 
 					nTransparency, LWA_ALPHA);
 
+#ifndef _BCGSUITE_
 				if (m_pWndShadow->GetSafeHwnd () != NULL)
 				{
 					if (m_bIsActive && !m_bShadowIsReady)
@@ -716,6 +988,7 @@ void CBCGPPopupWindow::OnTimer(UINT_PTR nIDEvent)
 
 					m_pWndShadow->UpdateTransparency (nTransparency);
 				}
+#endif
 			}
 		}
 	}
@@ -758,6 +1031,20 @@ CRect CBCGPPopupWindow::GetCaptionRect ()
 	CRect rectCaption = rectClient;
 
 	rectCaption.DeflateRect (1, 1);
+
+	switch (m_StemLocation)
+	{
+	case BCGPPopupWindowStemLocation_TopCenter:
+	case BCGPPopupWindowStemLocation_TopLeft:
+	case BCGPPopupWindowStemLocation_TopRight:
+		rectCaption.top += m_nStemSize;
+		break;
+
+	case BCGPPopupWindowStemLocation_Left:
+		rectCaption.left += m_nStemSize;
+		break;
+	}
+
 	rectCaption.bottom = rectCaption.top + nCaptionHeight;
 
 	return rectCaption;
@@ -792,6 +1079,7 @@ BOOL CBCGPPopupWindow::ProcessCommand (HWND hwnd)
 
 		m_pWndDlg->m_bMenuIsActive = TRUE;
 		
+#ifndef _BCGSUITE_
 		if (g_pContextMenuManager != NULL)
 		{
 			const BOOL bMenuShadows = CBCGPMenuBar::IsMenuShadows ();
@@ -803,6 +1091,7 @@ BOOL CBCGPPopupWindow::ProcessCommand (HWND hwnd)
 			CBCGPMenuBar::EnableMenuShadows (bMenuShadows);
 		}
 		else
+#endif
 		{
 			nMenuResult = ::TrackPopupMenu (m_hMenu, 
 				TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD, 
@@ -830,6 +1119,141 @@ BOOL CBCGPPopupWindow::ProcessCommand (HWND hwnd)
 	return FALSE;
 }
 //*******************************************************************************
+void CBCGPPopupWindow::AdjustLocationByStem(CPoint& point, int nDelta)
+{
+	if (m_StemLocation == BCGPPopupWindowStemLocation_None)
+	{
+		return;
+	}
+
+	switch (m_StemLocation)
+	{
+	case BCGPPopupWindowStemLocation_TopCenter:
+		point.x -= m_FinalSize.cx / 2;
+		point.y += nDelta;
+		break;
+
+	case BCGPPopupWindowStemLocation_TopLeft:
+		point.x -= m_nStemSize;
+		point.y += nDelta;
+		break;
+		
+	case BCGPPopupWindowStemLocation_TopRight:
+		point.x -= m_FinalSize.cx - m_nStemSize;
+		point.y += nDelta;
+		break;
+		
+	case BCGPPopupWindowStemLocation_BottomCenter:
+		point.x -= m_FinalSize.cx / 2;
+		point.y -= m_FinalSize.cy + nDelta;
+		break;
+		
+	case BCGPPopupWindowStemLocation_BottomLeft:
+		point.x -= m_nStemSize;
+		point.y -= m_FinalSize.cy + nDelta;
+		break;
+		
+	case BCGPPopupWindowStemLocation_BottomRight:
+		point.x -= m_FinalSize.cx - m_nStemSize;
+		point.y -= m_FinalSize.cy + nDelta;
+		break;
+		
+	case BCGPPopupWindowStemLocation_Left:
+		point.y -= m_FinalSize.cy / 2;
+		point.x += nDelta;
+		break;
+
+	case BCGPPopupWindowStemLocation_Right:
+		point.y -= m_FinalSize.cy / 2;
+		point.x -= m_FinalSize.cx + nDelta;
+		break;
+	}
+}
+//*******************************************************************************
+BOOL CBCGPPopupWindow::UpdateContent(const CString& strText, const CPoint& ptScreen)
+{
+	if (m_pWndDlg->GetSafeHwnd() == NULL || !m_pWndDlg->m_bDefault)
+	{
+		return FALSE;
+	}
+
+	CSize sizeDialog = m_pWndDlg->UpdateContent(strText);
+	if (sizeDialog == CSize(0, 0))
+	{
+		return FALSE;
+	}
+
+	int nCaptionHeight = GetCaptionHeight();
+
+	m_FinalSize = sizeDialog;
+	m_FinalSize.cy += nCaptionHeight + 2;
+	m_FinalSize.cx += 2;
+
+	switch (m_StemLocation)
+	{
+	case BCGPPopupWindowStemLocation_TopCenter:
+	case BCGPPopupWindowStemLocation_TopLeft:
+	case BCGPPopupWindowStemLocation_TopRight:
+	case BCGPPopupWindowStemLocation_BottomCenter:
+	case BCGPPopupWindowStemLocation_BottomLeft:
+	case BCGPPopupWindowStemLocation_BottomRight:
+		m_FinalSize.cy += m_nStemSize;
+		break;
+		
+	case BCGPPopupWindowStemLocation_Left:
+	case BCGPPopupWindowStemLocation_Right:
+		m_FinalSize.cx += m_nStemSize;
+		break;
+	}
+
+	CPoint pt = ptScreen;
+	AdjustLocationByStem(pt, m_nStemGap);
+
+	int nLeftOffset = UpdateWindowRgn();
+
+	if (m_nCornerRadius > 0)
+	{
+		CRgn rgn1;
+		rgn1.CreateRoundRectRgn (0, 0, sizeDialog.cx + 1, sizeDialog.cy + 1, m_nCornerRadius - 1, m_nCornerRadius - 1);
+		
+		CRgn rgn2;
+		rgn2.CreateRectRgn(0, 0, sizeDialog.cx + 1, sizeDialog.cy - m_nCornerRadius);
+		
+		rgn2.CombineRgn(&rgn1, &rgn2, RGN_OR);
+		
+		m_pWndDlg->SetWindowRgn(rgn2, FALSE);
+	}
+	
+	SetWindowPos (&wndTop, pt.x, pt.y, m_FinalSize.cx, m_FinalSize.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+	
+	int nTopHeight = GetCaptionHeight();
+	if (m_StemLocation == BCGPPopupWindowStemLocation_TopCenter || m_StemLocation == BCGPPopupWindowStemLocation_TopLeft || m_StemLocation == BCGPPopupWindowStemLocation_TopRight)
+	{
+		nTopHeight += m_nStemSize;
+	}
+
+	m_pWndDlg->SetWindowPos(NULL, nLeftOffset + 1, nTopHeight + 1, sizeDialog.cx, sizeDialog.cy, SWP_NOZORDER | SWP_NOACTIVATE);
+	
+#ifndef _BCGSUITE_
+	if (m_pWndShadow->GetSafeHwnd() != NULL)
+	{
+		if (m_StemLocation != BCGPPopupWindowStemLocation_None)
+		{
+			POINT points[3];
+			GetStemPoints(points);
+
+			m_pWndShadow->SetStemRegion(points, 3);
+		}
+
+		m_pWndShadow->Repos();
+	}
+#endif
+
+	RedrawWindow(NULL, NULL, RDW_ALLCHILDREN | RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+
+	return TRUE;
+}
+//*******************************************************************************
 BOOL CBCGPPopupWindow::OnCommand(WPARAM wParam, LPARAM lParam) 
 {
 	if (ProcessCommand ((HWND)lParam))
@@ -842,13 +1266,14 @@ BOOL CBCGPPopupWindow::OnCommand(WPARAM wParam, LPARAM lParam)
 //*******************************************************************************
 void CBCGPPopupWindow::OnDestroy() 
 {
+#ifndef _BCGSUITE_
 	if (m_pWndShadow->GetSafeHwnd () != NULL)
 	{
 		m_pWndShadow->ShowWindow (SW_HIDE);
 		m_pWndShadow->DestroyWindow ();
 		m_pWndShadow = NULL;
 	}
-
+#endif
 	if (m_pWndDlg != NULL)
 	{
 		m_pWndDlg->DestroyWindow ();
@@ -876,8 +1301,12 @@ void CBCGPPopupWindow::OnDraw (CDC* pDC)
 {
 	ASSERT_VALID (pDC);
 
+	BCGPPopupWindowStemLocation stemLocation = m_bAnimationIsDone ? m_StemLocation : BCGPPopupWindowStemLocation_None;
+
 	CRect rectClient;
 	GetClientRect(&rectClient);
+
+	const int nImageMargin = globalUtils.ScaleByDPI(IMAGE_MARGIN);
 
 	if (m_nCornerRadius > 0)
 	{
@@ -894,6 +1323,39 @@ void CBCGPPopupWindow::OnDraw (CDC* pDC)
 		}
 	}
 
+	CRect rectFill = rectClient;
+
+	switch (stemLocation)
+	{
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_BottomCenter:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_BottomLeft:
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_BottomRight:
+		rectFill.top -= GetCaptionHeight() + m_nStemSize;
+		break;
+
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_Left:
+		rectFill.left -= m_nStemSize;
+		rectFill.OffsetRect(0, GetCaptionHeight());
+		break;
+
+	case CBCGPPopupWindow::BCGPPopupWindowStemLocation_Right:
+		rectFill.right += m_nStemSize;
+		rectFill.OffsetRect(0, GetCaptionHeight());
+		break;
+	}
+
+	if (rectFill != rectClient)
+	{
+		if (m_Theme == BCGPPopupWindowTheme_VisualManager || globalData.IsHighContastMode())
+		{
+			CBCGPVisualManager::GetInstance ()->OnFillPopupWindowBackground(pDC, rectFill);
+		}
+		else
+		{
+			pDC->FillSolidRect(rectFill, m_Colors.clrFill);
+		}
+	}
+
 	CRect rectCaption = GetCaptionRect();
 
 	COLORREF clrText = m_Colors.clrText == (COLORREF)-1 ? RGB(0, 0, 0) : m_Colors.clrText;
@@ -904,7 +1366,18 @@ void CBCGPPopupWindow::OnDraw (CDC* pDC)
 	}
 	else
 	{
-		pDC->FillSolidRect(rectCaption, m_Colors.clrFill);
+		CRect rectFillCaption = rectCaption;
+
+		switch (stemLocation)
+		{
+		case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopCenter:
+		case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopLeft:
+		case CBCGPPopupWindow::BCGPPopupWindowStemLocation_TopRight:
+			rectFillCaption.top -= m_nStemSize;
+			break;
+		}
+
+		pDC->FillSolidRect(rectFillCaption, m_Colors.clrFill);
 
 		if (HasSmallCaption() && IsSmallCaptionGripper())
 		{
@@ -924,15 +1397,67 @@ void CBCGPPopupWindow::OnDraw (CDC* pDC)
 		}
 	}
 	
+	CRect rectBorder = rectClient;
+	
+	if (stemLocation != BCGPPopupWindowStemLocation_None)
+	{
+		CRect rectExclude(0, 0, 0, 0);
+
+		switch (stemLocation)
+		{
+		case BCGPPopupWindowStemLocation_TopCenter:
+			rectBorder.top += m_nStemSize;
+			rectExclude = CRect(rectBorder.CenterPoint().x - m_nStemSize, rectBorder.top, rectBorder.CenterPoint().x + m_nStemSize, rectBorder.top + 2);
+			break;
+
+		case BCGPPopupWindowStemLocation_TopLeft:
+			rectBorder.top += m_nStemSize;
+			rectExclude = CRect(rectBorder.left + m_nStemSize, rectBorder.top, rectBorder.left + m_nStemSize + m_nStemSize, rectBorder.top + 2);
+			break;
+			
+		case BCGPPopupWindowStemLocation_TopRight:
+			rectBorder.top += m_nStemSize;
+			rectExclude = CRect(rectBorder.right - m_nStemSize - m_nStemSize, rectBorder.top, rectBorder.right - m_nStemSize, rectBorder.top + 2);
+			break;
+			
+		case BCGPPopupWindowStemLocation_BottomCenter:
+			rectBorder.bottom -= m_nStemSize;
+			rectExclude = CRect(rectBorder.CenterPoint().x - m_nStemSize, rectBorder.bottom - 2, rectBorder.CenterPoint().x + m_nStemSize, rectBorder.bottom);
+			break;
+
+		case BCGPPopupWindowStemLocation_BottomLeft:
+			rectBorder.bottom -= m_nStemSize;
+			rectExclude = CRect(m_nStemSize, rectBorder.bottom - 2, m_nStemSize + m_nStemSize, rectBorder.bottom);
+			break;
+			
+		case BCGPPopupWindowStemLocation_BottomRight:
+			rectBorder.bottom -= m_nStemSize;
+			rectExclude = CRect(rectBorder.right - m_nStemSize - m_nStemSize, rectBorder.bottom - 2, rectBorder.right - m_nStemSize, rectBorder.bottom);
+			break;
+			
+		case BCGPPopupWindowStemLocation_Left:
+			rectBorder.left += m_nStemSize;
+			rectExclude = CRect(rectBorder.left, rectBorder.CenterPoint().y - m_nStemSize, rectBorder.left + 2, rectBorder.CenterPoint().y + m_nStemSize);
+			break;
+			
+		case BCGPPopupWindowStemLocation_Right:
+			rectBorder.right -= m_nStemSize;
+			rectExclude = CRect(rectBorder.right - 2, rectBorder.CenterPoint().y - m_nStemSize, rectBorder.right, rectBorder.CenterPoint().y + m_nStemSize);
+			break;
+		}
+
+		pDC->ExcludeClipRect(rectExclude);
+	}
+
 	if (m_Colors.clrBorder == (COLORREF)-1 || globalData.IsHighContastMode())
 	{
 		if (m_nCornerRadius > 0)
 		{
-			CBCGPVisualManager::GetInstance ()->OnDrawPopupWindowRoundedBorder (pDC, rectClient, this, m_nCornerRadius);
+			CBCGPVisualManager::GetInstance ()->OnDrawPopupWindowRoundedBorder (pDC, rectBorder, this, m_nCornerRadius);
 		}
 		else
 		{
-			CBCGPVisualManager::GetInstance ()->OnDrawPopupWindowBorder (pDC, rectClient);
+			CBCGPVisualManager::GetInstance ()->OnDrawPopupWindowBorder (pDC, rectBorder);
 		}
 	}
 	else
@@ -943,15 +1468,32 @@ void CBCGPPopupWindow::OnDraw (CDC* pDC)
 			CPen* pOldPen = pDC->SelectObject (&pen);
 			CBrush* pOldBrush = (CBrush*) pDC->SelectStockObject (NULL_BRUSH);
 			
-			pDC->RoundRect (rectClient.left, rectClient.top, rectClient.right, rectClient.bottom, m_nCornerRadius + 1, m_nCornerRadius + 1);
+			pDC->RoundRect (rectBorder.left, rectBorder.top, rectBorder.right, rectBorder.bottom, m_nCornerRadius + 1, m_nCornerRadius + 1);
 			
 			pDC->SelectObject (pOldPen);
 			pDC->SelectObject (pOldBrush);
 		}
 		else
 		{
-			pDC->Draw3dRect(rectClient, m_Colors.clrBorder, m_Colors.clrBorder);
+			pDC->Draw3dRect(rectBorder, m_Colors.clrBorder, m_Colors.clrBorder);
 		}
+	}
+
+	if (stemLocation != BCGPPopupWindowStemLocation_None)
+	{
+		pDC->SelectClipRgn(NULL);
+
+		COLORREF clrBorder = m_Colors.clrBorder;
+		if (clrBorder == (COLORREF)-1 || globalData.IsHighContastMode())
+		{
+			clrBorder = CBCGPVisualManager::GetInstance ()->GetPopupWindowBorderBorderColor();
+		}
+
+		POINT points[3];
+		GetStemPoints(points, TRUE);
+
+		CBCGPPenSelector ps(*pDC, clrBorder);
+		pDC->Polyline(points, 3);
 	}
 
 	if (m_bSmallCaption)
@@ -987,30 +1529,27 @@ void CBCGPPopupWindow::OnDraw (CDC* pDC)
 		pWndBtn->GetWindowRect (&rectBtn);
 		ScreenToClient (&rectBtn);
 
-		rectText.right = rectBtn.left - IMAGE_MARGIN;
+		rectText.right = rectBtn.left - nImageMargin;
 	}
 
 	HICON hIcon = GetIcon (FALSE);
 	if (hIcon != NULL)
 	{
-		CSize sizeImage = globalData.m_sizeSmallIcon;
-		CRect rectImage = rectCaption;
+		int nImagePadding = globalUtils.ScaleByDPI(m_bLargeCaptionFont ? 2 * nImageMargin : nImageMargin);
 
-		rectImage.top = rectImage.CenterPoint().y - sizeImage.cy / 2;
-		rectImage.bottom = rectImage.top + sizeImage.cy;
+		CRect rectIcon(
+			CPoint(
+				rectCaption.left + nImagePadding, 
+				rectCaption.top + max(0, (int)(0.5 + 0.5 * (rectCaption.Height() - globalData.m_sizeSmallIcon.cy)))),
+			globalData.m_sizeSmallIcon);
 
-		int nImageMargin = m_bLargeCaptionFont ? 2 * IMAGE_MARGIN : IMAGE_MARGIN;
-		if (globalData.GetRibbonImageScale() != 1.0)
-		{
-			nImageMargin = (int)(.5 + globalData.GetRibbonImageScale() * nImageMargin);
-		}
+		::DrawIconEx(pDC->GetSafeHdc (), 
+			rectIcon.left,
+			rectIcon.top,
+			hIcon, globalData.m_sizeSmallIcon.cx, globalData.m_sizeSmallIcon.cy, 0, NULL,
+			DI_NORMAL);
 
-		rectImage.left += nImageMargin;
-		rectImage.right = rectImage.left + sizeImage.cx;
-
-		pDC->DrawState (rectImage.TopLeft(), rectImage.Size(), hIcon, DSS_NORMAL, (HBRUSH)NULL);
-
-		rectText.left = rectImage.right + nHorzMargin;
+		rectText.left = rectIcon.right + nImagePadding;
 	}
 
 	CString strText;
@@ -1021,7 +1560,11 @@ void CBCGPPopupWindow::OnDraw (CDC* pDC)
 		COLORREF clrTextOld = pDC->SetTextColor (clrText);
 		pDC->SetBkMode (TRANSPARENT);
 
+#ifndef _BCGSUITE_
 		CFont* pOldFont = pDC->SelectObject(m_bLargeCaptionFont ? &globalData.fontCaption : &globalData.fontRegular);
+#else
+		CFont* pOldFont = pDC->SelectObject(&globalData.fontRegular);
+#endif
 
 		pDC->DrawText (strText, rectText, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
@@ -1084,7 +1627,7 @@ COLORREF CBCGPPopupWindow::GetTextColor(CBCGPPopupDlg* /*pDlg*/, BOOL bCaption, 
 
 	if (!bCaption)
 	{
-		return m_Colors.clrText;
+		return m_Colors.clrText != (COLORREF)-1 ? m_Colors.clrText : CBCGPVisualManager::GetInstance ()->GetPopupWindowTextColor(this);
 	}
 
 	if (m_Colors.clrFill == (COLORREF)-1 || globalData.IsHighContastMode())
@@ -1137,15 +1680,21 @@ void CBCGPPopupWindow::StartAnimation (BOOL bShow/* = TRUE*/)
 			m_btnMenu.ShowWindow (SW_SHOWNOACTIVATE);
 		}
 
+#ifndef _BCGSUITE_
 		if (m_pWndShadow->GetSafeHwnd() != NULL)
 		{
 			m_pWndShadow->Repos();
 			m_bShadowIsReady = TRUE;
 		}
 
+		BOOL bIsWindowsLayerSupportAvailable = globalData.IsWindowsLayerSupportAvailable();
+#else
+		BOOL bIsWindowsLayerSupportAvailable = TRUE;
+#endif
+
 		m_bAnimationIsDone = TRUE;
 
-		if (globalData.IsWindowsLayerSupportAvailable () && globalData.m_nBitsPerPixel > 8 &&
+		if (bIsWindowsLayerSupportAvailable && globalData.m_nBitsPerPixel > 8 &&
 			m_nTransparency < 255)
 		{
 			ModifyStyleEx(0, WS_EX_LAYERED);
@@ -1159,15 +1708,17 @@ void CBCGPPopupWindow::StartAnimation (BOOL bShow/* = TRUE*/)
 		m_pWndDlg->SetWindowPos (NULL,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOREDRAW|SWP_NOZORDER|SWP_SHOWWINDOW | SWP_NOACTIVATE);
 		m_pWndDlg->ValidateRect (NULL);
 
-		if (globalData.IsWindowsLayerSupportAvailable () && globalData.m_nBitsPerPixel > 8 &&
+		if (bIsWindowsLayerSupportAvailable && globalData.m_nBitsPerPixel > 8 &&
 			m_nTransparency < 255)
 		{
 			globalData.SetLayeredAttrib (GetSafeHwnd (), 0, m_nTransparency, LWA_ALPHA);
 
+#ifndef _BCGSUITE_
 			if (m_pWndShadow->GetSafeHwnd () != NULL)
 			{
 				m_pWndShadow->UpdateTransparency (m_nTransparency);
 			}
+#endif
 		}
 
 		return;
@@ -1313,7 +1864,13 @@ void CBCGPPopupWindow::DrawAnimation (CDC* pPaintDC)
 			pBmpOld = dcMem.SelectObject (&m_bmpScreenDst);
 		}
 
-		if (globalData.IsWindowsLayerSupportAvailable () && globalData.m_nBitsPerPixel > 8 &&
+#ifndef _BCGSUITE_
+		BOOL bIsWindowsLayerSupportAvailable = globalData.IsWindowsLayerSupportAvailable();
+#else
+		BOOL bIsWindowsLayerSupportAvailable = TRUE;
+#endif
+
+		if (bIsWindowsLayerSupportAvailable && globalData.m_nBitsPerPixel > 8 &&
 			m_nTransparency < 255)
 		{
 			ModifyStyleEx(0, WS_EX_LAYERED);
@@ -1388,24 +1945,18 @@ int CBCGPPopupWindow::GetCaptionHeight ()
 {
 	if (m_bSmallCaption)
 	{
-		if (globalData.GetRibbonImageScale() != 1.0)
-		{
-			return (int)(.5 + globalData.GetRibbonImageScale() * nSmallCaptionHeight);
-		}
-
-		return nSmallCaptionHeight;
+		return globalUtils.ScaleByDPI(nSmallCaptionHeight);
 	}
 	else
 	{
 		int nButtonHeight = CBCGPMenuImages::Size().cy;
+#ifndef _BCGSUITE_
 		int nTextHeight = m_bLargeCaptionFont ? globalData.GetCaptionTextHeight() : globalData.GetTextHeight();
+#else
+		int nTextHeight = globalData.GetTextHeight();
+#endif
 
-		int nVertPadding = 8;
-		if (globalData.GetRibbonImageScale() != 1.0)
-		{
-			nVertPadding = (int)(.5 + globalData.GetRibbonImageScale() * nVertPadding);
-		}
-
+		int nVertPadding = globalUtils.ScaleByDPI(8);
 		return max (nButtonHeight, nTextHeight) + nVertPadding;
 	}
 }
@@ -1424,6 +1975,7 @@ void CBCGPPopupWindow::OnWindowPosChanged(WINDOWPOS FAR* lpwndpos)
 {
 	CWnd::OnWindowPosChanged(lpwndpos);
 
+#ifndef _BCGSUITE_
 	if (m_pWndShadow->GetSafeHwnd () != NULL)
 	{
 		if (lpwndpos->flags & SWP_HIDEWINDOW)
@@ -1432,10 +1984,19 @@ void CBCGPPopupWindow::OnWindowPosChanged(WINDOWPOS FAR* lpwndpos)
 		}
 		else
 		{
+			if (m_StemLocation != BCGPPopupWindowStemLocation_None)
+			{
+				POINT points[3];
+				GetStemPoints(points);
+
+				m_pWndShadow->SetStemRegion(points, 3);
+			}
+
 			m_pWndShadow->Repos ();
 			m_bShadowIsReady = TRUE;
 		}
 	}
+#endif
 }
 //*******************************************************************************
 void CBCGPPopupWindow::StartWindowMove ()

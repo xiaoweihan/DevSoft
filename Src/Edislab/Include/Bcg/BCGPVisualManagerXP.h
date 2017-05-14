@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -64,6 +64,8 @@ protected:
 	virtual void OnHighlightMenuItem (CDC*pDC, CBCGPToolbarMenuButton* pButton,
 		CRect rect, COLORREF& clrText);
 	virtual COLORREF GetHighlightedMenuItemTextColor (CBCGPToolbarMenuButton* pButton);
+	virtual COLORREF GetPopupMenuBackgroundColor() const { return m_clrMenuLight; }
+
 	virtual void OnHighlightRarelyUsedMenuItems (CDC* pDC, CRect rectRarelyUsed);
 	virtual void OnHighlightQuickCustomizeMenuButton (CDC* pDC, CBCGPToolbarMenuButton* pButton, CRect rect);
 	virtual BOOL IsHighlightWholeMenuItem ()	{	return TRUE;	}
@@ -140,10 +142,7 @@ protected:
 	virtual void OnDrawStatusBarPaneBorder (CDC* pDC, CBCGPStatusBar* pBar,
 					CRect rectPane, UINT uiID, UINT nStyle);
 
-	virtual int GetMenuImageMargin () const
-	{
-		return 3;
-	}
+	virtual int GetMenuImageMargin () const;
 
 	virtual int GetPopupMenuGap () const
 	{
@@ -238,12 +237,16 @@ protected:
 	// Popup window:
 #ifndef BCGP_EXCLUDE_POPUP_WINDOW
 	virtual void OnDrawPopupWindowBorder (CDC* pDC, CRect rect);
+	virtual COLORREF GetPopupWindowBorderBorderColor();
 	virtual COLORREF OnDrawPopupWindowCaption (CDC* pDC, CRect rectCaption, CBCGPPopupWindow* pPopupWnd);
 	virtual void OnDrawPopupWindowRoundedBorder (CDC* pDC, CRect rect, CBCGPPopupWindow* pPopupWnd, int nCornerRadius);
 	virtual void OnErasePopupWindowButton (CDC* pDC, CRect rectClient, CBCGPPopupWndButton* pButton);
 	virtual void OnDrawPopupWindowButtonBorder (CDC* pDC, CRect rectClient, CBCGPPopupWndButton* pButton);
 	virtual void OnFillPopupWindowBackground (CDC* pDC, CRect rect);
 #endif
+
+	// Progress
+	virtual void OnDrawProgressMarqueeDot(CDC* pDC, CBCGPProgressCtrl* pProgressCtrl, CRect rect, int nIndex);
 
 	// Day planner:
 #ifndef BCGP_EXCLUDE_PLANNER
@@ -283,12 +286,19 @@ protected:
 	virtual void BreadcrumbDrawItemBackground (CDC& dc, CBCGPBreadcrumb* pControl, BREADCRUMBITEMINFO* pItemInfo, CRect rectItem, UINT uState, COLORREF color);
 	virtual void BreadcrumbDrawArrowBackground (CDC& dc, CBCGPBreadcrumb* pControl, BREADCRUMBITEMINFO* pItemInfo, CRect rectArrow, UINT uState, COLORREF color);
 	virtual void BreadcrumbDrawLeftArrowBackground (CDC& dc, CBCGPBreadcrumb* pControl, CRect rect, UINT uState, COLORREF color);
+	virtual void OnDrawBreadcrumbButton(CDC& dc, CBCGPBreadcrumb* pControl, CRect rect, UINT uState);
 
 #ifndef BCGP_EXCLUDE_RIBBON
 	// Ribbon control:
 	virtual COLORREF OnFillRibbonButton (
 					CDC* pDC, 
 					CBCGPRibbonButton* pButton);
+
+	virtual COLORREF GetRibbonEditBackgroundColor (
+					CBCGPRibbonEditCtrl* pEdit,
+					BOOL bIsHighlighted,
+					BOOL bIsPaneHighlighted,
+					BOOL bIsDisabled);
 
 	virtual COLORREF OnFillRibbonPinnedButton (
 					CDC* pDC, 
@@ -337,6 +347,9 @@ protected:
 		COLORREF color, CRect rect, BOOL bDrawTopEdge, BOOL bDrawBottomEdge, 
 		BOOL bIsHighlighted, BOOL bIsChecked, BOOL bIsDisabled);
 
+	virtual void OnDrawRibbonColorPaletteBoxHotBorder (CDC* pDC, CBCGPRibbonColorButton* pColorButton,
+		CBCGPRibbonPaletteIcon* pIcon, CRect rect, BOOL bIsHighlighted, BOOL bIsChecked);
+
 	virtual COLORREF OnDrawRibbonPanel (
 					CDC* pDC,
 					CBCGPRibbonPanel* pPanel, 
@@ -348,6 +361,12 @@ protected:
 	// Push button:
 	virtual BOOL OnDrawPushButton (CDC* pDC, CRect rect, CBCGPButton* pButton, COLORREF& clrText);
 	virtual BOOL IsDrawFocusRectOnPushButton(CBCGPButton* /*pButton*/) 	{ return FALSE; }
+
+	// IntelliSense window:
+	virtual COLORREF GetIntelliSenseFillColor(CBCGPBaseIntelliSenseLB* pCtrl, BOOL bIsSelected = FALSE);
+	virtual COLORREF GetIntelliSenseTextColor(CBCGPBaseIntelliSenseLB* pTreeCtrl, BOOL bIsSelected = FALSE);
+
+	virtual COLORREF OnDrawOutlookPopupButton(CDC* pDC, CRect& rectBtn, BOOL bIsHighlighted, BOOL bIsPressed, BOOL bIsOnCaption);
 
 	CBrush		m_brGripperHorz;
 	CBrush		m_brGripperVert;

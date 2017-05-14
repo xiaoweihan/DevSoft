@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -48,6 +48,22 @@ class BCGCBPRODLLEXPORT CBCGPRibbonPaletteButton : public CBCGPRibbonButton
 
 	DECLARE_DYNCREATE(CBCGPRibbonPaletteButton)
 
+public:
+	enum RibbonPalleteCheckboxLocation
+	{
+		RibbonPalleteCheckbox_TopLeft,
+		RibbonPalleteCheckbox_BottomLeft,
+		RibbonPalleteCheckbox_TopRight,
+		RibbonPalleteCheckbox_BottomRight,
+	};
+
+	enum RibbonPalleteTextLabelLocation
+	{
+		RibbonPalleteTextLabel_Top,
+		RibbonPalleteTextLabel_Center,
+		RibbonPalleteTextLabel_Bottom,
+	};
+
 // Construction
 public:
 	CBCGPRibbonPaletteButton();
@@ -81,6 +97,17 @@ public:
 
 // Attributes
 public:
+	virtual void SetComboMode(BOOL bSet = TRUE, BOOL bDrawCheckFrameAroundImage = FALSE);
+	BOOL IsComboMode() const
+	{
+		return m_bIsComboMode;
+	}
+
+	BOOL IsDrawCheckFrameAroundImage() const
+	{
+		return m_bDrawCheckFrameAroundImage;
+	}
+
 	void SetPaletteID (UINT nID)
 	{
 		m_nPaletteID = nID;
@@ -91,9 +118,14 @@ public:
 		return m_nPaletteID;
 	}
 
-	void SetButtonMode (BOOL bSet = TRUE)
+	void SetButtonMode(BOOL bSet = TRUE)
 	{
 		m_bIsButtonMode = bSet;
+
+		if (!bSet)
+		{
+			m_bIsComboMode = FALSE;
+		}
 	}
 
 	BOOL IsButtonMode () const
@@ -101,11 +133,35 @@ public:
 		return m_bIsButtonMode || IsCustom();
 	}
 
+	void ShowSelectedImage(BOOL bShow = TRUE, BOOL bReplaceTextLabel = FALSE)
+	{
+		m_bShowSelectedImage = bShow;
+		m_bForceSingleLineText = m_bShowSelectedLabel = (bReplaceTextLabel && m_bShowSelectedImage);
+	}
+
+	BOOL IsShowSelectedImage() const
+	{
+		return m_bShowSelectedImage;
+	}
+
 	void SelectItem (int nItemIndex);
 	int GetSelectedItem () const
 	{
 		return m_nSelected;
 	}
+
+	void SetInitialColumns(int nColumns)	// 0 - default (6 - large icons, 10 - small)
+	{
+		m_nInitialColumns = nColumns;
+	}
+
+	int GetInitialColumns() const
+	{
+		return m_nInitialColumns;
+	}
+
+	void SetCheckState(int nItemIndex, int nState);
+	int GetCheckState(int nItemIndex) const;
 
 	void EnableMenuResize (BOOL bEnable = TRUE, BOOL bVertcalOnly = FALSE)
 	{
@@ -137,6 +193,12 @@ public:
 	LPCTSTR GetItemToolTip (int nItemIndex) const;
 	void RemoveItemToolTips ();
 
+	void SetItemKeys(int nItemIndex, LPCTSTR lpszKeys);
+	LPCTSTR GetItemKeys(int nItemIndex) const;
+
+	void SetItemUserData(int nItemIndex, DWORD_PTR dwUserData);
+	DWORD_PTR GetItemUserData(int nItemIndex) const;
+
 	static int GetLastSelectedItem (UINT uiCmdID);
 	static void ClearLastSelectedItem(UINT uiCmdID);
 
@@ -150,13 +212,13 @@ public:
 		m_bMenuSideBar = bEnable;
 	}
 
-	CBCGPToolBarImages& GetImages ()
+	virtual CBCGPToolBarImages& GetImages ()
 	{
 		return m_imagesPalette;
 	}
 
 	virtual CSize GetIconSize () const;
-	virtual CSize GetItemSize () const { return GetIconSize(); }
+	virtual CSize GetItemSize () const;
 
 	void SetDrawDisabledItems(BOOL bSet = TRUE)
 	{
@@ -168,14 +230,50 @@ public:
 		return m_bDrawDisabledItems;
 	}
 
-	void EnableItemCheckBoxes(BOOL bEnable = TRUE)
+	// Icon text label support:
+	void EnableItemTextLabels(BOOL bEnable = TRUE, RibbonPalleteTextLabelLocation textLabelLocation = RibbonPalleteTextLabel_Bottom, COLORREF clrText = (COLORREF)-1)
+	{
+		m_bItemTextLabels = bEnable;
+		m_TextLabelLocation = textLabelLocation;
+		m_clrTextLabel = clrText;
+	}
+	
+	BOOL IsItemTextLabelsEnabled() const
+	{
+		return m_bItemTextLabels;
+	}
+	
+	RibbonPalleteTextLabelLocation GetTextLabelLocation() const
+	{
+		return m_TextLabelLocation;
+	}
+
+	COLORREF GetTextLabelColor() const
+	{
+		return m_clrTextLabel;
+	}
+
+	// Icon check box support:
+	void EnableItemCheckBoxes(BOOL bEnable = TRUE, BOOL bOverlapsIcon = FALSE, RibbonPalleteCheckboxLocation checkBoxLocation = RibbonPalleteCheckbox_BottomRight)
 	{
 		m_bItemCheckBoxes = bEnable;
+		m_CheckBoxLocation = checkBoxLocation;
+		m_bCheckBoxOverlapsIcon = bOverlapsIcon;
 	}
 
 	BOOL IsItemCheckBoxesEnabled() const
 	{
 		return m_bItemCheckBoxes;
+	}
+
+	BOOL IsCheckBoxOverlapsIcon() const
+	{
+		return m_bCheckBoxOverlapsIcon;
+	}
+
+	RibbonPalleteCheckboxLocation GetCheckBoxLocation() const
+	{
+		return m_CheckBoxLocation;
 	}
 
 // Operations:
@@ -224,7 +322,9 @@ protected:
 		return m_bIsOwnerDraw;
 	}
 
+	virtual BOOL PreClickPaletteIcon(CBCGPRibbonPaletteIcon* /*pIcon*/, const CPoint& /*point*/) { return TRUE; }
 	virtual void OnClickPaletteIcon (CBCGPRibbonPaletteIcon* pIcon);
+	virtual void OnClickPaletteIconCheckbox(CBCGPRibbonPaletteIcon* /*pIcon*/) {}
 	void GetMenuItems (CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>& arButtons);
 
 	virtual CBCGPBaseRibbonElement* HitTest (CPoint point);
@@ -254,9 +354,6 @@ protected:
 	virtual BOOL OnKey (BOOL bIsMenuKey);
 	virtual CRect GetKeyTipRect (CDC* pDC, BOOL bIsMenu);
 
-	virtual CString GetIconToolTip (const CBCGPRibbonPaletteIcon* pIcon) const;
-	virtual CString GetIconDescription (const CBCGPRibbonPaletteIcon* pIcon) const;
-
 	virtual BOOL CanBeStretchedHorizontally ()
 	{
 		return !IsButtonMode () && !m_bIsCollapsed;
@@ -272,11 +369,6 @@ protected:
 
 	virtual BOOL HasLargeMode () const
 	{
-		if (IsCustom())
-		{
-			return FALSE;
-		}
-
 		return !m_bIsButtonMode || CBCGPRibbonButton::HasLargeMode ();
 	}
 
@@ -309,12 +401,17 @@ protected:
 	
 // Overrides
 public:
+	virtual CString GetIconToolTip (const CBCGPRibbonPaletteIcon* pIcon) const;
+	virtual CString GetIconDescription (const CBCGPRibbonPaletteIcon* pIcon) const;
+	virtual CString GetIconTextLabel(const CBCGPRibbonPaletteIcon* pIcon) const;
+
 	virtual void OnDraw (CDC* pDC);
 
 	virtual CSize GetRegularSize (CDC* pDC);
 	virtual CSize GetCompactSize (CDC* pDC);
 
 	virtual void OnAfterChangeRect (CDC* pDC);
+	virtual void CleanUpSizes ();
 
 	virtual BOOL HasMenu () const
 	{
@@ -337,11 +434,13 @@ public:
 	}
 
 	virtual void OnSetFocus (BOOL bSet);
-
 	virtual BOOL SetACCData (CWnd* pParent, CBCGPAccessibilityData& data);
+	virtual BOOL IsAlwaysSmallIcons() const { return FALSE; }
 
 protected:
 	virtual void OnDrawPaletteIcon (CDC* pDC, CRect rectIcon, int nIconIndex, CBCGPRibbonPaletteIcon* pIcon, COLORREF clrText);
+	virtual CSize GetComboItemTextSize(CDC* pDC, CBCGPRibbonPaletteIcon* pIcon);
+	virtual void OnDrawComboItemText(CDC* pDC, CBCGPRibbonPaletteIcon* pIcon, CRect rectText);
 
 	virtual CWnd* GetParentWnd () const
 	{
@@ -356,6 +455,25 @@ protected:
 		return CBCGPRibbonButton::GetParentWnd ();
 	}
 
+	virtual CRect GetRectInWnd() const
+	{
+		ASSERT_VALID (this);
+		
+		if (m_pParentControl != NULL)
+		{
+			ASSERT_VALID(m_pParentControl);
+
+			CRect rect;
+			m_pParentControl->GetClientRect(rect);
+
+			return rect;
+		}
+
+		return CBCGPRibbonButton::GetRectInWnd();
+	}
+
+	virtual void DrawImage (CDC* pDC, RibbonImageType type, CRect rectImage);
+
 // Attributes
 protected:
 	CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*>	m_arIcons;
@@ -364,19 +482,25 @@ protected:
 
 	UINT				m_nPaletteID;
 	BOOL				m_bIsButtonMode;
+	BOOL				m_bShowSelectedImage;
+	BOOL				m_bShowSelectedLabel;
 	BOOL				m_bNotifyPaletteID;
 	CBCGPToolBarImages	m_imagesPalette;
 	int					m_nImagesInRow;
 	int					m_nPanelColumns;
+	int					m_nInitialColumns;
 	int					m_nImagesInColumn;
 	BOOL				m_bSmallIcons;
 	int					m_nScrollOffset;
 	int					m_nScrollTotal;
 	int					m_nSelected;
+	BOOL				m_bDrawSelectionAlways;
 	BOOL				m_bEnableMenuResize;
 	BOOL				m_bMenuResizeVertical;
 	int					m_nIconsInRow;
 	CStringArray		m_arToolTips;
+	CStringArray		m_arKeys;
+	CArray<DWORD_PTR, DWORD_PTR>	m_arUserData;
 	BOOL				m_bIsOwnerDraw;
 	BOOL				m_bDefaultButtonStyle;
 	int					m_nIcons;
@@ -385,8 +509,14 @@ protected:
 	BOOL				m_bResetColumns;
 	CWnd*				m_pParentControl;
 	BOOL				m_bIsComboMode;
+	BOOL				m_bDrawCheckFrameAroundImage;
 	BOOL				m_bDrawDisabledItems;
 	BOOL				m_bItemCheckBoxes;
+	BOOL				m_bCheckBoxOverlapsIcon;
+	RibbonPalleteCheckboxLocation	m_CheckBoxLocation;
+	BOOL				m_bItemTextLabels;
+	RibbonPalleteTextLabelLocation	m_TextLabelLocation;
+	COLORREF			m_clrTextLabel;
 
 	static CMap<UINT,UINT,int,int>	m_mapSelectedItems;
 
@@ -454,6 +584,18 @@ public:
 		return m_nID;
 	}
 
+	int GetCheck() const
+	{
+		return m_nCheckState;
+	}
+
+	void SetCheck(int nState, BOOL bRedraw = TRUE);
+
+	void ToggleCheck(BOOL bRedraw = TRUE)
+	{
+		SetCheck(!m_nCheckState, bRedraw);
+	}
+
 protected:
 	virtual void OnDraw (CDC* pDC);
 	virtual void OnClick (CPoint point);
@@ -470,9 +612,12 @@ protected:
 	}
 	virtual BOOL OnAddToQAToolbar (CBCGPRibbonQuickAccessToolbar& qat);
 
+	virtual CString GetTextLabel () const;
 	virtual CString GetToolTipText () const;
 	virtual CString GetDescription () const;
 	virtual void OnHighlight (BOOL bHighlight);
+	virtual BOOL OnProcessKey (UINT nChar);
+	virtual CRect GetKeyTipRect (CDC* pDC, BOOL bIsMenu);
 
 	virtual CWnd* GetParentWnd () const
 	{
@@ -566,9 +711,6 @@ public:
 	{
 		return TRUE;
 	}
-
-// Operations:
-public:
 };
 
 ////////////////////////////////////////////////

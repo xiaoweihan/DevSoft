@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -221,7 +221,8 @@ void CBCGPRibbonSlider::SetPos (int nPos, BOOL bRedraw)
 	ASSERT_VALID (this);
 
 	m_nPos = min (max (m_nMin, nPos), m_nMax);
-	SetThumbRect ();
+
+	SetThumbRect();
 
 	if (!m_bDontNotify)
 	{
@@ -229,19 +230,19 @@ void CBCGPRibbonSlider::SetPos (int nPos, BOOL bRedraw)
 		if (pRibbonBar != NULL)
 		{
 			ASSERT_VALID (pRibbonBar);
-
+			
 			CArray<CBCGPBaseRibbonElement*, CBCGPBaseRibbonElement*> arButtons;
 			pRibbonBar->GetElementsByID (m_nID, arButtons);
-
+			
 			for (int i = 0; i < arButtons.GetSize (); i++)
 			{
 				CBCGPRibbonSlider* pOther =
 					DYNAMIC_DOWNCAST (CBCGPRibbonSlider, arButtons [i]);
-
+				
 				if (pOther != NULL && pOther != this)
 				{
 					ASSERT_VALID (pOther);
-
+					
 					pOther->m_bDontNotify = TRUE;
 					pOther->SetPos (nPos);
 					pOther->m_bDontNotify = FALSE;
@@ -252,7 +253,7 @@ void CBCGPRibbonSlider::SetPos (int nPos, BOOL bRedraw)
 
 	if (bRedraw)
 	{
-		Redraw ();
+		Redraw();
 	}
 }
 //*****************************************************************************
@@ -288,8 +289,10 @@ void CBCGPRibbonSlider::OnAfterChangeRect (CDC* pDC)
 
 	if (IsVert () && !m_strText.IsEmpty ())
 	{
+		int nTextHeight = pDC->GetTextExtent(m_strText).cy;
+
 		m_rectLabel = m_rectSlider;
-		m_rectSlider.bottom -= globalData.GetTextHeight ();
+		m_rectSlider.bottom -= nTextHeight;
 		m_rectLabel.top = m_rectSlider.bottom;
 	}
 
@@ -449,12 +452,12 @@ void CBCGPRibbonSlider::OnMouseMove (CPoint point)
 {
 	ASSERT_VALID (this);
 
-	CBCGPBaseRibbonElement::OnMouseMove (point);
-
 	if (IsDisabled ())
 	{
 		return;
 	}
+	
+	CBCGPBaseRibbonElement::OnMouseMove (point);
 
 	int nHighlightedOld = m_nHighlighted;
 
@@ -482,6 +485,11 @@ void CBCGPRibbonSlider::OnMouseMove (CPoint point)
 int CBCGPRibbonSlider::GetHitTest (CPoint point) const
 {
 	ASSERT_VALID (this);
+
+	if (IsDisabled ())
+	{
+		return -1;
+	}
 
 	if (m_rectThumb.PtInRect (point))
 	{
@@ -752,7 +760,7 @@ BOOL CBCGPRibbonSlider::OnProcessKey (UINT nChar)
 
 	nPos = min (max (m_nMin, nPos), m_nMax);
 
-	if (nPrevPos != nPos)
+	if (nPrevPos != nPos && !IsDisabled())
 	{
 		SetPos (nPos);
 		NotifyCommand ();

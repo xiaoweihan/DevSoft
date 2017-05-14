@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -19,7 +19,9 @@
 #include "BCGPReportCtrl.h"
 #include "BCGPGridCtrl.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPPopupDlg.h "
 #include "BCGPMath.h"
+#include "BCGPComboBox.h"
 
 #ifndef BCGP_EXCLUDE_GRID_CTRL
 
@@ -55,8 +57,6 @@
 #include "BCGPGridFilterMenu.h"
 #include "BCGPGridSerialize.h"
 
-#include "BCGPChartVisualObject.h"
-
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
@@ -83,8 +83,13 @@ BOOL CBCGPGridCtrl::m_bEnableAssertValidInDebug = FALSE;
 
 #define TEXT_MARGIN		3
 #define TEXT_VMARGIN	2
+#define GRID_TEXT_MARGIN	globalUtils.ScaleByDPI(TEXT_MARGIN)
+#define GRID_TEXT_VMARGIN	globalUtils.ScaleByDPI(TEXT_VMARGIN)
+#define GRID_IMAGE_MARGIN	2
 
 #define	BCGPGRIDCTRL_ID_INPLACE	1
+#define BCGPGRIDCTRL_ID_INPLACE_COMBO (SHRT_MAX - 1)
+
 #define ID_FILTERBAR_BUTTON		101
 #define ID_DEFAULTFILTER_APPLY	102
 
@@ -105,6 +110,7 @@ BOOL CBCGPGridCtrl::m_bEnableAssertValidInDebug = FALSE;
 static const CString strGridsProfile = _T ("BCGPGrids");
 static const CString g_strEOL = _T ("\r\n");
 static const CString g_chSpace = _T (" ");
+static const LONG nAccKeyIndex = 500000;
 
 #define REG_SECTION_FMT	_T("%sBCGPGrid-%d")
 
@@ -248,6 +254,9 @@ public:
 public:
 	virtual ~CBCGPGridColumnListBox();
 
+protected:
+	HFONT GetGridOriginalFont();
+
 	// Generated message map functions
 protected:
 	//{{AFX_MSG(CBCGPGridColumnListBox)
@@ -346,7 +355,7 @@ CBCGPGridItem::CBCGPGridItem(const _variant_t& varValue, DWORD_PTR dwData,
 
 	m_bIsChanged = TRUE;
 
-	if (m_varValue.vt == VT_BOOL)
+	if (m_varValue.vt == VT_BOOL || IsPushButton())
 	{
 		m_bAllowEdit = FALSE;
 	}
@@ -460,6 +469,7 @@ void CBCGPGridItem::OnDestroyWindow ()
 	if (m_varValue.vt == VT_BOOL)
 	{
 		m_lstOptions.RemoveAll ();
+		m_lstOptionsData.RemoveAll ();
 	}
 }
 //****************************************************************************************
@@ -469,7 +479,7 @@ BOOL CBCGPGridItem::HasButton () const
 			(m_dwFlags & BCGP_GRID_ITEM_HAS_BUTTON);
 }
 //*******************************************************************************************
-BOOL CBCGPGridItem::AddOption (LPCTSTR lpszOption, BOOL bInsertUnique/* = TRUE*/)
+BOOL CBCGPGridItem::AddOption (LPCTSTR lpszOption, BOOL bInsertUnique/* = TRUE*/, DWORD_PTR dwData/* = 0 */)
 {
 	ASSERT_VALID (this);
 	ASSERT (lpszOption != NULL);
@@ -483,6 +493,8 @@ BOOL CBCGPGridItem::AddOption (LPCTSTR lpszOption, BOOL bInsertUnique/* = TRUE*/
 	}
 
 	m_lstOptions.AddTail (lpszOption);
+	m_lstOptionsData.AddTail(dwData);
+
 	m_dwFlags |= BCGP_GRID_ITEM_HAS_LIST;
 
 	return TRUE;
@@ -492,7 +504,9 @@ void CBCGPGridItem::RemoveAllOptions ()
 {
 	ASSERT_VALID (this);
 
-	m_lstOptions.RemoveAll ();
+	m_lstOptions.RemoveAll();
+	m_lstOptionsData.RemoveAll();
+
 	m_dwFlags = 0;
 }
 //****************************************************************************************
@@ -520,6 +534,26 @@ LPCTSTR CBCGPGridItem::GetOption (int nIndex) const
 	}
 
 	return m_lstOptions.GetAt (pos);
+}
+//****************************************************************************************
+DWORD_PTR CBCGPGridItem::GetOptionData(int nIndex) const
+{
+	ASSERT_VALID (this);
+
+	if (nIndex < 0 || nIndex >= m_lstOptionsData.GetCount ())
+	{
+		ASSERT (FALSE);
+		return NULL;
+	}
+
+	POSITION pos = m_lstOptionsData.FindIndex (nIndex);
+	if (pos == NULL)
+	{
+		ASSERT (FALSE);
+		return NULL;
+	}
+
+	return m_lstOptionsData.GetAt (pos);
 }
 //*******************************************************************************************
 CBCGPGridItem* CBCGPGridItem::HitTest (CPoint point, CBCGPGridRow::ClickArea* pnArea)
@@ -882,7 +916,7 @@ void CBCGPGridItem::OnDrawValue (CDC* pDC, CRect rect)
 	// -----------
 	// Draw value:
 	// -----------
-	rect.DeflateRect (TEXT_MARGIN, TEXT_VMARGIN);
+	rect.DeflateRect (GRID_TEXT_MARGIN, GRID_TEXT_VMARGIN);
 
 	// If merged, refer to main item
 	CBCGPGridItem* pMergedItem = GetMergedMainItem ();
@@ -930,6 +964,11 @@ void CBCGPGridItem::OnDrawValue (CDC* pDC, CRect rect)
 		}
 	}
 
+	if ((nTextAlign & HDF_RIGHT) == HDF_RIGHT && !m_rectButton.IsRectEmpty())
+	{
+		rect.right -= m_rectButton.Width();
+	}
+
 	m_bValueIsTrancated = pWndList->DoDrawText (pDC, strText, rect, uiTextFlags);
 
 	if (clrTextOld != (COLORREF)-1)
@@ -957,21 +996,32 @@ void CBCGPGridItem::OnDrawIcon (CDC* pDC, CRect& rect)
 
 	if (pWndList->GetImageList () != NULL && m_iImage >= 0)
 	{
+		int nImageMargin = globalUtils.ScaleByDPI(GRID_IMAGE_MARGIN);
+		
 		int cx = 0;
 		int cy = 0;
 
 		VERIFY (::ImageList_GetIconSize (*pWndList->m_pImages, &cx, &cy));
 
-		if (rect.left + cx <= rect.right)
+		if (rect.left + cx + nImageMargin <= rect.right)
 		{
-			CPoint pt = rect.TopLeft ();
+			// If merged, refer to main item
+			CBCGPGridItem* pMergedItem = GetMergedMainItem ();
+			int nAlign = (pMergedItem != NULL) ? pMergedItem->GetAlign () : GetAlign ();
+			BOOL bRightAlign = (nAlign & HDF_BITMAP_ON_RIGHT);
 
-			pt.x++;
-			pt.y = (rect.top + 1 + rect.bottom - cy) / 2;
+			CPoint pt = CPoint(bRightAlign ? rect.right - cx - nImageMargin : rect.left + nImageMargin, (rect.top + 1 + rect.bottom - cy) / 2);
 
 			VERIFY (pWndList->m_pImages->Draw (pDC, m_iImage, pt, ILD_NORMAL));
 
-			rect.left += cx;
+			if (bRightAlign)
+			{
+				rect.right -= cx + nImageMargin;
+			}
+			else
+			{
+				rect.left += cx + nImageMargin;
+			}
 		}
 	}
 }
@@ -1012,32 +1062,62 @@ void CBCGPGridItem::OnDrawStateIcon (CDC* pDC, CRect& rect)
 		BOOL bRightAlign = (pInfo != NULL && pInfo->m_Placement == CBCGPGridDataStateIconSet::ImagePlacementHorzRight);
 
 		CRect rectIcon = rect;
-		rectIcon.DeflateRect(TEXT_MARGIN, 0);
-		rectIcon.top++;
 
-		if (pImages->GetImageSize().cx > rectIcon.Width())
+		if (pWndList->GetScale() != 1.0)
 		{
+			rectIcon.DeflateRect(bcg_scale(GRID_TEXT_MARGIN, pWndList->GetScale()), 0);
+			rectIcon.DeflateRect(0, 1);
+
+			CSize sizeImage = pImages->GetImageSize ();
+			sizeImage.cx = bcg_scale(sizeImage.cx, pWndList->GetScale());
+			sizeImage.cy = bcg_scale(sizeImage.cy, pWndList->GetScale());
+
+			int x = bRightAlign ? rect.right - sizeImage.cx : rect.left;
+			
+			rectIcon = CRect(x, rectIcon.CenterPoint().y - sizeImage.cy / 2,
+				x + sizeImage.cx, rectIcon.CenterPoint().y + sizeImage.cy / 2);
+			
+			pImages->DrawEx (pDC, rectIcon, iIcon,
+				CBCGPToolBarImages::ImageAlignHorzStretch, CBCGPToolBarImages::ImageAlignVertStretch);
+
 			if (bRightAlign)
 			{
-				rectIcon.left = rect.left;
+				rect.right -= sizeImage.cx + bcg_scale(GRID_TEXT_MARGIN, pWndList->GetScale());
 			}
 			else
 			{
-				rectIcon.right = rect.right;
+				rect.left += sizeImage.cx + bcg_scale(GRID_TEXT_MARGIN, pWndList->GetScale());
 			}
-		}
-		
-		pImages->DrawEx (pDC, rectIcon, iIcon, 
-			bRightAlign ? CBCGPToolBarImages::ImageAlignHorzRight : CBCGPToolBarImages::ImageAlignHorzLeft, 
-			CBCGPToolBarImages::ImageAlignVertCenter);
-
-		if (bRightAlign)
-		{
-			rect.right -= pImages->GetImageSize().cx + TEXT_MARGIN;
 		}
 		else
 		{
-			rect.left += pImages->GetImageSize().cx + TEXT_MARGIN;
+			rectIcon.DeflateRect(GRID_TEXT_MARGIN, 0);
+			rectIcon.top++;
+
+			if (pImages->GetImageSize().cx > rectIcon.Width())
+			{
+				if (bRightAlign)
+				{
+					rectIcon.left = rect.left;
+				}
+				else
+				{
+					rectIcon.right = rect.right;
+				}
+			}
+			
+			pImages->DrawEx (pDC, rectIcon, iIcon, 
+				bRightAlign ? CBCGPToolBarImages::ImageAlignHorzRight : CBCGPToolBarImages::ImageAlignHorzLeft, 
+				CBCGPToolBarImages::ImageAlignVertCenter);
+
+			if (bRightAlign)
+			{
+				rect.right -= pImages->GetImageSize().cx + GRID_TEXT_MARGIN;
+			}
+			else
+			{
+				rect.left += pImages->GetImageSize().cx + GRID_TEXT_MARGIN;
+			}
 		}
 	}
 }
@@ -1071,6 +1151,9 @@ COLORREF CBCGPGridItem::OnFillBackground (CDC* pDC, CRect rect)
 	CRect rectFill = rect;
 	rectFill.top++;
 
+	BOOL bFillSelectedLabelOnly = !pWndList->m_bWholeCellSel && pWndList->GetColumnsInfo().GetColumnCount(TRUE) == 1 && !pWndList->IsWholeRowSel() && !pWndList->IsSelectionBorder();
+	BOOL bFillSelected = FALSE;
+
 	BOOL bSelected = IsChangeSelectedBackground() && (
 		(pWndList->m_bSingleSel && pWndList->m_bWholeRowSel) ?
 			m_pGridRow->IsSelected () :
@@ -1080,20 +1163,10 @@ COLORREF CBCGPGridItem::OnFillBackground (CDC* pDC, CRect rect)
 		m_pGridRow->HasValueField () && 
 		!(bActiveItem && bNoHighlightActiveItem || m_bInPlaceEdit))
 	{
-		if (pWndList->m_bFocused && pWndList->IsWholeRowSel ())
-		{
-			rectFill.right++;
-		}
-		clrText = pWndList->OnFillSelItem (pDC, rectFill, this);
-
-		if (m_nDataColorScalePerc != -1 && 
-			clrText != (COLORREF)-1 && CBCGPDrawManager::IsLightColor(clrText))
-		{
-			clrText = globalData.clrBtnText;
-		}
-
+		bFillSelected = TRUE;
 	}
-	else if (bActiveItem && bNoHighlightActiveItem)
+	
+	if (!bFillSelected && bActiveItem && bNoHighlightActiveItem)
 	{
 		if (!m_rectButton.IsRectEmpty ())
 		{
@@ -1122,7 +1195,7 @@ COLORREF CBCGPGridItem::OnFillBackground (CDC* pDC, CRect rect)
 			}
 		}
 	}
-	else 
+	else if (!bFillSelected || bFillSelectedLabelOnly)
 	{
 		CBCGPGridItemID id = pWndList->GetGridItemID (this);
 		BOOL bCustomColors = FALSE;
@@ -1136,7 +1209,7 @@ COLORREF CBCGPGridItem::OnFillBackground (CDC* pDC, CRect rect)
 		}
 
 		// Use m_ColorData to get colors
-		else if (!id.IsNull ())
+		else if (!id.IsNull() && pWndList->IsAlternateRowsEnabled())
 		{
 			if (pWndList->OnAlternateColor (id))
 			{
@@ -1157,6 +1230,10 @@ COLORREF CBCGPGridItem::OnFillBackground (CDC* pDC, CRect rect)
 				}
 			}
 		}
+		else
+		{
+			bCustomColors = pWndList->m_ColorData.m_clrBackground != (COLORREF)-1;
+		}
 
 		if (!bCustomColors)
 		{
@@ -1166,12 +1243,33 @@ COLORREF CBCGPGridItem::OnFillBackground (CDC* pDC, CRect rect)
 				(pWndList->GetColumnsInfo ().GetColumnState (id.m_nColumn) != 0));
 
 			COLORREF clr = visualManager->OnFillGridItem (
-				pWndList, pDC, rectFill, bSelected, bActiveItem && bNoHighlightActiveItem, bSortedColumn);
+				pWndList, pDC, rectFill, bSelected && !bFillSelectedLabelOnly, bActiveItem && bNoHighlightActiveItem, bSortedColumn);
 			if (clrText == (COLORREF)-1)
 			{
 				clrText = clr;
 			}
 		}
+	}
+
+	if (bFillSelected)
+	{
+		if (bFillSelectedLabelOnly)
+		{
+			GetLabelBoundsRect(pDC, rectFill, FALSE);
+		}
+
+		if (pWndList->m_bFocused && pWndList->IsWholeRowSel())
+		{
+			rectFill.right++;
+		}
+		clrText = pWndList->OnFillSelItem (pDC, rectFill, this);
+		
+		if (m_nDataColorScalePerc != -1 && 
+			clrText != (COLORREF)-1 && CBCGPDrawManager::IsLightColor(clrText))
+		{
+			clrText = globalData.clrBtnText;
+		}
+		
 	}
 
 	return clrText;
@@ -1198,6 +1296,8 @@ void CBCGPGridItem::OnDrawButton (CDC* pDC, CRect rect)
 		return;
 	}
 
+	COLORREF clrTextOld = pDC->SetTextColor(globalData.clrBarText);
+
 	CString str = _T("...");
 	pDC->DrawText (str, rect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
 
@@ -1219,6 +1319,8 @@ void CBCGPGridItem::OnDrawButton (CDC* pDC, CRect rect)
 		globalData.clrBtnDkShadow : globalData.clrHilite;
 	pDC->Draw3dRect (rect, colorBorder, colorBorder);
 #endif
+
+	pDC->SetTextColor(clrTextOld);
 }
 //******************************************************************************************
 void CBCGPGridItem::OnDrawBorders (CDC* pDC, CRect rect)
@@ -1261,7 +1363,7 @@ void CBCGPGridItem::OnDrawBorders (CDC* pDC, CRect rect)
 		pDC->MoveTo (rect.left, rect.bottom);
 		pDC->LineTo (rect.right + 1, rect.bottom);
 
-		if (borders.top == GRID_BORDERSTYLE_EMPTY && pWndList->GetLeftItemBorderOffset () > rect.left)
+		if (borders.top == GRID_BORDERSTYLE_EMPTY /*&& pWndList->GetLeftItemBorderOffset () > rect.left*/)
 		{
 			// repeat bottom border of the previous row (draw top border)
 			pDC->MoveTo (rect.left, rect.top);
@@ -1293,9 +1395,9 @@ void CBCGPGridItem::OnPrintValue (CDC* pDC, CRect rect)
 	ASSERT_VALID (pDC);
 	ASSERT_VALID (m_pGridRow);
 
-	CBCGPGridCtrl* pWndList = m_pGridRow->m_pWndList;
+	CBCGPGridCtrl* pWndList = m_pGridRow->GetOwnerList();
 	ASSERT_VALID (pWndList);
-	ASSERT (pWndList->m_bIsPrinting);
+	ASSERT (pWndList->IsPrinting());
 
 	// map to printer metrics
 	HDC hDCFrom = ::GetDC(NULL);
@@ -1304,12 +1406,12 @@ void CBCGPGridItem::OnPrintValue (CDC* pDC, CRect rect)
 	::ReleaseDC(NULL, hDCFrom);
 
 	const int CALCULATED_TEXT_MARGIN = ::MulDiv (TEXT_MARGIN, nXMul, nXDiv);
-	const CRect& rectClip = pWndList->m_PrintParams.m_pageInfo.m_rectPageItems;
+	const CRect& rectClip = pWndList->GetPrintParams().m_pageInfo.m_rectPageItems;
 
 	// -----------
 	// Draw value:
 	// -----------
-	COLORREF clrTextOld = pDC->SetTextColor (pWndList->m_clrPrintText);
+	COLORREF clrTextOld = pDC->SetTextColor (pWndList->GetPrintTextColor());
 
 	CRect rectText = rect;
 	rectText.DeflateRect (CALCULATED_TEXT_MARGIN, 0);
@@ -1422,6 +1524,76 @@ void CBCGPGridItem::OnPrintBorders (CDC* pDC, CRect rect)
 		pDC->LineTo (rect.right, rectBorders.bottom);
 	}
 }
+//******************************************************************************************
+BOOL CBCGPGridItem::GetLabelBoundsRect (CDC* pDC, CRect& rectItem, BOOL bIncludeImage)
+{
+	CBCGPGridCtrl* pWndList = GetOwnerList();
+	ASSERT_VALID(pWndList);
+
+	CRect rect = rectItem;
+
+	// If merged, refer to main item
+	CBCGPGridItem* pMergedItem = GetMergedMainItem ();
+	CString strText = (pMergedItem != NULL) ? pMergedItem->GetLabel() : GetLabel();
+	const DWORD dwFlags = (pMergedItem != NULL) ? pMergedItem->GetFlags() : GetFlags();
+	int nTextAlign = (pMergedItem != NULL) ? pMergedItem->GetAlign() : GetAlign();
+
+	if ((nTextAlign & (HDF_CENTER | HDF_RIGHT)) != 0 ||
+		(dwFlags & BCGP_GRID_ITEM_MULTILINE) != 0)
+	{
+		return FALSE;
+	}
+
+	//-----------------------
+	// Calculate text extent:
+	//-----------------------
+	if (pWndList->m_bTrimTextLeft)
+	{
+		strText.TrimLeft();
+	}
+	
+	strText.Replace(_T('\n'), _T(' '));
+	
+	CSize szText = pDC->GetTextExtent(strText);
+
+	//----------------------
+	// Calculate image size:
+	//----------------------
+	if (m_iImage >= 0 && pWndList->GetImageList() != NULL)
+	{
+		const int nImageMargin = globalUtils.ScaleByDPI(GRID_IMAGE_MARGIN);
+		
+		int cx = 0;
+		int cy = 0;
+		
+		VERIFY (::ImageList_GetIconSize (*pWndList->m_pImages, &cx, &cy));
+		
+		if (rect.left + cx + nImageMargin <= rect.right)
+		{
+			rect.left += cx + nImageMargin;
+		}
+	}
+	
+	rect.DeflateRect (GRID_TEXT_MARGIN, GRID_TEXT_VMARGIN);
+	rect.right = min(rect.left + szText.cx, rect.right);
+
+	if (rect.IsRectEmpty())
+	{
+		return FALSE;
+	}
+
+	if (bIncludeImage)
+	{
+		rectItem.right = min(rect.right + GRID_TEXT_VMARGIN, rectItem.right);
+	}
+	else
+	{
+		rect.InflateRect (globalUtils.ScaleByDPI(2), GRID_TEXT_VMARGIN);
+		rectItem = rect;
+	}
+
+	return TRUE;
+}
 //*****************************************************************************************
 void CBCGPGridItem::Serialize (CArchive& ar)
 {
@@ -1452,15 +1624,29 @@ BOOL CBCGPGridItem::ReadFromArchive(CArchive& ar, BOOL bTestMode)
 	ar >> strEditMask;
 	ar >> strEditTempl;
 	ar >> strValidChars;
+
+	int i = 0;
 	
 	CStringList		lstOptions;	// List of combobox items
 	int nListCount = 0;
 	ar >> nListCount;
-	for (int i = 0; i < nListCount; i++)
+	
+	for (i = 0; i < nListCount; i++)
 	{
 		CString str;
 		ar >> str;
 		lstOptions.AddTail (str);
+	}
+
+	CList<DWORD_PTR, DWORD_PTR>	lstOptionsData;
+	nListCount = 0;
+	ar >> nListCount;
+	
+	for (i = 0; i < nListCount; i++)
+	{
+		DWORD_PTR data;
+		ar >> data;
+		lstOptionsData.AddTail (data);
 	}
 
 	CSize			sizeCombo;	// Dimension of listbox	(400)
@@ -1495,7 +1681,11 @@ BOOL CBCGPGridItem::ReadFromArchive(CArchive& ar, BOOL bTestMode)
 		m_strEditTempl = strEditTempl;
 		m_strValidChars = strValidChars;
 		m_lstOptions.RemoveAll ();
+		m_lstOptionsData.RemoveAll();
+
 		m_lstOptions.AddTail (&lstOptions);
+		m_lstOptionsData.AddTail (&lstOptionsData);
+
 		m_sizeCombo = sizeCombo;
 		m_bEnabled = bEnabled;
 		m_bAllowEdit = bAllowEdit;
@@ -1521,12 +1711,20 @@ void CBCGPGridItem::WriteToArchive(CArchive& ar)
 	ar << m_strEditMask;	// Item edit mask (see CBCGPMaskEdit for description)
 	ar << m_strEditTempl;	// Item edit template (see CBCGPMaskEdit for description)
 	ar << m_strValidChars;	// Item edit valid chars (see CBCGPMaskEdit for description)
+
+	POSITION pos = NULL;
 	
 	// List of combobox items
 	ar << (int) m_lstOptions.GetCount ();
-	for (POSITION pos = m_lstOptions.GetHeadPosition (); pos != NULL; )
+	for (pos = m_lstOptions.GetHeadPosition (); pos != NULL; )
 	{
 		ar << m_lstOptions.GetNext (pos);
+	}
+
+	ar << (int) m_lstOptionsData.GetCount ();
+	for (pos = m_lstOptionsData.GetHeadPosition (); pos != NULL; )
+	{
+		ar << m_lstOptionsData.GetNext (pos);
 	}
 
 	ar << m_sizeCombo;		// Dimension of listbox	(400)
@@ -1561,6 +1759,7 @@ BOOL CBCGPGridItem::ClearContent (BOOL bRedraw)
 	m_strValidChars.Empty ();
 
 	m_lstOptions.RemoveAll ();
+	m_lstOptionsData.RemoveAll();
 
 	m_sizeCombo.cx = 50;
 	m_sizeCombo.cy = 400;
@@ -1594,6 +1793,24 @@ BOOL CBCGPGridItem::ChangeType (const _variant_t& var)
 	}
 
 	return TRUE;
+}
+//******************************************************************************************
+CString CBCGPGridItem::ExportToHTML(DWORD /*dwFlags*/)
+{
+	CString strItem = FormatItem();
+
+	if (strItem.IsEmpty())
+	{
+		strItem = _T("&nbsp;");
+	}
+
+	CBCGPGridCtrl* pGrid = GetOwnerList();
+	if (pGrid != NULL)
+	{
+		pGrid->OnPrepareHTMLString(strItem);
+	}
+
+	return strItem;
 }
 //******************************************************************************************
 BOOL CBCGPGridItem::CanUpdateData () const
@@ -1812,34 +2029,51 @@ BOOL CBCGPGridItem::OnEdit (LPPOINT)
 
 		if (m_dwFlags & BCGP_GRID_ITEM_HAS_LIST)
 		{
-			CRect rectCombo = m_Rect;
+			CRect rectCombo = (GetMergedCells() != NULL) ? GetMergedRect() : GetRect();
 			rectCombo.left = rectEdit.left - 4;
 
 			m_pWndCombo = CreateCombo (pWndList, rectCombo);
-			ASSERT_VALID (m_pWndCombo);
 
-			SetComboFont ();
-
-			//-------------------------------------------------------------------
-			// Synchronize bottom edge of the combobox with the item bottom edge:
-			//-------------------------------------------------------------------
-			m_pWndCombo->GetWindowRect (rectCombo);
-			pWndList->ScreenToClient (&rectCombo);
-
-			int dy = rectCombo.Height () - m_Rect.Height ();
-
-			m_pWndCombo->SetWindowPos (NULL, rectCombo.left,
-				rectCombo.top - dy + 1, -1, -1, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-
-			if (m_varValue.vt == VT_BOOL)
+			if (m_pWndCombo != NULL)
 			{
-				m_lstOptions.AddTail (pWndList->m_strTrue);
-				m_lstOptions.AddTail (pWndList->m_strFalse);
-			}
+				ASSERT_VALID (m_pWndCombo);
+				
+				SetComboFont ();
+				
+				//-------------------------------------------------------------------
+				// Synchronize bottom edge of the combobox with the item bottom edge:
+				//-------------------------------------------------------------------
+				m_pWndCombo->GetWindowRect (rectCombo);
+				pWndList->ScreenToClient (&rectCombo);
+				
+				int dy = rectCombo.Height () - m_Rect.Height ();
+				
+				m_pWndCombo->SetWindowPos (NULL, rectCombo.left,
+					rectCombo.top - dy + 1, -1, -1, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+				
+				if (m_varValue.vt == VT_BOOL)
+				{
+					m_lstOptions.AddTail (pWndList->m_strTrue);
+					m_lstOptions.AddTail (pWndList->m_strFalse);
 
-			for (POSITION pos = m_lstOptions.GetHeadPosition (); pos != NULL;)
-			{
-				m_pWndCombo->AddString (m_lstOptions.GetNext (pos));
+					m_lstOptionsData.AddTail((DWORD_PTR)TRUE);
+					m_lstOptionsData.AddTail((DWORD_PTR)FALSE);
+				}
+
+				int nOptionIndex = 0;
+
+				for (POSITION pos = m_lstOptions.GetHeadPosition (); pos != NULL; nOptionIndex++)
+				{
+					int nIndex = m_pWndCombo->AddString (m_lstOptions.GetNext (pos));
+					if (nIndex >= 0)
+					{
+						POSITION posData = m_lstOptionsData.FindIndex(nOptionIndex);
+						if (posData != NULL)
+						{
+							m_pWndCombo->SetItemData(nIndex, m_lstOptionsData.GetAt(posData));
+						}
+					}
+				}
 			}
 		}
 
@@ -1887,7 +2121,10 @@ void CBCGPGridItem::SetComboFont ()
 	{
 		ASSERT_VALID (m_pWndCombo);
 		ASSERT_VALID (pWndList);
-		m_pWndCombo->SetFont (pWndList->GetFont ());
+
+		// Use "original" (non-scaled) font:
+		HFONT hFont = pWndList->m_hFont != NULL ? pWndList->m_hFont : pWndList->GetDefaultFont ();
+		m_pWndCombo->SetFont(CFont::FromHandle(hFont));
 	}
 }
 //******************************************************************************************
@@ -1898,7 +2135,7 @@ void CBCGPGridItem::AdjustButtonRect ()
 
 	if (pWndList->AllowInPlaceEdit ())
 	{
-		m_rectButton = m_Rect;
+		m_rectButton = (GetMergedCells() != NULL) ? GetMergedRect() : GetRect();
 		m_rectButton.left = m_rectButton.right - pWndList->GetButtonWidth () + 3;
 		m_rectButton.top ++;
 	}
@@ -1941,7 +2178,7 @@ void CBCGPGridItem::AdjustInPlaceEditRect (CRect& rectEdit, CRect& rectSpin)
 		rectEdit.right = max (rectEdit.left, pWndList->m_rectList.right);
 	}
 
-	rectEdit.DeflateRect (0, TEXT_VMARGIN);
+	rectEdit.DeflateRect (0, GRID_TEXT_VMARGIN);
 
 	if (m_iImage >= 0 && pWndList->GetImageList () != NULL)
 	{
@@ -1955,7 +2192,20 @@ void CBCGPGridItem::AdjustInPlaceEditRect (CRect& rectEdit, CRect& rectSpin)
 
 	int nMargin = pWndList->m_nEditLeftMargin;
 
-	rectEdit.left += TEXT_MARGIN - nMargin;
+	rectEdit.left += GRID_TEXT_MARGIN - nMargin;
+
+	if (!(m_dwFlags & BCGP_GRID_ITEM_MULTILINE)) // if single line
+	{
+		DWORD dwVAlign = GetVertAlign();
+		if (dwVAlign == BCGP_GRID_ITEM_VCENTER)
+		{
+			rectEdit.top += pWndList->m_nEditTopMargin;
+		}
+		else if (dwVAlign == BCGP_GRID_ITEM_VBOTTOM)
+		{
+			rectEdit.top += 2 * pWndList->m_nEditTopMargin;
+		}
+	}
 
 	if (HasButton ())
 	{
@@ -1964,7 +2214,7 @@ void CBCGPGridItem::AdjustInPlaceEditRect (CRect& rectEdit, CRect& rectSpin)
 	}
 	else
 	{
-		rectEdit.right -= TEXT_MARGIN - pWndList->m_nEditRightMargin;
+		rectEdit.right -= GRID_TEXT_MARGIN - pWndList->m_nEditRightMargin;
 	}
 
 	if (m_dwFlags & BCGP_GRID_ITEM_HAS_SPIN)
@@ -2104,6 +2354,7 @@ CSpinButtonCtrl* CBCGPGridItem::CreateSpinControl (CRect rectSpin)
 	}
 
 	pWndSpin->SetBuddy (m_pWndInPlace);
+	pWndSpin->SetWindowPos(NULL, rectSpin.left, rectSpin.top, rectSpin.Width(), rectSpin.Height(), SWP_NOACTIVATE | SWP_NOZORDER);
 
 	if (m_nMinValue != 0 || m_nMaxValue != 0)
 	{
@@ -2153,9 +2404,18 @@ CComboBox* CBCGPGridItem::CreateCombo (CWnd* pWndParent, CRect rect)
 	rect.right = max (rect.left + m_sizeCombo.cx, rect.right);
 	rect.bottom = rect.top + m_sizeCombo.cy;
 
-	CComboBox* pWndCombo = new CComboBox;
-	if (!pWndCombo->Create (WS_CHILD | CBS_NOINTEGRALHEIGHT | CBS_DROPDOWNLIST | WS_VSCROLL, 
-		rect, pWndParent, BCGPGRIDCTRL_ID_INPLACE))
+	CBCGPComboBox* pWndCombo = new CBCGPComboBox;
+
+	DWORD dwStyle = WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL;
+
+	CBCGPGridCtrl* pWndList = GetOwnerList ();
+	if (pWndList != NULL && pWndList->IsVisualManagerStyle())
+	{
+		pWndCombo->m_bVisualManagerStyle = TRUE;
+		dwStyle |= CBS_OWNERDRAWFIXED | CBS_HASSTRINGS;
+	}
+
+	if (!pWndCombo->Create(dwStyle, rect, pWndParent, BCGPGRIDCTRL_ID_INPLACE_COMBO))
 	{
 		delete pWndCombo;
 		return NULL;
@@ -2183,7 +2443,7 @@ void CBCGPGridItem::OnClickButton (CPoint)
 {
 	ASSERT_VALID (this);
 
-	if (m_pWndCombo != NULL)
+	if (m_pWndCombo != NULL && IsEnabled() && m_pWndInPlace->GetSafeHwnd() != NULL)
 	{
 		m_bButtonIsDown = TRUE;
 		Redraw ();
@@ -2231,6 +2491,12 @@ BOOL CBCGPGridItem::OnClickValue (UINT uiMsg, CPoint point)
 		}
 	}
 
+ 	if ((pWndList->m_dwBeginEditReason & CBCGPGridCtrl::BeginEdit_MouseClick) != 0 &&
+ 		pWndList->OnInplaceEditSetSel (this, pWndList->m_dwBeginEditReason) != CBCGPGridCtrl::SetSel_CaretByCursor)
+ 	{
+ 		return TRUE; // leave selection of in-place edit as is
+ 	}
+
 	CPoint ptEdit = point;
 	::MapWindowPoints (	pWndList->GetSafeHwnd (), 
 						m_pWndInPlace->GetSafeHwnd (), &ptEdit, 1);
@@ -2251,7 +2517,7 @@ BOOL CBCGPGridItem::OnDblClick (CPoint)
 
 	ASSERT (::IsWindow (m_pWndInPlace->GetSafeHwnd ()));
 
-	if (m_lstOptions.GetCount () > 1)
+	if (m_lstOptions.GetCount() > 1 && IsEnabled())
 	{
 		CString strText;
 		m_pWndInPlace->GetWindowText (strText);
@@ -2277,7 +2543,7 @@ BOOL CBCGPGridItem::OnDblClick (CPoint)
 		return TRUE;
 	}
 
-	if (m_dwFlags & BCGP_GRID_ITEM_HAS_LIST)
+	if ((m_dwFlags & BCGP_GRID_ITEM_HAS_LIST) != 0 && IsEnabled())
 	{
 		CWaitCursor wait;
 
@@ -2495,7 +2761,30 @@ CString CBCGPGridItem::GetValueTooltip ()
 //*******************************************************************************************
 CRect CBCGPGridItem::GetTooltipRect () const
 {
-	return GetRect ();
+	if (m_iImage < 0)
+	{
+		return GetRect ();
+	}
+
+	CRect rect = GetRect ();
+
+	CBCGPGridCtrl* pWndList = GetOwnerList();
+	if (pWndList != NULL && pWndList->GetImageList () != NULL)
+	{
+		const int nImageMargin = globalUtils.ScaleByDPI(GRID_IMAGE_MARGIN);
+		
+		int cx = 0;
+		int cy = 0;
+		
+		VERIFY (::ImageList_GetIconSize (*pWndList->m_pImages, &cx, &cy));
+		
+		if (rect.left + cx + nImageMargin <= rect.right)
+		{
+			rect.left += cx + nImageMargin;
+		}
+	}
+	
+	return rect;
 }
 //*******************************************************************************************
 void CBCGPGridItem::OnPosSizeChanged (CRect /*rectOld*/)
@@ -2738,10 +3027,23 @@ BOOL CBCGPGridItem::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 
 	data.Clear ();
 
-	data.m_strAccName = FormatItem ();
-	data.m_strDescription = FormatItem ();
-	data.m_strAccValue = FormatItem();
+	CBCGPGridMergedCells* pMergedCells = GetMergedCells();
 
+	CBCGPGridItemID id = (pMergedCells != NULL) ? pMergedCells->GetMainItemID (): GetGridItemID ();
+
+	CBCGPGridCtrl* pWndList = m_pGridRow->m_pWndList;
+	ASSERT_VALID (pWndList);
+
+	if (pWndList->m_bAccGridItemValueAsName)
+	{
+		data.m_strAccName = FormatItem();
+	}
+	else
+	{
+		data.m_strAccName.Format(_T("Row %d, Column %d"), id.m_nRow + 1, id.m_nColumn + 1);
+	}
+
+	data.m_strAccValue = FormatItem();
 	
 	data.m_nAccHit = 1;
 	data.m_nAccRole = ROLE_SYSTEM_CELL;
@@ -2754,15 +3056,189 @@ BOOL CBCGPGridItem::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 		data.m_bAccState |= STATE_SYSTEM_SELECTED;	
 	}
 
-	if (!IsEnabled () || IsReadOnly ())
+	if (IsReadOnly ())
 	{
 		data.m_bAccState |= STATE_SYSTEM_READONLY;
 	}
 
+	if (!IsEnabled ())
+	{
+		data.m_bAccState |= STATE_SYSTEM_UNAVAILABLE;
+	}
+
 	data.m_rectAccLocation = m_Rect;
+	if (GetMergedCells() != NULL)
+	{
+		data.m_rectAccLocation = GetMergedRect();
+	}
+	
 	pParent->ClientToScreen (&data.m_rectAccLocation);
 
 	return TRUE;
+}
+//**************************************************************************************
+HRESULT CBCGPGridItem::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
+{
+	if (!pvarChild)
+	{
+		return E_INVALIDARG;
+	}
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+
+	CPoint pt(xLeft, yTop);
+	pParentGrid->ScreenToClient(&pt);
+
+	CBCGPGridItem* pItem = HitTest (pt);
+	if (pItem != NULL)
+	{
+		pItem->SetACCData(pParentGrid, m_AccData);
+
+		pvarChild->vt = VT_I4;
+		pvarChild->lVal = 1;
+
+		return S_OK;		
+	}
+	return S_FALSE;
+}
+//**************************************************************************************
+HRESULT CBCGPGridItem::get_accParent(IDispatch **ppdispParent)
+{
+	if (!ppdispParent)
+	{
+		return E_INVALIDARG;
+	}
+
+	*ppdispParent = NULL;
+
+	if (m_pGridRow == NULL)
+	{
+		return S_FALSE;
+	}
+
+	if (m_pGridRow != NULL)
+	{
+		*ppdispParent = m_pGridRow->GetIDispatch(TRUE);
+	}
+
+	if (*ppdispParent)
+	{
+		return S_OK;
+	}
+	return S_FALSE;
+}
+//*******************************************************************************
+HRESULT CBCGPGridItem::get_accChildCount(long *pcountChildren)
+{
+	if( !pcountChildren )
+	{
+		return E_INVALIDARG;
+	}
+
+	*pcountChildren = 1;
+	return S_OK;
+}
+//*******************************************************************************
+HRESULT CBCGPGridItem::get_accName(VARIANT varChild, BSTR *pszName)
+{
+	if ((varChild.vt == VT_I4) && ((varChild.lVal == CHILDID_SELF) || (varChild.lVal == 1)))
+	{
+		SetACCData(GetOwnerList(), m_AccData);
+		*pszName =  m_AccData.m_strAccName.AllocSysString();
+		return S_OK;
+	}
+	return S_FALSE;
+}
+//*******************************************************************************
+HRESULT CBCGPGridItem::get_accValue(VARIANT varChild, BSTR *pszValue)
+{
+	if ((varChild.vt == VT_I4) && ((varChild.lVal == CHILDID_SELF) || (varChild.lVal == 1)))
+	{
+		SetACCData(GetOwnerList(), m_AccData);
+		*pszValue =  m_AccData.m_strAccValue.AllocSysString();
+		return S_OK;
+	}
+	return S_FALSE;
+}
+//*******************************************************************************
+HRESULT CBCGPGridItem::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild)
+{
+	if ((varChild.vt == VT_I4) && GetOwnerList()->GetSafeHwnd() != NULL)
+	{
+		SetACCData(GetOwnerList(), m_AccData);
+
+		*pxLeft = m_AccData.m_rectAccLocation.left;
+		*pyTop = m_AccData.m_rectAccLocation.top;
+		*pcxWidth = m_AccData.m_rectAccLocation.Width();
+		*pcyHeight = m_AccData.m_rectAccLocation.Height();
+		return S_OK;
+	}
+	return S_FALSE;
+}
+//*******************************************************************************
+HRESULT CBCGPGridItem::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	{
+		SetACCData(GetOwnerList(), m_AccData);
+		pvarRole->vt = VT_I4;
+		pvarRole->lVal = m_AccData.m_nAccRole;
+		return S_OK;
+	}
+	
+	if ((varChild.vt == VT_I4) && (varChild.lVal == 1))
+	{
+		pvarRole->vt = VT_I4;
+
+		if (m_dwFlags & BCGP_GRID_ITEM_HAS_LIST)
+		{
+			pvarRole->lVal = ROLE_SYSTEM_COMBOBOX;
+		}
+		else
+		{
+			pvarRole->lVal = ROLE_SYSTEM_TEXT;
+		}
+		return S_OK;
+	}
+
+	return S_FALSE;
+}
+//*******************************************************************************
+HRESULT CBCGPGridItem::get_accState(VARIANT varChild, VARIANT *pvarState)
+{
+	if (varChild.vt != VT_I4)
+	{
+		return E_INVALIDARG;
+	}
+
+	if (varChild.lVal == CHILDID_SELF)
+	{
+		SetACCData(GetOwnerList(), m_AccData);
+		pvarState->vt = VT_I4;
+		pvarState->lVal = m_AccData.m_bAccState;
+		return S_OK;
+	}
+
+	if (varChild.lVal == 1)
+	{
+		SetACCData(GetOwnerList(), m_AccData);
+		pvarState->vt = VT_I4;
+		pvarState->lVal = m_AccData.m_bAccState;
+		pvarState->lVal &= ~(STATE_SYSTEM_SELECTABLE | STATE_SYSTEM_SELECTED);
+
+		if (!IsEnabled())
+		{
+			pvarState->lVal = STATE_SYSTEM_UNAVAILABLE;
+		}
+		return S_OK;
+	}
+
+	return S_FALSE;
 }
 //*******************************************************************************************
 void CBCGPGridItem::SetDataBar (int nPercentage)
@@ -3038,6 +3514,8 @@ void CBCGPGridColorItem::OnClickButton (CPoint /*point*/)
 
 	m_pPopup->SetParentGrid (pWndList);
 
+	((CBCGPColorBar*)m_pPopup->GetMenuBar ())->m_hFont = (HFONT)pWndList->GetFont()->GetSafeHandle();
+
 	if (!m_strOtherColor.IsEmpty ())	// Other color button
 	{
 		((CBCGPColorBar*)m_pPopup->GetMenuBar ())->EnableOtherButton (m_strOtherColor, !m_bStdColorDlg);
@@ -3122,11 +3600,22 @@ void CBCGPGridColorItem::AdjustInPlaceEditRect (CRect& rectEdit, CRect& rectSpin
 		rectEdit.right = max (rectEdit.left, pWndList->GetListRect ().right);
 	}
 
-	rectEdit.DeflateRect (0, TEXT_VMARGIN);
+	rectEdit.DeflateRect (0, GRID_TEXT_VMARGIN);
 
 	int nMargin = pWndList->m_nEditLeftMargin;
 
-	rectEdit.left = rectEdit.left + m_Rect.Height () + TEXT_MARGIN - nMargin + 1;
+	rectEdit.left += m_Rect.Height () + GRID_TEXT_MARGIN - nMargin;
+
+	DWORD dwVAlign = GetVertAlign();
+
+	if (dwVAlign == BCGP_GRID_ITEM_VCENTER)
+	{
+		rectEdit.top += pWndList->m_nEditTopMargin;
+	}
+	else if (dwVAlign == BCGP_GRID_ITEM_VBOTTOM)
+	{
+		rectEdit.top += 2 * pWndList->m_nEditTopMargin;
+	}
 
 	AdjustButtonRect ();
 	rectEdit.right = m_rectButton.left - 1;
@@ -3291,6 +3780,11 @@ void CBCGPGridColorItem::WriteToArchive(CArchive& ar)
 
 	ar << m_nColumnsNumber;
 }
+//*****************************************************************************************
+BOOL CBCGPGridColorItem::ClearContent(BOOL)
+{
+	return FALSE;
+}
 
 #endif // _BCGSUITE_
 
@@ -3345,7 +3839,7 @@ CWnd* CBCGPGridDateTimeItem::CreateInPlaceEdit (CRect rectEdit, BOOL& bDefaultFo
 	CRect rectSpin;
 	AdjustInPlaceEditRect (rectEdit, rectSpin);
 
-	pDateTime->Create (_T(""), WS_CHILD | WS_VISIBLE, rectEdit, 
+	pDateTime->Create (_T(""), WS_CHILD | BS_NOTIFY, rectEdit, 
 		pWndList, BCGPGRIDCTRL_ID_INPLACE);
 	pDateTime->SetFont (pWndList->GetFont ());
 
@@ -3376,6 +3870,8 @@ CWnd* CBCGPGridDateTimeItem::CreateInPlaceEdit (CRect rectEdit, BOOL& bDefaultFo
 
 	pDateTime->SetTextColor (pWndList->GetTextColor (), FALSE);
 	pDateTime->SetBackgroundColor (pWndList->GetBkColor (), FALSE);
+
+	pDateTime->ShowWindow(SW_SHOW);
 
 	bDefaultFormat = FALSE;
 
@@ -3423,15 +3919,18 @@ CString CBCGPGridDateTimeItem::FormatItem ()
 	::GetDateFormat (LOCALE_USER_DEFAULT, DATE_SHORTDATE, &st, NULL, strDate.GetBuffer (_MAX_PATH), _MAX_PATH);
 	strDate.ReleaseBuffer ();
 
+	DWORD dwTimeFormatFlags = (m_nFlags & CBCGPDateTimeCtrl::DTM_SECONDS) == 0 ? TIME_NOSECONDS : 0;
+
 	CString strTime;
-	::GetTimeFormat (LOCALE_USER_DEFAULT, TIME_NOSECONDS, &st, NULL, strTime.GetBuffer (_MAX_PATH), _MAX_PATH);
+	::GetTimeFormat (LOCALE_USER_DEFAULT, dwTimeFormatFlags, &st, NULL, strTime.GetBuffer (_MAX_PATH), _MAX_PATH);
 	strTime.ReleaseBuffer ();
 
-	if (m_nFlags == CBCGPDateTimeCtrl::DTM_DATE)
+	const UINT nFlags = m_nFlags & (CBCGPDateTimeCtrl::DTM_DATE | CBCGPDateTimeCtrl::DTM_TIME);
+	if (nFlags == CBCGPDateTimeCtrl::DTM_DATE)
 	{
 		str = strDate;
 	}
-	else if (m_nFlags == CBCGPDateTimeCtrl::DTM_TIME)
+	else if (nFlags == CBCGPDateTimeCtrl::DTM_TIME)
 	{
 		str = strTime;
 	}
@@ -3522,6 +4021,11 @@ void CBCGPGridDateTimeItem::SetState (CBCGPDateTimeCtrl& wnd)
 	if (nFlags & (CBCGPDateTimeCtrl::DTM_TIME))
 	{
 		stateFlags |= (CBCGPDateTimeCtrl::DTM_TIME | CBCGPDateTimeCtrl::DTM_TIME24HBYLOCALE);
+
+		if (nFlags & (CBCGPDateTimeCtrl::DTM_SECONDS))
+		{
+			stateFlags |= CBCGPDateTimeCtrl::DTM_SECONDS;
+		}
 	}
 
 	const UINT stateMask = 
@@ -3531,7 +4035,8 @@ void CBCGPGridDateTimeItem::SetState (CBCGPDateTimeCtrl& wnd)
 		CBCGPDateTimeCtrl::DTM_TIME24H |
 		CBCGPDateTimeCtrl::DTM_CHECKBOX |
 		CBCGPDateTimeCtrl::DTM_TIME | 
-		CBCGPDateTimeCtrl::DTM_TIME24HBYLOCALE;
+		CBCGPDateTimeCtrl::DTM_TIME24HBYLOCALE |
+		CBCGPDateTimeCtrl::DTM_SECONDS;
 
 	wnd.SetState (stateFlags, stateMask);
 }
@@ -3539,6 +4044,23 @@ void CBCGPGridDateTimeItem::SetState (CBCGPDateTimeCtrl& wnd)
 void CBCGPGridDateTimeItem::AdjustInPlaceEditRect (CRect& rectEdit, CRect& rectSpin)
 {
 	CBCGPGridItem::AdjustInPlaceEditRect (rectEdit, rectSpin);
+
+	CBCGPGridCtrl* pWndList = GetOwnerList ();
+	ASSERT_VALID (pWndList);
+
+	if (!(m_dwFlags & BCGP_GRID_ITEM_MULTILINE)) // if single line
+	{
+		DWORD dwVAlign = GetVertAlign();
+		
+		if (dwVAlign == BCGP_GRID_ITEM_VCENTER)
+		{
+			rectEdit.bottom -= pWndList->m_nEditTopMargin + 1;
+		}
+		else if (dwVAlign == BCGP_GRID_ITEM_VTOP)
+		{
+			rectEdit.bottom -= 2 * pWndList->m_nEditTopMargin + 1;
+		}
+	}
 
 	rectEdit.bottom++;
 }
@@ -3573,14 +4095,14 @@ void CBCGPGridDateTimeItem::WriteToArchive(CArchive& ar)
 IMPLEMENT_SERIAL (CBCGPGridCheckItem, CBCGPGridItem, VERSIONABLE_SCHEMA | 1)
 
 CBCGPGridCheckItem::CBCGPGridCheckItem () :
-	CBCGPGridItem (_variant_t (false), 0)
+	CBCGPGridItem (_variant_t (false), 0), m_b3State (FALSE)
 {
 	m_bAllowEdit = FALSE;
 	m_dwFlags = m_dwFlags & ~BCGP_GRID_ITEM_HAS_LIST;
 }
 //*****************************************************************************************
 CBCGPGridCheckItem::CBCGPGridCheckItem (bool bVal, DWORD_PTR dwData/* = 0*/) :
-	CBCGPGridItem (_variant_t (bVal), dwData)
+	CBCGPGridItem (_variant_t (bVal), dwData), m_b3State (FALSE)
 {
 	m_bAllowEdit = FALSE;
 	m_dwFlags = m_dwFlags & ~BCGP_GRID_ITEM_HAS_LIST;
@@ -3595,6 +4117,65 @@ void CBCGPGridCheckItem::SetLabel(const CString& strLabel)
 	m_strCheckLabel = strLabel;
 }
 //*****************************************************************************************
+void CBCGPGridCheckItem::SetState(int nState, BOOL bRedraw)
+{
+	if (m_b3State)
+	{
+		switch (nState)
+		{
+		case UnChecked:
+		case Checked:
+		case Indeterminate:
+			break;
+		default:
+			nState = UnChecked;
+			break;
+		}
+
+		SetValue((long)nState, bRedraw);
+	}
+	else
+	{
+		SetValue((bool)(nState == Checked), bRedraw);
+	}
+
+	SetItemChanged();
+}
+//*****************************************************************************************
+int CBCGPGridCheckItem::GetState() const
+{
+	if (m_b3State)
+	{
+		return (long)GetValue();
+	}
+	else
+	{
+		return (bool)GetValue();
+	}
+}
+//*****************************************************************************************
+void CBCGPGridCheckItem::Enable3StateCheckBox(BOOL bEnable)
+{
+	m_b3State = bEnable;
+
+	if (m_b3State)
+	{
+		if (m_varValue.vt == VT_BOOL)
+		{
+			_variant_t var((long)(bool)GetValue());
+			ChangeType(var);
+		}
+	} 
+	else
+	{
+		if (m_varValue.vt != VT_BOOL)
+		{
+			_variant_t var((bool)(((long)GetValue()) == Checked));
+			ChangeType(var);
+		}
+	}
+}
+//*****************************************************************************************
 void CBCGPGridCheckItem::OnDrawValue (CDC* pDC, CRect rect)
 {
 	ASSERT_VALID (this);
@@ -3606,33 +4187,10 @@ void CBCGPGridCheckItem::OnDrawValue (CDC* pDC, CRect rect)
 	COLORREF clrText = OnFillBackground (pDC, rect);
 
 	CRect rectCheck = rect;
-	
-	rectCheck.DeflateRect (0, TEXT_VMARGIN);
+	int nCheckBoxState = (m_b3State ? (long)m_varValue : (bool)m_varValue);
 
-	int nWidth = pWndList->GetButtonWidth ();
-
-	if (m_strCheckLabel.IsEmpty())
-	{
-		rectCheck.left = rectCheck.CenterPoint ().x - nWidth / 2;
-	}
-
-	rectCheck.right = rectCheck.left + nWidth;
-
-	if (rectCheck.Width() != rectCheck.Height())
-	{
-		if (rectCheck.Width() > rectCheck.Height())
-		{
-			rectCheck.left = rectCheck.CenterPoint().x - (int)(0.5 * rectCheck.Height());
-			rectCheck.right = rectCheck.left + rectCheck.Height();
-		}
-		else
-		{
-			rectCheck.top = rectCheck.CenterPoint().y - (int)(0.5 * rectCheck.Width());
-			rectCheck.bottom = rectCheck.top + rectCheck.Width();
-		}
-	}
-
-	visualManagerMFC->OnDrawCheckBox (pDC, rectCheck, FALSE, (bool) m_varValue, m_bEnabled);
+	pWndList->OnDrawCheckBox (pDC, rectCheck, nCheckBoxState, FALSE, FALSE, m_bEnabled, 
+		m_strCheckLabel.IsEmpty() ? HDF_CENTER : HDF_LEFT, (UINT)GetVertAlign());
 
 	if (clrText != (COLORREF)-1)
 	{
@@ -3641,16 +4199,35 @@ void CBCGPGridCheckItem::OnDrawValue (CDC* pDC, CRect rect)
 
 	if (!m_strCheckLabel.IsEmpty())
 	{
-		int nTextMargin = 4;
-		if (globalData.GetRibbonImageScale () != 1.)
-		{
-			nTextMargin = (int)(.5 + nTextMargin * globalData.GetRibbonImageScale ());
-		}
+		const int nTextMargin = globalUtils.ScaleByDPI(4);
+
+		rect.left = rectCheck.right;
+		OnDrawIcon (pDC, rect);
 
 		CRect rectLabel = rect;
-		rectLabel.left = rectCheck.right + nTextMargin;
+		rectLabel.left += nTextMargin;
+		rectLabel.DeflateRect (0, GRID_TEXT_VMARGIN);
 
-		m_bValueIsTrancated = pWndList->DoDrawText (pDC, m_strCheckLabel, rectLabel, DT_NOPREFIX | DT_END_ELLIPSIS | DT_SINGLELINE | DT_VCENTER);
+		// If merged, refer to main item
+		CBCGPGridItem* pMergedItem = GetMergedMainItem ();
+		const DWORD dwFlags = (pMergedItem != NULL) ? pMergedItem->GetFlags () : GetFlags ();
+		
+		UINT uiTextFlags = DT_NOPREFIX | DT_END_ELLIPSIS | DT_SINGLELINE;
+		
+		if (dwFlags & BCGP_GRID_ITEM_VTOP)
+		{
+			uiTextFlags |= DT_TOP;
+		}
+		else if (dwFlags & BCGP_GRID_ITEM_VBOTTOM)
+		{
+			uiTextFlags |= DT_BOTTOM;
+		}
+		else // dwFlags & BCGP_GRID_ITEM_VCENTER
+		{
+			uiTextFlags |= DT_VCENTER;
+		}
+
+		m_bValueIsTrancated = pWndList->DoDrawText (pDC, m_strCheckLabel, rectLabel, uiTextFlags);
 	}
 
 	if (clrTextOld != (COLORREF)-1)
@@ -3661,8 +4238,8 @@ void CBCGPGridCheckItem::OnDrawValue (CDC* pDC, CRect rect)
 //*****************************************************************************************
 void CBCGPGridCheckItem::OnPrintValue (CDC* pDC, CRect rect)
 {
-	const bool bVal = (bool) m_varValue;
-	if (!bVal)
+	const int nState = GetState();
+	if (nState == UnChecked)
 	{
 		return;
 	}
@@ -3683,23 +4260,65 @@ void CBCGPGridCheckItem::OnPrintValue (CDC* pDC, CRect rect)
 	rectCheck.NormalizeRect ();
 	if (rectCheck.IntersectRect (&rectCheck, &rectClip))
 	{
-		CBCGPMenuImages::Draw (pDC, CBCGPMenuImages::IdCheck, rectCheck, CBCGPMenuImages::ImageBlack, rectCheck.Size());
+		if (nState == Indeterminate)
+		{
+			rectCheck.DeflateRect(szOne.cx * 2, szOne.cy * 2);
+
+			WORD HatchBits [8] = { 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55 };
+			
+			CBitmap bmp;
+			bmp.CreateBitmap (8, 8, 1, 1, HatchBits);
+			
+			CBrush br;
+			br.CreatePatternBrush (&bmp);
+			
+			pDC->FillRect (rectCheck, &br);
+
+			pDC->MoveTo (rectCheck.left, rectCheck.top);
+			pDC->LineTo (rectCheck.right, rectCheck.top);
+			pDC->LineTo (rectCheck.right, rectCheck.bottom);
+			pDC->LineTo (rectCheck.left, rectCheck.bottom);
+			pDC->LineTo (rectCheck.left, rectCheck.top);
+		}
+		else
+		{
+			CBCGPMenuImages::Draw (pDC, CBCGPMenuImages::IdCheck, rectCheck, CBCGPMenuImages::ImageBlack, rectCheck.Size());
+		}
 	}
 }
 //*****************************************************************************************
-BOOL CBCGPGridCheckItem::PushChar (UINT nChar)
+BOOL CBCGPGridCheckItem::Toggle ()
 {
 	ASSERT_VALID (m_pGridRow);
 
-	if (nChar == VK_SPACE && IsEnabled () && !IsReadOnly())
+	if (IsEnabled () && !IsReadOnly())
 	{
+		if (m_b3State)
+		{
+			int nOldState = GetState();
+			SetState((nOldState + 1) % 3);
+			return TRUE;
+		}
+
 		BOOL bOldValue = (bool)GetValue ();
 		SetValue (!bOldValue);
 
 		SetItemChanged ();
 		return TRUE;
 	}
-	
+
+	return FALSE;
+}
+//*****************************************************************************************
+BOOL CBCGPGridCheckItem::PushChar (UINT nChar)
+{
+	ASSERT_VALID (m_pGridRow);
+
+	if (nChar == VK_SPACE && Toggle())
+	{
+		return TRUE;
+	}
+
 	return FALSE;
 }
 //*****************************************************************************************
@@ -3744,11 +4363,7 @@ BOOL CBCGPGridCheckItem::OnClickValue (UINT uiMsg, CPoint point)
 			}
 		}
 
-		BOOL bOldValue = (bool)GetValue ();
-		SetValue (!bOldValue);
-
-		SetItemChanged ();
-		return TRUE;
+		return Toggle();
 	}
 
 	return CBCGPGridItem::OnClickValue (uiMsg, point);
@@ -3766,9 +4381,13 @@ BOOL CBCGPGridCheckItem::ReadFromArchive(CArchive& ar, BOOL bTestMode)
 	CString strCheckLabel;
 	ar >> strCheckLabel;
 
+	BOOL b3State;;
+	ar >> b3State;
+
 	if (!bTestMode)
 	{
 		m_strCheckLabel = strCheckLabel;
+		m_b3State = b3State;
 	}
 
 	return bReadResult;
@@ -3779,23 +4398,72 @@ void CBCGPGridCheckItem::WriteToArchive(CArchive& ar)
 	CBCGPGridItem::WriteToArchive(ar);
 
 	ar << m_strCheckLabel;
+	ar << m_b3State;
 }
 //*****************************************************************************************
-BOOL CBCGPGridCheckItem::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
+HRESULT CBCGPGridCheckItem::get_accName(VARIANT varChild, BSTR *pszName)
 {
-	CBCGPGridItem::SetACCData (pParent, data);
-
-	if (!GetLabel ().IsEmpty ())
+	if ((varChild.vt == VT_I4) && (varChild.lVal == 1) && !GetLabel().IsEmpty ())
 	{
-		data.m_strAccName = GetLabel ();
+		*pszName =  GetLabel().AllocSysString();
+		return S_OK;
 	}
 
-	if ((bool)GetValue ())
+	return CBCGPGridItem::get_accName(varChild, pszName);
+}
+//*****************************************************************************************
+HRESULT CBCGPGridCheckItem::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == 1))
 	{
-		data.m_bAccState |= STATE_SYSTEM_CHECKED;
+		pvarRole->vt = VT_I4;
+		pvarRole->lVal = ROLE_SYSTEM_CHECKBUTTON;
+		return S_OK;
 	}
 
-	return TRUE;
+	return CBCGPGridItem::get_accRole(varChild, pvarRole);
+}
+//*****************************************************************************************
+HRESULT  CBCGPGridCheckItem::get_accState(VARIANT varChild, VARIANT *pvarState)
+{
+	HRESULT hr = CBCGPGridItem::get_accState(varChild, pvarState);
+	if (varChild.lVal == 1 && (GetState() == Checked))
+	{
+		pvarState->lVal |= STATE_SYSTEM_CHECKED;
+		hr = S_OK;
+	}
+	else if (varChild.lVal == 1 && (GetState() == Indeterminate))
+	{
+		pvarState->lVal |= STATE_SYSTEM_MIXED;
+		hr = S_OK;
+	}
+	return hr;
+}
+//*****************************************************************************************
+HRESULT CBCGPGridCheckItem::get_accDefaultAction(VARIANT varChild, BSTR *pszDefaultAction)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == 1))
+	{
+		*pszDefaultAction = SysAllocString(L"Toggle");
+		return S_OK;
+	}
+
+	return CBCGPGridItem::get_accDefaultAction(varChild, pszDefaultAction);
+}
+//*****************************************************************************************
+HRESULT CBCGPGridCheckItem::accDoDefaultAction(VARIANT varChild)
+{
+	if ((varChild.vt == VT_I4) && (varChild.lVal == 1))
+	{
+		if (Toggle())
+		{
+			return S_OK;
+		}
+
+		return S_FALSE;
+	}
+
+	return CBCGPGridItem::accDoDefaultAction(varChild);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -3823,6 +4491,9 @@ void CBCGPGridURLItem::OnDrawValue (CDC* pDC, CRect rect)
 {
 	ASSERT_VALID (m_pGridRow);
 
+	CBCGPGridCtrl* pWndList = GetOwnerList ();
+	ASSERT_VALID (pWndList);
+
 	COLORREF clrText = OnFillBackground (pDC, rect);
 
 	//-----------
@@ -3843,15 +4514,29 @@ void CBCGPGridURLItem::OnDrawValue (CDC* pDC, CRect rect)
 	COLORREF clrTextOld = 
 		pDC->SetTextColor (clrText == (COLORREF)-1 ? clrLink : clrText);
 
-	CFont* pOldFont = pDC->SelectObject (CBCGPGridCtrl::m_bUseSystemFont ? &globalData.fontDefaultGUIUnderline : &globalData.fontUnderline);
+	CFont* pOldFont = pDC->SelectObject (&pWndList->GetUnderlineFont(TRUE));
 	ASSERT (pOldFont != NULL);
 
 	CString str = (LPCTSTR)(_bstr_t) m_varValue;
 
-	rect.DeflateRect (TEXT_MARGIN, TEXT_VMARGIN);
+	rect.DeflateRect (GRID_TEXT_MARGIN, GRID_TEXT_VMARGIN);
 	DWORD dwFlags = GetFlags ();
+	int nTextAlign = GetAlign ();
 
-	UINT uiTextFlags = DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS;
+	UINT uiTextFlags = DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS;
+
+	if (nTextAlign & HDF_CENTER)
+	{
+		uiTextFlags |= DT_CENTER;
+	}
+	else if (nTextAlign & HDF_RIGHT)
+	{
+		uiTextFlags |= DT_RIGHT;
+	}
+	else // nTextAlign & HDF_LEFT
+	{
+		uiTextFlags |= DT_LEFT;
+	}
 
 	if (dwFlags & BCGP_GRID_ITEM_VTOP)
 	{
@@ -3933,583 +4618,161 @@ BOOL CBCGPGridURLItem::OnEdit (LPPOINT lptClick)
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// CBCGPGridSparklineItem
+// CBCGPGridPopupDlgItem
 
-IMPLEMENT_DYNCREATE (CBCGPGridSparklineItem, CBCGPGridItem)
+IMPLEMENT_DYNCREATE (CBCGPGridPopupDlgItem, CBCGPGridItem)
 
-CBCGPGridSparklineItem::CBCGPGridSparklineItem (SparklineType type, DWORD_PTR dwData) :
-	CBCGPGridItem (_variant_t ((LPCTSTR) _T("")), dwData)
+CBCGPGridPopupDlgItem::CBCGPGridPopupDlgItem () :
+	CBCGPGridItem (_variant_t ((LPCTSTR) _T("")), 0),
+	m_pPopupDlgRTI (NULL), m_lpszPopupDlgTemplateName (NULL), m_bPopupDlgIsResizable (FALSE), m_bPopupDlgIsRightAligned(FALSE),
+	m_pPopupDlg (NULL)
 {
-	m_bAllowEdit = FALSE;
-	m_pChart = NULL;
-	m_nMaxMarkerSize = 0;
-	m_bDefaultSelColor = TRUE;
+}
+//*****************************************************************************************
+CBCGPGridPopupDlgItem::CBCGPGridPopupDlgItem(CString str, CRuntimeClass* pRTI, UINT nIDTemplate, BOOL bIsResizable, BOOL bIsRightAligned) :
+	CBCGPGridItem (_variant_t ((LPCTSTR) str), 0),
+	m_pPopupDlgRTI (pRTI), m_lpszPopupDlgTemplateName (NULL), m_bPopupDlgIsResizable (bIsResizable), m_bPopupDlgIsRightAligned(bIsRightAligned),
+	m_pPopupDlg (NULL)
+{
+	m_lpszPopupDlgTemplateName = MAKEINTRESOURCE(nIDTemplate);
 
-	if (type != SparklineTypeLine)
+	if (m_pPopupDlgRTI != NULL)
 	{
-		SetType(type);
+		m_dwFlags |= BCGP_GRID_ITEM_HAS_LIST;
 	}
 }
 //*****************************************************************************************
-CBCGPGridSparklineItem::CBCGPGridSparklineItem (const CBCGPDoubleArray& arData, SparklineType type, DWORD_PTR dwData) :
-	CBCGPGridItem (_variant_t ((LPCTSTR) _T("")), dwData)
+CBCGPGridPopupDlgItem::CBCGPGridPopupDlgItem (const _variant_t& varValue, DWORD_PTR dwData,
+		LPCTSTR lpszEditMask, LPCTSTR lpszEditTemplate,
+		LPCTSTR lpszValidChars) :
+	CBCGPGridItem (varValue, dwData, lpszEditMask, lpszEditTemplate, lpszValidChars),
+	m_pPopupDlgRTI (NULL), m_lpszPopupDlgTemplateName (NULL), m_bPopupDlgIsResizable (FALSE), m_bPopupDlgIsRightAligned(FALSE),
+	m_pPopupDlg (NULL)
 {
-	m_bAllowEdit = FALSE;
-	m_pChart = NULL;
-	m_nMaxMarkerSize = 0;
-	m_bDefaultSelColor = TRUE;
-
-	if (type != SparklineTypeLine)
-	{
-		SetType(type);
-	}
-
-	if (arData.GetSize() > 0)
-	{
-		AddData(arData);
-	}
 }
 //*****************************************************************************************
-CBCGPGridSparklineItem::CBCGPGridSparklineItem(const CBCGPGridSparklineDataArray& arData, SparklineType type, DWORD_PTR dwData) :
-	CBCGPGridItem (_variant_t ((LPCTSTR) _T("")), dwData)
+CBCGPGridPopupDlgItem::~CBCGPGridPopupDlgItem()
 {
-	m_bAllowEdit = FALSE;
-	m_pChart = NULL;
-	m_nMaxMarkerSize = 0;
-	m_bDefaultSelColor = TRUE;
-	
-	if (type != SparklineTypeLine)
-	{
-		SetType(type);
-	}
-	
-	if (arData.GetSize() > 0)
-	{
-		AddData(arData);
-	}
 }
 //*****************************************************************************************
-CBCGPGridSparklineItem::~CBCGPGridSparklineItem()
+void CBCGPGridPopupDlgItem::EnablePopupDialog(CRuntimeClass* pRTI, UINT nIDTemplate, BOOL bIsResizable, BOOL bIsRightAligned)
 {
-	if (m_pChart != NULL)
+	if (pRTI != NULL && pRTI->m_pfnCreateObject == NULL)
 	{
-		delete m_pChart;
-	}
-}
-//*****************************************************************************
-CBCGPChartVisualObject* CBCGPGridSparklineItem::GetChart()
-{
-	if (m_pChart == NULL)
-	{
-		m_pChart = new CBCGPChartVisualObject;
-		InitChart();
-	}
-
-	return m_pChart;
-}
-//*****************************************************************************
-int CBCGPGridSparklineItem::SparklineTypeToChartType (SparklineType type)
-{
-	switch (type)
-	{
-	case SparklineTypeLine:
-		return (int)BCGPChartLine;
-		
-	case SparklineTypePie:
-		return (int)BCGPChartPie;
-		
-	case SparklineTypeColumn:
-		return (int)BCGPChartColumn;
-		
-	case SparklineTypeBar:
-		return (int)BCGPChartBar;
-		
-	case SparklineTypeArea:
-		return (int)BCGPChartArea;
-		
-	case SparklineTypeBubble:
-		return (int)BCGPChartBubble;
-		
-	case SparklineTypeDoughnut:
-		return (int)BCGPChartDoughnut;
-	}
-
-	return (int)BCGPChartDefault;
-}
-//*****************************************************************************
-void CBCGPGridSparklineItem::SetType(SparklineType type)
-{
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	pChart->SetChartType((BCGPChartCategory)SparklineTypeToChartType(type));
-}
-//*****************************************************************************
-CBCGPGridSparklineItem::SparklineType CBCGPGridSparklineItem::GetType()
-{
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	switch (pChart->GetChartCategory())
-	{
-	case BCGPChartLine:
-		return SparklineTypeLine;
-
-	case BCGPChartPie:
-		return SparklineTypePie;
-		
-	case BCGPChartColumn:
-		return SparklineTypeColumn;
-		
-	case BCGPChartBar:
-		return SparklineTypeBar;
-		
-	case BCGPChartArea:
-		return SparklineTypeArea;
-		
-	case BCGPChartBubble:
-		return SparklineTypeBubble;
-		
-	case BCGPChartDoughnut:
-		return SparklineTypeDoughnut;
-	}
-
-	return (SparklineType)-1;
-}
-//*****************************************************************************
-COLORREF CBCGPGridSparklineItem::GetFillColor()
-{
-	return (COLORREF)-1;
-}
-//*****************************************************************************
-CBCGPChartSeries* CBCGPGridSparklineItem::GetSeries(int nSeries, SparklineType type)
-{
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	if (type != SparklineTypeDefault && type != GetType())
-	{
-		return pChart->CreateSeries(_T(""), CBCGPColor(), BCGP_CT_DEFAULT,
-			(BCGPChartCategory)SparklineTypeToChartType(type), nSeries);
-	}
-	else
-	{
-		return pChart->GetSeries(nSeries, TRUE);
-	}
-}
-//*****************************************************************************
-void CBCGPGridSparklineItem::AddData(const CBCGPDoubleArray& arData, int nSeries, SparklineType type)
-{
-	CBCGPChartSeries* pSeries = GetSeries(nSeries, type);
-	if (pSeries == NULL)
-	{
+		TRACE(_T("CBCGPGridPopupDlgItem::EnablePopupDialog: you've to add DECLARE_DYNCREATE to your popup dialog class\n"));
 		ASSERT(FALSE);
-		return;
+		
+		pRTI = NULL;
 	}
 
-	ASSERT_VALID(pSeries);
+	m_pPopupDlgRTI = pRTI;
+	m_lpszPopupDlgTemplateName = MAKEINTRESOURCE(nIDTemplate);
+	m_bPopupDlgIsResizable = bIsResizable;
+	m_bPopupDlgIsRightAligned = bIsRightAligned;
 
-	pSeries->AddDataPoints(arData);
+	m_dwFlags |= BCGP_GRID_ITEM_HAS_LIST;
 }
-//*****************************************************************************
-void CBCGPGridSparklineItem::AddData(const CBCGPGridSparklineDataArray& arData, int nSeries, SparklineType type)
+//*****************************************************************************************
+void CBCGPGridPopupDlgItem::OnClickButton (CPoint /*point*/)
 {
-	if (arData.GetSize() == 0)
+	if (IsEnabled())
 	{
-		return;
+		CreatePopupDlg(GetRect());
+	}
+}
+//*****************************************************************************************
+BOOL CBCGPGridPopupDlgItem::CreatePopupDlg (CRect rectEdit)
+{
+	ASSERT_VALID (this);
+
+	if (m_pPopupDlg->GetSafeHwnd() != NULL)
+	{
+		ClosePopupDlg(NULL, FALSE);
+		return FALSE;
 	}
 
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	CBCGPChartSeries* pSeries = GetSeries(nSeries, type);
-	if (pSeries == NULL)
+	if (m_pPopupDlgRTI != NULL && m_lpszPopupDlgTemplateName != NULL)
 	{
-		ASSERT(FALSE);
-		return;
-	}
+		CBCGPGridCtrl* pWndGrid = GetOwnerList ();
+		ASSERT_VALID (pWndGrid);
 
-	ASSERT_VALID(pSeries);
+		CRect rectCombo = m_Rect;
+		rectCombo.left = rectEdit.left - 4;
 
-	if (type != SparklineTypeDefault && type != GetType())
-	{
-		pSeries->SetChartType((BCGPChartCategory)SparklineTypeToChartType(type));
-	}
+		pWndGrid->ClientToScreen (&rectCombo);
 
-	int nMaxMarkerSizePrev = m_nMaxMarkerSize;
-
-	for (int i = 0; i < (int)arData.GetSize(); i++)
-	{
-		const CBCGPBrush& brDataPointFill = arData[i].m_brDataPointFill;
-		const CBCGPBrush& brDataPointBorder = arData[i].m_brDataPointBorder;
-		
-		BOOL bShowMarker = arData[i].m_MarkerOptions.m_bShowMarker;
-		
-		int nDPIndex = -1;
-
-		if (!brDataPointFill.IsEmpty() || !brDataPointBorder.IsEmpty() || bShowMarker)
+		CBCGPDlgPopupMenu* pPopupMenu = new CBCGPDlgPopupMenu(this, m_pPopupDlgRTI, m_lpszPopupDlgTemplateName);
+		if (pPopupMenu != NULL)
 		{
-			BCGPChartFormatSeries fs;
+			pPopupMenu->m_bIsResizable = m_bPopupDlgIsResizable;
+			pPopupMenu->SetRightAlign(m_bPopupDlgIsRightAligned);
+
+			m_pPopupDlg = pPopupMenu->m_pDlg;
 			
-			if (!brDataPointFill.IsEmpty() || !brDataPointBorder.IsEmpty())
+			if (m_pPopupDlg != NULL)
 			{
-				fs.SetSeriesFill(brDataPointFill);
-				fs.SetSeriesLineColor(brDataPointBorder.IsEmpty() ? brDataPointFill : brDataPointBorder);
+				m_pPopupDlg->m_pParentEdit = new CBCGPParentGridItemPtr (this);
 			}
 			
-			if (bShowMarker)
+			CBCGPPopupMenu* pMenuActive = CBCGPPopupMenu::GetActiveMenu ();
+			if (pMenuActive != NULL)
 			{
-				const CBCGPBrush& brMarkerFill = arData[i].m_brMarkerFill;
-				const CBCGPBrush& brMarkerBorder = arData[i].m_brMarkerBorder;
-
-				fs.m_markerFormat.m_options = arData[i].m_MarkerOptions;
-				
-				if (!brMarkerFill.IsEmpty() || !brMarkerBorder.IsEmpty())
-				{
-					fs.SetMarkerFill(brMarkerFill);
-					fs.SetMarkerLineColor(brMarkerBorder.IsEmpty() ? brMarkerFill : brMarkerBorder);
-				}
-
-				m_nMaxMarkerSize = max(m_nMaxMarkerSize, fs.m_markerFormat.m_options.GetMarkerSize());
+				pMenuActive->SendMessage (WM_CLOSE);
 			}
 			
-			nDPIndex = pSeries->AddDataPoint(arData[i].m_dblValue, &fs);
+			OnBeforeShowPopupDlg(m_pPopupDlg);
+
+			pPopupMenu->Create (pWndGrid, m_bPopupDlgIsRightAligned ? (rectCombo.right + 1) : rectCombo.left, rectCombo.bottom, NULL, FALSE, FALSE);
+
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+//*****************************************************************************************
+void CBCGPGridPopupDlgItem::ClosePopupDlg (LPCTSTR lpszEditValue, BOOL bOK, DWORD_PTR /*dwUserData*/)
+{
+	if (m_pPopupDlg->GetSafeHwnd() != NULL)
+	{
+		if (m_pPopupDlg->GetParent() != NULL)
+		{
+			m_pPopupDlg->GetParent()->PostMessage(WM_CLOSE);
+		}
+
+		m_pPopupDlg = NULL;
+	}
+
+	if (lpszEditValue != NULL && bOK)
+	{
+		CEdit* pInplaceEdit = DYNAMIC_DOWNCAST(CEdit, GetInPlaceWnd ());
+		if (pInplaceEdit->GetSafeHwnd() != NULL)
+		{
+			pInplaceEdit->SetWindowText(lpszEditValue);
+
+			OnUpdateValue();
 		}
 		else
 		{
-			nDPIndex = pSeries->AddDataPoint(arData[i].m_dblValue);
-		}
-
-		if (arData[i].m_dblValue1 != 0. && nDPIndex >= 0)
-		{
-			pSeries->SetDataPointValue(nDPIndex, arData[i].m_dblValue1, CBCGPChartData::CI_Y1);
-		}
-	}
-
-	if (nMaxMarkerSizePrev != m_nMaxMarkerSize)
-	{
-		const double dblPadding = 0.5 * (double)(1.0 + m_nMaxMarkerSize);
-
-		pChart->GetChartAreaFormat().SetContentPadding(CBCGPSize(dblPadding, dblPadding));
-	}
-}
-//*****************************************************************************
-BOOL CBCGPGridSparklineItem::UpdateDataPoint(int nIndex, double dblValue, int nSeries/* = 0*/)
-{
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	CBCGPChartSeries* pSeries = pChart->GetSeries(nSeries);
-	if (pSeries == NULL)
-	{
-		return FALSE;
-	}
-
-	if (!pSeries->SetDataPointValue(nIndex, dblValue))
-	{
-		return FALSE;
-	}
-
-	pChart->RecalcMinMaxValues();
-	pChart->SetDirty();
-
-	return TRUE;
-}
-//*****************************************************************************
-BOOL CBCGPGridSparklineItem::ShowDataPointMarker(int nIndex, const BCGPChartMarkerOptions& markerOptions, 
-						 const CBCGPBrush& brMarkerFill, const CBCGPBrush& brMarkerBorder, int nSeries)
-{
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	CBCGPChartSeries* pSeries = pChart->GetSeries(nSeries);
-	if (pSeries == NULL)
-	{
-		return FALSE;
-	}
-
-	if (nIndex < 0 || nIndex >= pSeries->GetDataPointCount())
-	{
-		return FALSE;
-	}
-
-	int nMaxMarkerSizePrev = m_nMaxMarkerSize;
-
-	BCGPChartFormatSeries fs;
-	fs.m_markerFormat.m_options = markerOptions;
-	
-	if (!brMarkerFill.IsEmpty() || !brMarkerBorder.IsEmpty())
-	{
-		fs.SetMarkerFill(brMarkerFill);
-		fs.SetMarkerLineColor(brMarkerBorder.IsEmpty() ? brMarkerFill : brMarkerBorder);
-	}
-
-	m_nMaxMarkerSize = max(m_nMaxMarkerSize, fs.m_markerFormat.m_options.GetMarkerSize());
-
-	pSeries->SetMarkerOptions(markerOptions, nIndex);
-	pSeries->SetMarkerFill(brMarkerFill, nIndex);
-	pSeries->SetMarkerLineColor(brMarkerBorder, nIndex);
-
-	if (nMaxMarkerSizePrev != m_nMaxMarkerSize)
-	{
-		const double dblPadding = 0.5 * (double)(1.0 + m_nMaxMarkerSize);
-		pChart->GetChartAreaFormat().SetContentPadding(CBCGPSize(dblPadding, dblPadding));
-	}
-
-	pChart->RecalcMinMaxValues();
-	pChart->SetDirty();
-
-	return TRUE;
-}
-//*****************************************************************************
-void CBCGPGridSparklineItem::RemoveData(int nSeries)
-{
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	pChart->CleanUpChartData(nSeries);
-
-	if (nSeries == -1 || pChart->GetSeriesCount() == 1)
-	{
-		if (m_nMaxMarkerSize != 0)
-		{
-			m_nMaxMarkerSize = 0;
-			pChart->GetChartAreaFormat().SetContentPadding(CBCGPSize());
-		}
-	}
-}
-//*****************************************************************************
-void CBCGPGridSparklineItem::OnDrawValue (CDC* pDC, CRect rect)
-{
-	ASSERT_VALID (this);
-
-	OnFillBackground(pDC, rect);
-
-	CBCGPGridCtrl* pGrid = GetOwnerList();
-
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	if (pChart->GetRect().IsRectEmpty() || pGrid == NULL)
-	{
-		return;
-	}
-
-	CBCGPGraphicsManager* pGM = pGrid->GetGraphicsManager();
-	if (pGM == NULL)
-	{
-		return;
-	}
-
-	CRect rectClient;
-	pGrid->GetClientRect(rectClient);
-
-	pGM->BindDC(pDC, rectClient);
-	
-	if (!pGM->BeginDraw())
-	{
-		return;
-	}
-
-	pChart->OnDraw(pGM, rect);
-
-	pGM->EndDraw();
-}
-//*****************************************************************************
-void CBCGPGridSparklineItem::OnPrintValue (CDC* pDC, CRect rect)
-{
-	ASSERT_VALID (this);
-
-	CBCGPGridCtrl* pGrid = GetOwnerList();
-
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	if (pChart->GetRect().IsRectEmpty() || pGrid == NULL)
-	{
-		return;
-	}
-
-	CBCGPGraphicsManager* pGM = pGrid->GetGraphicsManager();
-	if (pGM == NULL)
-	{
-		return;
-	}
-
-
-	ASSERT_VALID(pGM);
-
-	const CBCGPSize sizeScaleOld = pChart->GetScaleRatio ();
-
-	HDC hDCFrom = ::GetDC(NULL);
-	double dXMul = (double) pDC->GetDeviceCaps(LOGPIXELSX);			// pixels in print dc
-	double dXDiv = (double) ::GetDeviceCaps(hDCFrom, LOGPIXELSX);	// pixels in screen dc
-	double dYMul = (double) pDC->GetDeviceCaps(LOGPIXELSY);			// pixels in print dc
-	double dYDiv = (double) ::GetDeviceCaps(hDCFrom, LOGPIXELSY);	// pixels in screen dc
-	::ReleaseDC(NULL, hDCFrom);
-
-	pChart->SetScaleRatio (CBCGPSize (dXMul / dXDiv, dYMul / dYDiv));
-	
-	HBITMAP hmbpDib = pChart->ExportToBitmap(pGM);
-
-	pChart->SetScaleRatio (sizeScaleOld);
-
-	if (hmbpDib == NULL)
-	{
-		ASSERT (FALSE);
-		return;
-	}
-
-	const CSize size = rect.Size();
-	const CSize sizeImage = size;
-
-	CDC dcMem;
-	dcMem.CreateCompatibleDC (pDC);
-
-	dcMem.SelectObject (hmbpDib);
-
-	pDC->StretchBlt (rect.left, rect.top, rect.Width (), rect.Height (), &dcMem, 0, 0, sizeImage.cx, sizeImage.cy, SRCCOPY);
-}
-//*****************************************************************************
-BOOL CBCGPGridSparklineItem::OnEdit (LPPOINT)
-{
-	return FALSE;
-}
-//*****************************************************************************
-void CBCGPGridSparklineItem::OnPosSizeChanged (CRect rectOld)
-{
-	ASSERT_VALID (this);
-
-	CBCGPGridItem::OnPosSizeChanged(rectOld);
-
-	CBCGPGridCtrl* pGrid = GetOwnerList ();
-	if (pGrid != NULL && !pGrid->IsColumnBeingResized())
-	{
-		CBCGPChartVisualObject*	pChart = GetChart();
-		ASSERT_VALID(pChart);
-
-		CBCGPRect rect = m_Rect;
-
-		if (pChart->GetRect() != m_Rect)
-		{
-			pChart->SetRect(rect, TRUE);
-			pChart->SetDirty (TRUE);
-		}
-	}
-}
-//*****************************************************************************
-void CBCGPGridSparklineItem::InitChart()
-{
-	ASSERT_VALID(m_pChart);
-
-	OnAfterChangeGridColors();
-
-	m_pChart->SetThumbnailMode(TRUE, BCGP_CHART_THUMBNAIL_DRAW_MARKERS);
-	m_pChart->ShowChartTitle(FALSE);
-	m_pChart->GetChartAreaFormat().SetContentPadding(CBCGPSize());
-	m_pChart->SetPlotAreaPadding(CBCGPRect());
-	m_pChart->SetLegendAreaPadding(CBCGPSize());
-
-	m_pChart->ShowAxisGridLines(BCGP_CHART_X_PRIMARY_AXIS, FALSE, FALSE);
-	m_pChart->ShowAxisGridLines(BCGP_CHART_Y_PRIMARY_AXIS, FALSE, FALSE);
-
-	m_pChart->GetChartAxis(BCGP_CHART_X_PRIMARY_AXIS)->m_axisLabelType = CBCGPChartAxis::ALT_NO_LABELS;
-	m_pChart->GetChartAxis(BCGP_CHART_Y_PRIMARY_AXIS)->m_axisLabelType = CBCGPChartAxis::ALT_NO_LABELS;
-
-	m_pChart->ShowAxis(BCGP_CHART_X_PRIMARY_AXIS, FALSE);
-	m_pChart->ShowAxis(BCGP_CHART_Y_PRIMARY_AXIS, FALSE);
-}
-//*****************************************************************************
-void CBCGPGridSparklineItem::OnAfterChangeGridColors()
-{
-	CBCGPGridItem::OnAfterChangeGridColors();
-
-	CBCGPGridCtrl* pGrid = GetOwnerList();
-	if (pGrid == NULL)
-	{
-		return;
-	}
-
-	CBCGPChartVisualObject*	pChart = GetChart();
-	ASSERT_VALID(pChart);
-
-	const CBCGPGridColors& colorsGrid = pGrid->GetColorTheme();
-
-	CBCGPChartTheme colorsChart;
-	CBCGPColor clrFill = colorsGrid.m_EvenColors.m_clrBackground == (COLORREF)-1 ? colorsGrid.m_clrBackground : colorsGrid.m_EvenColors.m_clrBackground;
-
-	COLORREF clrGridText = globalData.clrWindowText;
-
-	if (colorsGrid.m_EvenColors.m_clrText != (COLORREF)-1)
-	{
-		clrGridText = colorsGrid.m_EvenColors.m_clrText;
-	}
-	else if (colorsGrid.m_clrText != (COLORREF)-1)
-	{
-		clrGridText = colorsGrid.m_clrText;
-	}
-
-	CBCGPColor clrOutline = clrGridText;
-	CBCGPColor clrText = clrGridText;
-
-	if (clrOutline.IsDark())
-	{
-		clrOutline.MakeLighter(.5);
-	}
-	else
-	{
-		clrOutline.MakeDarker(.5);
-	}
-
-	CBCGPChartTheme::InitChartColors(colorsChart, 
-		CBCGPColor(), clrOutline, clrText,
-		CBCGPColor(), CBCGPColor(), .04, clrFill.IsDark());
-
-	colorsChart.m_brPlotLineColor.Empty();
-	colorsChart.m_brPlotFillColor.Empty();
-	colorsChart.m_brChartFillColor.Empty();
-
-	for (int i = 0; i < BCGP_GRID_SPARKLINES_CHART_SERIES_NUM; i++)
-	{
-		COLORREF clrSeriesFill = colorsGrid.m_SparklineSeriesColors[i].m_clrBackground;
-		COLORREF clrSeriesBorder = colorsGrid.m_SparklineSeriesColors[i].m_clrBorder;
-
-		if (clrSeriesFill == (COLORREF)-1 || clrSeriesBorder == (COLORREF)-1)
-		{
-			switch (i)
+			CString strText = lpszEditValue;
+			
+			BOOL bRes = TRUE;
+			BOOL bIsChanged = FormatItem () != strText;
+			BOOL bUpdateData = bIsChanged && CanUpdateData ();
+			
+			if (bUpdateData)
 			{
-			case 0:
-			default:
-				clrSeriesBorder = clrSeriesFill = RGB (1, 168, 220);
-				break;
-
-			case 1:
-				clrSeriesBorder = clrSeriesFill = RGB(237, 125, 49);
-				break;
-
-			case 2:
-				clrSeriesBorder = clrSeriesFill = RGB(112, 173, 71);
-				break;
-
-			case 3:
-				clrSeriesBorder = clrSeriesFill = RGB(165, 165, 165);
-				break;
-
-			case 4:
-				clrSeriesBorder = clrSeriesFill = RGB(255, 192, 0);
-				break;
+				bRes = TextToVar (strText);
+			}
+			
+			if (bRes && bUpdateData)
+			{
+				SetItemChanged ();
 			}
 		}
-
-		colorsChart.m_seriesColors[i].m_brElementFillColor.SetColors(clrSeriesFill, clrSeriesFill, CBCGPBrush::BCGP_NO_GRADIENT);
-		colorsChart.m_seriesColors[i].m_brElementLineColor.SetColor(clrSeriesBorder);
 	}
-	
-	m_bDefaultSelColor = colorsGrid.m_bSparklineDefaultSelColor;
-
-	pChart->SetColors(colorsChart);
-	pChart->SetDirty (TRUE);
 }
+
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPGridMergedCells
@@ -4667,7 +4930,9 @@ void CBCGPGridRow::Init ()
 	m_pWndList = NULL;
 	m_nLines = 1;
 	m_bSelected = FALSE;
+	m_nChecked = 0;
 	m_bEnabled = TRUE;
+	m_vusInPlaceEdit = VUS_NeedValueUpdate;
 	m_bInPlaceEdit = FALSE;
 	m_bAllowEdit = TRUE;
 	m_bNameIsTrancated = FALSE;
@@ -4758,6 +5023,8 @@ BOOL CBCGPGridRow::ReplaceItem (int nColumn, CBCGPGridItem* pNewItem, BOOL bRedr
 		CBCGPGridItem* pOldItem = m_arrRowItems [nColumn];
 		pNewItem->SetOwnerRow (this);
 		pNewItem->m_nIdColumn = nColumn;
+		pNewItem->m_Rect = pOldItem->m_Rect;
+		pNewItem->m_bSelected = pOldItem->m_bSelected;
 		m_arrRowItems [nColumn] = pNewItem;
 		delete pOldItem;
 
@@ -4897,6 +5164,66 @@ BOOL CBCGPGridRow::AddSubItem (CBCGPGridRow* pItem, BOOL bRedraw)
 	return TRUE;
 }
 //*******************************************************************************************
+BOOL CBCGPGridRow::InsertSubItem (CBCGPGridRow* pItem, CBCGPGridRow* pInsertAfterItem, BOOL bRedraw)
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (pItem);
+
+	if (!IsGroup ())
+	{
+		ASSERT(FALSE);
+		return FALSE;
+	}
+
+	const int nPosParent = m_nIdRow;
+	const int nSubItemsCount = GetSubItemsCount (TRUE); // max
+
+	int nPosInsertAfter = nPosParent;
+	int nSubItemIndex = -1;
+	POSITION posSubItem = m_lstSubItems.GetHeadPosition();
+	for (int i = 0; i < nSubItemsCount; i++)
+	{
+		CBCGPGridRow* pSubRow = m_lstSubItems.GetNext(posSubItem);
+		if (pSubRow == NULL)
+		{
+			return FALSE;
+		}
+
+		ASSERT_VALID(pSubRow);
+		ASSERT(pSubRow->GetRowId() == nPosParent + i);
+
+		if (pSubRow == pInsertAfterItem)
+		{
+			nPosInsertAfter = nPosParent + i;
+			nSubItemIndex = i;
+			break;
+		}
+	}
+
+	pItem->SetParent(this);
+
+	m_pWndList->InsertRowAfter (nPosInsertAfter, pItem, bRedraw);
+
+	BOOL bSubItemInserted = FALSE;
+	if (nSubItemIndex != -1)
+	{
+		POSITION pos = m_lstSubItems.FindIndex(nSubItemIndex);
+		if (pos != NULL)
+		{
+			m_lstSubItems.InsertAfter(pos, pItem);
+			bSubItemInserted = TRUE;
+		}
+	}
+	if (!bSubItemInserted)
+	{
+		m_lstSubItems.AddTail (pItem);
+	}
+
+	pItem->m_pWndList = m_pWndList;
+
+	return TRUE;
+}
+//*******************************************************************************************
 int CBCGPGridRow::GetSubItemsCount (BOOL bRecursive) const
 {
 	ASSERT_VALID (this);
@@ -4940,6 +5267,233 @@ void CBCGPGridRow::GetSubItems (CList<CBCGPGridRow*, CBCGPGridRow*>& lst,
 	}
 }
 //*******************************************************************************************
+BOOL CBCGPGridRow::HasNonFilteredSubItems() const
+{
+	ASSERT_VALID (this);
+	
+	for (POSITION posSub = m_lstSubItems.GetHeadPosition(); posSub != NULL; )
+	{
+		CBCGPGridRow* pRowSub = m_lstSubItems.GetNext(posSub);
+		ASSERT_VALID(pRowSub);
+		
+		if (!pRowSub->IsItemFiltered())
+		{
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
+//*******************************************************************************************
+BOOL CBCGPGridRow::HasNextSibling() const
+{
+	if (GetOwnerList() == NULL)
+	{
+		return FALSE;
+	}
+	
+	CBCGPGridRow* pNextSiblingRow = GetOwnerList()->GetRow(GetRowId() + GetSubItemsCount(TRUE) + 1);
+	if (pNextSiblingRow != NULL)
+	{
+		return (pNextSiblingRow->GetParent() == GetParent());
+	}
+
+	return FALSE;
+}
+//*******************************************************************************************
+void CBCGPGridRow::SetCheck(int nState)
+{
+	if (HasCheckBox())
+	{
+		m_nChecked = nState;
+	}
+}
+//*******************************************************************************************
+int CBCGPGridRow::GetCheck() const
+{
+	return m_nChecked;
+}
+//*******************************************************************************************
+void CBCGPGridRow::ToggleCheck()
+{
+	if (HasCheckBox())
+	{
+		SetCheck(!GetCheck());
+	}
+}
+//*******************************************************************************************
+void CBCGPGridRow::CheckSubItems(BOOL bChecked, BOOL bRecursive)
+{
+	ASSERT_VALID(this);
+	
+	CList<CBCGPGridRow*, CBCGPGridRow*> lstSubItems;
+	GetSubItems (lstSubItems, bRecursive);
+	
+	for (POSITION pos = lstSubItems.GetHeadPosition(); pos != NULL; )
+	{
+		CBCGPGridRow* pChild = lstSubItems.GetNext(pos);
+		ASSERT_VALID(pChild);
+		
+		pChild->SetCheck(bChecked);
+	}
+}
+//*******************************************************************************************
+void CBCGPGridRow::UpdateParentCheckbox(BOOL b3State)
+{
+	ASSERT_VALID(this);
+	
+	CBCGPGridRow* pParent = GetParent();
+	while (pParent != NULL)
+	{
+		ASSERT_VALID(pParent);
+		
+		CList<CBCGPGridRow*, CBCGPGridRow*> lstSubItems;
+		pParent->GetSubItems (lstSubItems, FALSE);
+		
+		BOOL bHasChecked = FALSE;
+		BOOL bHasUnchecked = FALSE;
+		for (POSITION pos = lstSubItems.GetHeadPosition(); pos != NULL; )
+		{
+			CBCGPGridRow* pChild = lstSubItems.GetNext(pos);
+			ASSERT_VALID(pChild);
+			
+			if (pChild->HasCheckBox())
+			{
+				if (pChild->GetCheck() == BST_UNCHECKED)
+				{
+					bHasUnchecked = TRUE;
+				}
+				else if (pChild->GetCheck() == BST_CHECKED)
+				{
+					bHasChecked = TRUE;
+				}
+				else if (pChild->GetCheck() == BST_INDETERMINATE)
+				{
+					bHasChecked = bHasUnchecked = TRUE;
+				}
+				
+				if (bHasChecked && bHasUnchecked)
+				{
+					break;
+				}
+				
+				if (!b3State && bHasUnchecked)
+				{
+					break;
+				}
+			}
+		}
+		
+		// Check the parent row
+		pParent->SetCheck((b3State && bHasChecked && bHasUnchecked) ? BST_INDETERMINATE : 
+		(bHasUnchecked ? BST_UNCHECKED : BST_CHECKED));
+		
+		pParent = pParent->GetParent();
+	}
+}
+//*******************************************************************************************
+BOOL CBCGPGridRow::HasCheckBox () const
+{
+	CBCGPGridCtrl* pWndList = GetOwnerList ();
+	if (pWndList == NULL)
+	{
+		return FALSE;
+	}
+
+	ASSERT_VALID(pWndList);
+
+	return pWndList->IsCheckBoxesEnabled();	
+}
+//*******************************************************************************************
+BOOL CBCGPGridRow::HasExpandButton () const
+{
+	CBCGPGridCtrl* pWndList = GetOwnerList();
+	if (pWndList == NULL)
+	{
+		return FALSE;
+	}
+	
+	ASSERT_VALID(pWndList);
+
+	return IsGroup() && pWndList->IsTreeButtonsEnabled() && !m_lstSubItems.IsEmpty();	
+}
+//*******************************************************************************************
+CRect CBCGPGridRow::GetIndentRect(int dx) const
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (m_pWndList);
+
+	CRect rectLeft = m_Rect;
+	rectLeft.top++;
+	if ((IsGroup () && m_pWndList->m_bFreezeGroups) || (m_pWndList->m_nHorzScrollOffset > 0 && m_pWndList->GetColumnsInfo().GetFrozenColumnCount() > 0))
+	{	// do not scroll left margin of frozen columns
+		rectLeft.OffsetRect (m_pWndList->m_nHorzScrollOffset, 0);
+	}
+	if (!m_pWndList->IsHighlightGroups() || !IsGroup ())
+	{
+		rectLeft.right = rectLeft.left + m_pWndList->GetExtraHierarchyOffset () + dx;
+	}
+	rectLeft.bottom++;
+
+	return rectLeft;
+}
+//*******************************************************************************************
+CRect CBCGPGridRow::GetNameRect(int dx) const
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (m_pWndList);
+
+	CRect rectName = m_Rect;
+
+	if ((IsGroup () && m_pWndList->m_bFreezeGroups) || (m_pWndList->m_nHorzScrollOffset > 0 && m_pWndList->GetColumnsInfo().GetFrozenColumnCount() > 0))
+	{	// do not scroll expandbox of frozen columns
+		rectName.OffsetRect (m_pWndList->m_nHorzScrollOffset, 0);
+	}
+
+	int nLeftMargin = max (m_pWndList->GetExtraHierarchyOffset(), HasExpandButton() ? m_pWndList->GetButtonWidth() : 0);
+	rectName.DeflateRect (dx + nLeftMargin, 0, 0, 0);
+
+	return rectName;
+}
+//*******************************************************************************************
+CRect CBCGPGridRow::GetExpandBoxRect(int dx) const
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (m_pWndList);
+
+	CRect rectExpand = m_Rect;
+	if ((IsGroup () && m_pWndList->m_bFreezeGroups) || (m_pWndList->m_nHorzScrollOffset > 0 && m_pWndList->GetColumnsInfo().GetFrozenColumnCount() > 0))
+	{	// do not scroll expandbox of frozen columns
+		rectExpand.OffsetRect (m_pWndList->m_nHorzScrollOffset, 0);
+	}
+
+	const int nExpandBoxWidth = max(m_pWndList->GetExtraHierarchyOffset(), m_pWndList->GetButtonWidth());
+
+	rectExpand.DeflateRect (dx, 0, 0, 0);
+	rectExpand.right = min (rectExpand.left + nExpandBoxWidth, rectExpand.right);
+
+	return rectExpand;
+}
+//*******************************************************************************************
+CRect CBCGPGridRow::GetCheckBoxRect(int dx) const
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (m_pWndList);
+
+	CRect rectCheckBox = m_Rect;
+	if ((IsGroup () && m_pWndList->m_bFreezeGroups) || (m_pWndList->m_nHorzScrollOffset > 0 && m_pWndList->GetColumnsInfo ().GetFrozenColumnCount () > 0))
+	{	// do not scroll expandbox of frozen columns
+		rectCheckBox.OffsetRect (m_pWndList->m_nHorzScrollOffset, 0);
+	}
+
+	const int nExpandBoxWidth = max(m_pWndList->GetExtraHierarchyOffset(), HasExpandButton() ? m_pWndList->GetButtonWidth() : 0);
+	
+	rectCheckBox.DeflateRect(dx + nExpandBoxWidth, 0, 0, 0);
+	rectCheckBox.right = min(rectCheckBox.left + m_pWndList->GetButtonWidth(), rectCheckBox.right);
+
+	return rectCheckBox;
+}
+//*******************************************************************************************
 CBCGPGridRow* CBCGPGridRow::HitTest (CPoint point, int &iColumn, 
 									 CBCGPGridItem*& pGridItem,
 									 CBCGPGridRow::ClickArea* pnArea)
@@ -4949,23 +5503,37 @@ CBCGPGridRow* CBCGPGridRow::HitTest (CPoint point, int &iColumn,
 
 	if (m_Rect.PtInRect (point))
 	{
-		int dx = m_pWndList->IsSortingMode () && !m_pWndList->IsGrouping () ? 0 : 
-			GetHierarchyLevel () * m_pWndList->GetHierarchyLevelOffset ();
+		BOOL bIsAutoGroup = IsGroup() && (m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0;
+		BOOL bClipButtonsByFirstColumn = HasValueField() && !bIsAutoGroup;
 
-		CRect rectExpand = m_Rect;
-		if ((IsGroup () && m_pWndList->m_bFreezeGroups) || (m_pWndList->m_nHorzScrollOffset > 0 && m_pWndList->GetColumnsInfo ().GetFrozenColumnCount () > 0))
-		{	// do not scroll expandbox of frozen columns
-			rectExpand.OffsetRect (m_pWndList->m_nHorzScrollOffset, 0);
+		// Check if a point is within the first column
+		BOOL bButtonsClipped = FALSE;
+		if (bClipButtonsByFirstColumn && m_pWndList->GetColumnsInfo().GetColumnCount(TRUE) > 0)
+		{
+			int nCol0Idx = m_pWndList->GetColumnsInfo().OrderToIndex (0);
+			if (nCol0Idx != -1)
+			{
+				CRect rectColumn;
+				m_pWndList->GetColumnsInfo().GetColumnRect(nCol0Idx, rectColumn);
+				
+				bButtonsClipped = (point.x > rectColumn.right);
+			}
 		}
-		rectExpand.DeflateRect (dx, 0, 0, 0);
-		rectExpand.right = min (rectExpand.left + max(m_pWndList->GetExtraHierarchyOffset (), m_pWndList->GetButtonWidth ()), rectExpand.right);
-		
-		if (IsGroup () && (!m_pWndList->IsSortingMode () || m_pWndList->IsGrouping ()) 
-			&& rectExpand.PtInRect (point))
+
+		int dx = m_pWndList->GetHierarchyOffset(this);
+
+		if (IsGroup() && m_pWndList->IsTreeButtonsEnabled() && GetExpandBoxRect(dx).PtInRect (point) && !bButtonsClipped)
 		{
 			if (pnArea != NULL)
 			{
 				*pnArea = ClickExpandBox;
+			}
+		}
+		else if (m_pWndList->IsCheckBoxesEnabled() && HasCheckBox() && GetCheckBoxRect(dx).PtInRect(point) && !bButtonsClipped)
+		{
+			if (pnArea != NULL)
+			{
+				*pnArea = ClickCheckBox;
 			}
 		}
 		else
@@ -5358,7 +5926,7 @@ void CBCGPGridRow::Repos (int& y)
 
 	CRect rectOld = m_Rect;
 
-	BOOL bShowAllItems = (m_pWndList->IsSortingMode () && !m_pWndList->IsGrouping ());
+	BOOL bShowAllItems = FALSE;
 	BOOL bShowItem = bShowAllItems ? !IsItemFiltered () : IsItemVisible ();
 	if (bShowItem)
 	{
@@ -5375,21 +5943,18 @@ void CBCGPGridRow::Repos (int& y)
 			::ReleaseDC(NULL, hDCFrom);
 		}
 
-		int nHorzScrollOffset = m_pWndList->m_nHorzScrollOffset;
-		int nHierarchyLevelOffset = m_pWndList->GetHierarchyLevelOffset ();
-		if (m_pWndList->m_bIsPrinting)
-		{
-			nHorzScrollOffset = m_pWndList->m_PrintParams.m_nHorzScrollOffset;
-			nHierarchyLevelOffset *= m_pWndList->m_PrintParams.m_pageInfo.m_szOne.cx;
-		}
-
 		int nRowHeight = (m_pWndList->m_bIsPrinting ? m_pWndList->m_PrintParams.m_nRowHeight : m_pWndList->m_nRowHeight) * m_nLines;
 		int nLargeRowHeight = m_pWndList->m_bIsPrinting ? m_pWndList->m_PrintParams.m_nLargeRowHeight : m_pWndList->m_nLargeRowHeight;
 		CRect& rectList = m_pWndList->m_bIsPrinting ? m_pWndList->m_PrintParams.m_rectList: m_pWndList->m_rectList;
 
+		int dx = m_pWndList->GetHierarchyOffset(this);
 
-		int dx = m_pWndList->IsSortingMode () && !m_pWndList->IsGrouping () ? 0 :
-			GetHierarchyLevel () * nHierarchyLevelOffset;
+		int nHorzScrollOffset = m_pWndList->m_nHorzScrollOffset;
+		if (m_pWndList->m_bIsPrinting)
+		{
+			nHorzScrollOffset = m_pWndList->m_PrintParams.m_nHorzScrollOffset;
+			dx *= m_pWndList->m_PrintParams.m_pageInfo.m_szOne.cx;
+		}
 
 		int nRowLeft = rectList.left;
 		int nRowLeftScrolled = rectList.left - nHorzScrollOffset;
@@ -5460,6 +6025,7 @@ void CBCGPGridRow::Repos (int& y)
 			}
 
 			int nTreeOffset = bIsTreeColumn ? m_pWndList->GetExtraHierarchyOffset () * szOne.cx + dx : 0; 
+			int nCheckboxWidth = (bIsTreeColumn && m_pWndList->IsCheckBoxesEnabled()) ? m_pWndList->GetButtonWidth() * szOne.cx : 0;
 			if (bIsTreeColumn)
 			{
 				nWidth += m_pWndList->GetExtraHierarchyOffset () * szOne.cx +
@@ -5472,12 +6038,13 @@ void CBCGPGridRow::Repos (int& y)
 			{
 				// Item, which is inside frozen area, can't be scrolled
 				int nLeft = (nCount < m_pWndList->GetColumnsInfo ().GetFrozenColumnCount ()) ? nXLeft : nXLeftScrolled;
+				nLeft++;
 				if (m_pWndList->m_bIsPrinting)
 				{
 					nLeft = nXLeftScrolled;
 				}
 				CRect rectItem (
-					nLeft + nTreeOffset,
+					nLeft + nTreeOffset + nCheckboxWidth,
 					y, 
 					min (nLeft + nWidth - 1, m_Rect.right),
 					y + (IsGroup () ? nLargeRowHeight : nRowHeight));
@@ -6107,6 +6674,30 @@ BOOL CBCGPGridRow::IsAutoGroupExpanded (CBCGPGridRow* pGroupedItem, int iLevel) 
 	return TRUE;
 }
 //****************************************************************************************
+BOOL CBCGPGridRow::IsParent (CBCGPGridRow* pParent) const
+{
+	if (pParent == NULL)
+	{
+		return FALSE;
+	}
+
+	ASSERT_VALID (this);
+
+	for (CBCGPGridRow* pItem = GetParent(); pItem != NULL; )
+	{
+		if (pItem == pParent)
+		{
+			return TRUE;
+		}
+		
+		ASSERT_VALID (pItem);
+
+		pItem = pItem->GetParent();
+	}
+	
+	return FALSE;
+}
+//****************************************************************************************
 BOOL CBCGPGridRow::IsSubItem (CBCGPGridRow* pSubItem) const
 {
 	ASSERT_VALID (this);
@@ -6227,6 +6818,75 @@ CString CBCGPGridRow::GetName ()
 	return strName;
 }
 //****************************************************************************************
+void CBCGPGridRow::OnFillGroupBackground (CDC* pDC, CRect rectFill, BOOL bGroupUnderline)
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (pDC);
+	ASSERT_VALID (m_pWndList);
+
+	BOOL bCustomColors = FALSE;
+
+	if (!m_pWndList->IsHighlightGroups())
+	{
+		if (m_pWndList->m_ColorData.m_GroupColors.Draw (pDC, rectFill))
+		{
+			bCustomColors = TRUE;
+		}
+		else if (m_pWndList->m_brGroupBackground.GetSafeHandle () != NULL ||
+			m_pWndList->m_brBackground.GetSafeHandle () != NULL)
+		{
+			CBrush& br = (m_pWndList->m_brGroupBackground.GetSafeHandle () != NULL) ? m_pWndList->m_brGroupBackground : m_pWndList->m_brBackground;
+			pDC->FillRect (rectFill, &br);
+			bCustomColors = TRUE;
+		}
+		else
+		{
+			visualManager->OnFillGridGroupBackground (m_pWndList, pDC, rectFill);
+		}
+	}
+	
+	// draw group underline
+	if (!bCustomColors && bGroupUnderline && IsGroup ())
+	{
+		rectFill.top = rectFill.bottom;
+		rectFill.InflateRect (0, 1);
+		
+		visualManager->OnDrawGridGroupUnderline (m_pWndList, pDC, rectFill);
+	}
+}
+//****************************************************************************************
+COLORREF CBCGPGridCtrl::GetGroupTextColor (BOOL bSelected) const
+{
+	COLORREF clrText = visualManager->GetGridGroupTextColor(this, bSelected);
+
+	if (!IsHighlightGroups() && bSelected)
+	{
+		if (!IsFocused() && m_ColorData.m_GroupSelColorsInactive.m_clrBackground != (COLORREF)-1)
+		{
+			if (m_ColorData.m_GroupSelColorsInactive.m_clrText != (COLORREF)-1)
+			{
+				clrText = m_ColorData.m_GroupSelColorsInactive.m_clrText;
+			}
+		}
+		else
+		{
+			if (m_ColorData.m_GroupSelColors.m_clrText != (COLORREF)-1)
+			{
+				clrText = m_ColorData.m_GroupSelColors.m_clrText;
+			}
+		}
+	}
+	else // not selected
+	{
+		if (m_ColorData.m_GroupColors.m_clrText != (COLORREF)-1) 
+		{
+			clrText = m_ColorData.m_GroupColors.m_clrText;
+		}
+	}
+
+	return clrText;
+}
+//****************************************************************************************
 void CBCGPGridRow::OnDrawName (CDC* pDC, CRect rect)
 {
 	ASSERT_VALID (this);
@@ -6239,8 +6899,6 @@ void CBCGPGridRow::OnDrawName (CDC* pDC, CRect rect)
 	
 	if (!HasValueField () || bIsAutoGroup)
 	{
-		COLORREF clrText = m_pWndList->GetGroupTextColor ();
-
 		if (!m_pWndList->m_bHighlightGroups && IsSelected ())
 		{
 			CRect rectFill = rect;
@@ -6251,56 +6909,38 @@ void CBCGPGridRow::OnDrawName (CDC* pDC, CRect rect)
 				rectFill.DeflateRect (0, 0, 0, 1);
 			}
 			
-#ifndef _BCGSUITE_
-	COLORREF clrHighlight = globalData.clrHotText;
-#else
-	COLORREF clrHighlight = globalData.clrHotLinkNormalText;
-#endif
-
-			COLORREF clrTextDefault = !m_pWndList->IsFocused () ?
-					clrHighlight : globalData.clrTextHilite;
-
+			BOOL bCustomColors = FALSE;
 			if (!m_pWndList->IsFocused () && m_pWndList->m_ColorData.m_GroupSelColorsInactive.m_clrBackground != (COLORREF)-1)
 			{
-				m_pWndList->m_ColorData.m_GroupSelColorsInactive.Draw (pDC, rectFill);
-
-				if (m_pWndList->m_ColorData.m_GroupSelColorsInactive.m_clrText != (COLORREF)-1)
-				{
-					clrText = m_pWndList->m_ColorData.m_GroupSelColorsInactive.m_clrText;
-				}
-				else
-				{
-					clrText = clrTextDefault;
-				}
+				bCustomColors = m_pWndList->m_ColorData.m_GroupSelColorsInactive.Draw(pDC, rectFill);
 			}
 			else
 			{
-				if (!m_pWndList->m_ColorData.m_GroupSelColors.Draw (pDC, rectFill))
-				{
-					clrTextDefault = visualManager->OnFillGridRowBackground (
-						m_pWndList, pDC, rectFill, IsSelected ());
-				}
-			
-				if (m_pWndList->m_ColorData.m_GroupSelColors.m_clrText != (COLORREF)-1)
-				{
-					clrText = m_pWndList->m_ColorData.m_GroupSelColors.m_clrText;
-				}
-				else
-				{
-					clrText = clrTextDefault;
-				}
+				bCustomColors = m_pWndList->m_ColorData.m_GroupSelColors.Draw(pDC, rectFill);
+			}
+
+			if (!bCustomColors)
+			{
+				visualManager->OnFillGridRowBackground(m_pWndList, pDC, rectFill, IsSelected());
 			}
 		}
 
-		if (clrTextOld == (COLORREF)-1)
+		COLORREF clrText = m_pWndList->GetGroupTextColor(IsSelected());
+		if (clrText != (COLORREF)-1)
 		{
 			clrTextOld = pDC->SetTextColor (clrText);
 		}
 
-		rect.DeflateRect (TEXT_MARGIN, 0);
-		
+		if (HasCheckBox())
+		{
+			rect.left += m_pWndList->GetButtonWidth();
+		}
+
+		rect.DeflateRect (GRID_TEXT_MARGIN, 0);
+		rect.left = min(rect.left, rect.right);
+
 		CString strName = GetName ();
-		
+
 		int nTextHeight = pDC->DrawText (strName, rect, 
 			DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
 
@@ -6370,6 +7010,13 @@ void CBCGPGridRow::OnDrawItems (CDC* pDC, CRect rect)
 			rectValue.NormalizeRect ();
 
 			CRect rectClipItem = rectValue;
+			rectClipItem.left = max (m_pWndList->m_rectRowHeader.right, rectClipItem.left);
+			
+			// filterbar:
+			if (m_pWndList->IsFilterBarEnabled())
+			{
+				rectClipItem.top = max (m_pWndList->m_rectFilterBar.bottom, rectClipItem.top);
+			}
 
 			// frozen columns:
 			if (m_pWndList->GetColumnsInfo ().IsFreezeColumnsEnabled () &&
@@ -6424,7 +7071,9 @@ void CBCGPGridRow::OnPrintName (CDC* pDC, CRect rect)
 	ASSERT_VALID (this);
 	ASSERT_VALID (pDC);
 
-	if (!HasValueField ())
+	BOOL bIsAutoGroup = IsGroup () && (m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0;
+
+	if (!HasValueField () || bIsAutoGroup)
 	{
 		ASSERT_VALID (m_pWndList);
 		ASSERT (m_pWndList->m_bIsPrinting);
@@ -6468,8 +7117,14 @@ void CBCGPGridRow::OnPrintItems (CDC* pDC, CRect /*rectItems*/)
 {
 	ASSERT_VALID (this);
 	ASSERT_VALID (pDC);
-	
 	ASSERT_VALID (m_pWndList);
+
+	BOOL bIsAutoGroup = IsGroup () && (m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0;
+	if (bIsAutoGroup && m_arrRowItems.GetSize() == 1)
+	{
+		return;
+	}
+
 	const CRect rectClipPage = m_pWndList->m_PrintParams.m_pageInfo.m_rectPageItems;
 	const int nFirstColumn = m_pWndList->m_PrintParams.m_pageInfo.m_nFirstColumnInPage;
 	const int nLastColumn = m_pWndList->m_PrintParams.m_pageInfo.m_nLastColumnInPage;
@@ -6569,12 +7224,7 @@ void CBCGPGridRow::OnDrawExpandBox (CDC* pDC, CRect rect)
 	{
 		CPoint ptCenter = rect.CenterPoint ();
 
-		int nMaxBoxSize = 9;
-		if (globalData.GetRibbonImageScale () != 1.)
-		{
-			nMaxBoxSize = (int)(.5 + nMaxBoxSize * globalData.GetRibbonImageScale ());
-		}
-
+		const int nMaxBoxSize = globalUtils.ScaleByDPI(9);
 		int nBoxSize = min (nMaxBoxSize, rect.Width ());
 
 		rect = CRect (ptCenter, CSize (1, 1));
@@ -6615,7 +7265,7 @@ void CBCGPGridRow::OnDrawRowMarker (CDC* pDC, CRect rect)
 
 	CPoint ptCenter = rect.CenterPoint ();
 
-	int nBoxSize = min (9, rect.Width ());
+	int nBoxSize = min (globalUtils.ScaleByDPI(9), rect.Width ());
 
 	rect = CRect (ptCenter, CSize (1, 1));
 	rect.InflateRect (nBoxSize / 2, nBoxSize / 2);
@@ -6656,7 +7306,14 @@ BOOL CBCGPGridRow::OnUpdateValue ()
 			if (pItem->m_pWndInPlace != NULL)
 			{
 				ASSERT_VALID (pItem->m_pWndInPlace);
-				return pItem->OnUpdateValue ();
+
+				if (!pItem->OnUpdateValue())
+				{
+					return FALSE;
+				}
+
+				m_vusInPlaceEdit = VUS_SuccessValueUpdate;
+				return TRUE;
 			}
 		}
 	}
@@ -6716,9 +7373,9 @@ BOOL CBCGPGridRow::OnEdit (LPPOINT lptClick)
 		}
 
 		_variant_t varValue = pItem->GetValue();
-		if (varValue.vt == VT_BOOL)
+		if (varValue.vt == VT_BOOL || pItem->IsPushButton())
 		{
-			return TRUE;
+			return TRUE;	// returns TRUE but in-place editor is not created
 		}
 
 		if (!pItem->IsAllowEdit ())
@@ -6727,6 +7384,8 @@ BOOL CBCGPGridRow::OnEdit (LPPOINT lptClick)
 		}
 
 		m_bInPlaceEdit = pItem->OnEdit (lptClick);
+		m_vusInPlaceEdit = VUS_NeedValueUpdate;
+
 		return m_bInPlaceEdit;
 	}
 
@@ -6766,6 +7425,56 @@ BOOL CBCGPGridRow::OnEndEdit ()
 
 	m_bInPlaceEdit = FALSE;
 	return TRUE;
+}
+//****************************************************************************************
+void CBCGPGridRow::OnInplaceEditCancelUpdate()
+{
+	m_vusInPlaceEdit = VUS_CancelValueUpdate;
+}
+//****************************************************************************************
+BOOL CBCGPGridRow::IsInplaceEditNeedUpdate()
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (m_pWndList);
+
+	if (m_vusInPlaceEdit == VUS_NeedValueUpdate)
+	{
+		return TRUE;
+	}
+	else if (m_vusInPlaceEdit == VUS_CancelValueUpdate)
+	{
+		return FALSE;
+	}
+	
+	if (m_bInPlaceEdit)
+	{
+		// ------------------------------------------------------
+		// Find inplace edited item and check if text is changed:
+		// ------------------------------------------------------
+		const CArray<CBCGPGridItem*, CBCGPGridItem*>& arr = m_arrRowItems;
+		
+		for (int i = 0; i < arr.GetSize (); i++)
+		{
+			CBCGPGridItem* pItem = (CBCGPGridItem*) arr [i];
+			ASSERT_VALID (pItem);
+			
+			if (pItem->m_pWndInPlace != NULL)
+			{
+				ASSERT_VALID (pItem->m_pWndInPlace);
+				
+				CString strText;
+				pItem->m_pWndInPlace->GetWindowText(strText);
+
+				if (pItem->FormatItem() != strText) // text is changed
+				{
+					m_vusInPlaceEdit = VUS_NeedValueUpdate;
+					return TRUE;
+				}
+			}
+		}
+	}
+
+	return FALSE;
 }
 //****************************************************************************************
 BOOL CBCGPGridRow::OnKillFocus (CWnd* pNewWnd)
@@ -6923,17 +7632,12 @@ CRect CBCGPGridRow::GetNameTooltipRect ()
 
 	if (!m_Rect.IsRectEmpty ())
 	{
-		CRect rectName = GetRect ();
+		int dx = m_pWndList->GetHierarchyOffset(this);
 
-		// --------------------
-		// space for expandbox:
-		// --------------------
-		if (IsGroup () && (!m_pWndList->IsSortingMode () || m_pWndList->IsGrouping ()) &&
-			!m_lstSubItems.IsEmpty ())
+		CRect rectName = GetNameRect(dx);
+		if (HasCheckBox())
 		{
-			int dx = GetHierarchyLevel () * m_pWndList->GetHierarchyLevelOffset ();
-			int nLeftMargin = max (m_pWndList->GetExtraHierarchyOffset (), m_pWndList->GetButtonWidth ());
-			rectName.left += nLeftMargin + dx;
+			rectName.left += m_pWndList->GetButtonWidth();
 		}
 
 		if (rectName.right > rectName.left)
@@ -7059,7 +7763,15 @@ void CBCGPGridRow::WriteToArchive(CArchive& ar)
 	ar << m_bEnabled;		// Is item enabled?
 	ar << m_bAllowEdit;		// Is item editable?
 	ar << m_dwFlags;		// Item flags
+
+#ifndef _BCGSUITE_
+	if ((g_pWorkspace != NULL && g_pWorkspace->GetDataVersion () > 0x18000))
+	{
+		ar << m_nLines;
+	}
+#else
 	ar << m_nLines;
+#endif
 }
 //*******************************************************************************************
 BOOL CBCGPGridRow::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
@@ -7069,7 +7781,6 @@ BOOL CBCGPGridRow::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 
 	data.Clear ();
 
-	data.m_strAccName = GetName ();
 	data.m_strDescription = GetName ();
 
 	BOOL bHasItems = HasValueField () && GetItemCount () > 0;
@@ -7080,6 +7791,15 @@ BOOL CBCGPGridRow::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 	else
 	{
 		data.m_strAccValue = FormatItem();
+	}
+
+	if (m_pWndList->m_bAccGridItemValueAsName)
+	{
+		data.m_strAccName = data.m_strAccValue;
+	}
+	else
+	{
+		data.m_strAccName.Format(_T("Row %d"), GetRowId () + 1);
 	}
 
 	
@@ -7106,15 +7826,503 @@ BOOL CBCGPGridRow::SetACCData (CWnd* pParent, CBCGPAccessibilityData& data)
 		}
 	}
 
+	if (!IsItemVisible ())
+	{
+		data.m_bAccState |= STATE_SYSTEM_INVISIBLE;
+	}
+
 	if (!IsEnabled () || (IsGroup() && !HasValueField ()))
 	{
 		data.m_bAccState |= STATE_SYSTEM_READONLY;
 	}
-	
-	data.m_rectAccLocation = m_Rect;
+
+	CRect rect = m_Rect;
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid != NULL && pParentGrid->IsRowHeaderEnabled())
+	{
+		rect.left -= pParentGrid->m_rectRowHeader.Width();
+	}
+
+	data.m_rectAccLocation = rect;
 	pParent->ClientToScreen (&data.m_rectAccLocation);
 
 	return TRUE;
+}
+BOOL CBCGPGridRow::OnSetAccData (long lVal)
+{
+	ASSERT_VALID(this);
+
+	m_AccData.Clear();
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return FALSE;
+	}
+	
+	if (pParentGrid->IsRowHeaderEnabled() && lVal == 1)
+	{
+		SetACCData(pParentGrid, m_AccData);
+		return TRUE;
+	}
+
+	int nIndex = (int)lVal - 1;
+
+	if (nIndex >= 0 && nIndex < m_arrRowItems.GetSize())
+	{
+		CBCGPGridItem* pItem = m_arrRowItems[nIndex];
+		if (pItem != NULL)
+		{
+			pItem->SetACCData(m_pWndList, m_AccData);
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accParent(IDispatch **ppdispParent)
+{
+	if (!ppdispParent)
+	{
+		return E_INVALIDARG;
+	}
+
+	*ppdispParent = NULL;
+
+	if (m_pWndList->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+	
+	return AccessibleObjectFromWindow(m_pWndList->GetSafeHwnd(), (DWORD)OBJID_CLIENT, IID_IAccessible, (void**)ppdispParent);
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accChildCount(long *pcountChildren)
+{
+	if (!pcountChildren)
+	{
+		return E_INVALIDARG;
+	}
+	
+	int nHeaderItems = (m_pWndList != NULL && m_pWndList->IsRowHeaderEnabled() ? 1 : 0);
+
+	*pcountChildren = (int)m_arrRowItems.GetSize() + nHeaderItems;
+	return S_OK;
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accChild(VARIANT varChild, IDispatch **ppdispChild)
+{
+	if (!ppdispChild || varChild.vt != VT_I4)
+	{
+		return E_INVALIDARG;
+	}
+	*ppdispChild = NULL;
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+
+	int nHeaderItems = (pParentGrid->IsRowHeaderEnabled() ? 1 : 0);
+	int nIndex = (int) varChild.lVal - 1 - nHeaderItems;
+	
+	if (pParentGrid->IsRowHeaderEnabled() && varChild.lVal == 1)
+	{
+		return S_FALSE;
+	}
+
+	if (nIndex >= 0 && nIndex < m_arrRowItems.GetSize())
+	{
+		CBCGPGridItem* pItem = m_arrRowItems[nIndex];
+		if (pItem != NULL)
+		{
+			ASSERT_VALID(pItem);
+			*ppdispChild = pItem->GetIDispatch(TRUE);
+			return (*ppdispChild != NULL) ? S_OK : S_FALSE;
+		}
+	}
+
+	return S_FALSE;
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accName(VARIANT varChild, BSTR *pszName)
+{
+	if (varChild.vt != VT_I4)
+    {
+		return E_INVALIDARG;
+	}
+	*pszName = NULL;
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+	
+	if (varChild.lVal == CHILDID_SELF)
+	{	
+		SetACCData(pParentGrid, m_AccData);
+		*pszName =  m_AccData.m_strAccName.AllocSysString();
+
+		return S_OK;
+	}
+
+	int nHeaderItems = (pParentGrid->IsRowHeaderEnabled() ? 1 : 0);
+	int nIndex = (int) varChild.lVal - 1 - nHeaderItems;
+	
+	if (pParentGrid->IsRowHeaderEnabled() && varChild.lVal == 1)
+	{
+		CString strAccName;
+		strAccName.Format(_T("Select Row %d"), GetRowId () + 1);
+		*pszName =  strAccName.AllocSysString();
+		return S_OK;
+	}
+	
+	if (nIndex >= 0 && nIndex < m_arrRowItems.GetSize())
+	{
+		CBCGPGridItem* pItem = m_arrRowItems[nIndex];
+		if (pItem != NULL)
+		{
+			pItem->SetACCData(pParentGrid, m_AccData);
+			*pszName =  m_AccData.m_strAccName.AllocSysString();
+			return S_OK;
+		}
+	}
+	return S_FALSE;
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accValue(VARIANT varChild, BSTR *pszValue)
+{
+	if (varChild.vt != VT_I4)
+    {
+		return E_INVALIDARG;
+	}
+	*pszValue = NULL;
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+	
+	if (varChild.lVal == CHILDID_SELF)
+	{
+		SetACCData(pParentGrid, m_AccData);
+		*pszValue = m_AccData.m_strAccValue.AllocSysString();
+		return S_OK;
+	}
+
+	int nHeaderItems = (pParentGrid->IsRowHeaderEnabled() ? 1 : 0);
+	int nIndex = (int) varChild.lVal - 1 - nHeaderItems;
+	
+	if (pParentGrid->IsRowHeaderEnabled() && varChild.lVal == 1)
+	{
+		CString strAccValue;
+		
+		if (pParentGrid->IsLineNumbersEnabled() && GetRowId() >= 0)
+		{
+			strAccValue.Format(_T("%d"), GetRowId() + 1);
+		}
+		
+		*pszValue = strAccValue.AllocSysString();
+		return S_OK;
+	}
+	
+	if (nIndex >= 0 && nIndex < m_arrRowItems.GetSize())
+	{
+		CBCGPGridItem* pItem = m_arrRowItems[nIndex];
+		if (pItem != NULL)
+		{
+			pItem->SetACCData(pParentGrid, m_AccData);
+			*pszValue = m_AccData.m_strAccValue.AllocSysString();
+			return S_OK;
+		}
+	}
+	
+	return S_FALSE;
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accDescription(VARIANT varChild, BSTR *pszDescription)
+{
+	*pszDescription = NULL;
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+
+	if (varChild.vt != VT_I4 && varChild.lVal == CHILDID_SELF)
+	{	
+		SetACCData(pParentGrid, m_AccData);
+		*pszDescription =  m_AccData.m_strDescription.AllocSysString();
+		return S_OK;
+	}
+
+	return S_FALSE;
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accRole(VARIANT varChild, VARIANT *pvarRole)
+{
+	if (varChild.vt != VT_I4)
+    {
+		pvarRole->vt = VT_EMPTY;
+		return E_INVALIDARG;
+	}
+
+	pvarRole->vt = VT_EMPTY;
+
+	if (varChild.lVal == CHILDID_SELF)
+	{
+		pvarRole->vt = VT_I4;
+		pvarRole->lVal = ROLE_SYSTEM_ROW;
+		return S_OK;
+	}
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+
+	int nHeaderItems = (pParentGrid->IsRowHeaderEnabled() ? 1 : 0);
+	int nIndex = (int) varChild.lVal - 1 - nHeaderItems;
+	
+	if (pParentGrid->IsRowHeaderEnabled() && varChild.lVal == 1)
+	{
+		pvarRole->vt = VT_I4;
+		pvarRole->lVal = ROLE_SYSTEM_ROWHEADER;
+		return S_OK;
+	}
+
+	if (nIndex >= 0 && nIndex < m_arrRowItems.GetSize())
+	{
+		CBCGPGridItem* pItem = m_arrRowItems[nIndex];
+		if (pItem != NULL)
+		{
+			pItem->SetACCData(pParentGrid, m_AccData);
+			pvarRole->vt = VT_I4;
+			pvarRole->lVal = m_AccData.m_nAccRole;
+			return S_OK;
+		}
+	}
+	
+	return S_FALSE;
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accState(VARIANT varChild, VARIANT *pvarState)
+{
+	if (varChild.vt != VT_I4)
+    {
+		pvarState->vt = VT_EMPTY;
+		return E_INVALIDARG;
+	}
+
+	pvarState->vt = VT_EMPTY;
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+
+	if (varChild.lVal == CHILDID_SELF)
+	{
+		SetACCData(pParentGrid, m_AccData);
+		pvarState->vt = VT_I4;
+		pvarState->lVal = m_AccData.m_bAccState;
+		return S_OK;
+	}
+
+	int nHeaderItems = (pParentGrid->IsRowHeaderEnabled() ? 1 : 0);
+	int nIndex = (int) varChild.lVal - 1 - nHeaderItems;
+	
+	if (pParentGrid->IsRowHeaderEnabled() && varChild.lVal == 1)
+	{
+		SetACCData(pParentGrid, m_AccData);
+		pvarState->vt = VT_I4;
+		pvarState->lVal = m_AccData.m_bAccState | STATE_SYSTEM_READONLY;
+		return S_OK;
+	}
+
+	if (nIndex >= 0 && nIndex < m_arrRowItems.GetSize())
+	{
+		CBCGPGridItem* pItem = m_arrRowItems[nIndex];
+		if (pItem != NULL)
+		{
+			pItem->SetACCData(pParentGrid, m_AccData);
+			pvarState->vt = VT_I4;
+			pvarState->lVal = m_AccData.m_bAccState;
+			return S_OK;
+		}
+	}
+
+	return S_FALSE;
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::get_accDefaultAction(VARIANT varChild, BSTR *pszDefaultAction)
+{
+	if (varChild.vt != VT_I4)
+    {
+		*pszDefaultAction = NULL;
+		return E_INVALIDARG;
+	}
+
+	if (varChild.lVal == CHILDID_SELF)
+	{
+		if (IsGroup())
+		{
+			*pszDefaultAction = SysAllocString(L"Double-click");
+			return S_OK;
+		}
+		return DISP_E_MEMBERNOTFOUND; 
+	}
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+	
+	int nHeaderItems = (pParentGrid->IsRowHeaderEnabled() ? 1 : 0);
+	int nIndex = (int) varChild.lVal - 1 - nHeaderItems;
+	
+	if (pParentGrid->IsRowHeaderEnabled() && varChild.lVal == 1)
+	{
+		*pszDefaultAction = SysAllocString(L"Select");
+		return S_OK;
+	}
+	
+	if (nIndex >= 0 && nIndex < m_arrRowItems.GetSize())
+	{
+		CBCGPGridItem* pItem = m_arrRowItems[nIndex];
+		if (pItem != NULL)
+		{
+			*pszDefaultAction = SysAllocString(L"Select");
+			return S_OK;
+		}
+	}
+	
+	return DISP_E_MEMBERNOTFOUND; 
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, long *pcyHeight, VARIANT varChild)
+{
+	if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight || varChild.vt != VT_I4)
+	{
+		return E_INVALIDARG;
+	}
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+
+	if (varChild.lVal == CHILDID_SELF)
+	{
+		SetACCData(pParentGrid, m_AccData);
+
+		*pxLeft = m_AccData.m_rectAccLocation.left;
+		*pyTop = m_AccData.m_rectAccLocation.top;
+		*pcxWidth = m_AccData.m_rectAccLocation.Width();
+		*pcyHeight = m_AccData.m_rectAccLocation.Height();
+
+		return S_OK;
+	}
+
+	int nHeaderItems = (pParentGrid->IsRowHeaderEnabled() ? 1 : 0);
+	int nIndex = (int) varChild.lVal - 1 - nHeaderItems;
+	
+	if (pParentGrid->IsRowHeaderEnabled() && varChild.lVal == 1)
+	{
+		OnSetAccData(varChild.lVal);
+
+		*pxLeft = m_AccData.m_rectAccLocation.left;
+		*pyTop = m_AccData.m_rectAccLocation.top;
+		*pcxWidth = pParentGrid->m_rectRowHeader.Width();
+		*pcyHeight = m_AccData.m_rectAccLocation.Height();
+		
+		return S_OK;
+	}
+	
+	if (nIndex >= 0 && nIndex < m_arrRowItems.GetSize())
+	{
+		CBCGPGridItem* pItem = m_arrRowItems[nIndex];
+		if (pItem != NULL)
+		{
+			OnSetAccData(varChild.lVal);
+			
+			*pxLeft = m_AccData.m_rectAccLocation.left;
+			*pyTop = m_AccData.m_rectAccLocation.top;
+			*pcxWidth = m_AccData.m_rectAccLocation.Width();
+			*pcyHeight = m_AccData.m_rectAccLocation.Height();
+		
+			return S_OK;
+		}
+	}
+
+	return S_FALSE; 
+}
+//*******************************************************************************************
+HRESULT CBCGPGridRow::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
+{
+	if (!pvarChild)
+	{
+		return E_INVALIDARG;
+	}
+
+	CBCGPGridCtrl* pParentGrid = GetOwnerList();
+	if (pParentGrid->GetSafeHwnd() == NULL)
+	{
+		return S_FALSE;
+	}
+
+	CPoint pt(xLeft, yTop);
+	pParentGrid->ScreenToClient(&pt);
+
+	CRect rectHeader = pParentGrid->m_rectRowHeader;
+	rectHeader.top = m_Rect.top;
+	rectHeader.bottom = m_Rect.bottom;
+
+	if (rectHeader.PtInRect (pt))
+	{
+		SetACCData(m_pWndList, m_AccData);
+		pvarChild->vt = VT_I4;
+		pvarChild->lVal = CHILDID_SELF;
+		return S_OK;
+	}
+
+	int iColumn = 0; 
+	CBCGPGridItem* pItem = NULL;
+	CBCGPGridRow* pRow = HitTest (pt, iColumn, pItem);
+
+	if (pItem != NULL)
+	{
+		IDispatch* pDispatch = pItem->GetIDispatch(TRUE);
+		if (pDispatch)
+		{
+			pItem->SetACCData(m_pWndList, m_AccData);
+
+			pvarChild->vt = VT_DISPATCH;
+			pvarChild->pdispVal = pDispatch;
+
+			return S_OK;
+		}
+	}
+	else if (pRow != NULL)
+	{
+		pRow->SetACCData(m_pWndList, m_AccData);
+		pvarChild->vt = VT_I4;
+		pvarChild->lVal = CHILDID_SELF;
+
+		return S_OK;
+	}
+	return S_FALSE;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -7152,13 +8360,13 @@ void CBCGPGridCaptionRow::OnDrawName (CDC* pDC, CRect rect)
 
 	COLORREF clrText = visualManager->OnFillGridCaptionRow (m_pWndList, pDC, rect);
 
-	rect.DeflateRect (TEXT_MARGIN, 0);
+	rect.DeflateRect (GRID_TEXT_MARGIN, 0);
 
 	CString strCaption = GetCaption ();
 
 	COLORREF clrTextOld = pDC->SetTextColor (clrText);
 
-	CFont* pOldFont = pDC->SelectObject(&m_pWndList->GetBoldFont());
+	CFont* pOldFont = pDC->SelectObject(&m_pWndList->GetBoldFont(TRUE));
 	ASSERT_VALID(pOldFont);
 	
 	pDC->DrawText (strCaption, rect, 
@@ -7240,6 +8448,33 @@ void CBCGPGridCaptionRow::WriteToArchive(CArchive& ar)
 
 	ar << m_strCaption;
 }
+//*******************************************************************************************
+CRect CBCGPGridCaptionRow::GetIndentRect(int) const
+{
+	return CRect(0, 0, 0, 0);
+}
+//*******************************************************************************************
+CRect CBCGPGridCaptionRow::GetNameRect(int) const
+{
+	CRect rectName = m_Rect;
+
+	if (m_pWndList->m_bFreezeGroups || (m_pWndList->m_nHorzScrollOffset > 0 && m_pWndList->GetColumnsInfo().GetFrozenColumnCount() > 0))
+	{	// do not scroll
+		rectName.OffsetRect (m_pWndList->m_nHorzScrollOffset, 0);
+	}
+
+	return rectName;
+}
+//*******************************************************************************************
+CRect CBCGPGridCaptionRow::GetExpandBoxRect(int) const
+{
+	return CRect(0, 0, 0, 0);
+}
+//*******************************************************************************************
+CRect CBCGPGridCaptionRow::GetCheckBoxRect(int) const
+{
+	return CRect(0, 0, 0, 0);
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPGridHeaderParams object
@@ -7279,7 +8514,7 @@ CBCGPGridColumnsItem::~CBCGPGridColumnsItem ()
 // CBCGPGridColumnsInfo object
 
 CBCGPGridColumnsInfo::CBCGPGridColumnsInfo () :
-	m_bAutoSize (FALSE), m_nTotalWidth (0), m_bMultipleSort (FALSE),
+	m_bCheckBox(FALSE), m_nCheckBoxState(0), m_bAutoSize (FALSE), m_nTotalWidth (0), m_bMultipleSort (FALSE),
 	m_nFreezeColumns (-1), m_nFreezeOffset (0),
 	m_bDrawingDraggedColumn (FALSE), m_nHighlightedItem (-1), m_nHighlightedItemBtn (-1), m_pWndList (NULL), m_bInvertPressedColumn (TRUE)
 {
@@ -7336,6 +8571,9 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 		return; // last
 	}
 
+	CRect rectCheckBox;
+	rectCheckBox.SetRectEmpty();
+
 	if (!bIsGroupBox && !bIsPrinting)
 	{
 		int bFirstVisibleColumn = FALSE;
@@ -7348,10 +8586,24 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 
 		if (bFirstVisibleColumn)
 		{
-			int nHierarchyOffset = m_pWndList->GetHierarchyOffset () + 
-				m_pWndList->GetExtraHierarchyOffset ();
-			rect.DeflateRect (nHierarchyOffset, 0, 0, 0);
+			rect.left += m_pWndList->GetHierarchyOffset() +
+				m_pWndList->GetExtraHierarchyOffset();
+
+			if (IsCheckBoxEnabled())
+			{
+				rectCheckBox = rect;
+				rect.left += m_pWndList->GetButtonWidth();
+				rectCheckBox.right = rect.left;
+			}
 		}
+	}
+
+	//----------------
+	// Draw check box:
+	//----------------
+	if (IsCheckBoxEnabled() && !rectCheckBox.IsRectEmpty())
+	{
+		m_pWndList->OnDrawCheckBox(pDC, rectCheckBox, GetCheckBoxState(), FALSE, FALSE, m_pWndList->IsWindowEnabled());
 	}
 
 	BOOL bNotDrawButton = (nCol == m_pWndList->m_nDraggedColumn || bIsGroupBox);
@@ -7362,6 +8614,7 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 	// Draw image:
 	//------------
 	int nImage = GetColumnImage (nCol);
+	int nRight = 0;
 
 	if (nImage >= 0 && !(bIsGroupBox && 
 		// ignore bIsGroupBox parameter when dragging from header
@@ -7374,13 +8627,15 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 		//---------------------------------------
 		if (m_pWndList->m_pImagesHeader != NULL)
 		{			
+			int nImageMargin = globalUtils.ScaleByDPI(GRID_IMAGE_MARGIN);
+
 			int cx = 0;
 			int cy = 0;
 
 			VERIFY (::ImageList_GetIconSize (*m_pWndList->m_pImagesHeader, &cx, &cy));
 
 			CPoint pt = rect.TopLeft ();
-			pt.x ++;
+			pt.x += nImageMargin;
 			pt.y = (rect.top + rect.bottom - cy) / 2;
 
 			int nArrow = 0; // width of the arrow or the button
@@ -7399,28 +8654,67 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 				nArrow = nBtnWidth;
 			}
 
-			if (rect.Width () > cx + nArrow)
+			if (nArrow == 0)
 			{
-				if (!m_bDrawingDraggedColumn &&
-					rect.Width () > cx)
+				bNoSortArrow = TRUE;
+			}
+
+			if (rect.Width() >= cx + nImageMargin + nArrow)
+			{
+				int cxText = 0;
+				if (!GetColumnTextHidden(nCol))
 				{
-					int nAlign = GetHeaderAlign (nCol);
-
-					if (nAlign & HDF_CENTER)
+					if (GetHeaderMultiLine(nCol) && !bIsGroupBox)
 					{
-						pt.x += (rect.Width () - nArrow - cx) / 2;
+						cxText = rect.Width() - nArrow - cx;
 					}
-					else if (nAlign & HDF_RIGHT)
+					else
 					{
-						pt.x = rect.right - nArrow - cx - 1;
+						CString strLabel = GetColumnName(nCol);
+						
+						if (m_pWndList->m_bTrimTextLeft)
+						{
+							strLabel.TrimLeft ();
+						}
+						
+						strLabel.Replace (_T('\n'), _T(' '));
+						
+						cxText = pDC->GetTextExtent(strLabel).cx;
 					}
 
-					rect.left = pt.x;
+					cxText += 2 * nTextMargin;
+				}
+
+				int nAlign = GetHeaderAlign (nCol);
+
+				if (nAlign & HDF_CENTER)
+				{
+					pt.x += max(0, (rect.Width() - cxText - nArrow - cx) / 2);
+				}
+				else if (nAlign & HDF_RIGHT)
+				{
+					pt.x += max(0, rect.Width() - cxText - nArrow - cx - 1);
+				}
+
+				if (nAlign & HDF_BITMAP_ON_RIGHT)
+				{
+ 					pt.x = min(pt.x + cxText, max(pt.x, rect.right - nArrow - cx - nImageMargin));
 				}
 
 				VERIFY (m_pWndList->m_pImagesHeader->Draw (pDC, nImage, pt, ILD_NORMAL));
 
-				rect.left += cx;
+				if (nAlign & HDF_BITMAP_ON_RIGHT)
+				{
+					nRight = cx;
+ 				}
+				else if (nAlign & (HDF_CENTER | HDF_RIGHT))
+				{
+					rect.left += cx;
+				}
+				else
+				{
+					rect.left = pt.x + cx;
+				}
 			}
 		}
 	}
@@ -7440,7 +8734,7 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 
 		CRect rectArrow = rect;
 		rectArrow.DeflateRect (nArrowMargin, nArrowMargin);
-		if (rectArrow.Width () >= nArrowHeight)
+		if (rectArrow.Width() - nRight >= nArrowHeight)
 		{
 			rectArrow.left = rectArrow.right - nArrowHeight;
 			rect.right = rectArrow.left - 1;
@@ -7452,6 +8746,8 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 		}
 	}
 
+	rect.right -= nRight;
+
 	CRect rectLabel = rect;
 	rectLabel.DeflateRect (nTextMargin, 0);
 
@@ -7460,11 +8756,10 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 	//-----------
 	if (bIsGroupBox || !GetColumnTextHidden (nCol))
 	{
-		COLORREF clrText = (m_pWndList->IsColumnSelected (nCol) && m_pWndList->m_ColorData.m_HeaderSelColors.m_clrText != -1)
-								? m_pWndList->m_ColorData.m_HeaderSelColors.m_clrText
-								: m_pWndList->m_ColorData.m_HeaderColors.m_clrText;
+		BOOL bAllowSelectedHeader = !m_pWndList->IsWholeRowSel() || (m_pWndList->IsRowHeaderEnabled() && m_pWndList->IsAllSelected());
+		COLORREF clrText = m_pWndList->OnGetHeaderItemTextColor(bAllowSelectedHeader && m_pWndList->IsColumnSelected (nCol), bIsGroupBox, nCol, NULL);
 		COLORREF clrTextOld = (COLORREF)-1;
-		if (clrText != (COLORREF)-1 && !bIsPrinting && !bIsGroupBox)
+		if (clrText != (COLORREF)-1 && !bIsPrinting)
 		{
 			clrTextOld = pDC->SetTextColor (clrText);
 		}
@@ -7477,7 +8772,7 @@ void CBCGPGridColumnsInfo::DrawColumn (CDC* pDC, int nCol, CRect rect,
 
 		UINT uiTextFlags = DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX;
 
-		if (!bIsGroupBox)	// ignore align flags in groupbox
+		if (!bIsGroupBox || m_bDrawingDraggedColumn)	// ignore align flags in groupbox
 		{
 			if (nTextAlign & HDF_CENTER)
 			{
@@ -7938,6 +9233,7 @@ void CBCGPGridColumnsInfo::DeleteAllColumns ()
 	m_mapSortColumn.RemoveAll ();
 	m_lstGroupingColumns.RemoveAll ();
 	m_arrColumnOrder.RemoveAll ();
+	m_arrColumnSortingPriority.RemoveAll ();
 
 	OnColumnsOrderChanged ();
 }
@@ -7976,6 +9272,8 @@ int CBCGPGridColumnsInfo::GetColumnWidth (int nColumn) const
 		CBCGPGridColumnsItem* pColumn = m_arrColumns[nColumn];
 		ASSERT_VALID (pColumn);
 
+		const double dblScale = m_pWndList == NULL ? 1.0 : m_pWndList->GetScale();
+
 		if (m_bAutoSize)
 		{
 			return pColumn->m_nAutoSize;
@@ -7996,7 +9294,7 @@ int CBCGPGridColumnsInfo::GetColumnWidth (int nColumn) const
 			}
 		}
 		
-		return nSize;
+		return bcg_scale(nSize, dblScale);
 	}
 
 	ASSERT (FALSE);
@@ -8341,71 +9639,62 @@ int CBCGPGridColumnsInfo::GetGroupingColumnOrderArray (LPINT piArray, int iCount
 	ASSERT_VALID (this);
 
 	// if -1 was passed, find the count ourselves
-	int nCount = iCount;
-	if (nCount == -1)
+	const int nCount = (iCount == -1) ? GetGroupColumnCount() + GetSortColumnCount() : iCount;
+	if (nCount <= 0)
 	{
-		nCount = GetGroupColumnCount () + GetSortColumnCount ();
-
-		if (nCount == -1)
-			return 0;
+		return 0;
 	}
 
-	//ASSERT (AfxIsValidAddress (piArray, nCount * sizeof(int), FALSE)); //for readonly
 	ASSERT (AfxIsValidAddress (piArray, nCount * sizeof(int)));
-	ASSERT (nCount <= GetGroupColumnCount () + GetSortColumnCount ());
+	ASSERT (nCount <= GetGroupColumnCount() + GetSortColumnCount());
 
 	// Copy list of sorted columns to ensure every one will be recorded:
 	CMap<int, int, int, int> mapNotReferenced;
 	int nColSave, nStateSave;
-	for (POSITION pos = m_mapSortColumn.GetStartPosition (); pos != NULL; )
+	for (POSITION pos = m_mapSortColumn.GetStartPosition(); pos != NULL; )
 	{
-		m_mapSortColumn.GetNextAssoc (pos, nColSave, nStateSave);
-		mapNotReferenced.SetAt (nColSave, nStateSave);
+		m_mapSortColumn.GetNextAssoc(pos, nColSave, nStateSave);
+		mapNotReferenced.SetAt(nColSave, nStateSave);
 	}
 
 	int i = 0;
 	// first grouped columns
-	POSITION posGroup = m_lstGroupingColumns.GetHeadPosition ();
+	POSITION posGroup = m_lstGroupingColumns.GetHeadPosition();
 	for (; posGroup != NULL && i < nCount; i++)
 	{
-		int nGroupCol = m_lstGroupingColumns.GetNext (posGroup);
+		int nGroupCol = m_lstGroupingColumns.GetNext(posGroup);
 		piArray [i] = nGroupCol;
 	}
 	// then sorted columns
-	for (int iCol = 0; iCol < m_arrColumnOrder.GetSize () && i < nCount; iCol++)
+	for (int iPriority = 0; iPriority < m_arrColumnSortingPriority.GetSize() && i < nCount; iPriority++)
 	{
-		if (GetColumnState (m_arrColumnOrder [iCol]) != 0) // the column is sorted
+		const int nSortCol = m_arrColumnSortingPriority[iPriority];
+
+		int nState;
+		if (mapNotReferenced.Lookup(nSortCol, nState) && nState != 0) // the column is sorted
 		{
-			int nSortCol = m_arrColumnOrder [iCol];
-			piArray [i] = nSortCol;
-			i++;
-			mapNotReferenced.RemoveKey (nSortCol);
+			piArray [i++] = nSortCol;
+			mapNotReferenced.RemoveKey(nSortCol);
 		}
 	}
-	if (m_arrColumnOrder.GetSize () == 0)
+	for (int iOrder = 0; iOrder < m_arrColumnOrder.GetSize() && i < nCount; iOrder++)
 	{
-		for (int nCol = 0; nCol < GetColumnCount () && i < nCount; nCol++)
+		const int nSortCol = m_arrColumnOrder [iOrder];
+
+		int nState;
+		if (mapNotReferenced.Lookup(nSortCol, nState) && nState != 0) // the column is sorted
 		{
-			if (GetColumnState (nCol) != 0) // the column is sorted
-			{
-				int nSortCol = nCol;
-				piArray [i] = nSortCol;
-				i++;
-			}
+			piArray [i++] = nSortCol;
+			mapNotReferenced.RemoveKey(nSortCol);
 		}
 	}
-	else
+	// then sorted columns which are not referenced before (hidden sorted columns)
+	for (int nCol = 0; nCol < GetColumnCount() && i < nCount; nCol++)
 	{
-		// then sorted columns which are not referenced before (hidden sorted columns)
-		for (int nCol = 0; nCol < GetColumnCount () && i < nCount; nCol++)
+		int nState;
+		if (mapNotReferenced.Lookup(nCol, nState) && nState != 0) // the column is sorted
 		{
-			int nState;
-			if (!mapNotReferenced.Lookup (nCol, nState) && nState != 0) // the column is sorted
-			{
-				int nSortCol = nCol;
-				piArray [i] = nSortCol;
-				i++;
-			}
+			piArray [i++] = nCol;
 		}
 	}
 
@@ -8571,7 +9860,7 @@ int CBCGPGridColumnsInfo::GetSortColumn () const
 
 	if (m_bMultipleSort)
 	{
-		TRACE0("Call CBCGPGridColumnsInfo::GetColumnState for muliple sort\n");
+		TRACE0("Call CBCGPGridColumnsInfo::GetColumnState for multiple sort\n");
 		ASSERT (FALSE);
 		return -1;
 	}
@@ -8608,6 +9897,45 @@ void CBCGPGridColumnsInfo::EnableMultipleSort (BOOL bEnable)
 	}
 }
 //*******************************************************************************************
+void CBCGPGridColumnsInfo::SetColumnSortingPriority (LPINT piArray, int iCount)
+{
+	ASSERT_VALID (this);
+
+	m_arrColumnSortingPriority.RemoveAll();
+
+	if (piArray != NULL && iCount > 0)
+	{
+		ASSERT (iCount <= GetColumnCount ());
+		ASSERT (AfxIsValidAddress (piArray, iCount * sizeof(int), FALSE));
+
+		for (int i = 0; i < iCount; i++)
+		{
+			m_arrColumnSortingPriority.Add(piArray[i]);
+		}
+	}
+}
+//*******************************************************************************************
+const int* CBCGPGridColumnsInfo::GetColumnSortingPriority (int& nCount) const
+{
+	nCount = (int)m_arrColumnSortingPriority.GetSize();
+	return m_arrColumnSortingPriority.GetData();
+}
+//*******************************************************************************************
+void CBCGPGridColumnsInfo::EnableCheckBox (BOOL bEnable)
+{
+	m_bCheckBox = bEnable;
+}
+//*******************************************************************************************
+void CBCGPGridColumnsInfo::SetCheckBoxState (int nState)
+{
+	m_nCheckBoxState = nState;
+
+	if (m_pWndList->GetSafeHwnd() != NULL)
+	{
+		m_pWndList->Invalidate();
+	}
+}
+//*******************************************************************************************
 void CBCGPGridColumnsInfo::EnableAutoSize (BOOL bEnable)
 {
 	m_bAutoSize = bEnable;
@@ -8617,6 +9945,8 @@ void CBCGPGridColumnsInfo::Resize (int nTotalWidth, int nStartColumn)
 {
 	ASSERT_VALID (this);
 	ASSERT (nStartColumn >= -1);
+
+	const double dblScale = m_pWndList == NULL ? 1.0 : m_pWndList->GetScale();
 	
 	int nPosStartColumn = (nStartColumn != -1) ? IndexToOrder (nStartColumn) : -1;
 
@@ -8666,6 +9996,7 @@ void CBCGPGridColumnsInfo::Resize (int nTotalWidth, int nStartColumn)
 				{
 					posFirstSizingColumn = posSave;
 				}
+
 				posLastSizingColumn = posSave;
 			}
 			else
@@ -8689,6 +10020,10 @@ void CBCGPGridColumnsInfo::Resize (int nTotalWidth, int nStartColumn)
 			m_pWndList->GetExtraHierarchyOffset ();
 	}
 
+	nSum = bcg_scale(nSum, dblScale);
+	nSumMin = bcg_scale(nSumMin, dblScale);
+	nSumLocked = bcg_scale(nSumLocked, dblScale);
+
 	const int nDefaultWidth = nSum;
 	const int nMinWidth = nSumMin;
 	const int nLockedWidth = nSumLocked;
@@ -8700,7 +10035,7 @@ void CBCGPGridColumnsInfo::Resize (int nTotalWidth, int nStartColumn)
 		m_nTotalWidth = nTotalWidth - nHierarchyOffset;
 		
 		if (nMinWidth >= m_nTotalWidth ||
-			nMinWidth >= nDefaultWidth)
+			nMinWidth > nDefaultWidth)
 		{
 			// use minimal width for all columns
 			nCount = 0;	// count visible columns
@@ -8736,7 +10071,7 @@ void CBCGPGridColumnsInfo::Resize (int nTotalWidth, int nStartColumn)
 			
 		}
 		
-		else if (m_nTotalWidth >= nDefaultWidth)
+		else if (m_nTotalWidth >= nDefaultWidth && nDefaultWidth != nLockedWidth)
 		{
 			// enlarge columns in proporsion
 
@@ -8812,7 +10147,7 @@ void CBCGPGridColumnsInfo::Resize (int nTotalWidth, int nStartColumn)
 			
 		}
 		
-		else if (m_nTotalWidth < nDefaultWidth)
+		else if (m_nTotalWidth < nDefaultWidth && nDefaultWidth != nLockedWidth)
 		{
 			// compact columns in proporsion
 			
@@ -8934,6 +10269,9 @@ BOOL CBCGPGridColumnsInfo::ResizeColumn (int nColumn, int nWidth)
 	{
 		return FALSE;
 	}
+
+	const double dblScale = m_pWndList == NULL ? 1.0 : m_pWndList->GetScale();
+	nWidth = bcg_scale(nWidth, 1.0 / dblScale);
 
 	CBCGPGridColumnsItem* pResizeColumn = m_arrColumns[nColumn];
 	ASSERT_VALID (pResizeColumn);
@@ -9348,15 +10686,27 @@ int CBCGPGridColumnsInfo::HitTestColumn (CPoint point, BOOL bDelimiter, int nDel
 		ASSERT (iColumn < GetColumnCount ());
 
 		// frozen column can't be scrolled
-		int x = (nCount < m_pWndList->GetColumnsInfo ().GetFrozenColumnCount ()) ? nXLeft : nXLeftScrolled;
+		int x = (nCount < GetFrozenColumnCount ()) ? nXLeft : nXLeftScrolled;
 		int nColumnWidth = GetColumnWidth (iColumn);
 
 		if (bFirst)
 		{
-			nColumnWidth += 
-				m_pWndList->GetHierarchyOffset () + 
+			const int nHierarchyOffset = m_pWndList->GetHierarchyOffset () + 
 				m_pWndList->GetExtraHierarchyOffset ();
+
+			nColumnWidth += nHierarchyOffset;
 			bFirst = FALSE;
+
+			if (IsCheckBoxEnabled() && pnArea != NULL)
+			{
+				if (point.x <= x + nColumnWidth &&
+					point.x >= x + nHierarchyOffset && 
+					point.x <= x + nHierarchyOffset + m_pWndList->GetButtonWidth())
+				{
+					*pnArea = CBCGPGridColumnsInfo::ClickCheckBox;
+					return iColumn;
+				}
+			}
 		}
 
 		if (point.x <= x + nColumnWidth + nDelta)
@@ -9757,6 +11107,14 @@ BOOL CBCGPGridColumnsInfoEx::AddHeaderItem (const CArray<int, int>* pCols,
 											int nColumn,
 											LPCTSTR lpszLabel, int nAlign, int iImage)
 {
+	return AddHeaderItem(lpszLabel, pCols, pLines, nColumn, nAlign, iImage) != NULL;
+}
+//******************************************************************************************
+CBCGPMergedHeaderItem* CBCGPGridColumnsInfoEx::AddHeaderItem(LPCTSTR lpszLabel,
+											const CArray<int, int>* pCols, 
+											const CArray<int, int>* pLines, 
+											int nColumn, int nAlign, int iImage)
+{
 	//-----------------------
 	// Check duplicated items
 	//-----------------------
@@ -9765,7 +11123,7 @@ BOOL CBCGPGridColumnsInfoEx::AddHeaderItem (const CArray<int, int>* pCols,
 	int i = 0;
 	do 
 	{
-		if (pCols != NULL && pCols->GetSize () > 0)
+		if (pCols != NULL && pCols->GetSize() > 0)
 		{
 			nCol = (*pCols)[i];
 		}
@@ -9775,30 +11133,30 @@ BOOL CBCGPGridColumnsInfoEx::AddHeaderItem (const CArray<int, int>* pCols,
 		int j = 0;
 		do 
 		{
-			if (pLines != NULL && pLines->GetSize () > 0)
+			if (pLines != NULL && pLines->GetSize() > 0)
 			{
 				nLine = (*pLines)[j];
 			}
 
 			// Check header position
-			if (GetMergedHeaderItem (nCol, nLine) != NULL)
+			if (GetMergedHeaderItem(nCol, nLine) != NULL)
 			{
 				ASSERT(FALSE); // Column is already in other merged item
-				return FALSE;
+				return NULL;
 			}
 
-		} while (pLines != NULL && ++j < pLines->GetSize ());
+		} while (pLines != NULL && ++j < pLines->GetSize());
 
-	} while (pCols != NULL && ++i < pCols->GetSize ());
+	} while (pCols != NULL && ++i < pCols->GetSize());
 
 	//---------
 	// Add item
 	//---------
 	CBCGPMergedHeaderItem* pHeaderItem = 
-		new CBCGPMergedHeaderItem (pCols, pLines, nColumn, lpszLabel, nAlign, iImage);
+		new CBCGPMergedHeaderItem(pCols, pLines, nColumn, lpszLabel, nAlign, iImage);
 
-	m_arrMergedHeaderItems.Add (pHeaderItem);
-	return TRUE;
+	m_arrMergedHeaderItems.Add(pHeaderItem);
+	return pHeaderItem;
 }
 //******************************************************************************************
 CBCGPMergedHeaderItem* CBCGPGridColumnsInfoEx::GetMergedHeaderItem (int nColumn, int nLine) const
@@ -10413,8 +11771,6 @@ public:
 	int					m_nItem;
 	BOOL				m_bDrop;
 
-	static CString		m_strClassName;
-
 // Operations
 public:
 
@@ -10452,11 +11808,6 @@ class CBCGPHeaderItemDropWnd : public CWnd
 public:
 	CBCGPHeaderItemDropWnd();
 
-// Attributes
-public:
-
-	static CString	m_strClassName;
-
 // Operations
 public:
 	void Show (CPoint point);
@@ -10486,7 +11837,7 @@ protected:
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPGridCtrl
 
-IMPLEMENT_DYNAMIC(CBCGPGridCtrl, CWnd)
+IMPLEMENT_DYNAMIC(CBCGPGridCtrl, CBCGPWnd)
 
 #define BCGPGRID_GROUPBYBOX_VMARGIN			7
 #define BCGPGRID_GROUPBYBOX_HMARGIN			9
@@ -10515,9 +11866,12 @@ UINT BCGM_GRID_ITEM_DBLCLICK = ::RegisterWindowMessage (_T("BCGM_GRID_ITEM_DBLCL
 UINT BCGM_GRID_ON_HIDE_COLUMNCHOOSER = ::RegisterWindowMessage (_T("BCGM_GRID_ON_HIDE_COLUMNCHOOSER"));
 UINT BCGM_GRID_BEGINDRAG = ::RegisterWindowMessage (_T("BCGM_GRID_BEGINDRAG"));
 UINT BCGM_GRID_COLUMN_CLICK = ::RegisterWindowMessage (_T("BCGM_GRID_COLUMN_CLICK"));
+UINT BCGM_GRID_ROW_CHECKBOX_CLICK = ::RegisterWindowMessage (_T("BCGM_GRID_ROW_CHECKBOX_CLICK"));
+UINT BCGM_GRID_HEADERCHECKBOX_CLICK = ::RegisterWindowMessage (_T("BCGM_GRID_HEADERCHECKBOX_CLICK"));
 UINT BCGM_GRID_ADJUST_LAYOUT = ::RegisterWindowMessage (_T("BCGM_GRID_ADJUST_LAYOUT"));
 UINT BCGM_GRID_FIND_RESULT = ::RegisterWindowMessage (_T("BCGM_GRID_FIND_RESULT"));
 UINT BCGM_GRID_COLUMN_BTN_CLICK = ::RegisterWindowMessage (_T("BCGM_GRID_COLUMN_BTN_CLICK"));
+UINT BCGM_GRID_SCALE_CHANGED = ::RegisterWindowMessage (_T("BCGM_GRID_SCALE_CHANGED"));
 
 CBCGPGridCtrl::CBCGPGridCtrl()
 {
@@ -10542,8 +11896,12 @@ void CBCGPGridCtrl::InitConstructor ()
 	m_nMouseWheelSmoothScrollMaxLimit = 50;
 	m_bFreezeGroups = FALSE;
 	m_hFont = NULL;
+	m_dblScale = 1.0;
+	m_dblMinScale = 1.0;
+	m_dblMaxScale = 1.0;
 	m_nEditLeftMargin = 0;
 	m_nEditRightMargin = 0;
+	m_nEditTopMargin = 0;
 	m_bTrimTextLeft = TRUE;
 	m_nLeftItemBorderOffset = 0;
 	m_bHeader = TRUE;
@@ -10627,17 +11985,26 @@ void CBCGPGridCtrl::InitConstructor ()
 	m_bSingleSel = FALSE;
 	m_bWholeRowSel = FALSE;
 	m_bInvertSelOnCtrl = FALSE;
+	m_bClearSelOnEmptySpace = TRUE;
+	m_bSetSelOnCheckBox = TRUE;
 	m_bMarkSortedColumn = FALSE;
 	m_bDrawFocusRect = FALSE;
 	m_bShowInPlaceToolTip = TRUE;
 	m_bRowMarker = TRUE;
 	m_bLineNumbers = FALSE;
+	m_bFillLeftOffsetArea = TRUE;
 	m_bGridLines = TRUE;
+	m_bTreeLines = FALSE;
+	m_bTreeButtons = TRUE;
+	m_bCheckBoxes = FALSE;
+	m_bAlternateRows = TRUE;
+	m_bWholeCellSel = TRUE;
 	m_bSelectionBorderActiveItem = TRUE;
 	m_bHighlightActiveItem = FALSE;
 	m_bGridItemBorders = TRUE;	// TODO FALSE by default
 	m_bUseQuickSort = TRUE;
 	m_bSelecting = FALSE;
+	m_bSelectingScroll = FALSE;
 	m_bClickTimer = FALSE;
 	m_ptClickOnce = CPoint (0, 0);
 	m_bIsFirstClick = FALSE;
@@ -10692,6 +12059,7 @@ void CBCGPGridCtrl::InitConstructor ()
 	m_bDragSelectionBorder = FALSE;
 	m_bDragDrop = FALSE;
 	m_bDragEnter = FALSE;
+	m_bClickDrag = FALSE;
 	m_bDragRowHeader = FALSE;
 	m_idDragFrom = CBCGPGridItemID (0, 0);
 	m_idDropTo = CBCGPGridItemID (0, 0);
@@ -10713,6 +12081,7 @@ void CBCGPGridCtrl::InitConstructor ()
 	m_bFilterBar = FALSE;
 	m_bNoFilterBarUpdate = FALSE;
 	m_nFocusedFilter = -1;
+	m_bOutOfFilter = FALSE;
 
 	m_pFindDlg = NULL;
 
@@ -10723,17 +12092,24 @@ void CBCGPGridCtrl::InitConstructor ()
 	SetScrollBarsStyle (CBCGPScrollBar::BCGP_SBSTYLE_DEFAULT);
 
 	m_bVisualManagerStyle = FALSE;
+	m_bAutoUpdateThemeOnVMChange = FALSE;
 
 	m_strExportCSVSeparator = _T(";"); // ";" or ","
+	m_dwDefaultExportToHtmlFlags = EF_IncludeTextColor | EF_IncludeBackgroundColor;
+	m_dwDefaultExportToCsvFlags = EF_IncludeHeader;
 
 	m_pAccRow = NULL;
 	m_pAccItem = NULL;
+	m_nAccLastIndex = -1;
+	m_bAccGridItemValueAsName = FALSE;
 
 	m_pGM = NULL;
 }
 
 CBCGPGridCtrl::~CBCGPGridCtrl()
 {
+	CleanUp();
+
 	if (m_pColumnChooser->GetSafeHwnd ())
 	{
 		m_pColumnChooser->DestroyWindow ();
@@ -10770,7 +12146,7 @@ CBCGPGridCtrl::~CBCGPGridCtrl()
 	}
 }
 
-BEGIN_MESSAGE_MAP(CBCGPGridCtrl, CWnd)
+BEGIN_MESSAGE_MAP(CBCGPGridCtrl, CBCGPWnd)
 	//{{AFX_MSG_MAP(CBCGPGridCtrl)
 	ON_WM_CREATE()
 	ON_WM_SIZE()
@@ -10803,10 +12179,11 @@ BEGIN_MESSAGE_MAP(CBCGPGridCtrl, CWnd)
 	ON_MESSAGE(WM_SETFONT, OnSetFont)
 	ON_MESSAGE(WM_GETFONT, OnGetFont)
 	ON_WM_STYLECHANGED()
-	ON_CBN_SELENDOK(BCGPGRIDCTRL_ID_INPLACE, OnSelectCombo)
-	ON_CBN_CLOSEUP(BCGPGRIDCTRL_ID_INPLACE, OnCloseCombo)
+	ON_CBN_SELENDOK(BCGPGRIDCTRL_ID_INPLACE_COMBO, OnSelectCombo)
+	ON_CBN_CLOSEUP(BCGPGRIDCTRL_ID_INPLACE_COMBO, OnCloseCombo)
 	ON_EN_KILLFOCUS(BCGPGRIDCTRL_ID_INPLACE, OnEditKillFocus)
-	ON_CBN_KILLFOCUS(BCGPGRIDCTRL_ID_INPLACE, OnComboKillFocus)
+	ON_CBN_KILLFOCUS(BCGPGRIDCTRL_ID_INPLACE_COMBO, OnComboKillFocus)
+	ON_BN_KILLFOCUS(BCGPGRIDCTRL_ID_INPLACE, OnButtonKillFocus)
 	ON_MESSAGE(WM_MOUSELEAVE, OnMouseLeave)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
 	ON_REGISTERED_MESSAGE(BCGM_GRID_ADJUST_LAYOUT, OnGridAdjustLayout)
@@ -10817,6 +12194,7 @@ BEGIN_MESSAGE_MAP(CBCGPGridCtrl, CWnd)
 	ON_REGISTERED_MESSAGE(WM_FINDREPLACE, OnFindReplace)
 	ON_REGISTERED_MESSAGE(BCGM_ONSETCONTROLVMMODE, OnBCGSetControlVMMode)
 	ON_MESSAGE (WM_GETOBJECT, OnGetObject)
+	ON_REGISTERED_MESSAGE(BCGM_CHANGEVISUALMANAGER, OnChangeVisualManager)
 END_MESSAGE_MAP()
 
 /////////////////////////////////////////////////////////////////////////////
@@ -10853,11 +12231,79 @@ void CBCGPGridCtrl::SetVirtualRows (int nRowsNum)
 		return;
 	}
 
-	RemoveAll ();
+	m_bInAdjustLayout = TRUE;
 
+	RemoveAll ();
 	m_nVirtualRows = nRowsNum;
 
+	m_bInAdjustLayout = FALSE;
+
 	AdjustLayout ();
+}
+//******************************************************************************************
+void CBCGPGridCtrl::SetScale(double dblScale, BOOL bNotifyParent, CPoint ptCenter)
+{
+	dblScale = bcg_clamp(dblScale, m_dblMinScale, m_dblMaxScale);
+
+	if (m_dblScale == dblScale)
+	{
+		return;
+	}
+
+	SetEndEditReason (EndEdit_Cancel | EndEdit_Layout);
+	EndEditItem(FALSE);
+
+	if (ptCenter != CPoint(0, 0) && m_dblScale != 0.0)
+	{
+		const double dblMulDiv = dblScale / m_dblScale;
+
+		int x = bcg_scale(ptCenter.x, dblMulDiv) - ptCenter.x;
+		int y = bcg_scale(ptCenter.y, dblMulDiv) - ptCenter.y;
+
+		m_nHorzScrollOffset = bcg_scale(m_nHorzScrollOffset, dblMulDiv) + x;
+		m_nVertScrollOffset = bcg_scale(m_nVertScrollOffset, dblMulDiv) + y;
+	}
+
+	double dblOldScale = m_dblScale;
+
+	m_dblScale = dblScale;
+
+	OnScaleChanged(dblOldScale);
+
+	if (bNotifyParent && GetSafeHwnd () != NULL)
+	{
+		CWnd* pOwnerWnd = GetOwner();
+		if (pOwnerWnd->GetSafeHwnd() != NULL)
+		{
+			pOwnerWnd->SendMessage(BCGM_GRID_SCALE_CHANGED, 0, (LPARAM)this);
+		}
+	}
+}
+//******************************************************************************************
+void CBCGPGridCtrl::OnScaleChanged(double /*dblOldScale*/)
+{
+	UpdateScaledFonts();
+	UpdateFilterBarCtrlsFont();
+	AdjustLayout();
+	CalcEditMargin();
+}
+//******************************************************************************************
+void CBCGPGridCtrl::SetScalingRange(double dblMinScale, double dblMaxScale)
+{
+	if (dblMinScale > dblMaxScale)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	if (dblMinScale < 0.1)
+	{
+		ASSERT(FALSE);
+		return;
+	}
+
+	m_dblMinScale = dblMinScale;
+	m_dblMaxScale = dblMaxScale;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -10903,7 +12349,7 @@ void CBCGPGridCtrl::Init ()
 	CBCGPGestureConfig gestureConfig;
 	gestureConfig.EnablePan(TRUE, BCGP_GC_PAN_WITH_SINGLE_FINGER_VERTICALLY | BCGP_GC_PAN_WITH_SINGLE_FINGER_HORIZONTALLY | BCGP_GC_PAN_WITH_GUTTER | BCGP_GC_PAN_WITH_INERTIA);
 
-	bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig);
+	bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig, TRUE);
 
 	CRect rectDummy;
 	rectDummy.SetRectEmpty ();
@@ -10954,6 +12400,7 @@ void CBCGPGridCtrl::Init ()
 
 	AdjustLayout ();
 	UpdateFonts ();
+	UpdateScaledFonts();
 	CalcEditMargin ();
 }
 //******************************************************************************************
@@ -10977,12 +12424,17 @@ void CBCGPGridCtrl::InitColors ()
 	{
 		m_brSelBackground.CreateSolidBrush (m_ColorData.m_SelColors.m_clrBackground);
 	}
+
+	COLORREF clrLineDefault = !globalData.IsHighContastMode() ? globalData.clrBtnFace : globalData.clrBarShadow;
 	
 	m_penHLine.CreatePen (PS_SOLID, 1, 
-		m_ColorData.m_clrHorzLine != (COLORREF)-1 ? m_ColorData.m_clrHorzLine : globalData.clrBtnFace);
+		m_ColorData.m_clrHorzLine != (COLORREF)-1 ? m_ColorData.m_clrHorzLine : clrLineDefault);
 
 	m_penVLine.CreatePen (PS_SOLID, 1, 
-		m_ColorData.m_clrVertLine != (COLORREF)-1 ? m_ColorData.m_clrVertLine : globalData.clrBtnFace);
+		m_ColorData.m_clrVertLine != (COLORREF)-1 ? m_ColorData.m_clrVertLine : clrLineDefault);
+
+	m_penTreeLine.CreatePen (PS_SOLID, 1, 
+		m_ColorData.m_clrTreeLines != (COLORREF)-1 ? m_ColorData.m_clrTreeLines : visualManager->GetGridTreeLineColor(this));
 
 	m_penDrag.CreatePen (PS_SOLID, 1, globalData.clrBtnText);
 }
@@ -11009,6 +12461,10 @@ void CBCGPGridCtrl::CleanUpColors ()
 	{
 		m_penVLine.DeleteObject ();
 	}
+	if (m_penTreeLine.GetSafeHandle () != NULL)
+	{
+		m_penTreeLine.DeleteObject ();
+	}
 	if (m_penDrag.GetSafeHandle () != NULL)
 	{
 		m_penDrag.DeleteObject ();
@@ -11018,9 +12474,26 @@ void CBCGPGridCtrl::CleanUpColors ()
 void CBCGPGridCtrl::OnSysColorChange() 
 {
 	CBCGPWnd::OnSysColorChange();
-	
+
+	if (m_bVisualManagerStyle)
+	{
+		PostMessage(BCGM_CHANGEVISUALMANAGER);
+		return;
+	}
+
 	InitColors ();
 	RedrawWindow ();
+}
+//*****************************************************************************************
+LRESULT CBCGPGridCtrl::OnChangeVisualManager(WPARAM, LPARAM)
+{
+	if (m_bVisualManagerStyle && m_bAutoUpdateThemeOnVMChange)
+	{
+		InitColors ();
+		SetVisualManagerColorTheme(TRUE, TRUE);
+	}
+
+	return 0;
 }
 //*****************************************************************************************
 void CBCGPGridCtrl::AdjustLayout ()
@@ -11155,7 +12628,7 @@ void CBCGPGridCtrl::SetRowHeight ()
 
 		TEXTMETRIC tm;
 		dc.GetTextMetrics (&tm);
-		m_nBaseHeight = tm.tmHeight + 2 * TEXT_VMARGIN;
+		m_nBaseHeight = tm.tmHeight + 2 * globalUtils.ScaleByDPI(GRID_TEXT_VMARGIN);
 		m_nRowHeight = m_nBaseHeight;
 		m_nLargeRowHeight = m_nBaseHeight;
 		m_nButtonWidth = m_nBaseHeight;
@@ -11189,7 +12662,7 @@ void CBCGPGridCtrl::SetRowHeaderWidth ()
 	{
 		if (m_nRowHeaderWidth == 0)
 		{
-			m_nRowHeaderWidth = 30;
+			m_nRowHeaderWidth = globalUtils.ScaleByDPI(30);
 		}
 	}
 }
@@ -11215,7 +12688,7 @@ void CBCGPGridCtrl::ReposItems ()
 					ASSERT_VALID (pItem);
 
 					int nIndex = cpi.nFirst + i;
-					int y = m_rectList.top - 1 + nIndex * m_nRowHeight - m_nVertScrollOffset;
+					int y = m_rectList.top + nIndex * m_nRowHeight - m_nVertScrollOffset;
 					m_idCur.m_nRow = nIndex;
 					pItem->Repos (y);
 
@@ -11245,10 +12718,12 @@ void CBCGPGridCtrl::ReposItems ()
 
 	m_ToolTip.Hide ();
 
+	m_bOutOfFilter = m_bFilter || m_bFilterBar;
+
 	m_idCur.m_nRow = 0;
 	m_idCur.m_nColumn = -1;
 
-	int y = m_rectList.top - m_nVertScrollOffset - 1;
+	int y = m_rectList.top - m_nVertScrollOffset;
 	int nIndex = 0;
 
 	if (!IsSortingMode () && !IsGrouping ())
@@ -11267,6 +12742,11 @@ void CBCGPGridCtrl::ReposItems ()
 				pItem->GetRect ().bottom >= m_rectList.top)
 			{
 				m_nFirstVisibleItem = nIndex;
+			}
+
+			if (m_bOutOfFilter && !pItem->GetRect().IsRectEmpty())
+			{
+				m_bOutOfFilter = FALSE;
 			}
 		}
 
@@ -11297,6 +12777,11 @@ void CBCGPGridCtrl::ReposItems ()
 			pItem->GetRect ().bottom >= m_rectList.top)
 		{
 			m_nFirstVisibleItem = nIndex;
+		}
+
+		if (m_bOutOfFilter && !pItem->GetRect().IsRectEmpty())
+		{
+			m_bOutOfFilter = FALSE;
 		}
 	}
 
@@ -11675,6 +13160,26 @@ void CBCGPGridCtrl::CleanUpAutoGroups (CBCGPGridCtrl::AUTOGROUP_CLEANUP_MODE nMo
 	}
 }
 //******************************************************************************************
+void CBCGPGridCtrl::CleanUp()
+{
+	while (!m_lstSel.IsEmpty ())
+	{
+		delete m_lstSel.RemoveTail ();
+	}
+	
+	CleanUpAutoGroups ();
+	
+	while (!m_lstItems.IsEmpty ())
+	{
+		delete m_lstItems.RemoveTail ();
+	}
+	
+	m_lstTerminalItems.RemoveAll ();
+	
+	CleanUpFonts ();
+	CleanUpColors ();
+}
+//******************************************************************************************
 BOOL CBCGPGridCtrl::SetBeginEditReason (DWORD dwReason, BOOL bShift, BOOL bCtrl)
 {
 	if (bShift)
@@ -11738,6 +13243,7 @@ LRESULT CBCGPGridCtrl::OnSetFont (WPARAM wParam, LPARAM /*lParam*/)
 	m_hFont = (HFONT) wParam;
 
 	UpdateFonts ();
+	UpdateScaledFonts();
 	CalcEditMargin ();
 	AdjustLayout ();
 
@@ -11746,7 +13252,7 @@ LRESULT CBCGPGridCtrl::OnSetFont (WPARAM wParam, LPARAM /*lParam*/)
 //******************************************************************************************
 LRESULT CBCGPGridCtrl::OnGetFont (WPARAM, LPARAM)
 {
-	return (LRESULT) (m_hFont != NULL ? m_hFont : GetDefaultFont ());
+	return (LRESULT) (m_fontScaled.GetSafeHandle() != NULL ? m_fontScaled.GetSafeHandle() : m_hFont != NULL ? m_hFont : GetDefaultFont ());
 }
 //******************************************************************************************
 void CBCGPGridCtrl::OnSettingChange(UINT uFlags, LPCTSTR lpszSection) 
@@ -11765,6 +13271,7 @@ void CBCGPGridCtrl::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
 		}
 
 		UpdateFonts ();
+		UpdateScaledFonts();
 		CalcEditMargin ();
 		AdjustLayout ();
 	}
@@ -11786,26 +13293,103 @@ void CBCGPGridCtrl::UpdateFonts ()
 
 	lf.lfWeight = FW_BOLD;
 	m_fontBold.CreateFontIndirect (&lf);
+
+	// Create underline font:
+	CFont* pFontUnderline = m_hFont != NULL ? pFont : (CBCGPGridCtrl::m_bUseSystemFont ? &globalData.fontDefaultGUIUnderline : &globalData.fontUnderline);
+	ASSERT_VALID(pFontUnderline);
+
+	memset (&lf, 0, sizeof (LOGFONT));
+	pFontUnderline->GetLogFont (&lf);
+	lf.lfUnderline = TRUE;
+	m_fontUnderline.CreateFontIndirect(&lf);
 }
 //******************************************************************************************
-void CBCGPGridCtrl::CleanUpFonts ()
+void CBCGPGridCtrl::UpdateScaledFonts()
 {
-	// Clean up bold font:
-	if (m_fontBold.GetSafeHandle () != NULL)
+	if (m_fontScaled.GetSafeHandle() != NULL)
 	{
-		m_fontBold.DeleteObject ();
+		m_fontScaled.DeleteObject();
+	}
+
+	if (m_fontBoldScaled.GetSafeHandle() != NULL)
+	{
+		m_fontBoldScaled.DeleteObject();
+	}
+
+	if (m_fontUnderlineScaled.GetSafeHandle() != NULL)
+	{
+		m_fontUnderlineScaled.DeleteObject();
+	}
+
+	if (m_dblScale != 1.0)
+	{
+		CFont* pFont = CFont::FromHandle(m_hFont != NULL ? m_hFont : GetDefaultFont());
+		ASSERT_VALID(pFont);
+		
+		LOGFONT lf;
+		memset (&lf, 0, sizeof (LOGFONT));
+		
+		pFont->GetLogFont (&lf);
+		
+		lf.lfHeight = (int)(m_dblScale * lf.lfHeight);
+		m_fontScaled.CreateFontIndirect (&lf);
+
+		lf.lfWeight = FW_BOLD;
+		m_fontBoldScaled.CreateFontIndirect (&lf);
+
+		memset (&lf, 0, sizeof (LOGFONT));
+		GetUnderlineFont(FALSE).GetLogFont (&lf);
+
+		lf.lfHeight = (int)(m_dblScale * lf.lfHeight);
+		m_fontUnderlineScaled.CreateFontIndirect (&lf);
+	}
+}
+//******************************************************************************************
+void CBCGPGridCtrl::CleanUpFonts()
+{
+	if (m_fontBold.GetSafeHandle() != NULL)
+	{
+		m_fontBold.DeleteObject();
+	}
+
+	if (m_fontScaled.GetSafeHandle() != NULL)
+	{
+		m_fontScaled.DeleteObject();
+	}
+
+	if (m_fontBoldScaled.GetSafeHandle() != NULL)
+	{
+		m_fontBoldScaled.DeleteObject();
+	}
+
+	if (m_fontUnderline.GetSafeHandle() != NULL)
+	{
+		m_fontUnderline.DeleteObject();
+	}
+
+	if (m_fontUnderlineScaled.GetSafeHandle() != NULL)
+	{
+		m_fontUnderlineScaled.DeleteObject();
 	}
 }
 //******************************************************************************************
 void CBCGPGridCtrl::CalcEditMargin ()
 {
-	CEdit editDummy;
-	editDummy.Create (WS_CHILD, CRect (0, 0, 100, 20), this, (UINT)-1);
+	const int nEditHeight = m_nBaseHeight +  GRID_TEXT_VMARGIN;
 
-	editDummy.SetFont (GetFont ());
+	CEdit editDummy;
+	editDummy.Create (WS_CHILD, CRect (0, 0, 100, nEditHeight), this, (UINT)-1);
+
+	CFont* pFont = (m_fontScaled.GetSafeHandle() != NULL) ? &m_fontScaled : GetFont();
+	editDummy.SetFont(pFont);
+
 	DWORD dwMargins = editDummy.GetMargins ();
 	m_nEditLeftMargin = LOWORD (dwMargins);
 	m_nEditRightMargin = HIWORD (dwMargins);
+
+	CRect rectEdit (0, 0, 0, 0);
+	editDummy.GetClientRect(rectEdit);
+	m_nEditTopMargin = max(0, (int)(.5 + 0.5 * (m_nRowHeight - rectEdit.Height() + GRID_TEXT_VMARGIN)));
 
 	editDummy.DestroyWindow ();
 }
@@ -11829,6 +13413,7 @@ HFONT CBCGPGridCtrl::SetCurrFont (CDC* pDC)
 	}
 	
 	return (HFONT) ::SelectObject (pDC->GetSafeHdc (), 
+		m_fontScaled.GetSafeHandle() != NULL ? m_fontScaled.GetSafeHandle() :
 		m_hFont != NULL ? m_hFont : GetDefaultFont ());
 }
 //******************************************************************************************
@@ -11858,8 +13443,30 @@ void CBCGPGridCtrl::OnDraw(CDC* pDCPaint)
 	GetClientRect (rectGripper);
 	rectGripper.left = m_rectList.right;
 	rectGripper.top = m_rectList.bottom;
-	pDCPaint->FillRect (rectGripper, 
-		m_bControlBarColors ? &globalData.brBarFace : &globalData.brBtnFace);
+
+	if (m_wndScrollVert.GetVisualStyle() == CBCGPScrollBar::BCGP_SBSTYLE_CUSTOM &&
+		m_wndScrollVert.GetColorTheme().m_clrFace != (COLORREF)-1)
+	{
+		CBrush br(m_wndScrollVert.GetColorTheme().m_clrFace);
+		pDCPaint->FillRect (rectGripper, &br);
+	}
+	else if (m_wndScrollVert.GetVisualStyle() == CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER && visualManager->IsOwnerDrawScrollBar())
+	{
+		visualManager->OnScrollBarFillBackground(pDCPaint, &m_wndScrollVert, rectGripper, FALSE, 
+			FALSE, FALSE, FALSE, FALSE);
+	}
+	else
+	{
+		if (m_bControlBarColors)
+		{
+			CBrush br(globalData.clrBarLight);
+			pDCPaint->FillRect(rectGripper, &br);
+		}
+		else
+		{
+			pDCPaint->FillRect (rectGripper, &globalData.brBtnFace);
+		}
+	}
 
 	if (rect.IsRectEmpty ())
 	{
@@ -11961,31 +13568,15 @@ COLORREF CBCGPGridCtrl::OnFillSelItem (CDC* pDC, CRect rectFill, CBCGPGridItem* 
 		return m_ColorData.m_SelColors.m_clrText;
 	}
 
-	if (!m_bFocused)
+	if (m_brSelBackground.GetSafeHandle () != NULL)
 	{
-		if (m_brSelBackground.GetSafeHandle () != NULL)
-		{
-			pDC->FillRect (rectFill, &m_brSelBackground);
-			return globalData.clrBtnText;
-		}
-		else
-		{
-			return visualManager->OnFillGridItem (this, pDC, rectFill,
-				TRUE/*bSelected*/, FALSE/*bActive*/, FALSE/*bSortedColumn*/);
-		}
+		pDC->FillRect (rectFill, &m_brSelBackground);
+		return !m_bFocused ? globalData.clrBtnText : globalData.clrTextHilite;
 	}
 	else
 	{
-		if (m_brSelBackground.GetSafeHandle () != NULL)
-		{
-			pDC->FillRect (rectFill, &m_brSelBackground);
-			return globalData.clrTextHilite;
-		}
-		else
-		{
-			return visualManager->OnFillGridItem (this, pDC, rectFill,
-				TRUE/*bSelected*/, FALSE/*bActive*/, FALSE/*bSortedColumn*/);
-		}
+		return visualManager->OnFillGridItem (this, pDC, rectFill,
+			TRUE/*bSelected*/, FALSE/*bActive*/, FALSE/*bSortedColumn*/);
 	}
 }
 //******************************************************************************************
@@ -12001,28 +13592,31 @@ void CBCGPGridCtrl::OnFillLeftOffset (CDC* pDC, CRect rectFill, CBCGPGridRow* /*
 
 	const int nRightBorder = rectFill.left + GetHierarchyOffset () + GetExtraHierarchyOffset ();
 
-	// special drawing if custom gradient colors
-	if (m_ColorData.m_LeftOffsetColors.m_clrBackground != (COLORREF)-1 &&
-		m_ColorData.m_LeftOffsetColors.m_clrGradient != (COLORREF)-1 &&
-		m_ColorData.m_LeftOffsetColors.m_nGradientAngle == 0)
+	if (m_bFillLeftOffsetArea)
 	{
-		CRect rectGradient = rectFill;
-		rectGradient.right = nRightBorder;
-		m_ColorData.m_LeftOffsetColors.Draw (pDC, rectGradient, TRUE);
-
-		if (rectGradient.right < rectFill.right)
+		// special drawing if custom gradient colors
+		if (m_ColorData.m_LeftOffsetColors.m_clrBackground != (COLORREF)-1 &&
+			m_ColorData.m_LeftOffsetColors.m_clrGradient != (COLORREF)-1 &&
+			m_ColorData.m_LeftOffsetColors.m_nGradientAngle == 0)
 		{
-			CRect rectOneColor = rectFill;
-			rectOneColor.left = rectGradient.right;
-			CBrush br (m_ColorData.m_LeftOffsetColors.m_clrGradient);
-			pDC->FillRect (rectOneColor, &br);
+			CRect rectGradient = rectFill;
+			rectGradient.right = nRightBorder;
+			m_ColorData.m_LeftOffsetColors.Draw (pDC, rectGradient, TRUE);
+			
+			if (rectGradient.right < rectFill.right)
+			{
+				CRect rectOneColor = rectFill;
+				rectOneColor.left = rectGradient.right;
+				CBrush br (m_ColorData.m_LeftOffsetColors.m_clrGradient);
+				pDC->FillRect (rectOneColor, &br);
+			}
 		}
-	}
-
-	else if (!m_ColorData.m_LeftOffsetColors.Draw (pDC, rectFill, TRUE))
-	{
-		CBrush br (m_clrGray);
-		pDC->FillRect (rectFill, &br);
+		
+		else if (!m_ColorData.m_LeftOffsetColors.Draw (pDC, rectFill, TRUE))
+		{
+			CBrush br (m_clrGray);
+			pDC->FillRect (rectFill, &br);
+		}
 	}
 
 	if (bDrawRightBorder &&
@@ -12048,6 +13642,26 @@ void CBCGPGridCtrl::OnDrawList (CDC* pDC)
 {
 	ASSERT_VALID (this);
 	ASSERT_VALID (pDC);
+
+	//-------------------------------------
+	// Draw info title if no items to show:
+	//-------------------------------------
+	if (IsEmpty() || m_bOutOfFilter)
+	{
+		CString strLabel = m_bOutOfFilter ? m_strOutOfFilter : m_strNoContent;
+		if (!strLabel.IsEmpty())
+		{
+			COLORREF clrOld = pDC->SetTextColor(m_bOutOfFilter ? visualManager->GetOutOffFilterTextColor(this) : GetTextColor());
+
+			CRect rectText = m_rectList;
+			rectText.DeflateRect (3 * GRID_TEXT_MARGIN, 3 * GRID_TEXT_VMARGIN);
+			
+			pDC->DrawText (strLabel, rectText, DT_CENTER | DT_WORDBREAK);
+			
+			pDC->SetTextColor(clrOld);
+			return;
+		}
+	}
 
 	CPen* pOldPen = pDC->SelectObject (&m_penVLine);
 	ASSERT_VALID (pOldPen);
@@ -12163,7 +13777,7 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 
 		if (pItem->m_Rect.bottom >= m_rectClip.top)
 		{
-			int dx = IsSortingMode () && !IsGrouping () ? 0 : pItem->GetHierarchyLevel () * GetHierarchyLevelOffset ();
+			int dx = GetHierarchyOffset(pItem);
 			
 			BOOL bIsAutoGroup = pItem->IsGroup () && (pItem->m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0;
 			BOOL bGroupUnderline = !m_bHighlightGroups && !pItem->HasValueField () && visualManager->IsGridGroupUnderline ();
@@ -12173,38 +13787,40 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 			BOOL bNoScrollCol0 = (pItem->IsGroup () && m_bFreezeGroups) || (m_nHorzScrollOffset > 0 && GetColumnsInfo ().GetFrozenColumnCount () > 0);
 			BOOL bNoScrollGroups = pItem->IsGroup () && m_bFreezeGroups && m_nHorzScrollOffset > 0;
 
+			int nColumn0Clip = 0;
+			if (GetColumnsInfo().GetColumnCount (TRUE) > 0)
+			{
+				int nCol0Idx = GetColumnsInfo().OrderToIndex(0);
+				if (nCol0Idx != -1)
+				{
+					nColumn0Clip = pItem->m_Rect.left + (bNoScrollCol0? m_nHorzScrollOffset : 0) +
+						GetColumnsInfo().GetColumnWidth(nCol0Idx) + GetHierarchyOffset() + GetExtraHierarchyOffset();
+				}
+			}
+
 			// ----------------
 			// Draw left margin
 			// ----------------
-			CRect rectLeft = pItem->m_Rect;
-			rectLeft.top++;
-			if (bNoScrollCol0)
-			{	// do not scroll left margin of frozen columns
-				rectLeft.OffsetRect (m_nHorzScrollOffset, 0);
-			}
-			if (!m_bHighlightGroups || !pItem->IsGroup ())
+			CRect rectLeft = pItem->GetIndentRect(dx);
+			CRect rectTreeLines = rectLeft;
+
+			if (IsCheckBoxesEnabled() && pItem->HasCheckBox())
 			{
-				rectLeft.right = rectLeft.left + GetExtraHierarchyOffset () + dx;
+				CRect rectCheckBox = pItem->GetCheckBoxRect(dx);
+				if (rectCheckBox.right > rectLeft.right)
+				{
+					rectLeft.right = rectCheckBox.right;
+				}
 			}
-			rectLeft.bottom++;
 
 			CRgn rgnClipLeft;
 			CRect rectLeftClip = rectLeft;
 			rectLeftClip.left = max (rectLeftClip.left, m_rectList.left);
 			rectLeftClip.bottom = min (rectLeftClip.bottom + 1, m_rectList.bottom);
 
-			if (GetColumnsInfo ().GetColumnCount (TRUE) > 0)
+			if (nColumn0Clip > 0 && (!m_bHighlightGroups || !pItem->IsGroup()))
 			{
-				int nCol0Idx = GetColumnsInfo ().OrderToIndex (0);
-				if (nCol0Idx != -1)
-				{
-					int nCol0Width = GetColumnsInfo ().GetColumnWidth (nCol0Idx);
-					nCol0Width += GetHierarchyOffset () + GetExtraHierarchyOffset ();
-					if (nCol0Width > 0)
-					{
-						rectLeftClip.right = min (rectLeftClip.right, pItem->m_Rect.left + nCol0Width + (bNoScrollCol0? m_nHorzScrollOffset : 0));
-					}
-				}
+				rectLeftClip.right = min (rectLeftClip.right, nColumn0Clip);
 			}
 
 			if (rectLeftClip.left < rectLeftClip.right)
@@ -12220,6 +13836,11 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 				OnFillLeftOffset (pDC, rectLeft, pItem, 
 					m_bGridLines && pItem->HasValueField () && !bIsAutoGroup);
 
+				if (m_bTreeLines)
+				{
+					OnDrawTreeLines(pDC, pItem, rectTreeLines);
+				}
+
 				pDC->SelectClipRgn (&m_rgnClip);
 			}
 
@@ -12227,17 +13848,16 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 			{
 				clrTextOld = pDC->SetTextColor (globalData.clrGrayedText);
 			}
-			
-			CRect rectName = pItem->m_Rect;
-			if (bNoScrollGroups)
-			{
-				rectName.OffsetRect (m_nHorzScrollOffset, 0);
-			}
 
 			if (!pItem->HasValueField () || bIsAutoGroup)
 			{
 				// fill group background
-				CRect rectFill = rectName;
+				CRect rectFill = pItem->m_Rect;
+				if (bNoScrollGroups)
+				{
+					rectFill.OffsetRect (m_nHorzScrollOffset, 0);
+				}
+
 				rectFill.top++;
 				rectFill.DeflateRect (dx, 0, 0, 0);
 
@@ -12246,62 +13866,34 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 					rectFill.DeflateRect (GetExtraHierarchyOffset (), 0, 0, 0);
 				}
 
-				if (!m_bHighlightGroups)
-				{
-					if (IsKindOf (RUNTIME_CLASS (CBCGPReportCtrl)) ||
-						!m_ColorData.m_GroupColors.Draw (pDC, rectFill))
-					{
-						if (m_brGroupBackground.GetSafeHandle () != NULL ||
-							m_brBackground.GetSafeHandle () != NULL)
-						{
-							CBrush& br = (m_brGroupBackground.GetSafeHandle () != NULL) ? 
-								m_brGroupBackground : m_brBackground;
-							pDC->FillRect (rectFill, &br);
-						}
-						else
-						{
-							visualManager->OnFillGridGroupBackground (this, pDC, rectFill);
-						}
-					}
-				}
-
-				// draw group underline
-				if (bGroupUnderline && pItem->IsGroup ())
-				{
-					rectFill.top = rectFill.bottom;
-					rectFill.InflateRect (0, 1);
-
-					visualManager->OnDrawGridGroupUnderline (this, pDC, rectFill);
-				}
+				pItem->OnFillGroupBackground(pDC, rectFill, bGroupUnderline);
 			}
 
 			// ---------------
 			// draw expandbox:
 			// ---------------
-			if (pItem->IsGroup () && (!IsSortingMode () || IsGrouping ()) &&
-				!pItem->m_lstSubItems.IsEmpty ())
+			if (pItem->HasExpandButton())
 			{
-				CRect rectExpand = pItem->m_Rect;
-				if (bNoScrollCol0)
-				{	// do not scroll expandbox of frozen columns
-					rectExpand.OffsetRect (m_nHorzScrollOffset, 0);
-				}
-
-				int nLeftMargin = max(GetExtraHierarchyOffset (), m_nButtonWidth) + dx;
-				rectName.left += nLeftMargin;
-				rectExpand.right = rectExpand.left + nLeftMargin;
-				rectExpand.DeflateRect (dx, 0, 0, 0);
+				CRect rectExpand = pItem->GetExpandBoxRect(dx);
 
 				CRgn rgnClipExpand;
 				CRect rectExpandClip = rectExpand;
 				rectExpandClip.bottom = min (rectExpandClip.bottom, m_rectList.bottom);
+				
+				if (nColumn0Clip > 0 && (pItem->HasValueField () && !bIsAutoGroup))
+				{
+					rectExpandClip.right = min (rectLeftClip.right, nColumn0Clip);
+				}
 
-				rgnClipExpand.CreateRectRgnIndirect (&rectExpandClip);
-				pDC->SelectClipRgn (&rgnClipExpand);
-
-				pItem->OnDrawExpandBox (pDC, rectExpand);
-
-				pDC->SelectClipRgn (&m_rgnClip);
+				if (!rectExpandClip.IsRectEmpty())
+				{
+					rgnClipExpand.CreateRectRgnIndirect (&rectExpandClip);
+					pDC->SelectClipRgn (&rgnClipExpand);
+					
+					pItem->OnDrawExpandBox (pDC, rectExpand);
+					
+					pDC->SelectClipRgn (&m_rgnClip);
+				}
 			}
 
 			// ----------------
@@ -12309,7 +13901,7 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 			// ----------------
 			BOOL bActiveItem = (GetCurSel () == pItem);
 			if (m_bRowMarker && !IsRowMarkerOnRowHeader () && bActiveItem && 
-				!pItem->IsGroup() && GetExtraHierarchyOffset () > 0)
+				!pItem->IsGroup() && GetExtraHierarchyOffset() > 0 && !IsCheckBoxesEnabled())
 			{
 				CRect rectRowMarker = rectLeft;
 				rectRowMarker.left = max (
@@ -12332,10 +13924,13 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 			// ----------
 			// draw name:
 			// ----------
+			CRect rectName = pItem->GetNameRect(dx);
+
 			if (rectName.right > rectName.left)
 			{
 				CRgn rgnClipName;
 				CRect rectNameClip = rectName;
+				rectNameClip.left = max (m_rectRowHeader.right, rectNameClip.left);
 				rectNameClip.bottom = min (rectNameClip.bottom, m_rectList.bottom);
 
 				rgnClipName.CreateRectRgnIndirect (&rectNameClip);
@@ -12344,7 +13939,7 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 				HFONT hOldFont = NULL;
 				if (pItem->IsGroup ())
 				{
-					hOldFont = (HFONT) ::SelectObject (pDC->GetSafeHdc (), m_fontBold.GetSafeHandle ());
+					hOldFont = (HFONT) ::SelectObject (pDC->GetSafeHdc (), GetBoldFont(TRUE).GetSafeHandle());
 				}
 
 				pItem->OnDrawName (pDC, rectName);
@@ -12357,6 +13952,32 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 				pDC->SelectClipRgn (&m_rgnClip);
 			}
 
+			// ---------------
+			// draw check box:
+			// ---------------
+			if (IsCheckBoxesEnabled() && pItem->HasCheckBox())
+			{
+				CRect rectCheckBox = pItem->GetCheckBoxRect(dx);
+
+				CRgn rgnClipCheckBox;
+				CRect rectCheckBoxClip = rectCheckBox;
+
+				if (nColumn0Clip > 0 && (pItem->HasValueField () && !bIsAutoGroup))
+				{
+					rectCheckBoxClip.right = min (rectLeftClip.right, nColumn0Clip);
+				}
+
+				if (!rectCheckBoxClip.IsRectEmpty())
+				{
+					rgnClipCheckBox.CreateRectRgnIndirect (&rectCheckBoxClip);
+					pDC->SelectClipRgn (&rgnClipCheckBox);
+					
+					OnDrawCheckBox(pDC, rectCheckBox, pItem->GetCheck(), FALSE, FALSE, pItem->IsEnabled());
+					
+					pDC->SelectClipRgn (&m_rgnClip);
+				}
+			}
+
 			// ------------
 			// draw values:
 			// ------------
@@ -12365,6 +13986,7 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 				CRect rectItems = pItem->m_Rect;
 
 				CRect rectValClip = rectItems;
+				rectValClip.left = max (m_rectRowHeader.right, rectValClip.left);
 				rectValClip.bottom = min (rectValClip.bottom, m_rectList.bottom);
 				rectValClip.bottom++;
 
@@ -12398,15 +14020,17 @@ BOOL CBCGPGridCtrl::OnDrawItem (CDC* pDC, CBCGPGridRow* pItem)
 			else if (m_bGridLines && !m_bHighlightGroups && !bGroupUnderline)
 			{
 				pDC->SelectClipRgn (NULL);
-				
-				pDC->MoveTo (m_rectList.left + GetExtraHierarchyOffset () + dx - m_nHorzScrollOffset, pItem->m_Rect.bottom);
-				pDC->LineTo (m_rectList.right, pItem->m_Rect.bottom);
+
+				int nLeftBorder = max(m_rectRowHeader.right, m_rectList.left + GetExtraHierarchyOffset () + dx - m_nHorzScrollOffset);
+
+				pDC->MoveTo (nLeftBorder, pItem->m_Rect.bottom);
+				pDC->LineTo (rectName.right, pItem->m_Rect.bottom);
 
 				if (GetLeftItemBorderOffset () > rectLeft.right)
 				{
 					// repeat line of the previous row
 					pDC->MoveTo (m_rectList.left + GetExtraHierarchyOffset () + dx - m_nHorzScrollOffset, pItem->m_Rect.top);
-					pDC->LineTo (m_rectList.right, pItem->m_Rect.top);
+					pDC->LineTo (rectName.right, pItem->m_Rect.top);
 				}
 			}
 
@@ -12461,7 +14085,7 @@ void CBCGPGridCtrl::OnDrawGroupByBox (CDC* pDC, CRect rect)
 	}
 
 	const int CALCULATED_TEXT_MARGIN = m_bIsPrinting ? 
-		::MulDiv (TEXT_MARGIN, nXMul, nXDiv) : TEXT_MARGIN;
+		::MulDiv (TEXT_MARGIN, nXMul, nXDiv) : globalUtils.ScaleByDPI(TEXT_MARGIN);
 
 	COLORREF clrText = (m_bIsPrinting ? m_clrPrintText : globalData.clrBtnText);
 	CBrush br (m_clrPrintHeaderBG);
@@ -12481,21 +14105,21 @@ void CBCGPGridCtrl::OnDrawGroupByBox (CDC* pDC, CRect rect)
 		// map to printer metrics
 		const int CALCULATED_HMARGIN = m_bIsPrinting ? 
 			::MulDiv (BCGPGRID_GROUPBYBOX_HMARGIN, nXMul, nXDiv) : 
-			BCGPGRID_GROUPBYBOX_HMARGIN;
+			globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_HMARGIN);
 		const int CALCULATED_VMARGIN = m_bIsPrinting ? 
 			::MulDiv (BCGPGRID_GROUPBYBOX_VMARGIN, nYMul, nYDiv) : 
-			BCGPGRID_GROUPBYBOX_VMARGIN;
+			globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_VMARGIN);
 
 		const int CALCULATED_COLUMNWIDTH = m_bIsPrinting ? 
 			::MulDiv (BCGPGRID_GROUPBYBOX_COLUMNWIDTH, nXMul, nXDiv) : 
-			BCGPGRID_GROUPBYBOX_COLUMNWIDTH;
+			globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_COLUMNWIDTH);
 
 		const int CALCULATED_HSPACING = m_bIsPrinting ? 
 			::MulDiv (BCGPGRID_GROUPBYBOX_HSPACING, nXMul, nXDiv) : 
-			BCGPGRID_GROUPBYBOX_HSPACING;
+			globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_HSPACING);
 		const int CALCULATED_VSPACING = m_bIsPrinting ? 
 			::MulDiv (BCGPGRID_GROUPBYBOX_VSPACING, nYMul, nYDiv) : 
-			BCGPGRID_GROUPBYBOX_VSPACING;
+			globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_VSPACING);
 		
 		rect.DeflateRect (CALCULATED_HMARGIN, CALCULATED_VMARGIN, 0, 0);
 
@@ -12613,13 +14237,11 @@ void CBCGPGridCtrl::OnDrawHeader (CDC* pDC)
 		CRect rectColumn;
 		GetColumnsInfo ().GetColumnRect (i, rectColumn);
 
+		const int nMargin = globalUtils.ScaleByDPI(5);
+
 		if (m_nHorzScrollOffset > 0)
 		{
-			CRect rectColumnClip = rectColumn;
-			if (m_rectHeader.left > rectColumnClip.left)
-			{
-				rectColumnClip.left = min (rectColumnClip.right, m_rectHeader.left);
-			}
+			CRect rectColumnClip = m_rectHeader;
 
 			if (GetColumnsInfo ().IsFreezeColumnsEnabled () && !GetColumnsInfo ().IsColumnFrozen (i))
 			{
@@ -12633,13 +14255,13 @@ void CBCGPGridCtrl::OnDrawHeader (CDC* pDC)
 			rgnClipColumn.CreateRectRgnIndirect (&rectColumnClip);
 			pDC->SelectClipRgn (&rgnClipColumn);
 
-			GetColumnsInfo ().DrawColumn (pDC, i, rectColumn);
+			GetColumnsInfo ().DrawColumn (pDC, i, rectColumn, nMargin, nMargin);
 
 			pDC->SelectClipRgn (NULL);
 		}
 		else
 		{
-			GetColumnsInfo ().DrawColumn (pDC, i, rectColumn);
+			GetColumnsInfo ().DrawColumn (pDC, i, rectColumn, nMargin, nMargin);
 		}
 	}
 }
@@ -12788,6 +14410,8 @@ void CBCGPGridCtrl::OnDrawHeaderItemBorder (CDC* pDC, CRect rect, int nCol)
 	ASSERT_VALID (pDC);
 	ASSERT_VALID (this);
 
+	BOOL bAllowSelectedHeader = !IsWholeRowSel() || (IsRowHeaderEnabled() && IsAllSelected());
+
 	CBCGPGridHeaderParams params;
 	params.m_nHeaderPart = CBCGPGridHeaderParams::HeaderTop;
 
@@ -12799,7 +14423,7 @@ void CBCGPGridCtrl::OnDrawHeaderItemBorder (CDC* pDC, CRect rect, int nCol)
 
 	params.m_rect = rect;
 	params.m_nColumn = nCol;
-	params.m_nItemSelected = (IsColumnSelected (nCol)) ? CBCGPGridHeaderParams::Selected : CBCGPGridHeaderParams::NotSelected;
+	params.m_nItemSelected = (bAllowSelectedHeader && IsColumnSelected(nCol)) ? CBCGPGridHeaderParams::Selected : CBCGPGridHeaderParams::NotSelected;
 
 	if (nCol == m_nDraggedColumn && m_nDraggedColumn != -1 && !m_bDragGroupItem && !m_bDragFromChooser)
 	{
@@ -12818,6 +14442,25 @@ void CBCGPGridCtrl::OnDrawHeaderItemBorder (CDC* pDC, CRect rect, int nCol)
 	}
 
 	DrawHeaderPart (pDC, params);
+}
+//****************************************************************************************
+COLORREF CBCGPGridCtrl::OnGetHeaderItemTextColor(BOOL bSelected, BOOL bIsGroupBox, int /*nCol*/, CBCGPHeaderItem* /*pHeaderItem*/)
+{
+	if (bIsGroupBox)
+	{
+		return (COLORREF)-1;
+	}
+
+	COLORREF clrText = (bSelected && m_ColorData.m_HeaderSelColors.m_clrText != -1)
+		? m_ColorData.m_HeaderSelColors.m_clrText
+		: m_ColorData.m_HeaderColors.m_clrText;
+	
+	if (clrText == (COLORREF)-1)
+	{
+		clrText = visualManager->GetGridHeaderItemTextColor(this, bSelected, bIsGroupBox);
+	}
+
+	return clrText;
 }
 //****************************************************************************************
 void CBCGPGridCtrl::OnDrawSelectAllArea (CDC* pDC)
@@ -12852,17 +14495,8 @@ void CBCGPGridCtrl::OnFillRowHeaderBackground (CDC* pDC, CRect rect)
 {
 	ASSERT_VALID (pDC);
 
-	if (TRUE) // fill rest of header same as control background
-	{
-		OnFillBackground (pDC, rect);
-	}
-	else
-	{
-		if (!m_ColorData.m_HeaderColors.Draw (pDC, rect))
-		{
-			visualManager->OnFillGridHeaderBackground (this, pDC, rect);
-		}
-	}
+	// fill rest of header same as control background
+	OnFillBackground (pDC, rect);
 }
 //****************************************************************************************
 void CBCGPGridCtrl::OnDrawRowHeaderItem (CDC* pDC, CBCGPGridRow* pItem)
@@ -12936,6 +14570,11 @@ void CBCGPGridCtrl::OnDrawLineNumber (CDC* pDC, CBCGPGridRow* pRow, CRect rect, 
 		COLORREF clrText = (bSelected && m_ColorData.m_HeaderSelColors.m_clrText != -1)
 								? m_ColorData.m_HeaderSelColors.m_clrText
 								: m_ColorData.m_HeaderColors.m_clrText;
+		if (clrText == (COLORREF)-1)
+		{
+			clrText = visualManager->GetGridHeaderItemTextColor (this, bSelected, FALSE);
+		}
+
 		COLORREF clrTextOld = (COLORREF)-1;
 		if (clrText != (COLORREF)-1)
 		{
@@ -12943,13 +14582,7 @@ void CBCGPGridCtrl::OnDrawLineNumber (CDC* pDC, CBCGPGridRow* pRow, CRect rect, 
 		}
 
 		CRect rectLabel = rect;
-		rectLabel.DeflateRect (TEXT_MARGIN, 0);
-
-		CString strLabel;
-		if (pRow->GetRowId () >= 0)
-		{
-			strLabel.Format (_T("%d"), pRow->GetRowId () + 1);
-		}
+		rectLabel.DeflateRect (GRID_TEXT_MARGIN, 0);
 
 		UINT uiTextFlags = DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX | DT_CENTER;
 
@@ -12959,15 +14592,87 @@ void CBCGPGridCtrl::OnDrawLineNumber (CDC* pDC, CBCGPGridRow* pRow, CRect rect, 
 		}
 		else
 		{
-			rectLabel.DeflateRect(0, TEXT_VMARGIN);
+			rectLabel.DeflateRect(0, GRID_TEXT_VMARGIN);
 		}
 
-		pDC->DrawText (strLabel, rectLabel, uiTextFlags);
+		pDC->DrawText(GetRowNumber(pRow), rectLabel, uiTextFlags);
 
 		if (clrTextOld != (COLORREF)-1)
 		{
 			pDC->SetTextColor (clrTextOld);
 		}
+	}
+}
+//****************************************************************************************
+void CBCGPGridCtrl::OnDrawTreeLines (CDC* pDC, CBCGPGridRow* pRow, CRect rect)
+{
+	ASSERT_VALID (pDC);
+	ASSERT_VALID(pRow);
+
+	if (pRow->GetParent() != NULL)
+	{
+		CPen* pOldPen = pDC->SelectObject (&m_penTreeLine);
+
+		int nLevels = GetHierarchyLevelOffset() != 0 ? rect.Width() / GetHierarchyLevelOffset() : 0;
+
+		CRect rectTreeLines = rect;
+		rectTreeLines.left = rect.right - GetHierarchyLevelOffset();
+
+		int x, x2, y, y1, y2;
+		x = x2 = rectTreeLines.CenterPoint().x;
+		y = y1 = y2 = rectTreeLines.CenterPoint().y;
+		
+		if (pRow->HasExpandButton())
+		{
+			CRect rectBox = pRow->GetExpandBoxRect(GetHierarchyOffset(pRow));
+
+			int nBoxSize = min(globalUtils.ScaleByDPI(9), rectBox.Width());
+
+			rectBox = CRect(rectBox.CenterPoint(), CSize (1, 1));
+			rectBox.InflateRect(nBoxSize / 2, nBoxSize / 2);
+
+			if (!rectBox.IsRectEmpty() && rectBox.PtInRect(CPoint(x, y)))
+			{
+				x = rectBox.CenterPoint().x;
+				y = rectBox.CenterPoint().y;
+				x2 = rectBox.right;
+				y1 = rectBox.top;
+				y2 = rectBox.bottom;
+			}
+		}
+
+		if (pRow->CBCGPGridRow::GetHierarchyLevel() <= nLevels)
+		{
+			pDC->MoveTo (x, rectTreeLines.top);
+			pDC->LineTo (x, y1);
+			pDC->MoveTo (x2, y);
+			pDC->LineTo (rectTreeLines.right, y);
+
+			if (pRow->HasNextSibling())
+			{
+				pDC->MoveTo (x, y2);
+				pDC->LineTo (x, rectTreeLines.bottom);
+			}
+
+			rectTreeLines.OffsetRect(-GetHierarchyLevelOffset(), 0);
+		}
+
+		CBCGPGridRow* pParentRow = pRow->GetParent();
+		while (pParentRow != NULL && pParentRow->GetParent() != NULL)
+		{
+			if (pParentRow->CBCGPGridRow::GetHierarchyLevel() <= nLevels)
+			{
+				if (pParentRow->HasNextSibling())
+				{
+					pDC->MoveTo (rectTreeLines.CenterPoint().x, rectTreeLines.top);
+					pDC->LineTo (rectTreeLines.CenterPoint().x, rectTreeLines.bottom);
+				}
+				rectTreeLines.OffsetRect(-GetHierarchyLevelOffset(), 0);
+			}
+			pParentRow = pParentRow->GetParent();
+		}
+
+		pDC->SelectObject (pOldPen);
 	}
 }
 //****************************************************************************************
@@ -12997,12 +14702,18 @@ void CBCGPGridCtrl::OnFillFilterBar (CDC* pDC)
 
 		CRect rectClipItem = params.m_rect;
 		rectClipItem.InflateRect (params.m_rectOuterBorders);
+		rectClipItem.bottom ++;
 
 		if (!rectClipItem.IsRectEmpty ())
 		{
 			CRgn rgnClipRowHeader;
 			rgnClipRowHeader.CreateRectRgnIndirect (&rectClipItem);
 			pDC->SelectClipRgn (&rgnClipRowHeader);
+
+			FillHeaderPartBackground (pDC, params);
+			DrawHeaderPart (pDC, params);
+
+			params.m_rect.OffsetRect(0, params.m_rect.Height());
 
 			FillHeaderPartBackground (pDC, params);
 			DrawHeaderPart (pDC, params);
@@ -13042,9 +14753,12 @@ void CBCGPGridCtrl::OnFillFilterBar (CDC* pDC)
 			GetColumnsInfo ().GetColumnRect (iColumn, rect);
 			rect.top = m_rectFilterBar.top;
 			rect.bottom = m_rectFilterBar.bottom;
-			
-			pDC->MoveTo (rect.right - 1, rect.top);
-			pDC->LineTo (rect.right - 1, rect.bottom);
+
+			if (rect.right - 1 >= m_rectRowHeader.right)
+			{
+				pDC->MoveTo (rect.right - 1, rect.top);
+				pDC->LineTo (rect.right - 1, rect.bottom);
+			}
 		}
 		
 		pDC->SelectObject (pOldPen);
@@ -13080,6 +14794,8 @@ void CBCGPGridCtrl::DrawHeaderItem (CDC* pDC, CRect rect, CBCGPHeaderItem* pHead
 	}
 
 	ASSERT_VALID (pHeaderItem);
+
+	BOOL bAllowSelectedHeader = !IsWholeRowSel() || (IsRowHeaderEnabled() && IsAllSelected());
 
 	//-------------
 	// Draw border:
@@ -13204,11 +14920,9 @@ void CBCGPGridCtrl::DrawHeaderItem (CDC* pDC, CRect rect, CBCGPHeaderItem* pHead
 	//-----------
 	if (bDrawText)
 	{
-		COLORREF clrText = (bValidColumn && IsColumnSelected (pHeaderItem->m_nColumn) && m_ColorData.m_HeaderSelColors.m_clrText != -1)
-			? m_ColorData.m_HeaderSelColors.m_clrText
-			: m_ColorData.m_HeaderColors.m_clrText;
+		COLORREF clrText = OnGetHeaderItemTextColor(bAllowSelectedHeader && bValidColumn && IsColumnSelected (pHeaderItem->m_nColumn), pHeaderItem->m_bIsGroupBox, pHeaderItem->m_nColumn, pHeaderItem);
 		COLORREF clrTextOld = (COLORREF)-1;
-		if (clrText != (COLORREF)-1 && !pHeaderItem->m_bIsGroupBox)
+		if (clrText != (COLORREF)-1)
 		{
 			clrTextOld = pDC->SetTextColor (clrText);
 		}
@@ -13532,7 +15246,7 @@ CRect CBCGPGridCtrl::OnGetSelectionRect ()
 
 		rectTopLeft = (pLeftItem != NULL) ? pLeftItem->GetRect () : pTopRow->GetRect ();
 
-		if (IsFilterEnabled () && m_idActive.IsColumn ())
+		if ((IsFilterBarEnabled () || IsFilterEnabled ()) && m_idActive.IsColumn ())
 		{
 			GetColumnsInfo ().GetColumnRect (m_idActive.m_nColumn, rectTopLeft);
 			rectTopLeft.top = m_rectList.top;
@@ -13570,7 +15284,7 @@ CRect CBCGPGridCtrl::OnGetSelectionRect ()
 
 		rectBottomRight = (pRightItem != NULL) ? pRightItem->GetRect () : pBottomRow->GetRect ();
 
-		if (IsFilterEnabled () && m_idLastSel.IsColumn ())
+		if ((IsFilterBarEnabled () || IsFilterEnabled ()) && m_idLastSel.IsColumn ())
 		{
 			GetColumnsInfo ().GetColumnRect (m_idLastSel.m_nColumn, rectBottomRight);
 			rectBottomRight.top = m_rectList.top;
@@ -13763,6 +15477,93 @@ void CBCGPGridCtrl::OnDrawDragFrame (CDC* pDC)
 		pDC->SelectClipRgn (NULL);
 		return;
 	}
+}
+//****************************************************************************************
+// nHorzAlign: HDF_LEFT (default), HDF_CENTER, HDF_RIGHT
+// nVertAlign: BCGP_GRID_ITEM_VTOP, BCGP_GRID_ITEM_VCENTER (default), BCGP_GRID_ITEM_VBOTTOM
+void CBCGPGridCtrl::OnDrawCheckBox (CDC* pDC, CRect& rect, int nState, BOOL bHighlighted, BOOL bPressed, BOOL bEnabled, UINT nHorzAlign, UINT nVertAlign)
+{
+	ASSERT_VALID(this);
+	ASSERT_VALID(pDC);
+
+	if (nHorzAlign == 0)
+	{
+		nHorzAlign = HDF_LEFT;
+	}
+	if (nVertAlign == 0)
+	{
+		nVertAlign = BCGP_GRID_ITEM_VCENTER;
+	}
+
+	CSize sizeCheckBox = visualManager->GetCheckRadioDefaultSize();
+	
+	const double dblScale = GetScale();
+	if (dblScale != 1.0)
+	{
+		sizeCheckBox.cx = (int)(0.5 + dblScale * sizeCheckBox.cx);
+		sizeCheckBox.cy = (int)(0.5 + dblScale * sizeCheckBox.cy);
+	}
+	
+	const int nMargin = globalUtils.ScaleByDPI(GRID_IMAGE_MARGIN);
+	const int dx = max(0, (int)(.5 + .5 * (rect.Width() - sizeCheckBox.cx)));
+	const int dy = max(0, (int)(.5 + .5 * (rect.Height() - sizeCheckBox.cy)));
+	
+	CRect rectCheck = CRect (rect.left + dx, rect.top + dy, 
+		rect.left + dx + sizeCheckBox.cx, rect.top + dy + sizeCheckBox.cy);
+	
+	if (nHorzAlign == HDF_LEFT)
+	{
+		rectCheck.left = rect.left + nMargin;
+		rectCheck.right = rectCheck.left + sizeCheckBox.cx;
+	}
+	else if (nHorzAlign == HDF_RIGHT)
+	{
+		rectCheck.right = rect.right - nMargin;
+		rectCheck.left = rectCheck.right - sizeCheckBox.cx;
+	}
+
+	if (nVertAlign == BCGP_GRID_ITEM_VTOP)
+	{
+		rectCheck.top = rect.top + nMargin;
+		rectCheck.bottom = rectCheck.top + sizeCheckBox.cy;
+	}
+	else if (nVertAlign == BCGP_GRID_ITEM_VBOTTOM)
+	{
+		rectCheck.bottom = rect.bottom - nMargin;
+		rectCheck.top = rectCheck.bottom - sizeCheckBox.cy;
+	}
+
+	if (rectCheck.Width() != rectCheck.Height())
+	{
+		if (rectCheck.Width() > rectCheck.Height())
+		{
+			rectCheck.left = rectCheck.CenterPoint().x - (int)(0.5 * rectCheck.Height());
+			rectCheck.right = rectCheck.left + rectCheck.Height();
+		}
+		else
+		{
+			rectCheck.top = rectCheck.CenterPoint().y - (int)(0.5 * rectCheck.Width());
+			rectCheck.bottom = rectCheck.top + rectCheck.Width();
+		}
+	}
+
+	visualManager->SetScaleCheckRadio(dblScale > 1.0, dblScale);
+
+	if (IsVisualManagerStyle())
+	{
+		visualManager->OnDrawCheckBoxEx(pDC, rectCheck, nState, bHighlighted, bPressed, bEnabled);
+	}
+	else
+	{
+		if (!visualManager->CBCGPWinXPThemeManager::DrawCheckBox(pDC, rectCheck, bHighlighted, nState, bEnabled, bPressed))
+		{
+			visualManager->CBCGPVisualManager::OnDrawCheckBoxEx(pDC, rectCheck, nState, bHighlighted, bPressed, bEnabled);
+		}
+	}
+
+	visualManager->SetScaleCheckRadio(FALSE, 1.0);
+
+	rect = rectCheck;
 }
 //****************************************************************************************
 void CBCGPGridCtrl::OnItemChanged (CBCGPGridItem* pItem, int nRow, int nColumn)
@@ -14005,7 +15806,7 @@ void CBCGPGridCtrl::TrackToolTip (CPoint point)
 	}
 
 #ifndef _BCGPGRID_STANDALONE
-	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
+	if (CBCGPPopupMenu::GetActiveMenu () != NULL && !IsPlacedOnActiveMenu())
 	{
 		return;
 	}
@@ -14100,7 +15901,7 @@ void CBCGPGridCtrl::TrackToolTip (CPoint point)
 			return;
 		}
 
-		m_ToolTip.SetTextMargin (TEXT_MARGIN);
+		m_ToolTip.SetTextMargin (GRID_TEXT_MARGIN);
 		m_ToolTip.SetFont (GetFont ());
 		m_ToolTip.SetMultiline (pHitRow->m_nLines > 1);
 
@@ -14206,6 +16007,16 @@ void CBCGPGridCtrl::EnableMultipleSort (BOOL bEnable)
 BOOL CBCGPGridCtrl::IsMultipleSort () const
 {
 	return GetColumnsInfo ().IsMultipleSort ();
+}
+//****************************************************************************************
+void CBCGPGridCtrl::SetColumnSortingPriority (LPINT piArray, int iCount)
+{
+	GetColumnsInfo().SetColumnSortingPriority(piArray, iCount);
+}
+//****************************************************************************************
+const int* CBCGPGridCtrl::GetColumnSortingPriority (int& nCount) const
+{
+	return GetColumnsInfo().GetColumnSortingPriority(nCount);
 }
 //****************************************************************************************
 void CBCGPGridCtrl::EnableMarkSortedColumn (BOOL bMark, BOOL bRedraw)
@@ -14391,8 +16202,14 @@ void CBCGPGridCtrl::EnableFilterBar (BOOL bEnable, LPCTSTR lpszPrompt, BOOL bCas
 
 			m_ImageSearch.Load(globalData.Is32BitIcons () ?
 				IDB_BCGBARRES_SEARCH32 : IDB_BCGBARRES_SEARCH);
+
+#ifndef _BCGSUITE_
+			m_ImageSearch.SetSingleImage(FALSE);
+#else
 			m_ImageSearch.SetSingleImage();
+#endif
 			m_ImageSearch.SetTransparentColor(globalData.clrBtnFace);
+			globalUtils.ScaleByDPI(m_ImageSearch);
 		}
 		
 		if (m_btnFilterClear.GetSafeHwnd () == NULL)
@@ -14405,7 +16222,11 @@ void CBCGPGridCtrl::EnableFilterBar (BOOL bEnable, LPCTSTR lpszPrompt, BOOL bCas
 			m_btnFilterClear.SetImage (globalData.Is32BitIcons () ? IDB_BCGBARRES_CLEAR32 : IDB_BCGBARRES_CLEAR);
 			m_btnFilterClear.m_bDrawFocus = FALSE;
 			m_btnFilterClear.m_bVisualManagerStyle = TRUE;
-			
+
+#ifndef _BCGSUITE_
+			m_btnFilterClear.SetImageAutoScale();
+#endif			
+
 			CString strTooltip;
 			strTooltip.LoadString (IDS_BCGBARRES_GRID_CLEARFILTER);
 			m_btnFilterClear.SetTooltip (strTooltip);
@@ -14481,7 +16302,7 @@ CWnd* CBCGPGridCtrl::OnCreateFilterBarCtrl (int nColumn, LPCTSTR lpszPrompt)
 
 	pEdit->EnableSearchMode (TRUE, lpszPrompt);
 	pEdit->SetFont (GetFont ());
-	pEdit->SetMargins (TEXT_MARGIN - m_nEditLeftMargin, TEXT_MARGIN - m_nEditRightMargin);
+	pEdit->SetMargins (GRID_TEXT_MARGIN - m_nEditLeftMargin, GRID_TEXT_MARGIN - m_nEditRightMargin);
 
 	return pEdit;
 }
@@ -14513,6 +16334,61 @@ void CBCGPGridCtrl::SetFocusToFilterBar (int nColumn)
 	}
 }
 //****************************************************************************************
+void CBCGPGridCtrl::UpdateFilterBarCtrlsFont ()
+{
+	ASSERT_VALID (this);
+	
+	if (!m_bFilterBar || GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+	
+	for (int iColumn = 0; iColumn < GetColumnsInfo ().GetColumnCount (); iColumn++)
+	{
+		CBCGPEdit* pEdit = DYNAMIC_DOWNCAST(CBCGPEdit, GetColumnsInfo().GetColumnFilterBarCtrl(iColumn));
+		if (pEdit->GetSafeHwnd () != NULL)
+		{
+			ASSERT_VALID(pEdit);
+			pEdit->SetFont(GetFont());
+		}
+	}
+}
+//****************************************************************************************
+void CBCGPGridCtrl::UpdateFilterBarCtrlsTheme ()
+{
+	ASSERT_VALID (this);
+	
+	if (!m_bFilterBar || GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	for (int iColumn = 0; iColumn < GetColumnsInfo ().GetColumnCount (); iColumn++)
+	{
+		CBCGPEdit* pEdit = DYNAMIC_DOWNCAST(CBCGPEdit, GetColumnsInfo().GetColumnFilterBarCtrl(iColumn));
+		if (pEdit->GetSafeHwnd () != NULL)
+		{
+			ASSERT_VALID(pEdit);
+
+			if (m_bVisualManagerStyle)
+			{
+				CBCGPEditColors colors;
+				pEdit->SetColorTheme(colors);
+			}
+			else
+			{
+				CBCGPEditColors colors;
+				colors.m_clrBackground = m_ColorData.m_HeaderColors.m_clrBackground;
+				colors.m_clrText = m_ColorData.m_HeaderColors.m_clrText;
+
+				pEdit->SetColorTheme(colors);
+			}
+
+			pEdit->SendMessage(BCGM_ONSETCONTROLVMMODE, m_bVisualManagerStyle);
+		}
+	}
+}
+//****************************************************************************************
 BOOL CBCGPGridCtrl::IsRowFilteredByFilterBar (const CBCGPGridRow* pRow)
 	// returns TRUE, if item is hidden (filtered)
 {
@@ -14527,7 +16403,7 @@ BOOL CBCGPGridCtrl::IsRowFilteredByFilterBar (const CBCGPGridRow* pRow)
 
 	if (pRow->IsGroup ())
 	{
-		return FALSE; // do not hide groups
+		return !pRow->HasNonFilteredSubItems(); // hide groups if all sub-items are filtered
 	}
 	
 	//--------------------------------------------------------------
@@ -14661,7 +16537,7 @@ void CBCGPGridCtrl::OnFilterBarClearAll ()
 		return;
 	}
 
-	BOOL m_bNoFilterBarUpdate = TRUE;
+	m_bNoFilterBarUpdate = TRUE;
 
 	for (int iColumn = 0; iColumn < GetColumnsInfo ().GetColumnCount (); iColumn++)
 	{
@@ -14940,7 +16816,7 @@ int CBCGPGridCtrl::GetHeaderMenuButtonImageIndex (int nColumn, BOOL bSortArrow) 
 	
 	if (bSortArrow)
 	{
-		int nSortVal = m_Columns.GetColumnState (nColumn);
+		int nSortVal = GetColumnsInfo().GetColumnState (nColumn);
 		if (nSortVal > 0)
 		{
 			nIndex += 1;
@@ -15096,6 +16972,12 @@ void CBCGPGridCtrl::DoColumnHeaderClick (int nColumnHit, CPoint point, CBCGPGrid
 	const BOOL bShift = (::GetAsyncKeyState (VK_SHIFT) & 0x8000) != 0 && !m_bIgnoreShiftBtn;
 	const BOOL bCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000) != 0 && !m_bIgnoreCtrlBtn;
 
+	if (clickAreaHeader == CBCGPGridColumnsInfo::ClickCheckBox)
+	{
+		OnHeaderCheckBoxClick(nColumnHit);
+		return;
+	}
+
 	if (clickAreaHeader == CBCGPGridColumnsInfo::ClickHeaderButton)
 	{
 		CRect rectHeaderColumn;
@@ -15104,9 +16986,11 @@ void CBCGPGridCtrl::DoColumnHeaderClick (int nColumnHit, CPoint point, CBCGPGrid
 		OnHeaderMenuButtonClick (nColumnHit, GetHeaderMenuButtonRect (rectHeaderColumn, nColumnHit));
 		return;
 	}
+
+	BOOL bMultipleSelClick = (bCtrl || bShift) && !m_bSingleSel;
 	
 	if ((m_dwHeaderFlags & BCGP_GRID_HEADER_SELECT) != 0 &&
-		(m_dwHeaderFlags & BCGP_GRID_HEADER_MOVE_ITEMS) == 0 &&
+		(bMultipleSelClick || (m_dwHeaderFlags & BCGP_GRID_HEADER_MOVE_ITEMS) == 0) &&
 		!m_bWholeRowSel)
 	{
 		// Select column
@@ -15240,6 +17124,16 @@ int CBCGPGridCtrl::CompareItems (const CBCGPGridRow* pRow1, const CBCGPGridRow* 
 	ASSERT_VALID (this);
 	ASSERT_VALID (pRow1);
 	ASSERT_VALID (pRow2);
+
+	if (!IsGrouping())
+	{
+		if (pRow1->m_pParent != pRow2->m_pParent || // sub-items in different groups
+			pRow1->IsGroup() || pRow2->IsGroup())   // or groups
+		{
+			// do not compare content of sub-items in different groups
+			return pRow1->GetRowId() - pRow2->GetRowId();
+		}
+	}
 
 	if (!pRow1->HasValueField () ||
 		!pRow2->HasValueField ())
@@ -15419,6 +17313,19 @@ BOOL CBCGPGridCtrl::GetRowName (CBCGPGridRow* pRow, CString& strName)
 	return FALSE;
 }
 //*****************************************************************************************
+CString CBCGPGridCtrl::GetRowNumber (CBCGPGridRow* pRow)
+{
+	ASSERT_VALID (pRow);
+
+	CString strLabel;
+	if (pRow->GetRowId () >= 0)
+	{
+		strLabel.Format (_T("%d"), pRow->GetRowId () + 1);
+	}
+
+	return strLabel;
+}
+//*****************************************************************************************
 int CBCGPGridCtrl::InsertGroupColumn (int nPos, int nColumn)
 {
 	int nRes = GetColumnsInfo ().InsertGroupColumn (nPos, nColumn);
@@ -15472,9 +17379,9 @@ int CBCGPGridCtrl::GetGroupColumnRect (int nPos, CRect& rect, CDC* pDC)
 	CRect rectGroupByBox = rectClient;
 	rectGroupByBox.bottom = min (rectGroupByBox.top + m_nGroupByBoxHeight, rectClient.bottom);
 
-	rectGroupByBox.DeflateRect (BCGPGRID_GROUPBYBOX_HMARGIN, BCGPGRID_GROUPBYBOX_VMARGIN, 0, 0);
+	rectGroupByBox.DeflateRect (globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_HMARGIN), globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_VMARGIN), 0, 0);
 
-	int nItemHeight = m_nBaseHeight + TEXT_MARGIN;
+	int nItemHeight = m_nBaseHeight + GRID_TEXT_MARGIN;
 	int nIndex = 0;
 
 	for (int i = 0; i < GetColumnsInfo ().GetGroupColumnCount (); i++)
@@ -15486,7 +17393,7 @@ int CBCGPGridCtrl::GetGroupColumnRect (int nPos, CRect& rect, CDC* pDC)
 			CString strColumn = GetColumnsInfo ().GetColumnName (nCol);
 
 			int nItemWidth = pDC->GetTextExtent (strColumn).cx + 
-				BCGPGRID_GROUPBYBOX_COLUMNWIDTH + TEXT_MARGIN;
+				globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_COLUMNWIDTH) + GRID_TEXT_MARGIN;
 
 			rectItem.bottom = min (rectItem.top + nItemHeight, rectGroupByBox.bottom);
 			rectItem.right = min (rectItem.left + nItemWidth, rectGroupByBox.right);
@@ -15501,7 +17408,7 @@ int CBCGPGridCtrl::GetGroupColumnRect (int nPos, CRect& rect, CDC* pDC)
 			nIndex++;
 		}
 
-		rectGroupByBox.DeflateRect (BCGPGRID_GROUPBYBOX_HSPACING, BCGPGRID_GROUPBYBOX_VSPACING, 0, 0);
+		rectGroupByBox.DeflateRect (globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_HSPACING), globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_VSPACING), 0, 0);
 	}
 
 	return -1;
@@ -15523,6 +17430,12 @@ int CBCGPGridCtrl::GetExtraHierarchyOffset () const
 	}
 
 	return GetLeftMarginWidth ();
+}
+//*****************************************************************************************
+int CBCGPGridCtrl::GetHierarchyOffset (const CBCGPGridRow* pRow) const
+{
+	ASSERT_VALID(pRow);
+	return pRow->GetHierarchyLevel() * GetHierarchyLevelOffset();
 }
 //*****************************************************************************************
 int CBCGPGridCtrl::AddRow (BOOL bRedraw)
@@ -16000,6 +17913,8 @@ void CBCGPGridCtrl::RemoveAll ()
 	m_idLastSel.SetNull ();
 	SetCurSel (m_idActive, SM_NONE, FALSE);
 
+	m_nVertScrollOffset = 0;
+
 	CleanUpAutoGroups ();
 
 	while (!m_lstItems.IsEmpty ())
@@ -16019,6 +17934,8 @@ void CBCGPGridCtrl::RemoveAll ()
 
 	SetRebuildTerminalItems ();
 	m_CachedItems.CleanUpCache ();
+
+	AdjustLayout();
 }
 //******************************************************************************************
 CBCGPGridRow* CBCGPGridCtrl::GetRow (int nIndex) const
@@ -16090,6 +18007,11 @@ CBCGPGridRow* CBCGPGridCtrl::GetRow (int nIndex) const
 	}
 
 	return NULL;
+}
+//******************************************************************************************
+BOOL CBCGPGridCtrl::IsEmpty() const
+{
+	return (m_bVirtualMode ? m_nVirtualRows : GetRowCount()) == 0;
 }
 //******************************************************************************************
 int CBCGPGridCtrl::GetRowCount (BOOL bIncludeAutoGroups) const
@@ -16379,8 +18301,8 @@ BOOL CBCGPGridCtrl::IsColumnSelected (int nColumn, BOOL bAllItemsSelected) const
 		ASSERT (pSelRange != NULL);
 
 		int nPos = GetColumnsInfo ().IndexToOrder (nColumn);
-		int nPosLeft = GetColumnsInfo ().IndexToOrder (pSelRange->m_nLeft);
-		int nPosRight = GetColumnsInfo ().IndexToOrder (pSelRange->m_nRight);
+		int nPosLeft = (pSelRange->m_nLeft >= 0) ? GetColumnsInfo ().IndexToOrder (pSelRange->m_nLeft) : -1;
+		int nPosRight = (pSelRange->m_nRight >= 0) ? GetColumnsInfo ().IndexToOrder (pSelRange->m_nRight) : -1;
 
 		if (nPos != -1 && nPosLeft != -1 && nPosRight != -1 &&
 			min (nPosLeft, nPosRight) <= nPos && max (nPosLeft, nPosRight) >= nPos)
@@ -16672,12 +18594,6 @@ BOOL CBCGPGridCtrl::ClearRange (const CBCGPGridRange& range, BOOL bRedraw,
 //******************************************************************************************
 BOOL CBCGPGridCtrl::NormalizeSelectionList ()
 {
-	if (!IsWholeRowSel () || m_pSerializeManager == NULL ||
-		m_pSerializeManager->m_ClipboardFormatType != CBCGPGridSerializeManager::CF_Rows)
-	{
-		return FALSE;
-	}
-
 	CList <CBCGPGridRange, CBCGPGridRange&> lstNormalizedSel;
 
 	for (int i = GetSelectionCount () - 1; i >= 0; i--)
@@ -16910,13 +18826,16 @@ void CBCGPGridCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 		return;
 	}
 
+	BOOL bSaveSelection = (id.IsNull() && !m_bClearSelOnEmptySpace) || 
+		clickArea == CBCGPGridRow::ClickCheckBox && !m_bSetSelOnCheckBox /*&& IsItemSelected(id)*/;
+
 	BOOL bSelChanged = id != m_idLastSel;
 	BOOL bIsButtonClick = pHitItem != NULL && pHitItem->m_rectButton.PtInRect (point);
 
 	const BOOL bShift = (::GetAsyncKeyState (VK_SHIFT) & 0x8000) != 0 && !m_bIgnoreShiftBtn;
 	const BOOL bCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000) != 0 && !m_bIgnoreCtrlBtn;
 
-	if (IsDragSelectionEnabled () && IsItemSelected (id) && !(bCtrl && m_bInvertSelOnCtrl) && !bIsButtonClick && clickArea != CBCGPGridRow::ClickExpandBox)
+	if (IsDragSelectionEnabled () && IsItemSelected (id) && !(bCtrl && m_bInvertSelOnCtrl) && !bIsButtonClick && clickArea != CBCGPGridRow::ClickExpandBox && clickArea != CBCGPGridRow::ClickCheckBox)
 	{
 		if (StartDragItems (point))
 		{
@@ -16924,36 +18843,39 @@ void CBCGPGridCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
-	DWORD dwSelMode = SM_NONE;
-	if (!id.IsNull ())
+	if (!bSaveSelection)
 	{
-		dwSelMode = SM_FIRST_CLICK |
-			(m_bSingleSel ? SM_SINGE_SEL_GROUP :
-			(bCtrl ? SM_ADD_SEL_GROUP :
-			(bShift ? SM_CONTINUE_SEL_GROUP : SM_SINGE_SEL_GROUP)));
+		DWORD dwSelMode = SM_NONE;
+		if (!id.IsNull ())
+		{
+			dwSelMode = SM_FIRST_CLICK |
+				(m_bSingleSel ? SM_SINGE_SEL_GROUP :
+				(bCtrl ? SM_ADD_SEL_GROUP :
+				(bShift ? SM_CONTINUE_SEL_GROUP : SM_SINGE_SEL_GROUP)));
 
-		if (bCtrl && m_bInvertSelOnCtrl)
-		{
-			dwSelMode |= SM_INVERT_SEL;
-		}
+			if (bCtrl && m_bInvertSelOnCtrl)
+			{
+				dwSelMode |= SM_INVERT_SEL;
+			}
 
-		if (pHitRow != NULL && id.IsRow ())
-		{
-			dwSelMode |= SM_ROW;
+			if (pHitRow != NULL && id.IsRow ())
+			{
+				dwSelMode |= SM_ROW;
+			}
+			if (id.IsColumn ())
+			{
+				dwSelMode |= SM_COLUMN;
+			}
 		}
-		if (id.IsColumn ())
-		{
-			dwSelMode |= SM_COLUMN;
-		}
+		
+		m_bNoUpdateWindow = TRUE; // prevent flickering
+		m_pSetSelItem = m_bVirtualMode ? NULL : pHitItem;
+
+		SetCurSel (id, dwSelMode);
+
+		m_pSetSelItem = NULL;
+		m_bNoUpdateWindow = FALSE;
 	}
-	
-	m_bNoUpdateWindow = TRUE; // prevent flickering
-	m_pSetSelItem = m_bVirtualMode ? NULL : pHitItem;
-
-	SetCurSel (id, dwSelMode);
-
-	m_pSetSelItem = NULL;
-	m_bNoUpdateWindow = FALSE;
 
 	if (id.IsNull () || pHitRow == NULL)
 	{
@@ -16962,6 +18884,12 @@ void CBCGPGridCtrl::OnLButtonDown(UINT nFlags, CPoint point)
 
 	ASSERT_VALID (pHitRow);
 	EnsureVisible (pHitRow);
+
+	if (clickArea == CBCGPGridRow::ClickCheckBox)
+	{
+		OnRowCheckBoxClick(pHitRow);
+		return;
+	}
 
 	CBCGPGridRow* pCurSel = GetCurSel ();
 	CBCGPGridItem* pItem = GetCurSelItem (pCurSel);
@@ -17045,6 +18973,16 @@ void CBCGPGridCtrl::OnRButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
+	//--------------
+	// Header click:
+	//--------------
+	int nColumnHit = GetColumnsInfo ().HitTestColumn (point, FALSE, STRETCH_DELTA);
+	if (nColumnHit >= 0)
+	{
+		OnHeaderColumnRClick (nColumnHit);
+		return;
+	}
+
 	CBCGPGridRow::ClickArea clickArea;
 	CBCGPGridItemID id;
 	CBCGPGridItem* pHitItem = NULL;
@@ -17055,30 +18993,30 @@ void CBCGPGridCtrl::OnRButtonDown(UINT nFlags, CPoint point)
 		return;
 	}
 
-	BOOL bSaveSelection = pHitRow != NULL &&
-		(pHitItem != NULL ? pHitItem->IsSelected () : pHitRow->IsSelected () );
+	BOOL bSaveSelection = (id.IsNull() && !m_bClearSelOnEmptySpace) || 
+		pHitRow != NULL && (pHitItem != NULL ? pHitItem->IsSelected() : pHitRow->IsSelected() );
 
 	BOOL bSelChanged = id != m_idLastSel;
 
 	const BOOL bShift = (::GetAsyncKeyState (VK_SHIFT) & 0x8000) != 0 && !m_bIgnoreShiftBtn;
 	const BOOL bCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000) != 0 && !m_bIgnoreCtrlBtn;
 
-	DWORD dwSelMode = SM_NONE;
-	if (!id.IsNull ())
-	{
-		dwSelMode = SM_FIRST_CLICK |
-			(m_bSingleSel ? SM_SINGE_SEL_GROUP :
-			(bCtrl ? SM_ADD_SEL_GROUP :
-			(bShift ? SM_CONTINUE_SEL_GROUP : SM_SINGE_SEL_GROUP)));
-
-		if (bCtrl && m_bInvertSelOnCtrl)
-		{
-			dwSelMode |= SM_INVERT_SEL;
-		}
-	}
-
 	if (!bSaveSelection)
 	{
+		DWORD dwSelMode = SM_NONE;
+		if (!id.IsNull ())
+		{
+			dwSelMode = SM_FIRST_CLICK |
+				(m_bSingleSel ? SM_SINGE_SEL_GROUP :
+				(bCtrl ? SM_ADD_SEL_GROUP :
+				(bShift ? SM_CONTINUE_SEL_GROUP : SM_SINGE_SEL_GROUP)));
+
+			if (bCtrl && m_bInvertSelOnCtrl)
+			{
+				dwSelMode |= SM_INVERT_SEL;
+			}
+		}
+
 		m_pSetSelItem = m_bVirtualMode ? NULL : pHitItem;
 
 		SetCurSel (id, dwSelMode);
@@ -17086,11 +19024,13 @@ void CBCGPGridCtrl::OnRButtonDown(UINT nFlags, CPoint point)
 		m_pSetSelItem = NULL;
 	}
 
-	if (pHitRow != NULL)
+	if (id.IsNull() || pHitRow == NULL)
 	{
-		ASSERT_VALID (pHitRow);
-		EnsureVisible (pHitRow);
+		return;
 	}
+
+	ASSERT_VALID (pHitRow);
+	EnsureVisible (pHitRow);
 
 	CBCGPGridRow* pCurSel = GetCurSel ();
 	CBCGPGridItem* pItem = GetCurSelItem (pCurSel);
@@ -17246,6 +19186,8 @@ BOOL CBCGPGridCtrl::EndEditItem (BOOL bUpdateData/* = TRUE*/)
 	{
 		if (!ValidateItemData (pSel) || !pSel->OnUpdateValue ())
 		{
+			pSel->OnInplaceEditCancelUpdate();
+
 			ClearEndEditReason ();
 			return FALSE;
 		}
@@ -17459,6 +19401,12 @@ BOOL CBCGPGridCtrl::PreTranslateMessage(MSG* pMsg)
 					return TRUE;
 				}
 
+				CBCGPEdit* pEdit = DYNAMIC_DOWNCAST(CBCGPEdit, pWndInPlaceEdit);
+				if (pEdit != NULL && pEdit->GetMode() == CBCGPEdit::BrowseMode_PasswordPreview)
+				{
+					return CBCGPWnd::PreTranslateMessage(pMsg);
+				}
+
 				SetEndEditReason (EndEdit_AutoApply | EndEdit_Selection);
 				if (!EndEditItem ())
 				{
@@ -17631,8 +19579,12 @@ void CBCGPGridCtrl::OnKillFocus(CWnd* pNewWnd)
 void CBCGPGridCtrl::OnStyleChanged (int nStyleType, LPSTYLESTRUCT lpStyleStruct)
 {
 	CBCGPWnd::OnStyleChanged (nStyleType, lpStyleStruct);
-	SetRebuildTerminalItems ();
-	AdjustLayout ();
+
+	if (!IsTreeControl())
+	{
+		SetRebuildTerminalItems();
+		AdjustLayout();
+	}
 }
 //******************************************************************************************
 UINT CBCGPGridCtrl::OnGetDlgCode() 
@@ -17679,16 +19631,8 @@ void CBCGPGridCtrl::SetScrollSizes ()
 		m_nVertScrollTotal = rect.Height ();
 	}
 
-	if (FALSE)
-	{
-		m_nHorzScrollPage = 0;
-		m_nHorzScrollTotal = 0;
-	}
-	else
-	{
-		m_nHorzScrollPage = m_rectList.Width ();
-		m_nHorzScrollTotal = GetColumnsInfo ().GetTotalWidth ();
-	}
+	m_nHorzScrollPage = m_rectList.Width ();
+	m_nHorzScrollTotal = GetColumnsInfo ().GetTotalWidth ();
 
 	int cxScroll = m_bScrollVert ? ::GetSystemMetrics (SM_CXVSCROLL) : 0;
 	int cyScroll = m_bScrollHorz ? ::GetSystemMetrics (SM_CYHSCROLL) : 0;
@@ -17785,21 +19729,14 @@ void CBCGPGridCtrl::SetScrollSizes ()
 		return;
 	}
 
-	if (FALSE)
+	if (m_nHorzScrollTotal <= m_nHorzScrollPage || GetColumnsInfo ().IsAutoSize ())
 	{
-		m_nHorzScrollOffset = 0;
+		m_nHorzScrollPage = 0;
+		m_nHorzScrollTotal = 0;
 	}
-	else
-	{
-		if (m_nHorzScrollTotal <= m_nHorzScrollPage || GetColumnsInfo ().IsAutoSize ())
-		{
-			m_nHorzScrollPage = 0;
-			m_nHorzScrollTotal = 0;
-		}
 
-		m_nHorzScrollOffset = min (max (0, m_nHorzScrollOffset), 
-			m_nHorzScrollTotal - m_nHorzScrollPage + 1);
-	}
+	m_nHorzScrollOffset = min (max (0, m_nHorzScrollOffset), 
+		m_nHorzScrollTotal - m_nHorzScrollPage + 1);
 
 	ZeroMemory (&si, sizeof (SCROLLINFO));
 	si.cbSize = sizeof (SCROLLINFO);
@@ -17942,7 +19879,7 @@ int CBCGPGridCtrl::GetTotalItems (BOOL bCalcVisibleOnly) const
 		const CList<CBCGPGridRow*, CBCGPGridRow*>& lst =
 			(!IsSortingMode () && !IsGrouping ()) ? m_lstItems : m_lstTerminalItems;
 
-		BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+		BOOL bShowAllItems = FALSE;
 
 		for (POSITION pos = lst.GetHeadPosition (); pos != NULL; )
 		{
@@ -18005,7 +19942,7 @@ int CBCGPGridCtrl::GetTotalItems (int nCountFrom, int nCountTo,
 	const CList<CBCGPGridRow*, CBCGPGridRow*>& lst =
 		(!IsSortingMode () && !IsGrouping ()) ? m_lstItems : m_lstTerminalItems;
 
-	BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+	BOOL bShowAllItems = FALSE;
 
 	int i = 0;
 	for (POSITION pos = lst.GetHeadPosition (); pos != NULL && i < nCountTo; i++)
@@ -18052,7 +19989,7 @@ int CBCGPGridCtrl::GetGroupsCount (BOOL bCalcVisibleOnly) const
 	const CList<CBCGPGridRow*, CBCGPGridRow*>& lst =
 		(!IsSortingMode () && !IsGrouping ()) ? m_lstItems : m_lstTerminalItems;
 
-	BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+	BOOL bShowAllItems = FALSE;
 
 	for (POSITION pos = lst.GetHeadPosition (); pos != NULL; )
 	{
@@ -18103,7 +20040,7 @@ int CBCGPGridCtrl::GetGroupsCount (int nCountFrom, int nCountTo,
 	const CList<CBCGPGridRow*, CBCGPGridRow*>& lst =
 		(!IsSortingMode () && !IsGrouping ()) ? m_lstItems : m_lstTerminalItems;
 
-	BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+	BOOL bShowAllItems = FALSE;
 
 	int i = 0;
 	for (POSITION pos = lst.GetHeadPosition (); pos != NULL && i < nCountTo; i++)
@@ -18158,7 +20095,7 @@ int CBCGPGridCtrl::OffsetVisibleRow (int nStartFrom, int nOffsetCount, BOOL bDir
 	const CList<CBCGPGridRow*, CBCGPGridRow*>& lst =
 		(!IsSortingMode () && !IsGrouping ()) ? m_lstItems : m_lstTerminalItems;
 
-	BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+	BOOL bShowAllItems = FALSE;
 
 	int iResult = nStartFrom;
 	int index = nStartFrom;
@@ -18188,7 +20125,7 @@ int CBCGPGridCtrl::OffsetVisibleRow (int nStartFrom, int nOffsetCount, BOOL bDir
 //******************************************************************************************
 void CBCGPGridCtrl::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar) 
 {
-	if (m_nDraggedColumn >= 0 || m_bTracking || m_bSelecting)
+	if (m_nDraggedColumn >= 0 || m_bTracking || m_bSelecting && !m_bSelectingScroll)
 	{
 		return;
 	}
@@ -18317,7 +20254,7 @@ void CBCGPGridCtrl::OnAfterVScroll (int /*nVOffset*/, int /*nPrevVOffset*/)
 //*******************************************************************************************
 void CBCGPGridCtrl::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* /*pScrollBar*/)
 {
-	if (m_nDraggedColumn >= 0 || m_bTracking || m_bSelecting)
+	if (m_nDraggedColumn >= 0 || m_bTracking || m_bSelecting && !m_bSelectingScroll)
 	{
 		return;
 	}
@@ -18387,18 +20324,25 @@ void CBCGPGridCtrl::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* /*pScrollBar*
 	int dx = nPrevOffset - m_nHorzScrollOffset;
 
 	CRect rectClip = m_rectList;
+	if (IsRowHeaderEnabled() && !m_rectRowHeader.IsRectEmpty())
+	{
+		rectClip.left = min (m_rectRowHeader.right, rectClip.right);
+	}
 	if (GetColumnsInfo ().IsFreezeColumnsEnabled ())
 	{
-		rectClip.left = min (m_rectList.left + GetColumnsInfo ().GetFreezeOffset (), m_rectList.right);
+		rectClip.left = min (rectClip.left + GetColumnsInfo().GetFreezeOffset(), rectClip.right);
 	}
 
 	ShiftItems (dx, 0);
 	OnPosSizeChanged ();
 	m_rectTrackSel = OnGetSelectionRect ();
 
-	if (m_bFreezeGroups)
+	BOOL bNeedUpdate = FALSE;
+
+	if (m_bFreezeGroups || IsEmpty() || m_bOutOfFilter)
 	{
 		InvalidateRect (m_rectList);
+		bNeedUpdate = TRUE;
 	}
 	else
 	{
@@ -18409,24 +20353,33 @@ void CBCGPGridCtrl::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* /*pScrollBar*
 
 	if (!m_rectHeader.IsRectEmpty ())
 	{
-		RedrawWindow (m_rectHeader);
+		InvalidateRect (m_rectHeader);
+		bNeedUpdate = TRUE;
 	}
 
 	if (m_nGridHeaderHeight > 0)
 	{
-		RedrawWindow (GetGridHeaderRect ());
+		InvalidateRect (GetGridHeaderRect ());
+		bNeedUpdate = TRUE;
 	}
 
 	if (m_nGridFooterHeight > 0)
 	{
-		RedrawWindow (GetGridFooterRect ());
+		InvalidateRect (GetGridFooterRect ());
+		bNeedUpdate = TRUE;
 	}
 
 	AdjustFilterBarCtrls ();
 
 	if (!m_rectFilterBar.IsRectEmpty ())
 	{
-		RedrawWindow (m_rectFilterBar);
+		InvalidateRect (m_rectFilterBar);
+		bNeedUpdate = TRUE;
+	}
+
+	if (bNeedUpdate)
+	{
+		UpdateWindow();
 	}
 }
 //*******************************************************************************************
@@ -18453,10 +20406,25 @@ CScrollBar* CBCGPGridCtrl::GetScrollBarCtrl(int nBar) const
 	return NULL;
 }
 //******************************************************************************************
-BOOL CBCGPGridCtrl::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/) 
+BOOL CBCGPGridCtrl::IsPlacedOnActiveMenu() const
+{
+	if (CBCGPPopupMenu::GetActiveMenu() != NULL)
+	{
+		BOOL bIsParentMenu = FALSE;
+		for (CWnd* pParent = GetParent(); pParent != NULL && !bIsParentMenu; pParent = pParent->GetParent())
+		{
+			bIsParentMenu = pParent->GetSafeHwnd() == CBCGPPopupMenu::GetActiveMenu()->m_hWnd;
+		}
+		return bIsParentMenu;
+	}
+	
+	return FALSE;
+}
+//******************************************************************************************
+BOOL CBCGPGridCtrl::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
 #ifndef _BCGPGRID_STANDALONE
-	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
+	if (CBCGPPopupMenu::GetActiveMenu () != NULL && !IsPlacedOnActiveMenu())
 	{
 		return TRUE;
 	}
@@ -18465,6 +20433,19 @@ BOOL CBCGPGridCtrl::OnMouseWheel(UINT /*nFlags*/, short zDelta, CPoint /*pt*/)
 	if (m_nDraggedColumn >= 0 || m_bTracking || m_bSelecting)
 	{
 		return FALSE;
+	}
+
+	if ((nFlags & MK_CONTROL) == MK_CONTROL) // scaling
+	{
+		CPoint ptCenter = pt;
+		ScreenToClient (&ptCenter);
+		ptCenter.x -= m_rectList.left;
+		ptCenter.y -= m_rectList.top;
+
+		const double dblDelta = zDelta > 0 ? 0.1 : -0.1;
+		SetScale (m_dblScale + dblDelta, TRUE, ptCenter);
+
+		return TRUE;
 	}
 
 	if (m_nVertScrollTotal <= m_nVertScrollPage)
@@ -18559,7 +20540,7 @@ void CBCGPGridCtrl::OnLButtonDblClk(UINT nFlags, CPoint point)
 		CBCGPGridItem* pHitItem = NULL;
 		HitTest (point, id, pHitItem, &clickArea);
 
-		if (clickArea != CBCGPGridRow::ClickExpandBox)
+		if (clickArea != CBCGPGridRow::ClickExpandBox && clickArea != CBCGPGridRow::ClickCheckBox)
 		{
 			pSel->Expand (!pSel->IsExpanded ());
 		}
@@ -18743,6 +20724,18 @@ void CBCGPGridCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 				return;
 			}
 		}
+
+		if (IsCheckBoxesEnabled() && pSel != NULL && pSel->m_bEnabled && 
+			pSel->HasCheckBox())
+		{
+			// If active item has a check box, let it toogle.
+			CBCGPGridItem* pSelItem = GetCurSelItem(pSel);
+			if (pSelItem == NULL || !pSelItem->IsKindOf(RUNTIME_CLASS(CBCGPGridCheckItem)) )
+			{
+				OnRowCheckBoxClick(pSel);
+				return;
+			}
+		}
 		break;
 
 	case 0x41: // Ctrl+ A
@@ -18758,8 +20751,7 @@ void CBCGPGridCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			return;
 		}
-		else if (pSel != NULL && pSel->IsGroup () && pSel->IsExpanded () && 
-			(!IsSortingMode () || (pSel->m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0) &&
+		else if (pSel != NULL && pSel->IsGroup () && pSel->IsExpanded () &&
 			!pSel->m_lstSubItems.IsEmpty ())
 		{
 			pSel->Expand (FALSE);
@@ -18886,6 +20878,12 @@ void CBCGPGridCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 			}
 			if (pRowCurSel != NULL)
 			{
+				int y = pRowCurSel->m_Rect.top;
+				if (y < m_rectList.top - m_nRowHeight || y > m_rectList.bottom + m_nRowHeight)
+				{
+					EnsureVisible(pRowCurSel, TRUE);
+				}
+
 				CBCGPGridRow* pRowNewSel = pRowCurSel;
 				BOOL bSkipNonSelectableRow = FALSE;
 				int nMaxScroll = m_nRowHeight;
@@ -18949,8 +20947,7 @@ void CBCGPGridCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			return;
 		}
-		else if (pSel != NULL && pSel->IsGroup () && !pSel->IsExpanded () && 
-			(!IsSortingMode () || (pSel->m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0))
+		else if (pSel != NULL && pSel->IsGroup () && !pSel->IsExpanded ())
 		{
 			pSel->Expand ();
 			return;
@@ -19085,6 +21082,12 @@ void CBCGPGridCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 			}
 			if (pRowCurSel != NULL)
 			{
+				int y = pRowCurSel->m_Rect.bottom;
+				if (y < m_rectList.top - m_nRowHeight || y > m_rectList.bottom + m_nRowHeight)
+				{
+					EnsureVisible(pRowCurSel, TRUE);
+				}
+
 				CBCGPGridRow* pRowNewSel = pRowCurSel;
 				BOOL bSkipNonSelectableRow = FALSE;
 				int nMaxScroll = m_nRowHeight;
@@ -19396,8 +21399,7 @@ void CBCGPGridCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 	case VK_ADD:
 		if (pSel != NULL && pSel->IsGroup () && !pSel->IsExpanded () &&
-			!pSel->IsInPlaceEditing () &&
-			(!IsSortingMode () || (pSel->m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0))
+			!pSel->IsInPlaceEditing ())
 		{
 			pSel->Expand ();
 		}
@@ -19405,16 +21407,14 @@ void CBCGPGridCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 	case VK_SUBTRACT:
 		if (pSel != NULL && pSel->IsGroup () && pSel->IsExpanded () && 
-			!pSel->IsInPlaceEditing () &&
-			(!IsSortingMode () || (pSel->m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0))
+			!pSel->IsInPlaceEditing ())
 		{
 			pSel->Expand (FALSE);
 		}
 		return;
 
 	case VK_RETURN:
-		if (pSel != NULL && pSel->IsGroup () && !pSel->IsInPlaceEditing () &&
-			(!IsSortingMode () || (pSel->m_dwFlags & BCGP_GRID_ITEM_AUTOGROUP) != 0))
+		if (pSel != NULL && pSel->IsGroup () && !pSel->IsInPlaceEditing ())
 		{
 			pSel->Expand (!pSel->IsExpanded ());
 		}
@@ -19455,7 +21455,7 @@ BOOL CBCGPGridCtrl::IsRowVisible (CBCGPGridRow* pRow) const
 		return !pRow->IsItemFiltered ();
 	}
 
-	BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+	BOOL bShowAllItems = FALSE;
 	return bShowAllItems ? !pRow->IsItemFiltered () : pRow->IsItemVisible ();
 }
 //******************************************************************************************
@@ -19469,7 +21469,7 @@ void CBCGPGridCtrl::EnsureVisible (CBCGPGridRow* pRowItem, BOOL bExpandParents/*
 		return;
 	}
 
-	if (bExpandParents && (!IsSortingMode () || IsGrouping ()) && pRowItem->GetParent () != NULL)
+	if (bExpandParents && pRowItem->GetParent () != NULL)
 	{
 		CBCGPGridRow* pParent = pRowItem;
         
@@ -19522,7 +21522,7 @@ void CBCGPGridCtrl::EnsureVisible (CBCGPGridRow* pRowItem, BOOL bExpandParents/*
 		pItem = (pRow != NULL) ? pRow->GetItem (idItem.m_nColumn) : NULL;
 	}
 
-	if (pItem == NULL)
+	if (pItem == NULL || IsWholeRowSel())
 	{
 		return;
 	}
@@ -19538,9 +21538,11 @@ void CBCGPGridCtrl::EnsureVisible (CBCGPGridRow* pRowItem, BOOL bExpandParents/*
 		nLeftLimit += GetColumnsInfo ().GetFreezeOffset ();
 	}
 
-	if (rectItem.left < nLeftLimit - 1 || rectItem.right > m_rectList.right)
+	BOOL bScrollLeft = rectItem.left < nLeftLimit - 1;
+	BOOL bScrollRight = rectItem.right > m_rectList.right;
+	if (bScrollLeft && !bScrollRight || !bScrollLeft && bScrollRight)
 	{
-		int nNewHorzOffset = (rectItem.right > m_rectList.right) ?
+		int nNewHorzOffset = (bScrollRight) ?
 			// scroll rigth
 			m_nHorzScrollOffset + (rectItem.right - m_rectList.right) :
 			// scroll left
@@ -19649,6 +21651,22 @@ void CBCGPGridCtrl::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
 	}
 
 	ASSERT_VALID (pSel);
+
+	if (nChar == VK_SPACE && pSel->HasCheckBox())
+	{
+		// If active item has a check box, let it toogle.
+		CBCGPGridItem* pSelItem = GetCurSelItem(pSel);
+		if (pSelItem == NULL || !pSelItem->IsKindOf(RUNTIME_CLASS(CBCGPGridCheckItem)) )
+		{
+			return;
+		}
+	}
+
+	if (::GetAsyncKeyState (VK_CONTROL) & 0x8000)
+	{
+		return;
+	}
+
 	EnsureVisible (pSel, TRUE);
 
 	SetBeginEditReason (BeginEdit_Char);
@@ -19781,6 +21799,15 @@ void CBCGPGridCtrl::OnEditKillFocus()
 	{
 		ASSERT_VALID (pSel);
 
+		if (m_dwEndEditResult != EndEdit_NoResult)
+		{
+			// the second call, in-place edit is already being destroyed
+			if (!pSel->IsInplaceEditNeedUpdate())
+			{
+				return;
+			}
+		}
+
 		if (!IsChild (GetFocus()) && pSel->OnEditKillFocus())
 		{
 			SetEndEditReason (EndEdit_AutoApply | EndEdit_KillFocus);
@@ -19829,6 +21856,53 @@ void CBCGPGridCtrl::OnComboKillFocus()
 	}
 }
 //****************************************************************************************
+void CBCGPGridCtrl::OnButtonKillFocus()
+{
+	CBCGPGridRow* pSel = GetCurSel();
+
+	if (pSel != NULL && pSel->m_bEnabled)
+	{
+		ASSERT_VALID(pSel);
+
+		CBCGPDateTimeCtrl* pWndDateTime = DYNAMIC_DOWNCAST(CBCGPDateTimeCtrl, pSel->GetInPlaceWnd());
+		if (pWndDateTime->GetSafeHwnd() != NULL && !pWndDateTime->IsDroppedDown())
+		{
+			BOOL bMoveFocusToParent = FALSE;
+			const CWnd* pFocusWnd = GetFocus();
+
+			CWnd* pParentWnd = pWndDateTime->GetParent();
+			while (pParentWnd->GetSafeHwnd() != NULL && !bMoveFocusToParent)
+			{
+				if (pFocusWnd == pParentWnd)
+				{
+					bMoveFocusToParent = TRUE;
+				}
+
+				pParentWnd = pParentWnd->GetParent();
+			}
+
+			// close in-place edit to update the modified value
+			if (!bMoveFocusToParent)
+			{
+				SetEndEditReason (EndEdit_AutoApply | EndEdit_KillFocus);
+				
+				if (!EndEditItem ())
+				{
+					CWnd* pWndInPlace = pSel->GetInPlaceWnd ();
+					if (pWndInPlace != NULL)
+					{
+						pWndInPlace->SetFocus();
+					}
+				}
+				else
+				{
+					OnKillFocus(GetFocus());
+				}
+			}
+		}
+	}
+}
+//****************************************************************************************
 void CBCGPGridCtrl::SetBoolLabels (LPCTSTR lpszTrue, LPCTSTR lpszFalse)
 {
 	ASSERT_VALID (this);
@@ -19854,22 +21928,7 @@ void CBCGPGridCtrl::SetListDelimiter (TCHAR c)
 //****************************************************************************************
 void CBCGPGridCtrl::OnDestroy() 
 {
-	while (!m_lstSel.IsEmpty ())
-	{
-		delete m_lstSel.RemoveTail ();
-	}
-
-	CleanUpAutoGroups ();
-
-	while (!m_lstItems.IsEmpty ())
-	{
-		delete m_lstItems.RemoveTail ();
-	}
-
-	m_lstTerminalItems.RemoveAll ();
-
-	CleanUpFonts ();
-	CleanUpColors ();
+	CleanUp();
 
 	if (m_pFindDlg != NULL)
 	{
@@ -19930,6 +21989,8 @@ void CBCGPGridCtrl::OnMouseMove(UINT nFlags, CPoint point)
 			SetCursor (::LoadCursor (NULL, IDC_ARROW));
 
 			SelectItems (point);
+
+			SetTimer (GRID_AUTOSCROLL_TIMER_ID, GRID_AUTOSCROLL_TIMER_INTERVAL, NULL);
 		}
 	}
 	else if (m_bClickDrag)
@@ -19998,6 +22059,11 @@ void CBCGPGridCtrl::OnMouseMove(UINT nFlags, CPoint point)
 		{
 			RedrawWindow ();
 		}
+	}
+
+	if (m_bSelecting)
+	{
+		OnDragScroll (0, point);
 	}
 }
 //*****************************************************************************************
@@ -20224,7 +22290,35 @@ void CBCGPGridCtrl::OnNcPaint()
 {
 	if (GetStyle () & WS_BORDER)
 	{
-		visualManager->OnDrawControlBorder (this);
+		if (m_ColorData.m_clrBorder == (COLORREF)-1)
+		{
+			visualManager->OnDrawControlBorder (this);
+		}
+		else
+		{
+			CWindowDC dc (this);
+
+			CRect rect;
+			GetWindowRect (rect);
+			
+			rect.bottom -= rect.top;
+			rect.right -= rect.left;
+			rect.left = rect.top = 0;
+
+			if (CBCGPToolBarImages::m_bIsDrawOnGlass)
+			{
+				CBCGPDrawManager dm (dc);
+				dm.DrawRect (rect, (COLORREF)-1, m_ColorData.m_clrBorder);
+				rect.DeflateRect (1, 1);
+				dm.DrawRect (rect, (COLORREF)-1, m_ColorData.m_clrBorder);
+			}
+			else
+			{
+				dc.Draw3dRect (rect, m_ColorData.m_clrBorder, m_ColorData.m_clrBorder);
+				rect.DeflateRect (1, 1);
+				dc.Draw3dRect (rect, m_ColorData.m_clrBorder, m_ColorData.m_clrBorder);
+			}
+		}
 	}
 }
 //********************************************************************************
@@ -20238,13 +22332,67 @@ void CBCGPGridCtrl::SetShowInPlaceToolTip (BOOL bShow)
 	}
 }
 //********************************************************************************
-void CBCGPGridCtrl::SetVisualManagerColorTheme(BOOL bSet, BOOL bRedraw)
+void CBCGPGridCtrl::EnableCheckBoxes(BOOL bEnable)
+{
+	if (bEnable != m_bCheckBoxes)
+	{
+		m_bCheckBoxes = bEnable;
+		GetColumnsInfo().EnableCheckBox(bEnable);
+		AdjustLayout();
+	}
+}
+//********************************************************************************
+void CBCGPGridCtrl::CheckAll(BOOL bChecked)
+{
+	int nCount = GetRowCount(TRUE);
+    for (int nItem = 0; nItem < nCount; nItem++) 
+	{
+		CBCGPGridRow* pRow = GetRow(nItem);
+		if (pRow != NULL)
+		{
+			pRow->SetCheck(bChecked);
+			pRow->CheckSubItems(bChecked);
+		}
+    }
+}
+//********************************************************************************
+void CBCGPGridCtrl::UpdateHeaderCheckbox()
+{
+	// Calculate the checkbox state by looping through rows
+	BOOL bChecked = TRUE;
+	int nCount = GetRowCount(TRUE);
+    for (int nItem = 0; nItem < nCount; nItem++) 
+	{
+		CBCGPGridRow* pRow = GetRow(nItem);
+		if (pRow != NULL && pRow->HasCheckBox() && !pRow->GetCheck())
+		{
+			bChecked = FALSE;
+			break;
+		}
+	}
+	
+	// Check the header control
+	GetColumnsInfo().SetCheckBoxState(bChecked);
+}
+//********************************************************************************
+void CBCGPGridCtrl::EnableAlternateRows(BOOL bEnable)
+{
+	m_bAlternateRows = bEnable;
+}
+//********************************************************************************
+void CBCGPGridCtrl::SetVisualManagerColorTheme(BOOL bSet, BOOL bRedraw, BOOL bAutoUpdateOnVMChange, BOOL bIncludeScrollbarTheme)
 {
 	CBCGPGridColors theme;
 
 	if (bSet)
 	{
 		CBCGPVisualManager::GetInstance ()->OnSetGridColorTheme(this, theme);
+		m_bAutoUpdateThemeOnVMChange = bAutoUpdateOnVMChange;
+	}
+
+	if (bIncludeScrollbarTheme)
+	{
+		SetScrollBarsStyle(bSet ? CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER : CBCGPScrollBar::BCGP_SBSTYLE_DEFAULT);
 	}
 
 	m_bVisualManagerStyle = bSet;
@@ -20252,9 +22400,16 @@ void CBCGPGridCtrl::SetVisualManagerColorTheme(BOOL bSet, BOOL bRedraw)
 	SetColorTheme (theme, bRedraw);
 }
 //********************************************************************************
-void CBCGPGridCtrl::SetColorTheme (const CBCGPGridColors& theme, BOOL bRedraw)
+void CBCGPGridCtrl::SetColorTheme (const CBCGPGridColors& theme, BOOL bRedraw, BOOL bFullCopy)
 {
-	m_ColorData = theme;
+	if (bFullCopy)
+	{
+		m_ColorData.FullCopy(theme);
+	}
+	else
+	{
+		m_ColorData = theme;
+	}
 
 	InitColors ();
 
@@ -20266,6 +22421,19 @@ void CBCGPGridCtrl::SetColorTheme (const CBCGPGridColors& theme, BOOL bRedraw)
 	{
 		m_ColorData.m_bSparklineDefaultSelColor = FALSE;
 	}
+
+	if (theme.m_ScrollBarColors.IsValid())
+	{
+		m_wndScrollVert.SetColorTheme(theme.m_ScrollBarColors);
+		m_wndScrollHorz.SetColorTheme(theme.m_ScrollBarColors);
+	}
+	else
+	{
+		m_wndScrollVert.SetVisualStyle(m_ScrollBarStyle);
+		m_wndScrollHorz.SetVisualStyle(m_ScrollBarStyle);
+	}
+
+	UpdateFilterBarCtrlsTheme();
 
 	OnColorThemeChanged ();
 
@@ -20310,6 +22478,7 @@ void CBCGPGridCtrl::SetCustomColors (
 	theme.m_LeftOffsetColors.m_clrBackground = clrLeftOffset;
 	theme.m_clrHorzLine = clrLine;
 	theme.m_clrVertLine = clrLine;
+	theme.m_clrTreeLines = clrLine;
 
 	SetColorTheme (theme);
 }
@@ -20368,7 +22537,27 @@ HFONT CBCGPGridCtrl::SetBoldFont (CDC* pDC)
 		return SetCurrFont (pDC);
 	}
 	
-	return (HFONT) ::SelectObject (pDC->GetSafeHdc (), m_fontBold.GetSafeHandle());
+	return (HFONT) ::SelectObject (pDC->GetSafeHdc (), GetBoldFont (TRUE).GetSafeHandle ());
+}
+//********************************************************************************
+CFont& CBCGPGridCtrl::GetBoldFont(BOOL bScaled)
+{
+	if (bScaled && m_fontBoldScaled.GetSafeHandle() != NULL)
+	{
+		return m_fontBoldScaled;
+	}
+
+	return m_fontBold;
+}
+//********************************************************************************
+CFont& CBCGPGridCtrl::GetUnderlineFont(BOOL bScaled)
+{
+	if (bScaled && m_fontUnderlineScaled.GetSafeHandle() != NULL)
+	{
+		return m_fontUnderlineScaled;
+	}
+
+	return m_fontUnderline;
 }
 //********************************************************************************
 BOOL CBCGPGridCtrl::ProcessClipboardAccelerators (UINT nChar)
@@ -20382,7 +22571,8 @@ BOOL CBCGPGridCtrl::ProcessClipboardAccelerators (UINT nChar)
 
 	ASSERT_VALID (pSelItem);
 
-	BOOL bIsCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000) && !m_bIgnoreCtrlBtn;
+	BOOL bIsRAlt = (::GetAsyncKeyState (VK_RMENU) & 0x8000) != 0;
+	BOOL bIsCtrl = (::GetAsyncKeyState (VK_CONTROL) & 0x8000) && !m_bIgnoreCtrlBtn && !bIsRAlt;
 	BOOL bIsShift = (::GetAsyncKeyState (VK_SHIFT) & 0x8000) && !m_bIgnoreShiftBtn;
 
 	if (bIsCtrl && (nChar == _T('C') || nChar == VK_INSERT))
@@ -20879,7 +23069,7 @@ void CBCGPGridCtrl::DoSelectRowInRange (CBCGPGridRow* pRow, const CBCGPGridRange
 		else if (!pRow->IsGroup () && GetExtraHierarchyOffset () > 0)
 		{
 			// update row marker:
-			int dx = IsSortingMode () && !IsGrouping () ? 0 : pRow->GetHierarchyLevel () * GetHierarchyLevelOffset ();
+			int dx = GetHierarchyOffset(pRow);
 			CRect rect = pRow->m_Rect;
 			if (m_nHorzScrollOffset > 0 && GetColumnsInfo ().IsFreezeColumnsEnabled ())
 			{
@@ -20951,7 +23141,7 @@ void CBCGPGridCtrl::DoInvalidateRowInRange (CBCGPGridRow* pRow, const CBCGPGridR
 		else if (m_bRowMarker && GetExtraHierarchyOffset () > 0)
 		{
 			// update row marker:
-			int dx = IsSortingMode () && !IsGrouping () ? 0 : pRow->GetHierarchyLevel () * GetHierarchyLevelOffset ();
+			int dx = GetHierarchyOffset(pRow);
 			CRect rect = pRow->GetRect ();
 			rect.right = rect.left + GetExtraHierarchyOffset () + dx;
 			IncludeRect (rectUpdate, rect);
@@ -21046,6 +23236,15 @@ BOOL CBCGPGridCtrl::SetCurSel (CBCGPGridItemID idItem,
 							   DWORD dwSelMode, BOOL bRedraw)
 {
 	ASSERT_VALID (this);
+	
+	if (idItem.m_nRow != -2 && idItem.m_nColumn == -2)
+	{
+		idItem.m_nColumn = 0;
+	}
+	else if (idItem.m_nRow == -2 && idItem.m_nColumn != -2)
+	{
+		idItem.m_nRow = 0;
+	}
 
 	CBCGPGridRow* pSel = GetCurSel ();
 	CBCGPGridRow* pOldSelectedItem = pSel;
@@ -21077,6 +23276,8 @@ BOOL CBCGPGridCtrl::SetCurSel (CBCGPGridItemID idItem,
 	{
 		dwSelMode = SM_NONE;
 	}
+
+	OnBeforeSelChange();
 
 	// -----------------
 	// Change selection:
@@ -21421,7 +23622,8 @@ BOOL CBCGPGridCtrl::DoSetSelection (const CBCGPGridItemID& idItem, const DWORD d
 
 			if (*pRange == *pSelRange)
 			{
-				return FALSE;		
+				delete pSelRange;
+				return FALSE;
 			}
 		}
 
@@ -21435,6 +23637,11 @@ BOOL CBCGPGridCtrl::DoSetSelection (const CBCGPGridItemID& idItem, const DWORD d
 		if (m_idActive.IsNull ())
 		{
 			m_idActive = idItem;
+		}
+		else if (m_idActive.IsAll())
+		{
+			m_idActive.m_nColumn = nFirstColumn;
+			m_idActive.m_nRow = nFirstRow;
 		}
 		m_idLastSel = idItem;
 
@@ -21777,7 +23984,7 @@ int CBCGPGridCtrl::GetGroupByBoxDropIndex (CPoint point, LPPOINT lpptDrop/* = NU
 	CRect rectGroupByBox = rectClient;
 	rectGroupByBox.bottom = min (rectGroupByBox.top + m_nGroupByBoxHeight, rectClient.bottom);
 
-	rectGroupByBox.DeflateRect (BCGPGRID_GROUPBYBOX_HMARGIN, BCGPGRID_GROUPBYBOX_VMARGIN, 0, 0);
+	rectGroupByBox.DeflateRect (globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_HMARGIN), globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_VMARGIN), 0, 0);
 
 	if (!rectGroupByBox.PtInRect (point))
 	{
@@ -21790,7 +23997,7 @@ int CBCGPGridCtrl::GetGroupByBoxDropIndex (CPoint point, LPPOINT lpptDrop/* = NU
 	CPoint ptDrop;
 
 	ptDrop.x = rectGroupByBox.left;
-	ptDrop.y = (rectGroupByBox.top + rectGroupByBox.bottom - BCGPGRID_GROUPBYBOX_VMARGIN) / 2;
+	ptDrop.y = (rectGroupByBox.top + rectGroupByBox.bottom - globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_VMARGIN)) / 2;
 
 	int i = 0;
 	BOOL bFirst = TRUE;
@@ -22258,16 +24465,21 @@ CRect CBCGPGridCtrl::OnGetGroupByBoxRect (CDC* pDC, const CRect& rectDraw)
 		if (!m_bIsPrinting && GetColumnsInfo ().GetGroupColumnCount () > 1 ||
 			m_bIsPrinting && GetColumnsInfo ().GetGroupColumnCount () >= 1)
 		{
-			int nItemHeight = (m_bIsPrinting ? m_PrintParams.m_nBaseHeight : m_nBaseHeight) +
-				::MulDiv (TEXT_MARGIN, nYMul, nYDiv);
+			const int CALCULATED_TEXT_MARGIN = m_bIsPrinting ? 
+				::MulDiv (TEXT_MARGIN, nYMul, nYDiv) : globalUtils.ScaleByDPI(TEXT_MARGIN);
+			const int CALCULATED_GROUPBYBOX_VMARGIN = m_bIsPrinting ? 
+				::MulDiv (BCGPGRID_GROUPBYBOX_VMARGIN, nYMul, nYDiv) : globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_VMARGIN);
+			const int CALCULATED_GROUPBYBOX_VSPACING = m_bIsPrinting ? 
+				::MulDiv (BCGPGRID_GROUPBYBOX_VSPACING, nYMul, nYDiv) : globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_VSPACING);
+
+			int nItemHeight = (m_bIsPrinting ? m_PrintParams.m_nBaseHeight : m_nBaseHeight) + CALCULATED_TEXT_MARGIN;
 			nGroupByBoxHeight = nItemHeight +
-				2 * ::MulDiv (BCGPGRID_GROUPBYBOX_VMARGIN, nYMul, nYDiv) + 
-				(GetColumnsInfo ().GetGroupColumnCount () - 1) * 
-				::MulDiv (BCGPGRID_GROUPBYBOX_VSPACING, nYMul, nYDiv);
+				2 * CALCULATED_GROUPBYBOX_VMARGIN + 
+				(GetColumnsInfo ().GetGroupColumnCount () - 1) * CALCULATED_GROUPBYBOX_VSPACING;
 		}
 		else if (!m_bIsPrinting)
 		{
-			nGroupByBoxHeight = m_nBaseHeight + 16;
+			nGroupByBoxHeight = m_nBaseHeight + globalUtils.ScaleByDPI(16);
 		}
 
 		rect = rectDraw;
@@ -22307,7 +24519,7 @@ CRect CBCGPGridCtrl::OnGetHeaderRect (CDC* pDC, const CRect& rectDraw)
 
 		if (m_bRowHeader)
 		{
-			rect.left += (m_bIsPrinting ? m_PrintParams.m_nRowHeaderWidth : m_nRowHeaderWidth);
+			rect.left += (m_bIsPrinting ? m_PrintParams.m_nRowHeaderWidth : bcg_scale(m_nRowHeaderWidth, m_dblScale));
 		}
 	}
 	else
@@ -22370,7 +24582,7 @@ CRect CBCGPGridCtrl::OnGetRowHeaderRect (CDC*, const CRect& rectDraw)
 					max (rect.top + m_nRowHeight, rect.bottom - m_nGridFooterHeight);
 			}
 
-			rect.right = rect.left + m_nRowHeaderWidth;
+			rect.right = rect.left + bcg_scale(m_nRowHeaderWidth, m_dblScale);
 		}
 	}
 	else
@@ -23112,11 +25324,7 @@ void CBCGPGridCtrl::OnPrintLineNumber (CDC* pDC, CPrintInfo*, CBCGPGridRow* pRow
 	CRect rectLabel = rect;
 	rectLabel.DeflateRect (CALCULATED_TEXT_MARGIN, 0);
 
-	CString strLabel;
-	if (pRow->GetRowId () >= 0)
-	{
-		strLabel.Format (_T("%d"), pRow->GetRowId () + 1);
-	}
+	CString strLabel = GetRowNumber(pRow);;
 
 	CRect rectClipLabel = rectLabel;
 	rectClipLabel.NormalizeRect ();
@@ -23292,7 +25500,7 @@ int CBCGPGridCtrl::OnPrintItem (CDC* pDC, CPrintInfo* pInfo, CBCGPGridRow* pItem
 			CBCGPGridPageInfo* pPageInfo = (CBCGPGridPageInfo*) pInfo->m_lpUserData;
 			ASSERT (pPageInfo != NULL);
 
-			int dx = IsSortingMode () && !IsGrouping () ? 0 : pItem->GetHierarchyLevel () * GetHierarchyLevelOffset () * pPageInfo->m_szOne.cx;
+			int dx = GetHierarchyOffset(pItem) * pPageInfo->m_szOne.cx;
 			
 			// --------------------------
 			// draw left hierarchy offset
@@ -23365,7 +25573,7 @@ int CBCGPGridCtrl::OnPrintItem (CDC* pDC, CPrintInfo* pInfo, CBCGPGridRow* pItem
 			// ---------------
 			// draw expandbox:
 			// ---------------
-			if (pItem->IsGroup () && (!IsSortingMode () || IsGrouping ()))
+			if (pItem->IsGroup() && IsTreeButtonsEnabled())
 			{
 				CRect rectExpand = rectName;
 				rectName.left += m_PrintParams.m_nButtonWidth + dx;
@@ -24416,8 +26624,8 @@ void CBCGPGridCtrl::ShowDragInsertMarker ()
 		return;
 	}
 
- 	CBCGPGridRow* pRow = GetRow (m_idDropTo.m_nRow);
- 	
+	CBCGPGridRow* pRow = (GetTotalRowCount() == 0) ? NULL : GetRow (m_idDropTo.m_nRow);
+
 	CRect rect = GetListRect (); // drop first
 	rect.bottom = rect.top + 1;
 
@@ -24717,7 +26925,7 @@ CBCGPGridCtrl::DropArea CBCGPGridCtrl::HitTestDropArea (CPoint point, CBCGPGridI
 
 #ifndef _BCGPGRID_STANDALONE
 
-BOOL CBCGPGridCtrl::LoadState (LPCTSTR lpszProfileName, int nIndex)
+CString CBCGPGridCtrl::GetRegSectionPath (LPCTSTR lpszProfileName, int nIndex)
 {
 	CString strProfileName;
 
@@ -24725,7 +26933,7 @@ BOOL CBCGPGridCtrl::LoadState (LPCTSTR lpszProfileName, int nIndex)
 	if (g_pWorkspace == NULL ||
 		AfxGetApp () == NULL || AfxGetApp ()->m_pszRegistryKey == NULL)
 	{
-		return FALSE;
+		return CString();
 	}
 
 	strProfileName = g_pWorkspace->GetRegSectionPath (strGridsProfile);
@@ -24733,7 +26941,7 @@ BOOL CBCGPGridCtrl::LoadState (LPCTSTR lpszProfileName, int nIndex)
 	CWinAppEx* pApp = DYNAMIC_DOWNCAST(CWinAppEx, AfxGetApp ());
 	if (pApp == NULL || pApp->m_pszRegistryKey == NULL)
 	{
-		return FALSE;
+		return CString();
 	}
 
 	strProfileName = pApp->GetRegSectionPath (strGridsProfile);
@@ -24746,6 +26954,17 @@ BOOL CBCGPGridCtrl::LoadState (LPCTSTR lpszProfileName, int nIndex)
 
 	CString strSection;
 	strSection.Format (REG_SECTION_FMT, strProfileName, nIndex);
+
+	return strSection;
+}
+//*************************************************************************************
+BOOL CBCGPGridCtrl::LoadState (LPCTSTR lpszProfileName, int nIndex)
+{
+	CString strSection = GetRegSectionPath(lpszProfileName, nIndex);
+	if (strSection.IsEmpty())
+	{
+		return FALSE;
+	}
 
 	CBCGPRegistrySP regSP;
 	CBCGPRegistry& reg = regSP.Create (FALSE, TRUE);
@@ -24784,8 +27003,11 @@ BOOL CBCGPGridCtrl::LoadState (LPCTSTR lpszProfileName, int nIndex)
 	GetColumnsInfo ().m_arrColumnOrder.RemoveAll ();
 	reg.Read (_T ("ColumnOrder"), GetColumnsInfo ().m_arrColumnOrder);
 
+	GetColumnsInfo ().m_arrColumnSortingPriority.RemoveAll ();
+	reg.Read (_T ("ColumnSortingPriority"), GetColumnsInfo ().m_arrColumnSortingPriority);
+
 	//---------------------
-	// Load groupping info:
+	// Load grouping info:
 	//---------------------
 	GetColumnsInfo ().m_lstGroupingColumns.RemoveAll ();
 	reg.Read (_T ("Groupping"), GetColumnsInfo ().m_lstGroupingColumns);
@@ -24818,34 +27040,11 @@ BOOL CBCGPGridCtrl::LoadState (LPCTSTR lpszProfileName, int nIndex)
 //*************************************************************************************
 BOOL CBCGPGridCtrl::SaveState (LPCTSTR lpszProfileName, int nIndex)
 {
-	CString strProfileName;
-
-#ifndef _BCGSUITE_
-	if (g_pWorkspace == NULL ||
-		AfxGetApp () == NULL || AfxGetApp ()->m_pszRegistryKey == NULL)
+	CString strSection = GetRegSectionPath(lpszProfileName, nIndex);
+	if (strSection.IsEmpty())
 	{
 		return FALSE;
 	}
-
-	strProfileName = g_pWorkspace->GetRegSectionPath (strGridsProfile);
-#else
-	CWinAppEx* pApp = DYNAMIC_DOWNCAST(CWinAppEx, AfxGetApp ());
-	if (pApp == NULL || pApp->m_pszRegistryKey == NULL)
-	{
-		return FALSE;
-	}
-
-	strProfileName = pApp->GetRegSectionPath (strGridsProfile);
-#endif
-
-	if (lpszProfileName != NULL)
-	{
-		strProfileName += lpszProfileName;
-	}
-
-
-	CString strSection;
-	strSection.Format (REG_SECTION_FMT, strProfileName, nIndex);
 
 	CBCGPRegistrySP regSP;
 	CBCGPRegistry& reg = regSP.Create (FALSE, FALSE);
@@ -24873,9 +27072,10 @@ BOOL CBCGPGridCtrl::SaveState (LPCTSTR lpszProfileName, int nIndex)
 	reg.Write (_T ("Columns"), arColumns);
 	reg.Write (_T ("ColumnWidth"), arColumnWidth);
 	reg.Write (_T ("ColumnOrder"), GetColumnsInfo ().m_arrColumnOrder);
+	reg.Write (_T ("ColumnSortingPriority"), GetColumnsInfo ().m_arrColumnSortingPriority);
 
 	//---------------------
-	// Save groupping info:
+	// Save Grouping info:
 	//---------------------
 	reg.Write (_T ("Groupping"), GetColumnsInfo ().m_lstGroupingColumns);
 
@@ -24913,6 +27113,27 @@ void CBCGPGridCtrl::OnTimer(UINT_PTR nIDEvent)
 		SetCursor (::LoadCursor (NULL, IDC_ARROW));
 	}
 	
+	else if (nIDEvent == GRID_AUTOSCROLL_TIMER_ID)
+	{
+		if (m_bSelecting && !m_bSingleSel)
+		{
+			if (!m_bSelectingScroll)
+			{
+				CPoint ptCursor;
+				::GetCursorPos (&ptCursor);
+				ScreenToClient (&ptCursor);
+
+				SetCursor (::LoadCursor (NULL, IDC_ARROW));
+
+				SelectItems(ptCursor);
+			}
+		}
+		else
+		{
+			KillTimer(GRID_AUTOSCROLL_TIMER_ID);
+		}
+	}
+
 	CBCGPWnd::OnTimer(nIDEvent);
 }
 //*****************************************************************************
@@ -24972,6 +27193,7 @@ BOOL CBCGPGridCtrl::StartSelectItems ()
 	// Start selecting range of items:
 	SetCapture ();
 	m_bSelecting = TRUE;
+	m_bSelectingScroll = FALSE;
 
     return TRUE;
 }
@@ -24979,6 +27201,9 @@ BOOL CBCGPGridCtrl::StartSelectItems ()
 void CBCGPGridCtrl::StopSelectItems ()
 {
 	m_bSelecting = FALSE;
+	m_bSelectingScroll = FALSE;
+
+	KillTimer(GRID_AUTOSCROLL_TIMER_ID);
 
 	if (::GetCapture () == GetSafeHwnd ())
 	{
@@ -24988,6 +27213,14 @@ void CBCGPGridCtrl::StopSelectItems ()
 //*****************************************************************************
 BOOL CBCGPGridCtrl::SelectItems (CPoint ptClient)
 {
+	CRect rectList = GetListRect();
+	if (!rectList.PtInRect(ptClient) && m_bSelecting && rectList.Height() > m_nRowHeight && rectList.Width() > m_nRowHeight)
+	{
+		int nOffset = 1;
+		ptClient.x = bcg_clamp(ptClient.x, rectList.left + nOffset, rectList.right - nOffset);
+		ptClient.y = bcg_clamp(ptClient.y, rectList.top + nOffset, rectList.bottom - nOffset);
+	}
+
 	// ------------------------
 	// perform range selection:
 	// ------------------------
@@ -25018,6 +27251,34 @@ BOOL CBCGPGridCtrl::SelectItems (CPoint ptClient)
 	{
 		pHitRow = HitTest (ptClient, id, pHitItem);
 	}
+
+	//------------------
+	// Scroll if needed:
+	//------------------
+	m_bSelectingScroll = TRUE;
+
+	if (rectList.bottom - ptClient.y < m_nRowHeight && !m_bHeaderColSelecting)
+	{
+		// scroll down
+		OnVScroll (SB_LINEDOWN, 0, NULL);
+	}
+	else if (ptClient.y - rectList.top < m_nRowHeight && !m_bHeaderColSelecting)
+	{
+		// scroll up
+		OnVScroll (SB_LINEUP, 0, NULL);
+	}
+	else if (rectList.right - ptClient.x < m_nRowHeight && !m_bHeaderRowSelecting) 
+	{
+		// scroll right
+		OnHScroll (SB_LINEDOWN, 0, NULL);
+	}
+	else if (ptClient.x - (rectList.left + 1) < m_nRowHeight && !m_bHeaderRowSelecting)
+	{
+		// scroll left
+		OnHScroll (SB_LINEUP, 0, NULL);
+	}
+
+	m_bSelectingScroll = FALSE;
 
 	//---------------------------------
 	// Update selection (second click):
@@ -25086,8 +27347,8 @@ BOOL CBCGPGridCtrl::SendDispInfoRequest (BCGPGRID_DISPINFO* pdi) const
 	pdi->item.varValue.Clear ();
 	pdi->item.dwData = 0;
 	pdi->item.iImage = -1;
-	pdi->item.clrBackground = m_ColorData.m_clrBackground;
-	pdi->item.clrText = m_ColorData.m_clrText;
+	pdi->item.clrBackground = (COLORREF)-1;
+	pdi->item.clrText = (COLORREF)-1;
 	memset (&pdi->item.lfFont, 0, sizeof (LOGFONT));
 
 	if (m_pfnCallback != NULL)
@@ -25382,7 +27643,7 @@ CBCGPGridItemID CBCGPGridCtrl::HitTestVirtual (CPoint pt,
 	//-------------------
 	int nColumnIdx = -1;
 
-	int dx = 0;//GetHierarchyLevel () * m_nRowHeight;
+	int dx = 0;
 	int nXLeft = m_rectList.left - m_nHorzScrollOffset;
 	int nCount = 0;
 
@@ -25776,7 +28037,7 @@ UINT CBCGPGridCtrl::OnInplaceEditSetSel (CBCGPGridItem* /*pCurItem*/, UINT nReas
 		return SetSel_SelectAll;
 	}
 
-	return SetSel_CaretAtLeft;
+	return SetSel_CaretByCursor;
 }
 //*****************************************************************************
 void CBCGPGridCtrl::DoInplaceEditSetSel (UINT nFlags)
@@ -26026,6 +28287,38 @@ BOOL CBCGPGridCtrl::SendNotification (BCGPGRID_NOTIFICATION* pn, UINT uCode) con
 //*****************************************************************************
 void CBCGPGridCtrl::OnResizeColumns ()
 {
+}
+//*****************************************************************************
+void CBCGPGridCtrl::OnRowCheckBoxClick(CBCGPGridRow* pRow)
+{
+	ASSERT_VALID (this);
+	ASSERT_VALID (pRow);
+	
+	CWnd* pOwner = GetOwner ();
+	if (pOwner == NULL)
+	{
+		return;
+	}
+	
+	if (!pOwner->SendMessage(BCGM_GRID_ROW_CHECKBOX_CLICK, GetDlgCtrlID(), LPARAM(pRow)))
+	{
+		pRow->ToggleCheck();
+		InvalidateRect(pRow->GetRect());
+	}
+}
+//*****************************************************************************
+void CBCGPGridCtrl::OnHeaderCheckBoxClick(int nColumn)
+{
+	ASSERT_VALID (this);
+	
+	CWnd* pOwner = GetOwner ();
+	if (pOwner != NULL)
+	{
+		if (!pOwner->SendMessage (BCGM_GRID_HEADERCHECKBOX_CLICK, GetDlgCtrlID (), nColumn))
+		{
+			GetColumnsInfo().SetCheckBoxState(!GetColumnsInfo().GetCheckBoxState());
+		}
+	}
 }
 //*****************************************************************************
 void CBCGPGridCtrl::OnHeaderColumnClick (int nColumn)
@@ -26615,6 +28908,12 @@ void CBCGPGridCtrl::RedrawMergedItems (CDC* pDC)
 			rectClipItem.IntersectRect (rectClipItem, m_rectClip);
 			rectClipItem.IntersectRect (rectClipItem, m_rectList);
 
+			// filterbar:
+			if (IsFilterBarEnabled())
+			{
+				rectClipItem.top = max (m_rectFilterBar.bottom + 1, rectClipItem.top);
+			}
+
 			// frozen columns:
 			if (GetColumnsInfo ().IsFreezeColumnsEnabled ())
 			{
@@ -26890,7 +29189,7 @@ void CBCGPGridCtrl::IterateInRange (const CBCGPGridRange& range,
 	else
 	//if (IsValidRange (range))
 	{
-		BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+		BOOL bShowAllItems = FALSE;
 
 		const CList<CBCGPGridRow*, CBCGPGridRow*>& lst =
 			(!IsSortingMode () && !IsGrouping ()) ? m_lstItems : m_lstTerminalItems;
@@ -27019,23 +29318,36 @@ void CBCGPGridCtrl::IterateColumnInRange (const CBCGPGridRange& range,
 	}
 }
 //*****************************************************************************
+void CBCGPGridCtrl::SetExportRangeSkipList(CList<int, int>& lstSkipColumns)
+{
+	m_lstExportSkipColumns.RemoveAll();
+	m_lstExportSkipColumns.AddTail(&lstSkipColumns);
+}
+//*****************************************************************************
 // Implementation of ExportRangeToHTML:
 class CallbackColumnParams
 {
 public:
 	CallbackColumnParams (const CBCGPGridCtrl* p, CString& s)
-		: pGrid (p), str (s)
+		: pGrid (p), str (s), dwFlags (0), lstSkipColumns ()
 	{
 	}
 
 	const CBCGPGridCtrl* pGrid;
 	CString& str;
+	DWORD    dwFlags;
+	CList<int, int> lstSkipColumns;
 };
 void CBCGPGridCtrl::pfnCallbackExportColumn (int nColumn, const CBCGPGridRange&, LPARAM lParam)
 {
 	CallbackColumnParams* params = (CallbackColumnParams*)lParam;
 	if (params != NULL)
 	{
+		if (params->lstSkipColumns.Find(nColumn) != NULL)
+		{
+			return;
+		}
+
 		ASSERT_VALID (params->pGrid);
 
 		CString& strHeaderLine = params->str;
@@ -27052,13 +29364,15 @@ class CallbackRowParams
 {
 public:
 	CallbackRowParams (const CBCGPGridCtrl* p, CString& s1, CString& s2)
-		: pGrid (p), strHtml(s1), strLine(s2)
+		: pGrid (p), strHtml(s1), strLine(s2), dwFlags (0), lstSkipColumns ()
 	{
 	}
 
 	const CBCGPGridCtrl* pGrid;
 	CString& strHtml;
 	CString& strLine;
+	DWORD	 dwFlags;
+	CList<int, int> lstSkipColumns;
 };
 void CBCGPGridCtrl::pfnCallbackExportRowEnd (CBCGPGridRow*, const CBCGPGridRange&, LPARAM lParam)
 {
@@ -27091,26 +29405,111 @@ void CBCGPGridCtrl::pfnCallbackExportItem (CBCGPGridItem* pItem, const CBCGPGrid
 	CallbackRowParams* params = (CallbackRowParams*)lParam;
 	if (params != NULL)
 	{
+		if (params->lstSkipColumns.Find(pItem->GetColumnId()) != NULL)
+		{
+			return;
+		}
+
 		ASSERT_VALID (params->pGrid);
 
-		CString strItem = pItem->FormatItem ();
-		if (strItem.IsEmpty ())
+		int nColspan = 0;
+		int nRowspan = 0;
+
+		CBCGPGridMergedCells* pMerged = pItem->GetMergedCells();
+		if (pMerged != NULL)
 		{
-			strItem = _T("&nbsp;");
+			if (pMerged->GetMainItemID() != pItem->GetGridItemID())
+			{
+				return;
+			}
+
+			if (pMerged->GetRange().m_nLeft != pMerged->GetRange().m_nRight)
+			{
+				const int nColumnCount = params->pGrid->GetColumnsInfo().GetColumnCount(TRUE);
+				int* aColumnsOrder = new int [nColumnCount];
+				memset (aColumnsOrder, 0, nColumnCount * sizeof (int));
+
+				if (params->pGrid->GetColumnOrderArray((LPINT) aColumnsOrder, nColumnCount) > 0)
+				{
+					int nCount = 0;
+					BOOL bInRange = FALSE;
+
+					for (int i = 0; i < nColumnCount; i++)
+					{
+						BOOL bIsRangeBound = (pMerged->GetRange().m_nLeft == aColumnsOrder[i] || 
+											  pMerged->GetRange().m_nRight == aColumnsOrder[i]);
+
+						if ((bIsRangeBound || bInRange) && params->lstSkipColumns.Find(pItem->GetColumnId()) == NULL)
+						{
+							nCount++;
+						}
+
+						if (bIsRangeBound)
+						{
+							bInRange = !bInRange;
+						}
+					}
+
+					nColspan = nCount;
+				}
+
+				delete [] aColumnsOrder;
+			}
+
+			nRowspan = pMerged->GetRange().m_nBottom - pMerged->GetRange().m_nTop + 1;
 		}
-		params->pGrid->OnPrepareHTMLString (strItem);
+
+		CString strItem = pItem->ExportToHTML(params->dwFlags);
 
 		CString& strLine = params->strLine;
 		strLine += g_chSpace;
 		strLine += g_chSpace;
-		strLine += _T("<TD>");
+
+		CString strColors;
+		if (pItem->m_clrText != (COLORREF)-1 && (params->dwFlags & EF_IncludeTextColor) != 0)
+		{
+			CString strColor;
+			strColor.Format(_T("color:#%02x%02x%02x;"), 
+				GetRValue(pItem->m_clrText), GetGValue(pItem->m_clrText), GetBValue(pItem->m_clrText));
+
+			strColors += strColor;
+		}
+		if (pItem->m_clrBackground != (COLORREF)-1 && (params->dwFlags & EF_IncludeBackgroundColor) != 0)
+		{
+			CString strBgColor;
+			strBgColor.Format(_T("background-color:#%02x%02x%02x;"), 
+				GetRValue(pItem->m_clrBackground), GetGValue(pItem->m_clrBackground), GetBValue(pItem->m_clrBackground));
+
+			strColors += strBgColor;
+		}
+		
+		CString strTD = _T("<TD");
+		CString strAttr;
+		if (nColspan > 1)
+		{
+			strAttr.Format(_T(" colspan=\"%d\""), nColspan);
+			strTD += strAttr;
+		}
+		if (nRowspan > 1)
+		{
+			strAttr.Format(_T(" rowspan=\"%d\""), nRowspan);
+			strTD += strAttr;
+		}
+		if (!strColors.IsEmpty())
+		{
+			strAttr.Format(_T(" style=\"%s\""), strColors);
+			strTD += strAttr;
+		}
+		strTD += _T(">");
+
+		strLine += strTD;
 		strLine += strItem;
 		strLine += _T("</TD>");
 		strLine += g_strEOL;
 	}
 }
 //*****************************************************************************
-void CBCGPGridCtrl::ExportRangeToHTML (CString& strHTML, const CBCGPGridRange& range, DWORD /*dwFlags*/)
+void CBCGPGridCtrl::ExportRangeToHTML (CString& strHTML, const CBCGPGridRange& range, DWORD dwFlags)
 {
 	strHTML += _T("<TABLE BORDER=1>");
 	strHTML += g_strEOL;
@@ -27121,6 +29520,7 @@ void CBCGPGridCtrl::ExportRangeToHTML (CString& strHTML, const CBCGPGridRange& r
 	CString strHeaderLine;
 
 	CallbackColumnParams params1 (this, strHeaderLine);
+	params1.lstSkipColumns.AddTail(&m_lstExportSkipColumns);
 	IterateColumnInRange (range, 
 		&CBCGPGridCtrl::pfnCallbackExportColumn, (LPARAM )&params1);
 
@@ -27134,6 +29534,8 @@ void CBCGPGridCtrl::ExportRangeToHTML (CString& strHTML, const CBCGPGridRange& r
 	CString strLine;
 
 	CallbackRowParams params2 (this, strHTML, strLine);
+	params2.dwFlags = dwFlags;
+	params2.lstSkipColumns.AddTail(&m_lstExportSkipColumns);
 	IterateInRange (range, 
 	   NULL, 0,
 	   &CBCGPGridCtrl::pfnCallbackExportRowEnd, (LPARAM )&params2,
@@ -27155,7 +29557,7 @@ void CBCGPGridCtrl::ExportToHTML (CString& strHTML, DWORD dwFlags)
 	ExportRangeToHTML (strHTML, range, dwFlags);
 }
 //*****************************************************************************
-void CBCGPGridCtrl::ExportRowToHTML (CBCGPGridRow* pRow, CString& strHTML, DWORD /*dwFlags*/)
+void CBCGPGridCtrl::ExportRowToHTML (CBCGPGridRow* pRow, CString& strHTML, DWORD dwFlags)
 {
 	ASSERT_VALID (pRow);
 
@@ -27165,12 +29567,7 @@ void CBCGPGridCtrl::ExportRowToHTML (CBCGPGridRow* pRow, CString& strHTML, DWORD
 	CString strLine;
 	for (int i = 0; i < pRow->m_arrRowItems.GetSize (); i++)
 	{
-		CString strItem = pRow->m_arrRowItems [i]->FormatItem ();
-		if (strItem.IsEmpty ())
-		{
-			strItem = _T("&nbsp;");
-		}
-		OnPrepareHTMLString (strItem);
+		CString strItem = pRow->m_arrRowItems [i]->ExportToHTML(dwFlags);
 
 		strLine += g_chSpace;
 		strLine += g_chSpace;
@@ -27203,7 +29600,7 @@ class CallbackRowExportTextParams
 {
 public:
 	CallbackRowExportTextParams (const CBCGPGridCtrl* p, CString& s1, CString& s2, DWORD dwF)
-		: pGrid (p), strText(s1), strLine(s2), bNewLine (TRUE), dwFlags (dwF)
+		: pGrid (p), strText(s1), strLine(s2), bNewLine (TRUE), dwFlags (dwF), lstSkipColumns ()
 	{
 	}
 	
@@ -27212,7 +29609,33 @@ public:
 	CString& strLine;
 	BOOL bNewLine;
 	DWORD dwFlags;	// Format_CSV - Comma Separated Values, Format_TabSV - Tab Separated Values
+	CList<int, int> lstSkipColumns;
 };
+void CBCGPGridCtrl::pfnCallbackExportTextColumn (int nColumn, const CBCGPGridRange&, LPARAM lParam)
+{
+	CallbackColumnParams* params = (CallbackColumnParams*)lParam;
+	if (params != NULL)
+	{
+		if (params->lstSkipColumns.Find(nColumn) != NULL)
+		{
+			return;
+		}
+
+		ASSERT_VALID (params->pGrid);
+
+		CString& strHeaderLine = params->str;
+
+		CString strItem = params->pGrid->GetColumnName (nColumn);
+		params->pGrid->OnPrepareTextString (strItem, params->dwFlags);
+
+		if (!strHeaderLine.IsEmpty())
+		{
+			strHeaderLine += params->pGrid->GetExportTextDelimiter (params->dwFlags);
+		}
+
+		strHeaderLine += strItem;
+	}
+}
 void CBCGPGridCtrl::pfnCallbackExportTextRowEnd (CBCGPGridRow*, const CBCGPGridRange&, LPARAM lParam)
 {
 	CallbackRowExportTextParams* params = (CallbackRowExportTextParams*)lParam;
@@ -27243,6 +29666,11 @@ void CBCGPGridCtrl::pfnCallbackExportTextItem (CBCGPGridItem* pItem, const CBCGP
 	CallbackRowExportTextParams* params = (CallbackRowExportTextParams*)lParam;
 	if (params != NULL)
 	{
+		if (params->lstSkipColumns.Find(pItem->GetColumnId()) != NULL)
+		{
+			return;
+		}
+
 		ASSERT_VALID (params->pGrid);
 		
 		CString strItem = pItem->FormatItem ();
@@ -27260,14 +29688,43 @@ void CBCGPGridCtrl::pfnCallbackExportTextItem (CBCGPGridItem* pItem, const CBCGP
 	}
 }
 //*****************************************************************************
+void CBCGPGridCtrl::ExportToCSV (CString& strText, DWORD dwFlags)
+{
+	const int nFirstColumn = GetColumnsInfo ().GetFirstVisibleColumn ();
+	const int nFirstRow = 0;
+	const int nLastColumn = GetColumnsInfo ().GetLastVisibleColumn ();
+	const int nLastRow = GetTotalItems () - 1;
+	
+	CBCGPGridRange range (nFirstColumn, nFirstRow, nLastColumn, nLastRow);
+
+	ExportRangeToText(strText, range, dwFlags);
+}
+//*****************************************************************************
 void CBCGPGridCtrl::ExportRangeToText (CString& strText, const CBCGPGridRange& range, DWORD dwFlags)
 {
 	ASSERT_VALID (this);
+
+	if ((dwFlags & EF_IncludeHeader) != 0)
+	{
+		// ------------------------
+		// Proceed header by items:
+		// ------------------------
+		CString strHeaderLine;
+
+		CallbackColumnParams params1 (this, strHeaderLine);
+		params1.dwFlags = dwFlags;
+		params1.lstSkipColumns.AddTail(&m_lstExportSkipColumns);
+		IterateColumnInRange (range, 
+			&CBCGPGridCtrl::pfnCallbackExportTextColumn, (LPARAM) &params1);
+
+		strText += strHeaderLine;
+	}
 
 	// Generate text in (Comma Separated Values or Tab Separated Values) format:
 	CString strLine;
 
 	CallbackRowExportTextParams params (this, strText, strLine, dwFlags);
+	params.lstSkipColumns.AddTail(&m_lstExportSkipColumns);
 	IterateInRange (range, 
 	   NULL, 0,
 	   &CBCGPGridCtrl::pfnCallbackExportTextRowEnd, (LPARAM )&params,
@@ -27347,7 +29804,7 @@ BOOL CBCGPGridCtrl::Copy (DWORD dwFlags)
 
 	if (dwFlags == (DWORD) -1) // by default
 	{
-		dwFlags = Format_TabSV | Format_Html;
+		dwFlags = Format_TabSV | Format_Html | m_dwDefaultExportToHtmlFlags;
 	}
 
 	//--------------------
@@ -27360,7 +29817,7 @@ BOOL CBCGPGridCtrl::Copy (DWORD dwFlags)
 		{
 			CBCGPGridRange* pRangeLast = m_lstSel.GetTail ();
 			ASSERT (pRangeLast != NULL);
-			ExportRangeToHTML (strHtml, *pRangeLast, 0);
+			ExportRangeToHTML (strHtml, *pRangeLast, dwFlags);
 		}
 		
 		if (strHtml.IsEmpty ())
@@ -27379,7 +29836,7 @@ BOOL CBCGPGridCtrl::Copy (DWORD dwFlags)
 		{
 			CBCGPGridRange* pRangeLast = m_lstSel.GetTail ();
 			ASSERT (pRangeLast != NULL);
-			ExportRangeToText (strText, *pRangeLast, dwFlags & (Format_TabSV | Format_CSV));
+			ExportRangeToText (strText, *pRangeLast, dwFlags);
 		}
 
 		if (strText.IsEmpty ())
@@ -27428,7 +29885,7 @@ BOOL CBCGPGridCtrl::Copy (DWORD dwFlags)
 		}
 		else if ((dwFlags & Format_Html) != 0)
 		{
-			if (!CopyTextToClipboardInternal (strHtml, strText.GetLength ()))
+			if (!CopyTextToClipboardInternal (strHtml, strHtml.GetLength ()))
 			{
 				::CloseClipboard ();
 				return FALSE;
@@ -27628,11 +30085,11 @@ BOOL CBCGPGridCtrl::CopyHTML ()
 	{
 		CBCGPGridRange* pRangeLast = m_lstSel.GetTail ();
 		ASSERT (pRangeLast != NULL);
-		ExportRangeToHTML (strHtml, *pRangeLast, 0);
+		ExportRangeToHTML (strHtml, *pRangeLast, m_dwDefaultExportToHtmlFlags);
 	}
 	else // Copy all to the clipboard:
 	{
-		ExportToHTML (strHtml, 0);
+		ExportToHTML (strHtml, m_dwDefaultExportToHtmlFlags);
 	}
 
 	if (strHtml.IsEmpty ())
@@ -27671,6 +30128,64 @@ BOOL CBCGPGridCtrl::CopyHTML ()
 		// Copy CF_TEXT to clipboard:
 		//---------------------------
 		if (!CopyTextToClipboardInternal (strHtml, strHtml.GetLength ()))
+		{
+			::CloseClipboard ();
+			return FALSE;
+		}
+
+		::CloseClipboard ();
+	}
+	catch (...)
+	{
+		TRACE0("CopyTextToClipboard: out of memory\n");
+	}
+
+	return TRUE;
+}
+//*****************************************************************************
+BOOL CBCGPGridCtrl::CopyCSV ()
+{
+	ASSERT_VALID (this);
+
+	CString strText;
+	if (!m_lstSel.IsEmpty ()) // Copy selection to the clipboard:
+	{
+		CBCGPGridRange* pRangeLast = m_lstSel.GetTail ();
+		ASSERT (pRangeLast != NULL);
+		ExportRangeToText (strText, *pRangeLast, Format_CSV | m_dwDefaultExportToCsvFlags);
+	}
+	else // Copy all to the clipboard:
+	{
+		ExportToCSV (strText, Format_CSV | m_dwDefaultExportToCsvFlags);
+	}
+
+	if (strText.IsEmpty ())
+	{
+		return FALSE;
+	}
+
+	//--------------------------
+	// Copy strText to clipboard
+	//--------------------------
+	try
+	{
+		if (!OpenClipboard ())
+		{
+			TRACE0("Can't open clipboard\n");
+			return FALSE;
+		}
+
+		if (!::EmptyClipboard ())
+		{
+			TRACE0("Can't empty clipboard\n");
+			::CloseClipboard ();
+			return FALSE;
+		}
+
+		//---------------------------
+		// Copy CF_TEXT to clipboard:
+		//---------------------------
+		if (!CopyTextToClipboardInternal (strText, strText.GetLength ()))
 		{
 			::CloseClipboard ();
 			return FALSE;
@@ -28071,6 +30586,19 @@ LRESULT CBCGPGridCtrl::OnBCGUpdateToolTips (WPARAM wp, LPARAM)
 #ifndef _BCGPGRID_STANDALONE
 		CBCGPTooltipManager::CreateToolTip (m_pToolTip, this, BCGP_TOOLTIP_TYPE_GRID);
 #else
+		if (m_pToolTip != NULL)
+		{
+			ASSERT_VALID(m_pToolTip);
+			
+			if (m_pToolTip->GetSafeHwnd() != NULL)
+			{
+				m_pToolTip->DestroyWindow();
+			}
+			
+			delete m_pToolTip;
+			m_pToolTip = NULL;
+		}
+
 		m_pToolTip = new CToolTipCtrl;
 		m_pToolTip->Create (this);
 #endif
@@ -28101,7 +30629,7 @@ BOOL CBCGPGridCtrl::OnNeedTipText(UINT /*id*/, NMHDR* pNMH, LRESULT* /*pResult*/
 	}
 
 #ifndef _BCGPGRID_STANDALONE
-	if (CBCGPPopupMenu::GetActiveMenu () != NULL)
+	if (CBCGPPopupMenu::GetActiveMenu () != NULL && !IsPlacedOnActiveMenu())
 	{
 		return FALSE;
 	}
@@ -28508,7 +31036,7 @@ BOOL CBCGPGridCtrl::Search (CBCGPGridItemID &idPos, CBCGPGridItemID idStart, con
 	//-------------
 	if (params.scanOrder == BCGP_GRID_FINDREPLACE_PARAM::ByRows)
 	{
-		BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+		BOOL bShowAllItems = FALSE;
 		
 		const CList<CBCGPGridRow*, CBCGPGridRow*>& lst =
 			(!IsSortingMode () && !IsGrouping ()) ? m_lstItems : m_lstTerminalItems;
@@ -28652,7 +31180,7 @@ CBCGPGridItem* CBCGPGridCtrl::SearchColumn (int nColumn, int &nPos, int nStart,
 		return NULL;
 	}
 
-	BOOL bShowAllItems = (IsSortingMode () && !IsGrouping ());
+	BOOL bShowAllItems = FALSE;
 	
 	const CList<CBCGPGridRow*, CBCGPGridRow*>& lst =
 		(!IsSortingMode () && !IsGrouping ()) ? m_lstItems : m_lstTerminalItems;
@@ -28773,7 +31301,7 @@ LRESULT CBCGPGridCtrl::OnBCGSetControlVMMode (WPARAM wp, LPARAM)
 	return 0;
 }
 //****************************************************************************
-BOOL CBCGPGridCtrl::SetExportTextSeparator (DWORD dwExportFlags, CString& strSeparator)
+BOOL CBCGPGridCtrl::SetExportTextSeparator (DWORD dwExportFlags, CString strSeparator)
 {
 	if ((dwExportFlags & Format_CSV) != 0)
 	{
@@ -28793,37 +31321,68 @@ BOOL CBCGPGridCtrl::OnSetAccData (long lVal)
 		return FALSE;
 	}
 
-	CPoint pt(BCG_GET_X_LPARAM(lVal), BCG_GET_Y_LPARAM(lVal));
-	ScreenToClient (&pt);
+	if (m_nAccLastIndex != lVal && lVal > nAccKeyIndex)
+	{
+		return FALSE;
+	}
+
+	m_AccData.Clear ();
+
+	if (lVal > nAccKeyIndex)
+	{
+		long nIndex = lVal -1;
+		nIndex -= nAccKeyIndex;
+
+		int nRow =  LOWORD(nIndex);
+		int nItem =  HIWORD(nIndex);
+
+		const int nMaxIndex = 1000;
+
+		CBCGPGridRow* pRow =  GetRow (nRow);
+		if (pRow != NULL)
+		{
+			if (nItem == nMaxIndex)
+			{
+				pRow->SetACCData(this, m_AccData);
+				return TRUE;
+			}
+
+			CBCGPGridItem* pGridItem = pRow->GetItem (nItem);
+			if (pGridItem != NULL)
+			{
+				pGridItem->SetACCData(this, m_AccData);
+				return TRUE;
+			}
+		}
+
+		return FALSE;
+	}
+
+    if (m_nAccLastIndex == lVal)
+	{
+		return FALSE;
+	}
 
 	CBCGPGridItemID id;
-	CBCGPGridItem* pItem = NULL;
-	CBCGPGridRow* pRow = HitTest(pt, id, pItem);
+	CBCGPGridRow* pRow = GetRow(lVal - 1);
 	if (pRow == NULL)
 	{
 		ASSERT(FALSE);
 		return FALSE;
 	}
 
-	m_AccData.Clear ();
-
-	ASSERT_VALID (pRow);
-
-	if (pItem != NULL)
-	{
-		ASSERT_VALID (pItem);
-		pItem->SetACCData (this, m_AccData);
-		return TRUE;
-	}
-
 	pRow->SetACCData (this, m_AccData);
-
 	return TRUE;
 }
 //*****************************************************************************
 LRESULT CBCGPGridCtrl::OnGetObject(WPARAM wParam, LPARAM lParam)
 {
 	return CBCGPWnd::OnGetObject (wParam, lParam);
+}
+//*****************************************************************************
+int  CBCGPGridCtrl::GetAccRowCount()
+{
+	return (IsVirtualMode()) ? 0 : GetTotalRowCount();
 }
 //*****************************************************************************
 HRESULT CBCGPGridCtrl::get_accChildCount(long *pcountChildren)
@@ -28833,31 +31392,56 @@ HRESULT CBCGPGridCtrl::get_accChildCount(long *pcountChildren)
 		return E_INVALIDARG;
 	}
 
-	*pcountChildren = 0;
+	*pcountChildren = GetAccRowCount();
+
+	if (IsGrouping ())
+	{
+		*pcountChildren = (long)m_lstTerminalItems.GetCount ();	
+	}
 	return S_OK;
 }
 //*****************************************************************************
-HRESULT CBCGPGridCtrl::get_accChild(VARIANT /*varChild*/, IDispatch **ppdispChild)
+HRESULT CBCGPGridCtrl::get_accChild(VARIANT varChild, IDispatch **ppdispChild)
 {
-	if (!(*ppdispChild))
+	if (!ppdispChild)
+	{
+		return E_INVALIDARG;
+	}
+	*ppdispChild = NULL;
+
+	if (varChild.vt != VT_I4)
 	{
 		return E_INVALIDARG;
 	}
 
-	if (m_pStdObject != NULL)
+	if (varChild.lVal > nAccKeyIndex)
 	{
-		*ppdispChild = m_pStdObject;
+		return S_FALSE;
 	}
-	else
+
+	if (varChild.lVal <= 0 || varChild.lVal > GetAccRowCount())
 	{
-		*ppdispChild = NULL;
+		return S_FALSE;
 	}
-	return S_OK;
+
+	CBCGPGridRow* pAccRow = GetRow (varChild.lVal - 1);
+	if (pAccRow != NULL)
+	{
+		ASSERT_VALID(pAccRow);
+		*ppdispChild = pAccRow->GetIDispatch(TRUE);
+	}
+
+	return (*ppdispChild != NULL) ? S_OK : S_FALSE;
 }
 //*****************************************************************************
 HRESULT CBCGPGridCtrl::get_accName(VARIANT varChild, BSTR *pszName)
 {
-	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	if (varChild.vt != VT_I4 || !pszName)
+	{
+		return E_INVALIDARG;
+	}
+	
+	if (varChild.lVal == CHILDID_SELF)
 	{
 		CString strText;
 		GetWindowText(strText);
@@ -28870,33 +31454,17 @@ HRESULT CBCGPGridCtrl::get_accName(VARIANT varChild, BSTR *pszName)
 		*pszName = strText.AllocSysString();
 		return S_OK;
 	}
+	
+	if (varChild.lVal > 0 && varChild.lVal != CHILDID_SELF)
+	{		
+		OnSetAccData(varChild.lVal);
+		if (m_AccData.m_strAccName.IsEmpty())
+		{
+			return S_FALSE;
+		}
 
-	if (m_pAccItem != NULL)
-	{
-		ASSERT_VALID (m_pAccItem);
-
-		CString strName = m_pAccItem->FormatItem ();
-		*pszName = strName.AllocSysString();
+		*pszName = m_AccData.m_strAccName.AllocSysString();
 		return S_OK;
-	}
-
-	if (m_pAccRow != NULL)
-	{
-		ASSERT_VALID(m_pAccRow);
-
-		BOOL bHasItems = m_pAccRow->HasValueField () && m_pAccRow->GetItemCount () > 0;
-		if (m_pAccRow->IsGroup() || !bHasItems)
-		{
-			CString strName = m_pAccRow->GetName();
-			*pszName = strName.AllocSysString();
-			return S_OK;
-		}
-		else
-		{
-			CString strName = m_pAccRow->FormatItem();
-			*pszName = strName.AllocSysString();
-			return S_OK;
-		}
 	}
 
 	return S_FALSE;
@@ -28904,35 +31472,27 @@ HRESULT CBCGPGridCtrl::get_accName(VARIANT varChild, BSTR *pszName)
 //*****************************************************************************
 HRESULT CBCGPGridCtrl::get_accValue(VARIANT varChild, BSTR *pszValue)
 {
-	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	if (varChild.vt != VT_I4)
+	{
+		return E_INVALIDARG;
+	}
+	
+	if (varChild.lVal == CHILDID_SELF)
 	{
 		return S_FALSE;
 	}
-
-	if (m_pAccItem != NULL)
+	
+	if (varChild.lVal > 0)
 	{
-		ASSERT_VALID (m_pAccItem);
+		OnSetAccData(varChild.lVal);
 
-		CString strName = m_pAccItem->FormatItem();
-		*pszValue = strName.AllocSysString();
+		if (m_AccData.m_strAccValue.IsEmpty())
+		{
+			return S_FALSE;
+		}
+		
+		*pszValue = m_AccData.m_strAccValue.AllocSysString();
 		return S_OK;
-	}
-
-	if (m_pAccRow != NULL)
-	{
-		BOOL bHasItems = m_pAccRow->HasValueField () && m_pAccRow->GetItemCount () > 0;
-		if (m_pAccRow->IsGroup() || !bHasItems)
-		{
-			CString strName = m_pAccRow->GetName();
-			*pszValue = strName.AllocSysString();
-			return S_OK;
-		}
-		else
-		{
-			CString strValue = m_pAccRow->FormatItem();
-			*pszValue = strValue.AllocSysString();
-			return S_OK;
-		}
 	}
 
 	return S_FALSE;
@@ -28940,42 +31500,26 @@ HRESULT CBCGPGridCtrl::get_accValue(VARIANT varChild, BSTR *pszValue)
 //*****************************************************************************
 HRESULT CBCGPGridCtrl::get_accDescription(VARIANT varChild, BSTR *pszDescription)
 {
-	if (((varChild.vt != VT_I4) && (varChild.lVal != CHILDID_SELF)) || (NULL == pszDescription))
+	if (varChild.vt != VT_I4)
 	{
 		return E_INVALIDARG;
 	}
-
-	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	
+	if (varChild.lVal == CHILDID_SELF)
 	{
-		*pszDescription = SysAllocString(L"GridControl");
-		return S_OK;
+		return S_FALSE;
 	}
-
-	if (m_pAccItem != NULL)
+	
+	if (varChild.lVal > 0)
 	{
-		ASSERT_VALID (m_pAccItem);
-
-		CBCGPGridItemID id = m_pAccItem->GetGridItemID ();
-		CString strName;
-		strName.Format (_T("Row %d, Column %d"), id.m_nRow + 1, id.m_nColumn + 1);
-		*pszDescription = strName.AllocSysString();
-		return S_OK;
-	}
-
-	if (m_pAccRow != NULL)
-	{
-		CBCGPReportRow* pReportRow = DYNAMIC_DOWNCAST (CBCGPReportRow, m_pAccRow);
-
-		if (pReportRow != NULL)
+		OnSetAccData(varChild.lVal);
+		if(m_AccData.m_strDescription.IsEmpty())
 		{
-			CString strName = pReportRow->GetDescription();
-			*pszDescription = strName.AllocSysString();
-			return S_OK;
+			return S_FALSE;
 		}
-
-		CString strName;
-		strName.Format (_T("Row %d"), m_pAccRow->GetRowId () + 1);
-		*pszDescription = strName.AllocSysString();
+		
+		*pszDescription = m_AccData.m_strDescription.AllocSysString();
+		return S_OK;
 	}
 
 	return S_OK;
@@ -28994,16 +31538,13 @@ HRESULT CBCGPGridCtrl::get_accRole(VARIANT varChild, VARIANT *pvarRole)
 		pvarRole->lVal = ROLE_SYSTEM_TABLE;
 		return S_OK;
 	}
-
-	if (m_pAccItem != NULL)
+	
+	if (varChild.lVal > 0 && varChild.lVal != CHILDID_SELF)
 	{
+		OnSetAccData(varChild.lVal);
 		pvarRole->vt = VT_I4;
-		pvarRole->lVal = ROLE_SYSTEM_CELL;
-		return S_OK;
+		pvarRole->lVal = m_AccData.m_nAccRole;
 	}
-
-	pvarRole->vt = VT_I4;
-	pvarRole->lVal = ROLE_SYSTEM_ROW;
 
 	return S_OK;
 }
@@ -29016,51 +31557,11 @@ HRESULT CBCGPGridCtrl::get_accState(VARIANT varChild, VARIANT *pvarState)
 		pvarState->lVal = STATE_SYSTEM_NORMAL;
 		return S_OK;
 	}
-
-	pvarState->vt = VT_I4;
-	pvarState->lVal = STATE_SYSTEM_FOCUSABLE;
-	pvarState->lVal |= STATE_SYSTEM_SELECTABLE;
-	
-	if (m_pAccItem != NULL)
+	if (varChild.lVal > 0 && varChild.lVal != CHILDID_SELF)
 	{
-		if (m_pAccItem->IsSelected())
-		{
-			pvarState->lVal |= STATE_SYSTEM_FOCUSED;
-			pvarState->lVal |= STATE_SYSTEM_SELECTED;
-		}
-
-		if (!m_pAccItem->IsEnabled() || m_pAccItem->IsReadOnly())
-		{
-			pvarState->lVal |= STATE_SYSTEM_READONLY;
-		}
-
-		return S_OK;
-	}
-
-	if (m_pAccRow != NULL)
-	{
-		if (m_pAccRow->IsSelected())
-		{
-			pvarState->lVal |= STATE_SYSTEM_FOCUSED;
-			pvarState->lVal |= STATE_SYSTEM_SELECTED;
-		}
-
-		if (m_pAccRow->IsGroup())
-		{
-			if (m_pAccRow->IsExpanded ())
-			{
-				pvarState->lVal |= STATE_SYSTEM_EXPANDED;
-			}
-			else
-			{
-				pvarState->lVal |= STATE_SYSTEM_COLLAPSED;
-			}
-		}
-
-		if (!m_pAccRow->IsEnabled() || (m_pAccRow->IsGroup() && !m_pAccRow->HasValueField ()))
-		{
-			pvarState->lVal |= STATE_SYSTEM_READONLY;
-		}
+		OnSetAccData(varChild.lVal);
+		pvarState->vt = VT_I4;
+		pvarState->lVal = m_AccData.m_bAccState;
 	}
 
 	return S_OK;
@@ -29118,12 +31619,12 @@ HRESULT CBCGPGridCtrl::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, lo
 {
 	HRESULT hr = S_OK;
 
-	if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight)
+	if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight || varChild.vt != VT_I4)
 	{
 		return E_INVALIDARG;
 	}
 
-	if ((varChild.vt == VT_I4) && (varChild.lVal == CHILDID_SELF))
+	if (varChild.lVal == CHILDID_SELF)
 	{
 		CRect rc;
 		GetWindowRect(rc);
@@ -29135,27 +31636,17 @@ HRESULT CBCGPGridCtrl::accLocation(long *pxLeft, long *pyTop, long *pcxWidth, lo
 
 		return S_OK;
 	}
-	else
+	
+	if (varChild.lVal > 0)
 	{
-		if (m_pAccItem != NULL)
-		{
-			CRect rcItem = m_pAccItem->GetRect ();
-			ClientToScreen(&rcItem);
-			*pxLeft = rcItem.left;
-			*pyTop = rcItem.top;
-			*pcxWidth = rcItem.Width();
-			*pcyHeight = rcItem.Height();
-		}
+		OnSetAccData(varChild.lVal);
 
-		else if (m_pAccRow != NULL)
-		{
-			CRect rcRow = m_pAccRow->GetRect ();
-			ClientToScreen(&rcRow);
-			*pxLeft = rcRow.left;
-			*pyTop = rcRow.top;
-			*pcxWidth = rcRow.Width();
-			*pcyHeight = rcRow.Height();
-		}
+		*pxLeft = m_AccData.m_rectAccLocation.left;
+		*pyTop = m_AccData.m_rectAccLocation.top;
+		*pcxWidth = m_AccData.m_rectAccLocation.Width();
+		*pcyHeight = m_AccData.m_rectAccLocation.Height();
+
+		return S_OK;
 	}
 
 	return hr;
@@ -29171,14 +31662,26 @@ HRESULT CBCGPGridCtrl::accHitTest(long xLeft, long yTop, VARIANT *pvarChild)
 	CPoint pt(xLeft, yTop);
 	ScreenToClient(&pt);
 
+	if (m_rectRowHeader.PtInRect(pt))
+	{
+		pt.Offset(m_rectRowHeader.Width(), 0);
+	}
+
 	CBCGPGridItemID id;
 	CBCGPGridItem* pItem = NULL;
 	CBCGPGridRow* pRow = HitTest(pt, id, pItem);
 	if (pRow != NULL)
 	{
-		LPARAM lParam = MAKELPARAM((WORD)xLeft, (WORD)yTop);
-		pvarChild->vt = VT_I4;
-		pvarChild->lVal = (LONG)lParam;
+		IDispatch* pDispatch = pRow->GetIDispatch(TRUE);
+		if (pDispatch)
+		{
+			pRow->SetACCData(this, m_AccData);
+
+			pvarChild->vt = VT_DISPATCH;
+			pvarChild->pdispVal = pDispatch;
+
+			return S_OK;
+		}
 	}
 	else
 	{
@@ -29200,14 +31703,63 @@ void CBCGPGridCtrl::NotifyAccessibility (CBCGPGridRow* pRow, CBCGPGridItem* pIte
 
 	m_pAccRow = pRow;
 	m_pAccItem = pItem;
+	LPARAM lParam = NULL;
+	const int nMaxIndex = 1000;
 
-	CPoint pt(pRow->m_Rect.left, pRow->m_Rect.top);
+    if (IsGrouping ())
+	{
+		int i = 0;
+		for (POSITION pos = m_lstTerminalItems.GetHeadPosition (); pos != NULL; i++)
+		{
+			CBCGPGridRow* pRowNext = m_lstTerminalItems.GetNext (pos);
+			if (pRowNext != NULL && pRowNext == pRow)
+			{	
+				lParam = MAKELPARAM(i, nMaxIndex) + nAccKeyIndex + 1;
+				m_nAccLastIndex = (int)lParam;
+
+#ifndef _BCGSUITE_
+				globalData.NotifyWinEvent (EVENT_OBJECT_FOCUS, GetSafeHwnd(), OBJID_CLIENT, (LONG)lParam);
+#else
+				::NotifyWinEvent(EVENT_OBJECT_FOCUS, GetSafeHwnd(), OBJID_CLIENT, (LONG)lParam);
+#endif
+			}
+		}
+		return;
+	}
+
 	if (pItem != NULL)
 	{
-		pt = CPoint(pItem->m_Rect.left, pItem->m_Rect.top);
+		for (int i = 0; i < pRow->m_arrRowItems.GetSize (); i++)
+		{
+			CBCGPGridItem* pItemNext = pRow->m_arrRowItems [i];
+			if (pItemNext == pItem)
+			{
+				CBCGPGridItemID id = pItemNext->GetGridItemID ();
+				lParam = MAKELPARAM(id.m_nRow, i) + nAccKeyIndex + 1;
+				if (lParam == m_nAccLastIndex)
+				{
+					return;	
+				}
+				m_nAccLastIndex = (int)lParam;
+				break;
+			}
+		}
 	}
-	ClientToScreen(&pt);
-	LPARAM lParam = MAKELPARAM(pt.x, pt.y);
+	else
+	{
+		int i = 0;
+		for (POSITION pos = m_lstItems.GetHeadPosition (); pos != NULL; i++)
+		{
+			CBCGPGridRow* pRowNext = m_lstItems.GetNext (pos);
+			ASSERT_VALID (pRowNext);
+			if (pRow == pRowNext)
+			{
+				lParam = MAKELPARAM(i, nMaxIndex) + nAccKeyIndex + 1;
+				m_nAccLastIndex = (int)lParam;
+				break;
+			}
+		}
+	}
 
 #ifndef _BCGSUITE_
 	globalData.NotifyWinEvent (EVENT_OBJECT_FOCUS, GetSafeHwnd(), OBJID_CLIENT, (LONG)lParam);
@@ -29378,26 +31930,39 @@ BCGP_GRID_COLOR_DATA::ColorData* CBCGPGridCtrl::GetCustomDataBarColors (int nCol
 {
 	return m_mapDataBarColors.Get (nColumn);
 }
+//*****************************************************************************************
+void CBCGPGridCtrl::SetNoContentLabel(const CString& strNoContentLabel)
+{
+	m_strNoContent = strNoContentLabel;
+	
+	InvalidateRect (m_rectList);
 
+	if (!m_bNoUpdateWindow)
+	{
+		UpdateWindow ();
+	}
+}
+//*****************************************************************************************
+void CBCGPGridCtrl::SetOutOfFilterLabel(const CString& strOutOfFilterLabel)
+{
+	m_strOutOfFilter = strOutOfFilterLabel;
+	
+	InvalidateRect (m_rectList);
+
+	if (!m_bNoUpdateWindow)
+	{
+		UpdateWindow ();
+	}
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPHeaderItemDragWnd
-
-CString	CBCGPHeaderItemDragWnd::m_strClassName;
 
 CBCGPHeaderItemDragWnd::CBCGPHeaderItemDragWnd()
 {
 	m_pWndGrid = NULL;
 	m_nItem = -1;
 	m_bDrop = TRUE;
-
-	if (m_strClassName.IsEmpty ())
-	{
-		m_strClassName = ::AfxRegisterWndClass (
-			CS_SAVEBITS,
-			::LoadCursor(NULL, IDC_ARROW),
-			(HBRUSH)(COLOR_BTNFACE + 1), NULL);
-	}
 }
 
 CBCGPHeaderItemDragWnd::~CBCGPHeaderItemDragWnd()
@@ -29440,21 +32005,26 @@ BOOL CBCGPHeaderItemDragWnd::Create (CBCGPGridCtrl* pGrid, int nItem)
 		if (m_pWndGrid->m_bDragGroupItem)
 		{
 			rect.right = rect.left + sizeText.cx + 
-				BCGPGRID_GROUPBYBOX_COLUMNWIDTH + TEXT_MARGIN;
+				globalUtils.ScaleByDPI(BCGPGRID_GROUPBYBOX_COLUMNWIDTH) + GRID_TEXT_MARGIN;
 		}
 		else
 		{
 			int nWidth = (pGrid->m_pColumnChooser != NULL) ? 
 				pGrid->m_pColumnChooser->GetColumnWidth () : 0;
-			rect.right = rect.left + max (sizeText.cx + 20, nWidth);
+			rect.right = rect.left + max (sizeText.cx + globalUtils.ScaleByDPI(20), nWidth);
 		}
-		rect.bottom = rect.top + sizeText.cy + 10;
+		rect.bottom = rect.top + sizeText.cy + globalUtils.ScaleByDPI(10);
 
 		::SelectObject (dc.GetSafeHdc (), hfontOld);
 	}
 
+	CString strClassName = ::AfxRegisterWndClass (
+		CS_SAVEBITS,
+		::LoadCursor(NULL, IDC_ARROW),
+		(HBRUSH)(COLOR_BTNFACE + 1), NULL);
+
 	return CreateEx (WS_EX_TOOLWINDOW | WS_EX_TOPMOST, 
-		m_strClassName, NULL, WS_POPUP | WS_DISABLED,
+		strClassName, NULL, WS_POPUP | WS_DISABLED,
 		rect, NULL, 0);
 }
 //*******************************************************************************
@@ -29490,8 +32060,12 @@ void CBCGPHeaderItemDragWnd::OnPaint()
 	}
 	else
 	{
+		dc.SetTextColor (visualManager->GetGridDragHeaderTextColor(m_pWndGrid));
+
+		const int nMargin = globalUtils.ScaleByDPI(5);
+
 		m_pWndGrid->GetColumnsInfo ().m_bDrawingDraggedColumn = TRUE;
-		m_pWndGrid->GetColumnsInfo ().DrawColumn (&dc, m_nItem, rectClient, 5, 5, FALSE, TRUE, TRUE);
+		m_pWndGrid->GetColumnsInfo ().DrawColumn (&dc, m_nItem, rectClient, nMargin, nMargin, FALSE, TRUE, TRUE);
 		m_pWndGrid->GetColumnsInfo ().m_bDrawingDraggedColumn = FALSE;
 	}
 
@@ -29523,17 +32097,8 @@ BOOL CBCGPHeaderItemDragWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPHeaderItemDropWnd
 
-CString	CBCGPHeaderItemDropWnd::m_strClassName;
-
 CBCGPHeaderItemDropWnd::CBCGPHeaderItemDropWnd()
 {
-	if (m_strClassName.IsEmpty ())
-	{
-		m_strClassName = ::AfxRegisterWndClass (
-			CS_SAVEBITS,
-			::LoadCursor(NULL, IDC_ARROW),
-			(HBRUSH)(COLOR_BTNFACE + 1), NULL);
-	}
 }
 
 CBCGPHeaderItemDropWnd::~CBCGPHeaderItemDropWnd()
@@ -29554,14 +32119,19 @@ END_MESSAGE_MAP()
 
 BOOL CBCGPHeaderItemDropWnd::Create (int nColumnHeight) 
 {
-	const int nArrowSize = 9;
+	const int nArrowSize = globalUtils.ScaleByDPI(9);
 
 	int nWndHeight = nColumnHeight + nArrowSize + nArrowSize;
 
 	CRect rectWindow (0, 0, nArrowSize, nWndHeight);
 
+	CString strClassName = ::AfxRegisterWndClass (
+		CS_SAVEBITS,
+		::LoadCursor(NULL, IDC_ARROW),
+		(HBRUSH)(COLOR_BTNFACE + 1), NULL);
+
 	if (!CreateEx (WS_EX_TOOLWINDOW,
-		m_strClassName, NULL, WS_POPUP | WS_DISABLED,
+		strClassName, NULL, WS_POPUP | WS_DISABLED,
 		rectWindow, NULL, 0))
 	{
 		return FALSE;
@@ -29581,21 +32151,33 @@ BOOL CBCGPHeaderItemDropWnd::Create (int nColumnHeight)
 		{	6,	0	},
 	};
 
+	int i;
+	for (i = 0; i < ARROW_PTS; i++)
+	{
+		pts1[i].x = globalUtils.ScaleByDPI(pts1[i].x);
+		pts1[i].y = globalUtils.ScaleByDPI(pts1[i].y);
+	}
+
 	CRgn rgn1;
 	rgn1.CreatePolygonRgn (pts1, ARROW_PTS, ALTERNATE);
 
 	POINT pts2 [ARROW_PTS] =
 	{
-		{	3,	nColumnHeight + nArrowSize + 9	},
-		{	3,	nColumnHeight + nArrowSize + 5	},
-		{	-1,	nColumnHeight + nArrowSize + 5	},
-		{	5,	nColumnHeight + nArrowSize - 1	},
-		{	5,	nColumnHeight + nArrowSize + 0	},
-		{	9,	nColumnHeight + nArrowSize + 5	},
-		{	6,	nColumnHeight + nArrowSize + 5	},
-		{	6,	nColumnHeight + nArrowSize + 9	},
+		{	3,	9	},
+		{	3,	5	},
+		{	-1,	5	},
+		{	5,	-1	},
+		{	5,	0	},
+		{	9,	5	},
+		{	6,	5	},
+		{	6,	9	},
 	};
 
+	for (i = 0; i < ARROW_PTS; i++)
+	{
+		pts2[i].x = globalUtils.ScaleByDPI(pts2[i].x);
+		pts2[i].y = nColumnHeight + nArrowSize + globalUtils.ScaleByDPI(pts2[i].y);
+	}
 
 	CRgn rgn2;
 	rgn2.CreatePolygonRgn (pts2, ARROW_PTS, ALTERNATE);
@@ -29855,6 +32437,12 @@ BOOL CBCGPGridColumnListBox::OnEraseBkgnd(CDC* pDC)
 	return (BOOL)Default();
 }
 //*******************************************************************************
+HFONT CBCGPGridColumnListBox::GetGridOriginalFont()
+{
+	ASSERT_VALID (m_Columns.m_pWndList);
+	return m_Columns.m_pWndList->m_hFont != NULL ? m_Columns.m_pWndList->m_hFont : m_Columns.m_pWndList->GetDefaultFont();
+}
+//*******************************************************************************
 void CBCGPGridColumnListBox::DrawItem(LPDRAWITEMSTRUCT lpDIS) 
 {
 	ASSERT (lpDIS != NULL);
@@ -29871,7 +32459,7 @@ void CBCGPGridColumnListBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 		return;
 	}
 
-	CFont* pFontOld = pDC->SelectObject (m_Columns.m_pWndList->GetFont ());
+	HFONT hOldFont = (HFONT) ::SelectObject(pDC->GetSafeHdc(), GetGridOriginalFont());
 
 	int nColumn = (int) GetItemData (nIndex);
 	ASSERT (nColumn >= 0);
@@ -29918,8 +32506,7 @@ void CBCGPGridColumnListBox::DrawItem(LPDRAWITEMSTRUCT lpDIS)
 		pDC->InvertRect (rectItem);
 	}
 
-	pDC->SelectObject (pFontOld);
-
+	::SelectObject(pDC->GetSafeHdc(), hOldFont);
 }
 //*******************************************************************************
 void CBCGPGridColumnListBox::MeasureItem(LPMEASUREITEMSTRUCT lpMIS) 
@@ -29928,13 +32515,13 @@ void CBCGPGridColumnListBox::MeasureItem(LPMEASUREITEMSTRUCT lpMIS)
 	ASSERT_VALID (m_Columns.m_pWndList);
 
 	CClientDC dc (this);
-	CFont* pFontOld = dc.SelectObject (m_Columns.m_pWndList->GetFont ());
+	HFONT hOldFont = (HFONT) ::SelectObject(dc.GetSafeHdc(), GetGridOriginalFont());
 
 	TEXTMETRIC tm;
 	dc.GetTextMetrics (&tm);
 	lpMIS->itemHeight = tm.tmHeight + 6;
 
-	dc.SelectObject (pFontOld);
+	::SelectObject(dc.GetSafeHdc(), hOldFont);
 }
 //*******************************************************************************
 void CBCGPGridColumnListBox::OnLButtonDown(UINT nFlags, CPoint point) 
@@ -29976,13 +32563,13 @@ int CBCGPGridColumnListBox::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		return -1;
 	
 	CClientDC dc (this);
-	CFont* pFontOld = dc.SelectObject (m_Columns.m_pWndList->GetFont ());
+	HFONT hOldFont = (HFONT) ::SelectObject(dc.GetSafeHdc(), GetGridOriginalFont());
 
 	TEXTMETRIC tm;
 	dc.GetTextMetrics (&tm);
 	int nRowHeight = tm.tmHeight + 6;
 
-	int nHeight = min (10, m_Columns.GetColumnCount ()) * nRowHeight;
+	int nHeight = min (10, max(m_Columns.GetColumnCount(), 5)) * nRowHeight;
 
 	CString strParentCaption;
 	GetParent ()->GetWindowText (strParentCaption);
@@ -30017,7 +32604,8 @@ int CBCGPGridColumnListBox::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		ShowWindow (SW_SHOWNOACTIVATE);
 	}
 
-	dc.SelectObject (pFontOld);
+	::SelectObject(dc.GetSafeHdc(), hOldFont);
+
 	return 0;
 }
 //*******************************************************************************

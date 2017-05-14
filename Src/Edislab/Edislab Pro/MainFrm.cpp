@@ -172,8 +172,6 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	//´´½¨RibbonBar
 	CreateRibbonBar();
 	SetTimer(TIMER_ID,TIMER_GAP,NULL);
-
-
 	if (g_bAutoSelect)
 	{	
 		COMIPLE.StartCom(this);

@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -48,6 +48,9 @@ public:
 		m_nAnimationResID = 0;
 		m_nAnimationHeight = 60;
 		m_bWaitForMessages = TRUE;
+		m_MarqueeStyle = CBCGPProgressCtrl::BCGP_MARQUEE_DEFAULT;
+		m_clrMarquee = (COLORREF)-1;
+		m_clrMarqueeGradient = (COLORREF)-1;
 	}
 
 	CString	m_strCaption;
@@ -64,6 +67,10 @@ public:
 	BOOL	m_bShowPercentage;
 	BOOL	m_bDialogLook;
 	int		m_nHeaderHeight;
+
+	CBCGPProgressCtrl::BCGP_MARQUEE_STYLE m_MarqueeStyle;
+	COLORREF	m_clrMarquee;
+	COLORREF	m_clrMarqueeGradient;
 
 	UINT	m_nAnimationResID;
 	CString	m_strAnimationPath;
@@ -98,8 +105,29 @@ public:
 
 		m_bWaitForMessages	= src.m_bWaitForMessages;
 
+		m_MarqueeStyle		= src.m_MarqueeStyle;
+		m_clrMarquee		= src.m_clrMarquee;
+		m_clrMarqueeGradient= src.m_clrMarqueeGradient;
+
 		return *this;
 	}
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPProgressDlgCtrl
+
+class CBCGPProgressDlgCtrl : public CBCGPProgressCtrl
+{
+	friend class CBCGPProgressDlg;
+
+	CBCGPProgressDlgCtrl(CBCGPProgressDlg& dlg) :
+		m_dlg(dlg)
+	{
+	}
+
+	virtual void OnAnimationIdle();
+	
+	CBCGPProgressDlg& m_dlg;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -107,6 +135,8 @@ public:
 
 class BCGCBPRODLLEXPORT CBCGPProgressDlg : public CBCGPDialog
 {
+	friend class CBCGPProgressDlgCtrl;
+
 // Construction
 public:
 	CBCGPProgressDlg();
@@ -120,7 +150,11 @@ public:
 	void SetMessage2 (const CString& strMessage);
 
     long StepIt (BOOL bWaitForMessages = TRUE);
-    long SetPos (long nCurPos);
+
+    long SetPos(long nCurPos);
+
+    long SetPos(long nCurPos, BOOL bWaitForMessages);
+
 	long GetPos () const
 	{
 		return m_nCurPos; 
@@ -145,7 +179,8 @@ public:
 // Dialog Data
 	//{{AFX_DATA(CBCGPProgressDlg)
 	enum { IDD = IDD_BCGBARRES_PROGRESS_DLG };
-	CStatic	m_wndLine;
+	CBCGPProgressDlgCtrl	m_wndProgress;
+	CBCGPStatic	m_wndLine;
 	CBCGPButton	m_wndCancel;
 	CBCGPStatic	m_wndProgressPerc;
 	CBCGPStatic	m_wndMessage2;
@@ -162,7 +197,11 @@ public:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
 	//}}AFX_VIRTUAL
 
-	virtual void OnDrawHeader (CDC* /*pDC*/, CRect /*rect*/)	{}
+	virtual void OnDrawHeader (CDC* pDC, CRect rect)
+	{
+		UNREFERENCED_PARAMETER(pDC);
+		UNREFERENCED_PARAMETER(rect);
+	}
 
 // Implementation
 protected:
@@ -174,7 +213,9 @@ protected:
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnPaint();
+	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	//}}AFX_MSG
+	afx_msg LRESULT OnUMPumpMessages(WPARAM, LPARAM);
 	DECLARE_MESSAGE_MAP()
 
 	virtual void UpdatePercent (long nNewPos);
@@ -187,15 +228,11 @@ protected:
 		return !IsVisualManagerStyle () && !HasAeroMargins () && !m_Params.m_bDialogLook;
 	}
 
-	CProgressCtrl* GetProgressCtrl ()
-	{
-		return (CProgressCtrl*) GetDlgItem (IDC_BCGBARRES_PROGRESS);
-	}
-
 protected:
 	BOOL					m_bCancelled;
 	BOOL					m_bParentDisabled;
 	BOOL					m_bWaitForMessages;
+	BOOL					m_bAnimation;
 	long					m_nCurPos;
 	CBCGPProgressDlgParams	m_Params;
 	int						m_yLine;

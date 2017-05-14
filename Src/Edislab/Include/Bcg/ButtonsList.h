@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -22,6 +22,8 @@
 class CBCGPToolbarButton;
 class CCustToolbarDlg;
 class CBCGPToolBarImages;
+
+#include "BCGPScrollBar.h"
 
 /////////////////////////////////////////////////////////////////////////////
 // CButtonsList window
@@ -54,22 +56,26 @@ protected:
 	void SelectButton (CBCGPToolbarButton* pButton);
 	void RebuildLocations ();
 	void RedrawSelection ();
+	void RedrawButton(CBCGPToolbarButton* pButton);
 
 // Attributes
 protected:
-	CObList				m_Buttons;			// CBCGPToolbarButton list
-	CBCGPToolBarImages*	m_pImages;
-	CSize				m_sizeButton;
+	CList<CBCGPToolbarButton*, CBCGPToolbarButton*>	m_Buttons;			// CBCGPToolbarButton list
+	CBCGPToolBarImages*								m_pImages;
+	CSize											m_sizeButton;
+	int												m_nButtonsInRow;
 
-	BOOL				m_bInited;
+	BOOL											m_bInited;
 
-	CBCGPToolbarButton*	m_pSelButton;
+	CBCGPToolbarButton*								m_pSelButton;
+	CBCGPToolbarButton*								m_pHighlightedButton;
 
-	int					m_iScrollOffset;
-	int					m_iScrollTotal;
-	int					m_iScrollPage;
-	CScrollBar			m_wndScrollBar;
-	BOOL				m_bEnableDragFromList;
+	int												m_iScrollOffset;
+	int												m_iScrollTotal;
+	int												m_iScrollPage;
+	CBCGPScrollBar									m_wndScrollBar;
+	BOOL											m_bEnableDragFromList;
+	BOOL											m_bTrack;
 
 // Overrides
 	// ClassWizard generated virtual function overrides
@@ -96,8 +102,11 @@ protected:
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags);
 	afx_msg UINT OnGetDlgCode();
+	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg void OnCancelMode();
 	//}}AFX_MSG
-
+	afx_msg LRESULT OnMouseLeave(WPARAM wp,LPARAM lp);
 	DECLARE_MESSAGE_MAP()
 };
 

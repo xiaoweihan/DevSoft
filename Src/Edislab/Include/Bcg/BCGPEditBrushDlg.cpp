@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -232,6 +232,9 @@ BOOL CBCGPEditBrushDlg::OnInitDialog()
 	CBCGPColor c2 = m_brush.GetGradientColor();
 	m_wndColor2.SetColor(c2.a == 0. ? -1 : c2);
 
+#ifndef _BCGSUITE_
+	m_wndButtonSwap.SetImageAutoScale();
+#endif
 	m_wndButtonSwap.SetImage(IDB_BCGBARRES_SWAP);
 
 	m_wndImage.m_pBrush = &m_brush;

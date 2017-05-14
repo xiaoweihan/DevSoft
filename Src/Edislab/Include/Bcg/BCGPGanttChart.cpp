@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -192,7 +192,7 @@ static BOOL IsTimeNull (const COleDateTime& date)
 static DWORD DetectSpanType(const COleDateTimeSpan& tmSpan)
 {
 	int nDays = (int)tmSpan.GetTotalDays ();
-	int nMonths = nDays / 29;
+	int nMonths = nDays / 28;
 	int nYears = nDays / 365;
 	int nSeconds = (int)tmSpan.GetTotalSeconds ();
 	int nMinutes = nSeconds / 60;
@@ -417,7 +417,6 @@ CBCGPGanttChart::CBCGPGanttChart()
 	, m_bInAdjustLayout (FALSE)
 	, m_bTrackingScrollThumb (FALSE)
 	, m_nControlState (ecsNormal)
-	, m_pUpdateInfo (new UPDATE_INFO)
 	, m_dtGridLinesLargeSpan (0, 0, 0, 0)
 	, m_dtGridLinesSmallSpan (0, 0, 0, 0)
 	, m_bReadOnly (FALSE)
@@ -430,6 +429,7 @@ CBCGPGanttChart::CBCGPGanttChart()
 	, m_clrMainSchemeColor (CLR_DEFAULT)
 	, m_bShowTooltips (TRUE)
 {
+	m_pUpdateInfo = new UPDATE_INFO;
 	m_dtHScrollMin = COleDateTime::GetCurrentTime ();
 	m_dtHScrollMax = m_dtHScrollMin;
 	m_dtItemsMin = m_dtHScrollMin;
@@ -2616,7 +2616,7 @@ int CBCGPGanttChart::OnCreate (LPCREATESTRUCT lpCreateStruct)
 	CBCGPGestureConfig gestureConfig;
 	gestureConfig.EnablePan(TRUE, BCGP_GC_PAN_WITH_SINGLE_FINGER_VERTICALLY | BCGP_GC_PAN_WITH_SINGLE_FINGER_HORIZONTALLY | BCGP_GC_PAN_WITH_GUTTER | BCGP_GC_PAN_WITH_INERTIA);
 	
-	bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig);
+	bcgpGestureManager.SetGestureConfig(GetSafeHwnd(), gestureConfig, TRUE);
 	return 0;
 }
 
@@ -3658,7 +3658,7 @@ void CBCGPGanttChart::OnMouseMove (UINT nFlags, CPoint point)
 	}
 	else if (m_HilitedHeaderCell.Exists ())
 	{
-		HiliteHeaderCell (NULL); // The mouse has been moved out from the hilited header cell.
+		HiliteHeaderCell (NULL); // The mouse has been moved out from the highlighted header cell.
 	}
 
 	if (bTrackMouse)

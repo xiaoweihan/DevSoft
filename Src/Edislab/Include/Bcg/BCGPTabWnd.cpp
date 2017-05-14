@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -31,6 +31,7 @@
 #include "BCGCBProVer.h"
 
 #include "BCGPMDIFrameWnd.h"
+#include "BCGPMDIChildWnd.h"
 #include "BCGPContextMenuManager.h"
 
 #include "BCGPMainClientAreaWnd.h"
@@ -63,9 +64,8 @@ static const UINT idTabAnimation = 1;
 IMPLEMENT_DYNCREATE(CBCGPTabWnd, CBCGPBaseTabWnd)
 
 #define MIN_SROLL_WIDTH			(::GetSystemMetrics (SM_CXHSCROLL) * 2)
-#define SPLITTER_WIDTH			5
-#define RESIZEBAR_SIZE			6
-#define TABS_FONT				_T("Arial")
+#define SPLITTER_WIDTH			globalUtils.ScaleByDPI(5)
+#define RESIZEBAR_SIZE			globalUtils.ScaleByDPI(6)
 
 CBCGPTabWnd::CBCGPTabWnd()
 {
@@ -76,6 +76,7 @@ CBCGPTabWnd::CBCGPTabWnd()
 	m_bIsOneNoteStyle = FALSE;
 	m_bIsVS2005Style = FALSE;
 	m_bIsPointerStyle = FALSE;
+	m_bIsDotsStyle = FALSE;
 	m_bLeftRightRounded = FALSE;
 	m_bScroll = FALSE;
 	m_bScrollButtonFullSize = FALSE;
@@ -124,6 +125,9 @@ CBCGPTabWnd::CBCGPTabWnd()
 	m_nTabAnimationOffset = 0;
 	m_nTabAnimationStep = 0;
 	m_bTabAnimationSupport = TRUE;
+
+	m_bTabsHandCursor = FALSE;
+	m_DotShape = TAB_DOT_ELLIPSE;
 }
 //***************************************************************************************
 CBCGPTabWnd::~CBCGPTabWnd()
@@ -153,6 +157,7 @@ BEGIN_MESSAGE_MAP(CBCGPTabWnd, CBCGPBaseTabWnd)
 	//}}AFX_MSG_MAP
 	ON_REGISTERED_MESSAGE(BCGM_UPDATETOOLTIPS, OnBCGUpdateToolTips)
 	ON_MESSAGE(WM_PRINTCLIENT, OnPrintClient)
+	ON_MESSAGE(WM_GESTURE, OnGestureEvent)
 END_MESSAGE_MAP()
 
 BOOL CBCGPTabWnd::Create (Style style, const RECT& rect, CWnd* pParentWnd, 
@@ -164,6 +169,7 @@ BOOL CBCGPTabWnd::Create (Style style, const RECT& rect, CWnd* pParentWnd,
 	m_bIsOneNoteStyle = (style == STYLE_3D_ONENOTE);
 	m_bIsVS2005Style = (style == STYLE_3D_VS2005);
 	m_bIsPointerStyle = (style == STYLE_POINTER);
+	m_bIsDotsStyle = (style == STYLE_DOTS);
 	m_bLeftRightRounded = (style == STYLE_3D_ROUNDED || 
 		style == STYLE_3D_ROUNDED_SCROLL);
 	m_bHighLightTabs = m_bIsOneNoteStyle;
@@ -284,14 +290,14 @@ void CBCGPTabWnd::OnDraw(CDC* pDC)
 	BOOL bBackgroundIsReady =
 		CBCGPVisualManager::GetInstance ()->OnEraseTabsFrame (pDC, rectClient, this);
 
-	if ((!m_bDrawFrame || m_bIsPointerStyle) && !bBackgroundIsReady)
+	if ((!m_bDrawFrame || m_bIsPointerStyle || m_bIsDotsStyle) && !bBackgroundIsReady)
 	{
 		pDC->FillRect (rectClient, pbrFace);
 	}
 
 	CBCGPVisualManager::GetInstance ()->OnEraseTabsArea (pDC, rectTabs, this);
 
-	if (!m_bIsPointerStyle)
+	if (!m_bIsPointerStyle && !m_bIsDotsStyle)
 	{
 		CRect rectFrame = rectClient;
 
@@ -464,7 +470,7 @@ void CBCGPTabWnd::OnDraw(CDC* pDC)
 			pDC->LineTo (rectClient.right - 1, m_rectTabsArea.bottom);
 		}
 	}
-	else
+	else if (m_bIsPointerStyle)
 	{
 		CRect rectActiveTab(0, 0, 0, 0);
 		if (m_iActiveTab >= 0)
@@ -517,14 +523,44 @@ void CBCGPTabWnd::OnDraw(CDC* pDC)
 
 			m_iCurTab = i;
 
-			if (i != m_iActiveTab)	// Draw active tab last
+			if (i != m_iActiveTab || m_bIsDotsStyle)	// Draw active tab last
 			{
 				pDC->SelectClipRgn (&rgn);
 
-				if (m_bFlat)
+				if (m_bIsDotsStyle)
 				{
-					pDC->SelectObject (&penBlack);
-					DrawFlatTab (pDC, pTab, FALSE);
+					DrawTabDot(pDC, pTab, i == m_iActiveTab || IsTabSelected(i));
+				}
+				else if (m_bFlat)
+				{
+					CBrush* pOldBrush = NULL;
+					COLORREF clrOld = (COLORREF)-1;
+
+					BOOL bIsSelected = IsTabSelected(i);
+					if (bIsSelected)
+					{
+						if (m_brActiveTab.GetSafeHandle() == NULL)
+						{
+							m_brActiveTab.CreateSolidBrush (GetActiveTabColor ());
+						}
+						
+						pOldBrush = pDC->SelectObject (&m_brActiveTab);
+						clrOld = pDC->SetTextColor (GetActiveTabTextColor ());
+
+						pDC->SelectObject (&penBlack);
+					}
+					else
+					{
+						pDC->SelectObject (&penBlack);
+					}
+
+					DrawFlatTab (pDC, pTab, bIsSelected);
+
+					if (pOldBrush != NULL)
+					{
+						pDC->SelectObject(pOldBrush);
+						pDC->SetTextColor(clrOld);
+					}
 				}
 				else
 				{
@@ -533,7 +569,7 @@ void CBCGPTabWnd::OnDraw(CDC* pDC)
 			}
 		}
 
-		if (m_iActiveTab >= 0)
+		if (m_iActiveTab >= 0 && !m_bIsDotsStyle)
 		{
 			//-----------------
 			// Draw active tab:
@@ -574,7 +610,26 @@ void CBCGPTabWnd::OnDraw(CDC* pDC)
 
 				if (pTabActive->m_rect.right > m_rectTabsArea.left + 1)
 				{
-					CPen penLight (PS_SOLID, 1, GetActiveTabColor ());
+					COLORREF clrLine = m_clrActiveTabBk;
+					if (clrLine == (COLORREF)-1)
+					{
+						if (IsFlatTab())
+						{
+							clrLine = GetTabBkColor(m_iActiveTab);
+						}
+
+						if (clrLine == (COLORREF)-1)
+						{
+							clrLine = CBCGPVisualManager::GetInstance()->GetActiveTabBackColor(this);
+						}
+
+						if (clrLine == (COLORREF)-1)
+						{
+							clrLine = globalData.clrWindow;
+						}
+					}
+
+					CPen penLight (PS_SOLID, 1, clrLine);
 					pDC->SelectObject (&penLight);
 
 					if (m_location == LOCATION_BOTTOM)
@@ -1024,12 +1079,15 @@ void CBCGPTabWnd::AdjustTabs ()
 
 	m_nTabsTotalWidth = 0;
 
+	const int nTabImageMargin = globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_IMAGE_MARGIN);
+	const int nTabTextMargin = globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_TEXT_MARGIN);
+
 	//----------------------------------------------
 	// First, try set all tabs in its original size:
 	//----------------------------------------------
 	int x = m_rectTabsArea.left - m_nTabsHorzOffset;
 	int i = 0;
-	int nNewTabWidth = IsNewTabEnabled() ? m_rectTabsArea.Height () - 2 * TAB_IMAGE_MARGIN : 0;
+	int nNewTabWidth = IsNewTabEnabled() ? m_rectTabsArea.Height () - 2 * nTabImageMargin : 0;
 
 	TabCloseButtonMode tabCloseButtonMode = m_TabCloseButtonMode;
 	if (m_bFlat)
@@ -1038,6 +1096,10 @@ void CBCGPTabWnd::AdjustTabs ()
 		{
 			tabCloseButtonMode = TAB_CLOSE_BUTTON_ACTIVE;
 		}
+	}
+	else if (m_bIsDotsStyle)
+	{
+		tabCloseButtonMode = TAB_CLOSE_BUTTON_NONE;
 	}
 
 	for (int nIndex = 0; nIndex < m_iTabsNum; nIndex++)
@@ -1078,6 +1140,28 @@ void CBCGPTabWnd::AdjustTabs ()
 		{
 			if (pTab->m_bIsNewTab)
 			{
+				if (!pTab->m_strText.IsEmpty())
+				{
+					nNewTabWidth = dc.GetTextExtent(pTab->m_strText).cx + 2 * nTabImageMargin;
+				}
+
+				if (m_bFlat)
+				{
+					nNewTabWidth = max(nNewTabWidth, globalUtils.ScaleByDPI(20));
+				}
+				else if (m_bLeftRightRounded)
+				{
+					nNewTabWidth += m_nTabsHeight;
+				}
+				else if (m_bIsOneNoteStyle)
+				{
+					nNewTabWidth += m_rectTabsArea.Height () + 2 * nTabImageMargin;
+				}
+				else if (m_bIsVS2005Style)
+				{
+					nNewTabWidth += m_rectTabsArea.Height () + nTabImageMargin;
+				}
+
 				pTab->m_nFullWidth = nNewTabWidth;
 			}
 			else
@@ -1088,24 +1172,28 @@ void CBCGPTabWnd::AdjustTabs ()
 					strText.MakeUpper();
 				}
 				
-				pTab->m_nFullWidth = sizeImage.cx + TAB_IMAGE_MARGIN +
+				pTab->m_nFullWidth = sizeImage.cx + nTabImageMargin +
 					(pTab->m_bIconOnly ? 
-						0 : dc.GetTextExtent(strText).cx) + 2 * TAB_TEXT_MARGIN;
+						0 : dc.GetTextExtent(strText).cx) + 2 * nTabTextMargin;
 
 				if (m_bLeftRightRounded)
 				{
 					pTab->m_nFullWidth += m_nTabsHeight;
-					nExtraWidth = m_nTabsHeight - 2 * TAB_IMAGE_MARGIN - 1;
+					nExtraWidth = m_nTabsHeight - 2 * nTabImageMargin - 1;
 				}
 				else if (m_bIsOneNoteStyle)
 				{
-					pTab->m_nFullWidth += m_rectTabsArea.Height () + 2 * TAB_IMAGE_MARGIN;
-					nExtraWidth = m_rectTabsArea.Height () - TAB_IMAGE_MARGIN - 1;
+					pTab->m_nFullWidth += m_rectTabsArea.Height () + 2 * nTabImageMargin;
+					nExtraWidth = m_rectTabsArea.Height () - nTabImageMargin - 1;
 				}
 				else if (m_bIsVS2005Style)
 				{
 					pTab->m_nFullWidth += m_rectTabsArea.Height ();
-					nExtraWidth = m_rectTabsArea.Height () - TAB_IMAGE_MARGIN - 1;
+					nExtraWidth = m_rectTabsArea.Height () - nTabImageMargin - 1;
+				}
+				else if (m_bIsDotsStyle)
+				{
+					pTab->m_nFullWidth = m_rectTabsArea.Height();
 				}
 			}
 
@@ -1131,7 +1219,8 @@ void CBCGPTabWnd::AdjustTabs ()
 
 				if (bCloseButtonSpace)
 				{
-					pTab->m_nFullWidth += m_rectTabsArea.Height () - 2;
+					int nDelta = IsFlatTab() ? 2 : -2;
+					pTab->m_nFullWidth += m_rectTabsArea.Height () + nDelta;
 				}
 			}
 		}
@@ -1142,7 +1231,7 @@ void CBCGPTabWnd::AdjustTabs ()
 
 		if (m_bIsActiveTabBold && i == m_iActiveTab && m_hFontCustom == NULL && !IsCaptionFont())
 		{
-			dc.SelectObject(GetTabFont());	// Bold tab is availible for 3d tabs only
+			dc.SelectObject(GetTabFont());	// Bold tab is available for 3d tabs only
 		}
 
 		int nTabWidth = pTab->m_nFullWidth;
@@ -1177,7 +1266,7 @@ void CBCGPTabWnd::AdjustTabs ()
 			{
 				int nWidth = m_rectTabsArea.right - pTab->m_rect.left;
 
-				if (nWidth >= nExtraWidth + 2 * TAB_TEXT_MARGIN)
+				if (nWidth >= nExtraWidth + 2 * nTabTextMargin)
 				{
 					pTab->m_rect.right = m_rectTabsArea.right;
 					bHideTab = FALSE;
@@ -1195,7 +1284,7 @@ void CBCGPTabWnd::AdjustTabs ()
 			
 		if (m_pToolTip->GetSafeHwnd () != NULL)
 		{
-			BOOL bShowTooltip = pTab->m_bAlwaysShowToolTip || m_bCustomToolTips;
+			BOOL bShowTooltip = pTab->m_bAlwaysShowToolTip || m_bCustomToolTips || m_bIsDotsStyle;
 
 			if (pTab->m_rect.left < m_rectTabsArea.left ||
 				pTab->m_rect.right > m_rectTabsArea.right)
@@ -1241,7 +1330,7 @@ void CBCGPTabWnd::AdjustTabs ()
 	else
 	{
 		//-----------------------------------------
-		// Not enouth space to show the whole text.
+		// Not enough space to show the whole text.
 		//-----------------------------------------
 		int nTabsWidth = m_rectTabsArea.Width () - nNewTabWidth;
 		int nTabWidth = nTabsWidth / nVisibleTabsNum - 1;
@@ -1333,7 +1422,7 @@ void CBCGPTabWnd::AdjustTabs ()
 				}
 				else
 				{
-					if (nTabWidth < sizeImage.cx + TAB_IMAGE_MARGIN)
+					if (nTabWidth < sizeImage.cx + nTabImageMargin)
 					{
 						// Too narrow!
 						nCurrTabWidth = (m_rectTabsArea.Width () + m_nTabBorderSize * 2) / nVisibleTabsNum;
@@ -1342,7 +1431,7 @@ void CBCGPTabWnd::AdjustTabs ()
 					{
 						if (pTab->m_strText.IsEmpty () || pTab->m_bIconOnly)
 						{
-							nCurrTabWidth = sizeImage.cx + 2 * CBCGPBaseTabWnd::TAB_TEXT_MARGIN;
+							nCurrTabWidth = sizeImage.cx + 2 * nTabTextMargin;
 						}
 					}
 				}
@@ -1427,6 +1516,26 @@ void CBCGPTabWnd::AdjustTabs ()
 			}
 		}
 	}
+
+	if (m_bIsDotsStyle && m_nTabsTotalWidth < m_rectTabsArea.Width ())
+	{
+		// Center dots horizontally:
+		int xOffset = (m_rectTabsArea.Width() - m_nTabsTotalWidth) / 2;
+
+		for (i = 0; i < m_iTabsNum; i ++)
+		{
+			CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [i];
+			ASSERT_VALID (pTab);
+			
+			if (pTab->m_bVisible)
+			{
+				pTab->m_rect.OffsetRect(xOffset, 0);
+				pTab->m_rect.DeflateRect(0, globalData.GetTextMargins());
+
+				AdjustTooltipRect(pTab, TRUE);
+			}
+		}
+	}
 }
 //***************************************************************************************
 void CBCGPTabWnd::Draw3DTab (CDC* pDC, CBCGPTabInfo* pTab, BOOL bActive)
@@ -1447,7 +1556,7 @@ void CBCGPTabWnd::Draw3DTab (CDC* pDC, CBCGPTabInfo* pTab, BOOL bActive)
 			rectInter.IntersectRect (pTab->m_rect, m_rectCurrClip))
 		{
 			CBCGPVisualManager::GetInstance ()->OnDrawTab (
-				pDC, pTab->m_rect, m_iCurTab, bActive, this);
+				pDC, pTab->m_rect, m_iCurTab, bActive || IsTabSelected(m_iCurTab), this);
 		}
 	}
 }
@@ -1461,6 +1570,29 @@ void CBCGPTabWnd::DrawFlatTab (CDC* pDC, CBCGPTabInfo* pTab, BOOL bActive)
 	{
 		CBCGPVisualManager::GetInstance ()->OnDrawTab (
 			pDC, pTab->m_rect, m_iCurTab, bActive, this);
+	}
+}
+//***************************************************************************************
+void CBCGPTabWnd::DrawTabDot(CDC* pDC, CBCGPTabInfo* pTab, BOOL bActive)
+{
+	ASSERT_VALID (pTab);
+	ASSERT_VALID (pDC);
+	
+	if (pTab->m_bVisible)
+	{
+		CRect rect = pTab->m_rect;
+		
+		if (rect.Width() > rect.Height())
+		{
+			rect.left = rect.CenterPoint().x - rect.Height() / 2;
+			rect.right = rect.left + rect.Height();
+		}
+
+		int nPadding = globalUtils.ScaleByDPI(2);
+		rect.DeflateRect(nPadding, nPadding);
+
+		CBCGPVisualManager::GetInstance ()->OnDrawTabDot(
+			pDC, this, m_DotShape, rect, m_iCurTab, bActive, m_iCurTab == m_iHighlighted);
 	}
 }
 //***************************************************************************************
@@ -1559,92 +1691,7 @@ int CBCGPTabWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (CBCGPBaseTabWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
 	
-	CRect rectDummy (0, 0, 0, 0);
-
-	if (m_bScroll)
-	{
-		//-----------------------
-		// Create scroll buttons:
-		//-----------------------
-		if (m_bFlat)
-		{
-			m_btnScrollFirst.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
-			m_btnScrollFirst.SetStdImage (CBCGPMenuImages::IdArowFirst);
-			m_btnScrollFirst.m_bDrawFocus = FALSE;
-			m_btnScrollFirst.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
-			m_lstButtons.AddTail (m_btnScrollFirst.GetSafeHwnd ());
-		}
-
-		m_btnScrollLeft.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
-		m_btnScrollLeft.SetStdImage (
-			m_bFlat ? CBCGPMenuImages::IdArowLeftLarge : CBCGPMenuImages::IdArowLeftTab3d,
-			m_bIsOneNoteStyle || m_bIsVS2005Style || m_bFlat ? 
-					CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageDkGray,
-			m_bFlat ? (CBCGPMenuImages::IMAGES_IDS) 0 : CBCGPMenuImages::IdArowLeftDsbldTab3d);
-		m_btnScrollLeft.m_bDrawFocus = FALSE;
-		m_btnScrollLeft.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
-
-		if (!m_bIsOneNoteStyle && !m_bIsVS2005Style)
-		{
-			m_btnScrollLeft.SetAutorepeatMode (50);
-		}
-
-		m_lstButtons.AddTail (m_btnScrollLeft.GetSafeHwnd ());
-
-		m_btnScrollRight.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
-		m_btnScrollRight.SetStdImage (
-			m_bFlat ? CBCGPMenuImages::IdArowRightLarge : CBCGPMenuImages::IdArowRightTab3d,
-			m_bIsOneNoteStyle || m_bIsVS2005Style || m_bFlat ? 
-					CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageDkGray,
-			m_bFlat ? (CBCGPMenuImages::IMAGES_IDS) 0 : CBCGPMenuImages::IdArowRightDsbldTab3d);
-		m_btnScrollRight.m_bDrawFocus = FALSE;
-		m_btnScrollRight.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
-
-		if (!m_bIsOneNoteStyle && !m_bIsVS2005Style)
-		{
-			m_btnScrollRight.SetAutorepeatMode (50);
-		}
-
-		m_lstButtons.AddTail (m_btnScrollRight.GetSafeHwnd ());
-
-		if (m_bFlat)
-		{
-			m_btnScrollLast.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
-			m_btnScrollLast.SetStdImage (CBCGPMenuImages::IdArowLast);
-			m_btnScrollLast.m_bDrawFocus = FALSE;
-			m_btnScrollLast.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
-			m_lstButtons.AddTail (m_btnScrollLast.GetSafeHwnd ());
-		}
-
-		m_btnClose.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
-		m_btnClose.SetStdImage (CBCGPMenuImages::IdClose,
-			m_bIsOneNoteStyle || m_bIsVS2005Style || m_bFlat ? 
-				CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageDkGray);
-		m_btnClose.m_bDrawFocus = FALSE;
-		m_btnClose.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
-		m_lstButtons.AddTail (m_btnClose.GetSafeHwnd ());
-
-		if (!m_bFlat && m_bScroll)
-		{
-			CBCGPLocalResource locaRes;
-			CString str;
-
-			str.LoadString (IDS_BCGBARRES_CLOSEBAR);
-			m_btnClose.SetTooltip (str);
-
-			str.LoadString (IDP_BCGBARRES_SCROLL_LEFT);
-			m_btnScrollLeft.SetTooltip (str);
-
-			str.LoadString (IDP_BCGBARRES_SCROLL_RIGHT);
-			m_btnScrollRight.SetTooltip (str);
-		}
-	}
-
-	if (m_bSharedScroll)
-	{
-		m_wndScrollWnd.Create (WS_CHILD | WS_VISIBLE | SBS_HORZ, rectDummy,
-			this, (UINT) -1);
-	}
+	UpdateScrollControls();
 
 	if (m_bFlat)
 	{
@@ -1705,11 +1752,12 @@ BOOL CBCGPTabWnd::SetImageList (HIMAGELIST hImageList)
 //***************************************************************************************
 BOOL CBCGPTabWnd::OnEraseBkgnd(CDC* pDC)
 {
-	if (!m_bTransparent && GetVisibleTabsNum () == 0)
+	if (!m_bTransparent && GetActiveWnd()->GetSafeHwnd() == NULL)
 	{
 		CRect rectClient;
 		GetClientRect (rectClient);
-		pDC->FillRect (rectClient, &globalData.brBtnFace);
+
+		pDC->FillRect (rectClient, &CBCGPVisualManager::GetInstance()->GetDlgBackBrush(this));
 	}
 
 	return TRUE;
@@ -2053,7 +2101,7 @@ void CBCGPTabWnd::RecalcLayout ()
 			nButtonsHeight = nScrollBtnWidth;
 		}
 
-		// Reposition scroll butons:
+		// Reposition scroll buttons:
 		ReposButtons (	CPoint (rectClient.left + nTabBorderSize + 1, y), 
 						CSize (nScrollBtnWidth, nButtonsHeight),
 						bHideTabs, nButtonMargin);
@@ -2080,7 +2128,7 @@ void CBCGPTabWnd::RecalcLayout ()
 
 			int nButtonsHeight = m_bScrollButtonFullSize ? nTabsHeight : nScrollBtnWidth;
 
-			// Reposition scroll butons:
+			// Reposition scroll buttons:
 			ReposButtons (	
 				CPoint (m_rectTabsArea.right + 1, m_rectTabsArea.CenterPoint ().y - nButtonsHeight / 2),
 				CSize (nScrollBtnWidth, nButtonsHeight), bHideTabs, nButtonMargin);
@@ -2229,6 +2277,7 @@ void CBCGPTabWnd::AdjustWndScroll ()
 {
 	if (!m_bSharedScroll)
 	{
+		m_rectTabSplitter.SetRectEmpty();
 		return;
 	}
 
@@ -2279,6 +2328,24 @@ void CBCGPTabWnd::AdjustWndScroll ()
 //***************************************************************************************
 BOOL CBCGPTabWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message) 
 {
+	if (IsInPlaceEdit())
+	{
+		return CBCGPBaseTabWnd::OnSetCursor(pWnd, nHitTest, message);
+	}
+
+	if (m_bTabsHandCursor)
+	{
+		CPoint ptCursor;
+		::GetCursorPos (&ptCursor);
+		ScreenToClient (&ptCursor);
+
+		if (GetTabFromPoint(ptCursor) >= 0)
+		{
+			::SetCursor (globalData.GetHandCursor());
+			return TRUE;
+		}
+	}
+	
 	if (m_bFlat && !m_rectTabSplitter.IsRectEmpty ())
 	{
 		CPoint ptCursor;
@@ -2305,7 +2372,7 @@ BOOL CBCGPTabWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 			return TRUE;
 		}
 	}
-	
+
 	return CBCGPBaseTabWnd::OnSetCursor(pWnd, nHitTest, message);
 }
 //***************************************************************************************
@@ -2333,6 +2400,10 @@ void CBCGPTabWnd::OnLButtonUp(UINT nFlags, CPoint point)
 			{
 				GetParent ()->SendMessage (BCGM_ON_MOVETABCOMPLETE, (WPARAM) this, 
 								(LPARAM) MAKELPARAM (point.x, point.y));
+			}
+			else
+			{
+				GetParent ()->SendMessage (BCGM_ON_CANCELTABMOVE);
 			}
 		}
 		else
@@ -2429,6 +2500,7 @@ void CBCGPTabWnd::OnMouseMove(UINT nFlags, CPoint point)
 		m_rectResizeDrag = rectNew;
 		return;
 	}
+	
 	if (m_bTrackSplitter)
 	{
 		int nSplitterLeftPrev = m_rectTabSplitter.left;
@@ -2477,7 +2549,7 @@ void CBCGPTabWnd::OnMouseMove(UINT nFlags, CPoint point)
 
 	if (!m_bFlat)
 	{
-		if (CBCGPVisualManager::GetInstance ()->AlwaysHighlight3DTabs ())
+		if (CBCGPVisualManager::GetInstance ()->AlwaysHighlight3DTabs () || m_bIsDotsStyle)
 		{
 			m_bHighLightTabs = TRUE;
 		}
@@ -2555,10 +2627,12 @@ BOOL CBCGPTabWnd::SynchronizeScrollBar (SCROLLINFO* pScrollInfo/* = NULL*/)
 			scrollInfo.nMin + (int) scrollInfo.nPage >= scrollInfo.nMax)
 		{
 			m_wndScrollWnd.EnableScrollBar (ESB_DISABLE_BOTH);
+			m_wndScrollWnd.EnableWindow(FALSE);
 			return TRUE;
 		}
 	}
 
+	m_wndScrollWnd.EnableWindow();
 	m_wndScrollWnd.EnableScrollBar (ESB_ENABLE_BOTH);
 	m_wndScrollWnd.SetScrollInfo (&scrollInfo);
 
@@ -2582,11 +2656,18 @@ void CBCGPTabWnd::HideActiveWindowHorzScrollBar ()
 //************************************************************************************
 void CBCGPTabWnd::SetTabsHeight ()
 {
+	if (m_bIsDotsStyle)
+	{
+		m_nTabsHeight = globalData.GetTextHeight() + 2 * globalData.GetTextMargins();
+		return;
+	}
+
 	int nExtraHeight = CBCGPVisualManager::GetInstance ()->GetTabExtraHeight(this);
+	const int nTabTextMargin = globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_TEXT_MARGIN);
 
 	if (m_bFlat && m_hFontCustom == NULL)
 	{
-		m_nTabsHeight = ::GetSystemMetrics (SM_CYHSCROLL) + CBCGPBaseTabWnd::TAB_TEXT_MARGIN / 2 + nExtraHeight;
+		m_nTabsHeight = ::GetSystemMetrics (SM_CYHSCROLL) + nTabTextMargin / 2 + nExtraHeight;
 
 		LOGFONT lfDefault;
 		globalData.fontRegular.GetLogFont (&lfDefault);
@@ -2597,7 +2678,7 @@ void CBCGPTabWnd::SetTabsHeight ()
 		lf.lfCharSet = lfDefault.lfCharSet;
 		lf.lfHeight = lfDefault.lfHeight;
 		lf.lfQuality = 5 /*CLEARTYPE_QUALITY*/;
-		lstrcpy (lf.lfFaceName, TABS_FONT);
+		lstrcpy (lf.lfFaceName, lfDefault.lfFaceName);
 
 		CClientDC dc (this);
 
@@ -2614,7 +2695,7 @@ void CBCGPTabWnd::SetTabsHeight ()
 			dc.GetTextMetrics (&tm);
 			dc.SelectObject (pFont);
 
-			if (tm.tmHeight + CBCGPBaseTabWnd::TAB_TEXT_MARGIN / 2 <= m_nTabsHeight)
+			if (tm.tmHeight + nTabTextMargin / 2 <= m_nTabsHeight)
 			{
 				break;
 			}
@@ -2660,7 +2741,7 @@ void CBCGPTabWnd::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
 	CBCGPBaseTabWnd::OnSettingChange(uFlags, lpszSection);
 	
 	//-----------------------------------------------------------------
-	// In the flat modetabs height should be same as scroll bar height
+	// In the flat mode tabs height should be same as scroll bar height
 	//-----------------------------------------------------------------
 	if (m_bFlat)
 	{
@@ -2708,7 +2789,7 @@ BOOL CBCGPTabWnd::EnsureVisible (int iTab)
 		{
 			// Calculate total width of tabs located left from active + active:
 			int nWidthLeft = 0;
-			const int nExtraWidth = m_rectTabsArea.Height () - TAB_IMAGE_MARGIN - 1;
+			const int nExtraWidth = m_rectTabsArea.Height () - globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_IMAGE_MARGIN) - 1;
 
 			for (int i = 0; i <= iTab; i++)
 			{
@@ -2807,7 +2888,13 @@ void CBCGPTabWnd::HideNoTabs (BOOL bHide)
 //*************************************************************************************
 BOOL CBCGPTabWnd::OnCommand(WPARAM wParam, LPARAM lParam) 
 {
-	const int nScrollOffset = 20;
+	if ((HWND)lParam == NULL)
+	{
+		return CBCGPBaseTabWnd::OnCommand(wParam, lParam);
+	}
+
+	const int nScrollOffset = globalUtils.ScaleByDPI(20);
+	const int nTabImageMargin = globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_IMAGE_MARGIN);
 
 	BOOL bScrollTabs = FALSE;
 	const int nPrevOffset = m_nTabsHorzOffset;
@@ -2821,7 +2908,7 @@ BOOL CBCGPTabWnd::OnCommand(WPARAM wParam, LPARAM lParam)
 			if (m_nFirstVisibleTab > 0)
 			{
 				m_nTabsHorzOffset -= ((CBCGPTabInfo*) m_arTabs [m_nFirstVisibleTab - 1])->m_rect.Width () - 
-					(m_rectTabsArea.Height () - TAB_IMAGE_MARGIN - 2);
+					(m_rectTabsArea.Height () - nTabImageMargin - 2);
 				m_nFirstVisibleTab --;
 			}
 		}
@@ -2870,7 +2957,7 @@ BOOL CBCGPTabWnd::OnCommand(WPARAM wParam, LPARAM lParam)
 				if (m_nFirstVisibleTab < m_iTabsNum)
 				{
 					m_nTabsHorzOffset += ((CBCGPTabInfo*) m_arTabs [m_nFirstVisibleTab])->m_rect.Width () - 
-						(m_rectTabsArea.Height () - TAB_IMAGE_MARGIN - 1);
+						(m_rectTabsArea.Height () - nTabImageMargin - 1);
 					m_nFirstVisibleTab ++;
 				}
 			}
@@ -3007,14 +3094,6 @@ BOOL CBCGPTabWnd::IsPtInTabArea (CPoint point) const
 void CBCGPTabWnd::EnableInPlaceEdit (BOOL bEnable)
 {
 	ASSERT_VALID (this);
-
-	if (!m_bFlat)
-	{
-		// In-place editing is available for the flat tabs only!
-		ASSERT (FALSE);
-		return;
-	}
-
 	m_bIsInPlaceEdit = bEnable;
 }
 //************************************************************************************
@@ -3107,21 +3186,149 @@ void CBCGPTabWnd::UpdateScrollButtonsState ()
 	}
 }
 //*************************************************************************************
-BOOL CBCGPTabWnd::ModifyTabStyle (Style style)
+BOOL CBCGPTabWnd::ModifyTabStyle (Style style, BOOL bUpdateScrollControls)
 {
 	ASSERT_VALID (this);
 
-	m_bFlat = (style == STYLE_FLAT);
+	m_bFlat = (style == STYLE_FLAT) || (style == STYLE_FLAT_SHARED_HORZ_SCROLL);
 	m_bIsOneNoteStyle = (style == STYLE_3D_ONENOTE);
 	m_bIsVS2005Style = (style == STYLE_3D_VS2005);
 	m_bHighLightTabs = m_bIsOneNoteStyle;
 	m_bLeftRightRounded = (style == STYLE_3D_ROUNDED || style == STYLE_3D_ROUNDED_SCROLL);
 	m_bIsPointerStyle = (style == STYLE_POINTER);
+	m_bIsDotsStyle = (style == STYLE_DOTS);
+
+	if (bUpdateScrollControls)
+	{
+		m_bScroll = (m_bFlat || style == STYLE_3D_SCROLLED || 
+			style == STYLE_3D_ONENOTE || style == STYLE_3D_VS2005 ||
+			style == STYLE_3D_ROUNDED_SCROLL || style == STYLE_POINTER);
+
+		m_bSharedScroll = style == STYLE_FLAT_SHARED_HORZ_SCROLL;
+
+		UpdateScrollControls();
+	}
 	
 	SetScrollButtons ();
 	SetTabsHeight ();
+
+	if (bUpdateScrollControls)
+	{
+		RecalcLayout();
+	}
 	
 	return TRUE;
+}
+//***********************************************************************************
+void CBCGPTabWnd::UpdateScrollControls()
+{
+	if (GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	CRect rectDummy(0, 0, 0, 0);
+
+	//-----------------------------------------------
+	// Remove all previously created scroll controls:
+	//-----------------------------------------------
+	while (!m_lstButtons.IsEmpty())
+	{
+		CWnd* pWndBtn = CWnd::FromHandle(m_lstButtons.RemoveTail());
+		ASSERT_VALID(pWndBtn);
+		
+		pWndBtn->DestroyWindow();
+	}
+
+	if (m_wndScrollWnd.GetSafeHwnd() != NULL)
+	{
+		m_wndScrollWnd.DestroyWindow();
+	}
+
+	if (m_bScroll)
+	{
+		//-----------------------
+		// Create scroll buttons:
+		//-----------------------
+		if (m_bFlat)
+		{
+			m_btnScrollFirst.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
+			m_btnScrollFirst.SetStdImage (CBCGPMenuImages::IdArowFirst);
+			m_btnScrollFirst.m_bDrawFocus = FALSE;
+			m_btnScrollFirst.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
+			m_lstButtons.AddTail (m_btnScrollFirst.GetSafeHwnd ());
+		}
+		
+		m_btnScrollLeft.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
+		m_btnScrollLeft.SetStdImage (
+			m_bFlat ? CBCGPMenuImages::IdArowLeftLarge : CBCGPMenuImages::IdArowLeftTab3d,
+			m_bIsOneNoteStyle || m_bIsVS2005Style || m_bFlat ? 
+			CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageDkGray,
+			m_bFlat ? (CBCGPMenuImages::IMAGES_IDS) 0 : CBCGPMenuImages::IdArowLeftDsbldTab3d);
+		m_btnScrollLeft.m_bDrawFocus = FALSE;
+		m_btnScrollLeft.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
+		
+		if (!m_bIsOneNoteStyle && !m_bIsVS2005Style)
+		{
+			m_btnScrollLeft.SetAutorepeatMode (50);
+		}
+		
+		m_lstButtons.AddTail (m_btnScrollLeft.GetSafeHwnd ());
+		
+		m_btnScrollRight.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
+		m_btnScrollRight.SetStdImage (
+			m_bFlat ? CBCGPMenuImages::IdArowRightLarge : CBCGPMenuImages::IdArowRightTab3d,
+			m_bIsOneNoteStyle || m_bIsVS2005Style || m_bFlat ? 
+			CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageDkGray,
+			m_bFlat ? (CBCGPMenuImages::IMAGES_IDS) 0 : CBCGPMenuImages::IdArowRightDsbldTab3d);
+		m_btnScrollRight.m_bDrawFocus = FALSE;
+		m_btnScrollRight.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
+		
+		if (!m_bIsOneNoteStyle && !m_bIsVS2005Style)
+		{
+			m_btnScrollRight.SetAutorepeatMode (50);
+		}
+		
+		m_lstButtons.AddTail (m_btnScrollRight.GetSafeHwnd ());
+		
+		if (m_bFlat)
+		{
+			m_btnScrollLast.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
+			m_btnScrollLast.SetStdImage (CBCGPMenuImages::IdArowLast);
+			m_btnScrollLast.m_bDrawFocus = FALSE;
+			m_btnScrollLast.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
+			m_lstButtons.AddTail (m_btnScrollLast.GetSafeHwnd ());
+		}
+		
+		m_btnClose.Create (_T(""), WS_CHILD | WS_VISIBLE, rectDummy, this, (UINT) -1);
+		m_btnClose.SetStdImage (CBCGPMenuImages::IdClose,
+			m_bIsOneNoteStyle || m_bIsVS2005Style || m_bFlat ? 
+			CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageDkGray);
+		m_btnClose.m_bDrawFocus = FALSE;
+		m_btnClose.m_nFlatStyle = CBCGPButton::BUTTONSTYLE_FLAT;
+		m_lstButtons.AddTail (m_btnClose.GetSafeHwnd ());
+		
+		if (!m_bFlat && m_bScroll)
+		{
+			CBCGPLocalResource locaRes;
+			CString str;
+			
+			str.LoadString (IDS_BCGBARRES_CLOSEBAR);
+			m_btnClose.SetTooltip (str);
+			
+			str.LoadString (IDP_BCGBARRES_SCROLL_LEFT);
+			m_btnScrollLeft.SetTooltip (str);
+			
+			str.LoadString (IDP_BCGBARRES_SCROLL_RIGHT);
+			m_btnScrollRight.SetTooltip (str);
+		}
+	}
+	
+	if (m_bSharedScroll)
+	{
+		m_wndScrollWnd.SetVisualStyle(CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER, FALSE);
+		m_wndScrollWnd.Create(WS_CHILD | WS_VISIBLE | SBS_HORZ, rectDummy, this, (UINT)-1);
+	}
 }
 //***********************************************************************************
 void CBCGPTabWnd::SetScrollButtons ()
@@ -3414,10 +3621,20 @@ void CBCGPTabWnd::OnShowTabDocumentsMenu (CPoint point)
 
 		if (pTab->m_pWnd->GetSafeHwnd () != NULL)
 		{
-			HICON hIcon = pTab->m_pWnd->GetIcon (FALSE);
-			if (hIcon == NULL)
+			HICON hIcon = NULL;
+
+			CBCGPMDIChildWnd* pMDIChild = DYNAMIC_DOWNCAST(CBCGPMDIChildWnd, pTab->m_pWnd);
+			if (pMDIChild->GetSafeHwnd() != NULL)
 			{
-				hIcon = (HICON)(LONG_PTR) GetClassLongPtr (pTab->m_pWnd->GetSafeHwnd (), GCLP_HICONSM);
+				hIcon = pMDIChild->GetFrameIcon();
+			}
+			else
+			{
+				hIcon = pTab->m_pWnd->GetIcon (FALSE);
+				if (hIcon == NULL)
+				{
+					hIcon = (HICON)(LONG_PTR) GetClassLongPtr (pTab->m_pWnd->GetSafeHwnd (), GCLP_HICONSM);
+				}
 			}
 
 			m_mapDocIcons.SetAt (uiID, hIcon);
@@ -3606,7 +3823,7 @@ int CBCGPTabWnd::GetButtonState (CBCGTabButton* pButton)
 		return nState;
 	}
 
-	return m_bIsOneNoteStyle || m_bIsVS2005Style || m_bLeftRightRounded || m_bIsPointerStyle ? CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageDkGray;
+	return (m_bIsOneNoteStyle || m_bIsVS2005Style || m_bLeftRightRounded || m_bIsPointerStyle || m_bIsDotsStyle) ? CBCGPMenuImages::ImageBlack : CBCGPMenuImages::ImageDkGray;
 }
 //**************************************************************************
 void CBCGPTabWnd::EnableNewTab(BOOL bEnable/* = TRUE*/)
@@ -3615,7 +3832,19 @@ void CBCGPTabWnd::EnableNewTab(BOOL bEnable/* = TRUE*/)
 
 	if (m_bNewTab)
 	{
-		CBCGPTabInfo* pTabInfo = new CBCGPTabInfo (_T(""), (UINT)-1, NULL, m_nNextTabID, FALSE);
+		if (m_iTabsNum > 0)
+		{
+			CBCGPTabInfo* pTab = (CBCGPTabInfo*) m_arTabs [m_iTabsNum - 1];
+			ASSERT_VALID (pTab);
+
+			if (pTab->m_bIsNewTab)
+			{
+				// already exists
+				return;
+			}
+		}
+
+		CBCGPTabInfo* pTabInfo = new CBCGPTabInfo (m_strNewTabLabel, (UINT)-1, NULL, m_nNextTabID, FALSE);
 		pTabInfo->m_bIsNewTab = TRUE;
 		
 		m_arTabs.InsertAt (m_iTabsNum, pTabInfo);
@@ -3642,12 +3871,38 @@ void CBCGPTabWnd::EnableNewTab(BOOL bEnable/* = TRUE*/)
 
 			if (pTab->m_bIsNewTab)
 			{
+				BOOL bForceDeleteNewTab = m_bForceDeleteNewTab;
+				m_bForceDeleteNewTab = TRUE;
+
 				RemoveTab(m_iTabsNum - 1, FALSE);
+
+				m_bForceDeleteNewTab = bForceDeleteNewTab;
 			}
 		}
 	}
 
 	RecalcLayout ();
+}
+//**************************************************************************
+void CBCGPTabWnd::SetNewTabLabel(const CString strLabel)
+{
+	if (strLabel != m_strNewTabLabel)
+	{
+		m_strNewTabLabel = strLabel;
+
+		for (int i = 0; i < (int)m_arTabs.GetSize(); i++)
+		{
+			CBCGPTabInfo* pTab = (CBCGPTabInfo*)m_arTabs[i];
+			ASSERT_VALID(pTab);
+
+			if (pTab->m_bIsNewTab)
+			{
+				pTab->m_strText = strLabel;
+				RecalcLayout();
+				break;
+			}
+		}
+	}
 }
 //**************************************************************************
 void CBCGPTabWnd::OnChangeHighlightedTab(int iPrevHighlighted)
@@ -3827,6 +4082,14 @@ void CBCGPTabWnd::SetMDIFocused(BOOL bIsFocused)
 
 	m_bIsMDIFocused = bIsFocused;
 
+	if (!bIsFocused)
+	{
+		if (ClearSelectedTabs() > 0)
+		{
+			return;
+		}
+	}
+
 	if (GetSafeHwnd() != NULL)
 	{
 		RedrawWindow();
@@ -3927,4 +4190,53 @@ LRESULT CBCGPTabWnd::OnPrintClient(WPARAM wp, LPARAM lp)
 	}
 
 	return 0;
+}
+//**************************************************************************************
+void CBCGPTabWnd::CalcRectEdit (CRect& rectEdit)
+{
+	ASSERT_VALID(this);
+
+	if (m_bIsDotsStyle)
+	{
+		rectEdit.SetRectEmpty();
+		return;
+	}
+
+	if (m_iActiveTab >= 0)
+	{
+		CBCGPTabInfo* pTabActive = (CBCGPTabInfo*) m_arTabs [m_iActiveTab];
+		ASSERT_VALID (pTabActive);
+
+		if (pTabActive->m_hIcon != NULL || pTabActive->m_uiIcon != (UINT)-1)
+		{
+			rectEdit.left += m_sizeImage.cx + globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_IMAGE_MARGIN);
+		}
+
+		if (!pTabActive->m_rectClose.IsRectEmpty())
+		{
+			rectEdit.right = pTabActive->m_rectClose.left - globalUtils.ScaleByDPI(CBCGPBaseTabWnd::TAB_TEXT_MARGIN);
+		}
+	}
+
+	rectEdit.DeflateRect(1, 2);
+
+	if (m_bFlat || m_bLeftRightRounded)
+	{
+		rectEdit.left += m_nTabsHeight / 2 - 2;
+	}
+	else if (m_bIsOneNoteStyle || m_bIsVS2005Style)
+	{
+		rectEdit.left += m_nTabsHeight;
+	}
+}
+//**************************************************************************************
+LRESULT CBCGPTabWnd::OnGestureEvent(WPARAM wp, LPARAM lp)
+{
+	CWnd* pWndActive = GetActiveWindow ();
+	if (pWndActive->GetSafeHwnd() != NULL)
+	{
+		return pWndActive->SendMessage(WM_GESTURE, wp, lp);
+	}
+
+	return Default();
 }

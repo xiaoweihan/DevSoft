@@ -1,6 +1,6 @@
 // BCGColorButton.cpp : implementation file
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -134,20 +134,20 @@ void CBCGPColorButton::OnDraw (CDC* pDC, const CRect& rect, UINT uiState)
 
 			pDC->SetBkMode (TRANSPARENT);
 
-			if (m_clrText == (COLORREF)-1)
+			if (IsWindowEnabled())
 			{
-				if (m_bVisualManagerStyle && !m_bDontSkin)
+				if (m_clrText == (COLORREF)-1)
 				{
-					pDC->SetTextColor (IsWindowEnabled() ? globalData.clrBarText : globalData.clrGrayedText);
+					pDC->SetTextColor(m_bVisualManagerStyle && !m_bDontSkin ? globalData.clrBarText : globalData.clrBtnText);
 				}
 				else
 				{
-					pDC->SetTextColor (IsWindowEnabled() ? globalData.clrBtnText : globalData.clrGrayedText);
+					pDC->SetTextColor (m_clrText);
 				}
 			}
 			else
 			{
-				pDC->SetTextColor (m_clrText);
+				pDC->SetTextColor(globalData.clrGrayedText);
 			}
 
 			UINT nFormat = DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS;
@@ -330,7 +330,7 @@ void CBCGPColorButton::OnShowColorPopup ()
 	CRect rectWindow;
 	GetWindowRect (rectWindow);
 
-	if (!m_pPopup->Create (this, rectWindow.left, rectWindow.bottom, NULL,
+	if (!m_pPopup->Create (this, (GetExStyle() & WS_EX_LAYOUTRTL) ? rectWindow.right : rectWindow.left, rectWindow.bottom, NULL,
 		m_bEnabledInCustomizeMode))
 	{
 		ASSERT (FALSE);

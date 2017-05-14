@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -17,6 +17,7 @@
 #include "bcgcbpro.h"
 #include "trackmouse.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPEdit.h"
 
 #if defined (_BCGPCALENDAR_STANDALONE)
 	#include "BCGPCalendarVisualManager.h"
@@ -285,6 +286,13 @@ LRESULT CBCGPSpinButtonCtrl::OnMouseLeave(WPARAM,LPARAM)
 //*********************************************************************************
 BOOL CBCGPSpinButtonCtrl::OnEraseBkgnd(CDC* /*pDC*/) 
 {
+	CBCGPEdit* pEdit = DYNAMIC_DOWNCAST(CBCGPEdit, GetBuddy());
+	if (pEdit->GetSafeHwnd() != NULL && !pEdit->m_bHasSpinButton)
+	{
+		pEdit->m_bHasSpinButton = TRUE;
+		pEdit->SetWindowPos(NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOSIZE | SWP_NOZORDER | SWP_NOMOVE);
+	}
+
 	return TRUE;
 }
 //**************************************************************************

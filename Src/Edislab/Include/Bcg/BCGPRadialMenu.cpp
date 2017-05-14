@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -28,6 +28,7 @@
 #endif
 
 #include "BCGPDrawManager.h"
+#include "BCGPGlobalUtils.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -134,6 +135,8 @@ CBCGPRadialMenuItem::CBCGPRadialMenuItem(const CBCGPRadialMenuItem& src)
 	m_strText = src.m_strText;
 	m_strToolTip = src.m_strToolTip;
 	m_strDescription = src.m_strDescription;
+	m_bIsDPIScale = src.m_bIsDPIScale;
+	m_dblImageScale = src.m_dblImageScale;
 }
 //******************************************************************************
 void CBCGPRadialMenuItem::CommonInit()
@@ -147,11 +150,13 @@ void CBCGPRadialMenuItem::CommonInit()
 	m_bIsChecked = FALSE;
 	m_bDestroyIcon = FALSE;
 	m_bIsCenter = FALSE;
+	m_bIsDPIScale = FALSE;
+	m_dblImageScale = 1.0;
 }
 //******************************************************************************
 CBCGPRadialMenuItem::~CBCGPRadialMenuItem()
 {
-	if (/*m_bDestroyIcon && */m_hIcon != NULL)
+	if (m_hIcon != NULL)
 	{
 		::DestroyIcon(m_hIcon);
 	}
@@ -187,7 +192,7 @@ void CBCGPRadialMenuItem::OnDrawIcon(CBCGPGraphicsManager* pGM, BOOL bIsCtrlDisa
 {
 	ASSERT_VALID(pGM);
 
-	if (m_ptCenter == CBCGPPoint(-1, -1))
+	if (m_ptCenter == CBCGPPoint(-1, -1) || m_dblImageScale == 0.0)
 	{
 		return;
 	}
@@ -201,10 +206,23 @@ void CBCGPRadialMenuItem::OnDrawIcon(CBCGPGraphicsManager* pGM, BOOL bIsCtrlDisa
 	}
 	else if (m_nImageIndex >= 0)
 	{
-		CBCGPPoint ptImage((double)bcg_round(m_ptCenter.x - .5 * sizeIcon.cx),
-							(double)bcg_round(m_ptCenter.y - .5 * sizeIcon.cy));
+		CBCGPSize sizeIconDest = sizeIcon;
 
-		pGM->DrawImage(icons, ptImage, sizeIcon, bIsDisabled ? .4 : 1., CBCGPImage::BCGP_IMAGE_INTERPOLATION_MODE_LINEAR,
+		if (m_bIsDPIScale)
+		{
+			sizeIconDest.cx = globalUtils.ScaleByDPI(sizeIconDest.cx);
+			sizeIconDest.cy = globalUtils.ScaleByDPI(sizeIconDest.cy);
+		}
+
+		if (m_dblImageScale != 1.0)
+		{
+			sizeIconDest.Scale(m_dblImageScale);
+		}
+
+		CBCGPPoint ptImage((double)bcg_round(m_ptCenter.x - .5 * sizeIconDest.cx),
+							(double)bcg_round(m_ptCenter.y - .5 * sizeIconDest.cy));
+
+		pGM->DrawImage(icons, ptImage, sizeIconDest, bIsDisabled ? .4 : 1., CBCGPImage::BCGP_IMAGE_INTERPOLATION_MODE_LINEAR,
 			CBCGPRect(CBCGPPoint(sizeIcon.cx * m_nImageIndex, 0), sizeIcon));
 	}
 	else
@@ -294,12 +312,15 @@ void CBCGPRadialMenuItem::OnUpdateCmdUI(CBCGPRadialMenuCmdUI* pCmdUI,
 }
 
 #define INTERNAL_PART	0.2
+#define ICON_SIZE		16
 
 ////////////////////////////////////////////////////////////////////////////////
 // CBCGPRadialMenuObject
 
 CMap<UINT,UINT,CBCGPRadialMenuObject*,CBCGPRadialMenuObject*> CBCGPRadialMenuObject::m_mapAutorepeat;
 CCriticalSection CBCGPRadialMenuObject::g_cs;
+
+IMPLEMENT_DYNCREATE(CBCGPRadialMenuObject, CBCGPBaseVisualObject)
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -317,9 +338,12 @@ CBCGPRadialMenuObject::CBCGPRadialMenuObject()
 	m_bIsFirstClick = TRUE;
 	m_bHasCenterButton = FALSE;
 	m_bIsCloseOnInvoke = TRUE;
-	m_cxIcon = 16;
+	m_cxIcon = ICON_SIZE;
+	m_cyIcon = ICON_SIZE;
+	m_bAutoScaleIcons = FALSE;
 	m_nShadowDepth = 0;
 	m_bIsVisualManagerTheme = FALSE;
+	m_AnimationStyle = BCGPRadialMenuAnimationStyle_None;
 
 	SetColorTheme(BCGP_COLOR_THEME_SILVER);
 
@@ -328,17 +352,39 @@ CBCGPRadialMenuObject::CBCGPRadialMenuObject()
 //***************************************************************************************
 CBCGPRadialMenuObject::~CBCGPRadialMenuObject()
 {
+	StopAutorepeatTimer();
+
 	for (int i = 0; i < m_arItems.GetSize(); i++)
 	{
 		delete m_arItems[i];
 	}
 }
 //***************************************************************************************
-void CBCGPRadialMenuObject::SetImageList(UINT uiResID, int cx)
+void CBCGPRadialMenuObject::SetParentCtrl(CBCGPRadialMenu* pParent)
 {
+	m_pCtrl = pParent;
+
+	if (pParent != NULL)
+	{
+		ASSERT_VALID(pParent);
+
+		m_AnimationStyle = pParent->m_AnimationStyle;
+		
+		if (m_AnimationStyle != CBCGPRadialMenuObject::BCGPRadialMenuAnimationStyle_None)
+		{
+			StartAnimation(0.0, 1.0, pParent->m_dblAnimationTime, CBCGPAnimationManager::BCGPANIMATION_AccelerateDecelerate);
+		}
+	}
+}
+//***************************************************************************************
+void CBCGPRadialMenuObject::SetImageList(UINT uiResID, int cx, BOOL bAutoScale)
+{
+	m_bAutoScaleIcons = (bAutoScale && globalData.GetRibbonImageScale() != 1.0);
+
 	m_Icons.Load(uiResID);
 
 	m_cxIcon = cx;
+	m_cyIcon = ICON_SIZE;
 }
 //***************************************************************************************
 void CBCGPRadialMenuObject::AddCommand(UINT nCmdID)
@@ -366,6 +412,43 @@ void CBCGPRadialMenuObject::AddCommand(UINT nCmdID, HICON hIcon)
 
 	m_arItems.Add(pItem);
 	SetDirty();
+}
+//***************************************************************************************
+void CBCGPRadialMenuObject::OnAnimationValueChanged(double dblOldValue, double dblNewValue)
+{
+	CBCGPAnimationManager::OnAnimationValueChanged(dblOldValue, dblNewValue);
+
+	if (m_AnimationStyle == BCGPRadialMenuAnimationStyle_Grow || m_AnimationStyle == BCGPRadialMenuAnimationStyle_Fade)
+	{
+		CBCGPRadialMenu* pParent = DYNAMIC_DOWNCAST(CBCGPRadialMenu, GetParentWnd());
+		if (pParent->GetSafeHwnd() != NULL)
+		{
+			if (m_AnimationStyle == BCGPRadialMenuAnimationStyle_Grow)
+			{
+				CRect rectWindow;
+				pParent->GetWindowRect(rectWindow);
+
+				CPoint ptCenter = rectWindow.CenterPoint();
+				
+				int radius = (int)(0.5 + 4.0 * dblNewValue * pParent->GetIconSize());
+
+				if (radius * 2 > rectWindow.Width())
+				{
+					pParent->SetWindowPos(NULL, ptCenter.x - radius, ptCenter.y - radius,
+						radius * 2, radius * 2, SWP_NOZORDER | SWP_NOACTIVATE);
+				}
+			}
+			else
+			{
+				pParent->m_nPopupAlphaAnimated = (BYTE)(dblNewValue * pParent->m_nPopupAlpha);
+				pParent->OnDrawLayeredPopup();
+			}
+		}
+
+		return;
+	}
+
+	SetDirty(TRUE, TRUE);
 }
 //***************************************************************************************
 void CBCGPRadialMenuObject::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& /*rectClip*/, DWORD dwFlags)
@@ -398,7 +481,7 @@ void CBCGPRadialMenuObject::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& /
 	const double radiusSmall = INTERNAL_PART * rect.Width() + 1.0;
 	const CBCGPPoint center = rect.CenterPoint();
 
-	CBCGPSize sizeIcon((double)m_cxIcon, 16);
+	CBCGPSize sizeIcon((double)m_cxIcon, (double) m_cyIcon);
 
 	if (!m_Icons.IsNull())
 	{
@@ -407,60 +490,74 @@ void CBCGPRadialMenuObject::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& /
 
 	const int nItems = (int)m_arItems.GetSize();
 
+	double dblImageScale = 1.0;
+	if (IsAnimated() && (m_AnimationStyle == BCGPRadialMenuAnimationStyle_Slide || m_AnimationStyle == BCGPRadialMenuAnimationStyle_Grow))
+	{
+		dblImageScale = GetAnimatedValue();
+	}
+
 	if (IsDirty())
 	{
 		int nCircleItems = m_bHasCenterButton ? nItems - 1 : nItems;
 
 		double dblDeltaAngle = nCircleItems == 0 ? 0. : 360. / nCircleItems;
-		double dblStartAngle = 90. - dblDeltaAngle / 2;
-
-		for (int i = 0; i < nItems; i++)
+		if (IsAnimated() && m_AnimationStyle == BCGPRadialMenuAnimationStyle_Slide)
 		{
-			CBCGPRadialMenuItem* pItem = m_arItems[i];
-			ASSERT_VALID(pItem);
+			dblDeltaAngle *= GetAnimatedValue();
+		}
 
-			pItem->m_bIsCenter = i == nItems -1 && m_bHasCenterButton;
+		if (dblDeltaAngle != 0.0)
+		{
+			double dblStartAngle = 90. - dblDeltaAngle / 2;
 
-			pItem->m_Shape.Destroy();
-			pItem->m_Shape.Clear();
-
-			if (!pItem->m_bIsCenter)
+			for (int i = 0; i < nItems; i++)
 			{
-				double dblFinishAngle = dblStartAngle + dblDeltaAngle;
+				CBCGPRadialMenuItem* pItem = m_arItems[i];
+				ASSERT_VALID(pItem);
 
-				const double dblStartAngleRad = bcg_deg2rad(dblStartAngle);
-				const double dblFinishAngleRad = bcg_deg2rad(dblFinishAngle);
-				const double dblMiddleAngleRad = bcg_deg2rad(dblStartAngle + dblDeltaAngle / 2);
+				pItem->m_bIsCenter = i == nItems -1 && m_bHasCenterButton;
 
-				double angleStartCos = cos(dblStartAngleRad);
-				double angleStartSin = sin(dblStartAngleRad);
-				double angleFinishCos = cos(dblFinishAngleRad);
-				double angleFinishSin = sin(dblFinishAngleRad);
+				pItem->m_Shape.Destroy();
+				pItem->m_Shape.Clear();
 
-				pItem->m_Shape.SetStart(
-					CBCGPPoint(center.x + angleStartCos * radius, center.y - angleStartSin * radius));
-				pItem->m_Shape.AddArc(
-					CBCGPPoint(center.x + angleFinishCos * radius, center.y - angleFinishSin * radius),
-					CBCGPSize(radius, radius), dblStartAngle > dblFinishAngle, FALSE);
-				pItem->m_Shape.AddLine(
-					CBCGPPoint(center.x + angleFinishCos * radiusSmall, center.y - angleFinishSin * radiusSmall));
-				pItem->m_Shape.AddArc(
-					CBCGPPoint(center.x + angleStartCos * radiusSmall, center.y - angleStartSin * radiusSmall),
-					CBCGPSize(radiusSmall, radiusSmall), dblStartAngle < dblFinishAngle, FALSE);
+				if (!pItem->m_bIsCenter)
+				{
+					double dblFinishAngle = dblStartAngle + dblDeltaAngle;
 
-				pItem->m_ptCenter = CBCGPPoint(
-					center.x + cos(dblMiddleAngleRad) * 2 * radius / 3,
-					center.y - sin(dblMiddleAngleRad) * 2 * radius / 3);
+					const double dblStartAngleRad = bcg_deg2rad(dblStartAngle);
+					const double dblFinishAngleRad = bcg_deg2rad(dblFinishAngle);
+					const double dblMiddleAngleRad = bcg_deg2rad(dblStartAngle + dblDeltaAngle / 2);
 
-				dblStartAngle = dblFinishAngle;
-			}
-			else
-			{
-				pItem->m_Shape.SetStart(center);
-				pItem->m_Shape.AddLine(center);
-				pGM->CombineGeometry(pItem->m_Shape, pItem->m_Shape, CBCGPEllipseGeometry(CBCGPEllipse(center, radiusSmall, radiusSmall)), RGN_OR);
+					double angleStartCos = cos(dblStartAngleRad);
+					double angleStartSin = sin(dblStartAngleRad);
+					double angleFinishCos = cos(dblFinishAngleRad);
+					double angleFinishSin = sin(dblFinishAngleRad);
 
-				pItem->m_ptCenter = center;
+					pItem->m_Shape.SetStart(
+						CBCGPPoint(center.x + angleStartCos * radius, center.y - angleStartSin * radius));
+					pItem->m_Shape.AddArc(
+						CBCGPPoint(center.x + angleFinishCos * radius, center.y - angleFinishSin * radius),
+						CBCGPSize(radius, radius), dblStartAngle > dblFinishAngle, FALSE);
+					pItem->m_Shape.AddLine(
+						CBCGPPoint(center.x + angleFinishCos * radiusSmall, center.y - angleFinishSin * radiusSmall));
+					pItem->m_Shape.AddArc(
+						CBCGPPoint(center.x + angleStartCos * radiusSmall, center.y - angleStartSin * radiusSmall),
+						CBCGPSize(radiusSmall, radiusSmall), dblStartAngle < dblFinishAngle, FALSE);
+
+					pItem->m_ptCenter = CBCGPPoint(
+						center.x + cos(dblMiddleAngleRad) * 2 * radius / 3,
+						center.y - sin(dblMiddleAngleRad) * 2 * radius / 3);
+
+					dblStartAngle = dblFinishAngle;
+				}
+				else
+				{
+					pItem->m_Shape.SetStart(center);
+					pItem->m_Shape.AddLine(center);
+					pGM->CombineGeometry(pItem->m_Shape, pItem->m_Shape, CBCGPEllipseGeometry(CBCGPEllipse(center, radiusSmall, radiusSmall)), RGN_OR);
+
+					pItem->m_ptCenter = center;
+				}
 			}
 		}
 	}
@@ -531,6 +628,8 @@ void CBCGPRadialMenuObject::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& /
 				m_brHighlighted.IsEmpty() ? m_brFill : m_brHighlighted);
 		}
 
+		pItem->m_bIsDPIScale = m_bAutoScaleIcons;
+		pItem->m_dblImageScale = dblImageScale;
 		pItem->OnDrawIcon(pGM, bIsCtrlDisabled, m_Icons, sizeIcon);
 
 		pGM->DrawGeometry(pItem->m_Shape, m_brBorder);
@@ -697,11 +796,35 @@ void CBCGPRadialMenuObject::OnMouseUp(int /*nButton*/, const CBCGPPoint& /*pt*/)
 
 	NotifyCommand();
 
-	m_nHighlighted = -1;
 	m_nPressed = -1;
 	m_nLastClicked = -1;
 
 	Redraw();
+}
+//***************************************************************************************
+BOOL CBCGPRadialMenuObject::OnMouseDblClick(int nButton, const CBCGPPoint& pt)
+{
+	if (nButton != 0)
+	{
+		return CBCGPBaseVisualObject::OnMouseDblClick(nButton, pt);
+	}
+
+	const int nHit = HitTestShape(pt);
+
+	if (nHit >= 0)
+	{
+		int nHighlightedSaved = m_nHighlighted;
+		int nPressedSaved = m_nPressed;
+
+		m_nHighlighted = m_nPressed = nHit;
+
+		NotifyCommand();
+
+		m_nHighlighted = nHighlightedSaved;
+		m_nPressed = nPressedSaved;
+	}
+
+	return FALSE;
 }
 //***************************************************************************************
 BOOL CBCGPRadialMenuObject::NotifyCommand()
@@ -713,6 +836,7 @@ BOOL CBCGPRadialMenuObject::NotifyCommand()
 		{
 			m_nLastClicked = m_nPressed;
 			pOwner->PostMessage(WM_COMMAND, m_arItems[m_nPressed]->m_nID);
+			
 			return TRUE;
 		}
 	}
@@ -1003,10 +1127,13 @@ int CBCGPRadialMenuObject::GetShadowDepth() const
 
 IMPLEMENT_DYNCREATE(CBCGPRadialMenu, CBCGPVisualCtrl)
 
-CBCGPRadialMenu::CBCGPRadialMenu()
+CBCGPRadialMenu::CBCGPRadialMenu(CBCGPRadialMenuObject::BCGPRadialMenuAnimationStyle animationStyle,
+								  double dblAnimationTime)
 {
 	m_pRadialMenuObject = NULL;
 	m_nDlgCode = DLGC_WANTARROWS | DLGC_WANTCHARS;
+	m_AnimationStyle = animationStyle;
+	m_dblAnimationTime = dblAnimationTime;
 	EnableTooltip();
 }
 //************************************************************************************
@@ -1020,7 +1147,16 @@ CBCGPRadialMenu::~CBCGPRadialMenu()
 //************************************************************************************
 BOOL CBCGPRadialMenu::CreatePopup(const CPoint& ptCenter, BYTE nTransparency, BOOL /*bIsTrackingMode*/, CWnd* pWndOwner)
 {
-	int radius = 4 * GetIconSize();
+	int radius = globalUtils.ScaleByDPI(4 * GetIconSize());
+
+	if (m_AnimationStyle == CBCGPRadialMenuObject::BCGPRadialMenuAnimationStyle_Fade)
+	{
+		m_nPopupAlphaAnimated = 0;
+	}
+	else if (m_AnimationStyle == CBCGPRadialMenuObject::BCGPRadialMenuAnimationStyle_Grow)
+	{
+		radius = 1;
+	}
 
 	CRect rect(CPoint(ptCenter.x - radius, ptCenter.y - radius), CSize(2 * radius, 2 * radius));
 
@@ -1057,9 +1193,11 @@ void CBCGPRadialMenu::SetRgn()
 
 		int cx = rect.Width();
 		int cy = rect.Height();
+		int x = rect.left;
+		int y = rect.top;
 
 		CRgn rgn;
-		rgn.CreateEllipticRgn(0, 0, cx, cy);
+		rgn.CreateEllipticRgn(x, y, cx, cy);
 
 		if (!m_pRadialMenuObject->m_bHasCenterButton)
 		{
@@ -1141,21 +1279,7 @@ int CBCGPRadialMenu::GetIconSize()
 		return 0;
 	}
 
-	return m_pRadialMenuObject->m_cxIcon;
-}
-//**************************************************************************
-LRESULT CBCGPRadialMenu::OnChangeVisualManager (WPARAM, LPARAM)
-{
-	if (m_pRadialMenuObject != NULL)
-	{
-		ASSERT_VALID(m_pRadialMenuObject);
-
-		if (m_pRadialMenuObject->m_bIsVisualManagerTheme)
-		{
-			m_pRadialMenuObject->SetColorTheme(CBCGPRadialMenuObject::BCGP_COLOR_THEME_VISUAL_MANAGER);
-			m_pRadialMenuObject->Redraw();
-		}
-	}
-
-	return 0L;
+	return m_pRadialMenuObject->m_bAutoScaleIcons ? 
+		globalUtils.ScaleByDPI(m_pRadialMenuObject->m_cxIcon) :
+		m_pRadialMenuObject->m_cxIcon;
 }

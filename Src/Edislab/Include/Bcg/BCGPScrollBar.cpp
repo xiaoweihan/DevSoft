@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -18,9 +18,16 @@
 #include "BCGGlobals.h"
 #include "BCGPScrollBar.h"
 #include "BCGPDlgImpl.h"
+#include "BCGPDrawManager.h"
+#include "MenuImages.h"
+#include "BCGPComboBox.h"
+#include "BCGPGlobalUtils.h"
 
 #ifndef _BCGSUITE_
 #include "BCGPToolBarImages.h"
+#else
+#define CX_BORDER   1
+#define CY_BORDER   1
 #endif
 
 #ifdef _DEBUG
@@ -30,28 +37,901 @@ static char THIS_FILE[] = __FILE__;
 #endif
 
 UINT BCGM_ON_DRAW_SCROLLBAR = ::RegisterWindowMessage (_T("BCGM_ON_DRAW_SCROLLBAR"));
+UINT BCGM_REDRAW_SCROLLBAR  = ::RegisterWindowMessage (_T("BCGM_REDRAW_SCROLLBAR"));
+
+static const UINT SB_TIMER_DOWN		= 1111;
+static const UINT SB_TIMER			= 2222;
+
+static BOOL _CompareScrollInfo(SCROLLINFO& si1, SCROLLINFO& si2)
+{
+	return si1.nMin == si2.nMin &&
+		si1.nMax == si2.nMax &&
+			si1.nPage == si2.nPage &&
+			si1.nPos == si2.nPos &&
+			si1.nTrackPos == si2.nTrackPos;
+}
+
+static void ScreenToBar(CWnd* pWnd, CPoint& point)
+{
+	CRect rectWindow;
+	pWnd->GetWindowRect(rectWindow);
+
+	if (pWnd->GetExStyle() & WS_EX_LAYOUTRTL)
+	{
+		point.x = rectWindow.right - point.x;
+	}
+	else
+	{
+		point.x -= rectWindow.left;
+	}
+
+	point.y -= rectWindow.top;
+}
+
+#define MAX_CLASS_NAME 255
+
+static DWORD _GetExcludeStyle(CWnd* pWnd)
+{
+	DWORD dwResult = 0;
+
+	TCHAR lpszClassName[MAX_CLASS_NAME + 1];
+	::GetClassName(pWnd->GetSafeHwnd(), lpszClassName, MAX_CLASS_NAME);
+	if (_tcscmp(lpszClassName, _T("SysTreeView32")) == 0)
+	{
+		dwResult = TVS_NOSCROLL;
+	}
+	else if (_tcscmp(lpszClassName, _T("SysListView32")) == 0)
+	{
+		dwResult = LVS_NOSCROLL;
+	}
+	else if (_tcscmp(lpszClassName, _T("Edit")) == 0)
+	{
+		dwResult = ES_AUTOHSCROLL | ES_AUTOVSCROLL;
+	}
+
+	return dwResult;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPScrollBarImpl class
+
+CBCGPScrollBarImpl::CBCGPScrollBarImpl()
+{
+	m_bInternal = TRUE;
+
+	m_rect.SetRectEmpty();
+	m_bHorz = FALSE;
+
+	m_HitTest = CBCGPScrollBar::BCGP_HT_NOWHERE;
+	m_HitPressed = CBCGPScrollBar::BCGP_HT_NOWHERE;
+
+	m_rectTrackThumb.SetRectEmpty();
+	m_rectTrackThumbStart.SetRectEmpty();
+
+	m_TrackPos = -1;
+	m_bTracked = FALSE;
+	m_ptTrackStart = CPoint(0, 0);
+
+	m_TimerDown = 0;
+	m_Timer = 0;
+	m_dwDisabledArrows = 0;
+
+	m_pLastCapture = NULL;
+
+	m_bSendPosBeforeEndThumb = TRUE;
+}
+//*******************************************************************************
+BOOL CBCGPScrollBarImpl::_GetScrollInfo(CWnd* pWnd, SCROLLINFO& si) const
+{
+	ZeroMemory(&si, sizeof(SCROLLINFO));
+	si.cbSize = sizeof(SCROLLINFO);
+	si.fMask = SIF_ALL;
+
+	int nBar = SB_CTL;
+	if (m_bInternal)
+	{
+		nBar = m_bHorz ? SB_HORZ : SB_VERT;
+	}
+
+	return ::GetScrollInfo(pWnd->GetSafeHwnd(), nBar, &si);
+}
+//*******************************************************************************
+int CBCGPScrollBarImpl::_GetScrollPos(CWnd* pWnd) const
+{
+	int nBar = SB_CTL;
+	if (m_bInternal)
+	{
+		nBar = m_bHorz ? SB_HORZ : SB_VERT;
+	}
+
+	return ::GetScrollPos(pWnd->GetSafeHwnd(), nBar);
+}
+//*******************************************************************************
+int CBCGPScrollBarImpl::_SetScrollPos(CWnd* pWnd, int nPos, BOOL bRedraw) const
+{
+	int nBar = SB_CTL;
+	if (m_bInternal)
+	{
+		nBar = m_bHorz ? SB_HORZ : SB_VERT;
+	}
+
+	return ::SetScrollPos(pWnd->GetSafeHwnd(), nBar, nPos, bRedraw);
+}
+//*******************************************************************************
+void CBCGPScrollBarImpl::_RedrawScrollBar(CWnd* pWnd) const
+{
+	if (m_bInternal)
+	{
+		pWnd->SendMessage(BCGM_REDRAW_SCROLLBAR, m_bHorz ? SB_HORZ : SB_VERT);
+	}
+	else
+	{
+		pWnd->RedrawWindow();
+	}
+}
+//*******************************************************************************
+void CBCGPScrollBarImpl::Render(CDC* pDC, BOOL bIsEnabled, const SCROLLINFO& si, const CPoint& ptOffset)
+{
+	if (m_rect.IsRectEmpty())
+	{
+		return;
+	}
+
+	CRect rect = m_rect;
+	rect.OffsetRect(ptOffset);
+
+	BOOL bDisabled = !bIsEnabled || (m_dwDisabledArrows & ESB_DISABLE_BOTH) == ESB_DISABLE_BOTH;
+	if (!bDisabled)
+	{
+		bDisabled = si.nMax <= si.nMin || (si.nMax - si.nMin) < (int)si.nPage;
+	}
+
+	CRect rectThumb;
+	if (!bDisabled)
+	{
+		rectThumb = GetThumbRect(bIsEnabled, si);
+		rectThumb.OffsetRect(ptOffset);
+	}
+
+	CRect rectBtn[2];
+	rectBtn[0] = rect;
+
+	if (m_bHorz)
+	{
+		int nSize = ::GetSystemMetrics (SM_CXHSCROLL);
+		if (rect.Width () < nSize * 2)
+		{
+			nSize = rect.Width () / 2;
+		}
+
+		rectBtn[0].right = rect.left + nSize;
+		rectBtn[1] = rectBtn[0];
+		rectBtn[1].OffsetRect (rect.Width () - rectBtn[1].Width (), 0);
+
+		rect.left += rectBtn[0].Width ();
+		rect.right -= rectBtn[1].Width ();
+
+		if (rectThumb.left < rectBtn[0].right || rectBtn[1].left < rectThumb.right)
+		{
+			rectThumb.SetRectEmpty ();
+		}
+	}
+	else
+	{
+		int nSize = ::GetSystemMetrics (SM_CYVSCROLL);
+		if (rect.Height () < nSize * 2)
+		{
+			nSize = rect.Height () / 2;
+		}
+
+		rectBtn[0].bottom = rect.top + nSize;
+		rectBtn[1] = rectBtn[0];
+		rectBtn[1].OffsetRect (0, rect.Height () - rectBtn[1].Height ());
+
+		rect.top += rectBtn[0].Height ();
+		rect.bottom -= rectBtn[1].Height ();
+
+		if (rectThumb.top < rectBtn[0].bottom || rectBtn[1].top < rectThumb.bottom)
+		{
+			rectThumb.SetRectEmpty ();
+		}
+	}
+
+	DoPaintButton (pDC, rectBtn[0], m_bHorz, 
+		m_HitTest == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP || m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP, 
+		m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP && m_HitTest == m_HitPressed, TRUE, 
+		bDisabled || (m_dwDisabledArrows & ESB_DISABLE_LTUP) == ESB_DISABLE_LTUP);
+	
+	DoPaintButton (pDC, rectBtn[1], m_bHorz, 
+		m_HitTest == CBCGPScrollBar::BCGP_HT_BUTTON_RTDN || m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_RTDN, 
+		m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_RTDN && m_HitTest == m_HitPressed, FALSE, 
+		bDisabled || (m_dwDisabledArrows & ESB_DISABLE_RTDN) == ESB_DISABLE_RTDN);
+
+	if (!bDisabled && !rectThumb.IsRectEmpty ())
+	{
+		DoPaintThumb (pDC, rectThumb, m_bHorz, 
+			m_HitTest == CBCGPScrollBar::BCGP_HT_THUMB || m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB,
+			m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB, bDisabled);
+
+		BOOL bDrawBack = FALSE;
+		CRect rectBack (rect);
+		if (m_bHorz)
+		{
+			rectBack.right = rectThumb.left;
+			bDrawBack = rectBack.left < rectBack.right;
+		}
+		else
+		{
+			rectBack.bottom = rectThumb.top;
+			bDrawBack = rectBack.top < rectBack.bottom;
+		}
+
+		if (bDrawBack)
+		{
+			DoPaintBackground (pDC, rectBack, m_bHorz, 
+				m_HitTest == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP || m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP, 
+				m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP && m_HitTest == m_HitPressed, TRUE, bDisabled);
+		}
+
+		bDrawBack = FALSE;
+		rectBack = rect;
+		if (m_bHorz)
+		{
+			rectBack.left = rectThumb.right;
+			bDrawBack = rectBack.left < rectBack.right;
+		}
+		else
+		{
+			rectBack.top = rectThumb.bottom;
+			bDrawBack = rectBack.top < rectBack.bottom;
+		}
+
+		if (bDrawBack)
+		{
+			DoPaintBackground (pDC, rectBack, m_bHorz, 
+				m_HitTest == CBCGPScrollBar::BCGP_HT_CLIENT_RTDN || m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_RTDN, 
+				m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_RTDN && m_HitTest == m_HitPressed, FALSE, bDisabled);
+		}
+	}
+	else if (!rect.IsRectEmpty ())
+	{
+		DoPaintBackground (pDC, rect, m_bHorz, FALSE, FALSE, TRUE, bDisabled);
+	}
+}
+//*******************************************************************************
+void CBCGPScrollBarImpl::DoPaintThumb (CDC* pDC, CRect rect, BOOL bHorz, BOOL bHighlighted, BOOL bPressed, BOOL bDisabled)
+{
+	CBCGPScrollBar dummy;
+	dummy.m_HitTest = m_HitTest != BCGP_HT_NOWHERE ? m_HitTest : m_HitPressed;
+
+	CBCGPScrollBar* pBar = GetScrollBarCtrl();
+	if (pBar == NULL)
+	{
+		pBar = &dummy;
+	}
+
+	CBCGPVisualManager::GetInstance ()->OnScrollBarDrawThumb (pDC, pBar, rect, 
+		bHorz, bHighlighted, bPressed, bDisabled);
+}
+//*******************************************************************************
+void CBCGPScrollBarImpl::DoPaintButton (CDC* pDC, CRect rect, BOOL bHorz, BOOL bHighlighted, BOOL bPressed, BOOL bFirst, BOOL bDisabled)
+{
+	CBCGPScrollBar dummy;
+	dummy.m_HitTest = m_HitTest != BCGP_HT_NOWHERE ? m_HitTest : m_HitPressed;
+
+	CBCGPScrollBar* pBar = GetScrollBarCtrl();
+	if (pBar == NULL)
+	{
+		pBar = &dummy;
+	}
+
+	CBCGPVisualManager::GetInstance ()->OnScrollBarDrawButton (pDC, pBar, rect, bHorz, 
+							bHighlighted, bPressed, bFirst, bDisabled);
+}
+//*******************************************************************************
+void CBCGPScrollBarImpl::DoPaintBackground (CDC* pDC, CRect rect, BOOL bHorz, BOOL bHighlighted, BOOL bPressed, BOOL bFirst, BOOL bDisabled)
+{
+	CBCGPScrollBar dummy;
+	dummy.m_HitTest = m_HitTest != BCGP_HT_NOWHERE ? m_HitTest : m_HitPressed;
+
+	CBCGPScrollBar* pBar = GetScrollBarCtrl();
+	if (pBar == NULL)
+	{
+		pBar = &dummy;
+	}
+
+	CBCGPVisualManager::GetInstance ()->OnScrollBarFillBackground (pDC, pBar, rect, bHorz, 
+							bHighlighted, bPressed, bFirst, bDisabled);
+}
+//*****************************************************************************
+CRect CBCGPScrollBarImpl::GetThumbRect(BOOL bIsEnabled, const SCROLLINFO& si) const
+{
+	CRect rectThumb (0, 0, 0, 0);
+	
+	if (m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB)
+	{
+		rectThumb = m_rectTrackThumb;
+	}
+	else
+	{
+		if (!bIsEnabled || 
+			(m_dwDisabledArrows & ESB_DISABLE_BOTH) == ESB_DISABLE_BOTH)
+		{
+			return rectThumb;
+		}
+		
+		rectThumb = m_rect;
+		
+		int nClientSize = 0;
+		int nThumbSize	= 0;
+		if (m_bHorz)
+		{
+			nThumbSize = ::GetSystemMetrics (SM_CXHSCROLL);
+			rectThumb.DeflateRect (nThumbSize, 0);
+			nClientSize = rectThumb.Width ();
+		}
+		else
+		{
+			nThumbSize = ::GetSystemMetrics (SM_CYVSCROLL);
+			rectThumb.DeflateRect (0, nThumbSize);
+			nClientSize = rectThumb.Height ();
+		}
+		
+		const int c_ScrollMin = globalUtils.ScaleByDPI(4);
+
+		if (nClientSize <= c_ScrollMin)
+		{
+			rectThumb.SetRectEmpty ();
+			return rectThumb;
+		}
+
+        if ((si.nMax - si.nMin) < (int)si.nPage)
+        {
+            nThumbSize = 0;
+        }
+
+		int nThumbPos = nThumbSize;
+		
+		if (si.nPage != 0)
+		{
+			const int c_ScrollThumbMin = globalUtils.ScaleByDPI(8);
+			nThumbSize = max (::MulDiv(nClientSize, si.nPage, si.nMax - si.nMin + 1), c_ScrollThumbMin);
+		}
+		
+		if (nClientSize < nThumbSize || nThumbSize == 0)
+		{
+			rectThumb.SetRectEmpty ();
+			return rectThumb;
+		}
+		else
+		{
+			nClientSize -= nThumbSize;
+			int nMax = si.nMax - max (si.nPage - 1, 0);
+			if (si.nMin < nMax)
+			{
+				nThumbPos += ::MulDiv(nClientSize, si.nPos - si.nMin, nMax - si.nMin);
+			}
+		}
+		
+		if (m_bHorz)
+		{
+			rectThumb.left	 = m_rect.left + nThumbPos;
+			rectThumb.right = rectThumb.left + nThumbSize;
+		}
+		else
+		{
+			rectThumb.top	 = m_rect.top + nThumbPos;
+			rectThumb.bottom = rectThumb.top + nThumbSize;
+		}
+	}
+	
+	return rectThumb;
+}
+//*****************************************************************************
+BOOL CBCGPScrollBarImpl::ProcessEvent(CWnd* pWnd)
+{
+	CWnd* pWndNotify = m_bInternal ? pWnd : pWnd->GetParent ();
+	if (pWndNotify->GetSafeHwnd () == NULL)
+	{
+		return FALSE;
+	}
+
+	BOOL bProcess = FALSE;
+
+	UINT nMessage = m_bHorz ? WM_HSCROLL : WM_VSCROLL;
+	WPARAM nWParam = 0;
+	LPARAM nLParam = m_bInternal ? 0 : (LPARAM)pWnd->GetSafeHwnd ();
+
+	if ((m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP ||
+		 m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_RTDN) &&
+		 m_HitPressed == m_HitTest)
+	{
+		BOOL bUp = m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP;
+
+		if (m_bHorz)
+		{
+			nWParam = bUp ? SB_LINELEFT : SB_LINERIGHT;
+		}
+		else
+		{
+			nWParam = bUp ? SB_LINEUP : SB_LINEDOWN;
+		}
+
+		bProcess = TRUE;
+	}
+	else if ((m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP ||
+			  m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_RTDN) &&
+			  m_HitPressed == m_HitTest)
+	{
+		BOOL bUp = m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP;
+
+		if (m_bHorz)
+		{
+			nWParam = bUp ? SB_PAGELEFT : SB_PAGERIGHT;
+		}
+		else
+		{
+			nWParam = bUp ? SB_PAGEUP : SB_PAGEDOWN;
+		}
+
+		bProcess = TRUE;
+	}
+
+	if (bProcess)
+	{
+		pWndNotify->SendMessage(nMessage, nWParam, nLParam);
+	}
+
+	return bProcess;
+}
+//*****************************************************************************
+BOOL CBCGPScrollBarImpl::ProcessMouseDown(CWnd* pWnd, CPoint point)
+{
+	ASSERT_VALID(pWnd);
+
+	if (DYNAMIC_DOWNCAST(CBCGPDropDownListBox, pWnd) == NULL)
+	{
+		m_pLastCapture = pWnd->SetCapture ();
+	}
+
+	CPoint ptScreen(point);
+
+	if (!m_bInternal)
+	{
+		pWnd->ClientToScreen(&ptScreen);
+	}
+
+	CBCGPScrollBar::BCGPSB_HITTEST hit = DoHitTest(pWnd, ptScreen);
+
+	if (hit != CBCGPScrollBar::BCGP_HT_NOWHERE)
+	{
+		_RedrawScrollBar(pWnd);
+
+		if (hit != CBCGPScrollBar::BCGP_HT_THUMB)
+		{
+			m_HitPressed = hit;
+
+			ProcessEvent(pWnd);
+
+			m_TimerDown = pWnd->SetTimer(SB_TIMER_DOWN, 100, NULL);
+		}
+		else
+		{
+			SCROLLINFO si;
+			_GetScrollInfo(pWnd, si);
+
+			m_ptTrackStart = point;
+
+			m_rectTrackThumbStart = GetThumbRect(pWnd->IsWindowEnabled(), si);
+			m_rectTrackThumb = m_rectTrackThumbStart;
+
+			m_TrackPos = _GetScrollPos(pWnd);
+
+			m_HitPressed = hit;
+
+			CWnd* pWndNotify = m_bInternal ? pWnd : pWnd->GetParent ();
+			if (pWndNotify->GetSafeHwnd () != NULL)
+			{
+				pWndNotify->SendMessage (m_bHorz ? WM_HSCROLL : WM_VSCROLL, 
+						MAKEWPARAM (SB_THUMBTRACK, m_TrackPos), (LPARAM)(m_bInternal ? 0 : pWnd->GetSafeHwnd ()));
+			}
+		}
+	}
+
+	return TRUE;
+}
+//*****************************************************************************
+BOOL CBCGPScrollBarImpl::ProcessMouseUp(CWnd* pWnd, CPoint point)
+{
+	BOOL bSendEvent = m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE;
+	BOOL bThumb 	= m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB;
+	int nTrackPos	= m_TrackPos;
+
+	ProcessCancelMode(pWnd, point);
+
+	CWnd* pWndNotify = m_bInternal ? pWnd : pWnd->GetParent ();
+	if (bSendEvent && pWndNotify->GetSafeHwnd () != NULL)
+	{
+		UINT dwScroll = m_bHorz ? WM_HSCROLL : WM_VSCROLL;
+
+		if (bThumb)
+		{
+			if (m_bSendPosBeforeEndThumb)
+			{
+				if (_GetScrollPos(pWnd) != nTrackPos)
+				{
+					_SetScrollPos(pWnd, nTrackPos, FALSE);
+					nTrackPos = _GetScrollPos(pWnd);
+				}
+			}
+
+			pWndNotify->SendMessage(dwScroll, MAKEWPARAM(SB_THUMBPOSITION, nTrackPos), (LPARAM)(m_bInternal ? 0 : pWnd->GetSafeHwnd()));
+		}
+
+		pWndNotify->SendMessage(dwScroll, SB_ENDSCROLL, (LPARAM)(m_bInternal ? 0 : pWnd->GetSafeHwnd()));
+	}
+
+	return TRUE;
+}
+//*****************************************************************************
+BOOL CBCGPScrollBarImpl::ProcessMouseDblClk(CWnd* pWnd, CPoint point)
+{
+	return ProcessMouseDown(pWnd, point);
+}
+//*****************************************************************************
+BOOL CBCGPScrollBarImpl::ProcessMouseMove(CWnd* pWnd, BOOL bIsMouseDown, CPoint point)
+{
+	ASSERT_VALID(pWnd);
+
+	CPoint ptScreen(point);
+
+	if (!m_bInternal)
+	{
+		pWnd->ClientToScreen(&ptScreen);
+	}
+
+	if (!bIsMouseDown)
+	{
+		if (!m_bTracked)
+		{
+			m_bTracked = TRUE;
+			
+			TRACKMOUSEEVENT trackmouseevent;
+			trackmouseevent.cbSize = sizeof(trackmouseevent);
+			trackmouseevent.dwFlags = TME_LEAVE;
+			trackmouseevent.hwndTrack = pWnd->GetSafeHwnd();
+			trackmouseevent.dwHoverTime = HOVER_DEFAULT;
+			::BCGPTrackMouse (&trackmouseevent);
+		}
+	}
+
+	CBCGPScrollBar::BCGPSB_HITTEST hit = DoHitTest(pWnd, ptScreen);
+
+	if (m_HitTest != hit)
+	{
+		m_HitTest = hit;
+
+		_RedrawScrollBar(pWnd);
+	}
+
+	if (bIsMouseDown && m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB)
+	{
+		CSize szClamp (0, 0);
+		int nThumbLength = 0;
+
+		if (m_bHorz)
+		{
+			szClamp.cx = m_rect.left + ::GetSystemMetrics (SM_CXHSCROLL);
+			szClamp.cy = m_rect.right - szClamp.cx - nThumbLength;
+			nThumbLength = m_rectTrackThumbStart.Width ();
+		}
+		else
+		{
+			szClamp.cx = m_rect.top + ::GetSystemMetrics (SM_CYVSCROLL);
+			szClamp.cy = m_rect.bottom - szClamp.cx;
+			nThumbLength = m_rectTrackThumbStart.Height ();
+		}
+
+		szClamp.cy -= nThumbLength;
+
+		CPoint ptOffset (point - m_ptTrackStart);
+		CRect rectNew (m_rectTrackThumbStart);
+
+		if (m_bHorz)
+		{
+			if (abs(ptOffset.y) < 150)
+			{
+				rectNew.OffsetRect (ptOffset.x, 0);
+
+				if (rectNew.left < szClamp.cx)
+				{
+					rectNew.left = szClamp.cx;
+					rectNew.right = rectNew.left + nThumbLength;
+				}
+				else if (szClamp.cy < rectNew.left)
+				{
+					rectNew.left = szClamp.cy;
+					rectNew.right = rectNew.left + nThumbLength;
+				}
+			}
+		}
+		else
+		{
+			if (abs(ptOffset.x) < 150)
+			{
+				rectNew.OffsetRect (0, ptOffset.y);
+
+				if (rectNew.top < szClamp.cx)
+				{
+					rectNew.top = szClamp.cx;
+					rectNew.bottom = rectNew.top + nThumbLength;
+				}
+				else if (szClamp.cy < rectNew.top)
+				{
+					rectNew.top = szClamp.cy;
+					rectNew.bottom = rectNew.top + nThumbLength;
+				}
+			}
+		}
+
+		if (rectNew != m_rectTrackThumb)
+		{
+			SCROLLINFO si;
+			_GetScrollInfo(pWnd, si);
+
+			m_rectTrackThumb = rectNew;
+
+			int nPosNew = PosFromThumb 
+				((m_bHorz ? m_rectTrackThumb.left : m_rectTrackThumb.top) - szClamp.cx, szClamp, si);
+
+			if (m_TrackPos != nPosNew)
+			{
+				m_TrackPos = nPosNew;
+
+				CWnd* pWndNotify = m_bInternal ? pWnd : pWnd->GetParent ();
+				if (pWndNotify->GetSafeHwnd () != NULL)
+				{
+					pWndNotify->SendMessage (m_bHorz ? WM_HSCROLL : WM_VSCROLL, 
+						MAKEWPARAM (SB_THUMBTRACK, m_TrackPos), (LPARAM)(m_bInternal ? 0 : pWnd->GetSafeHwnd ()));
+				}
+			}
+
+			_RedrawScrollBar(pWnd);
+		}
+	}
+
+	return TRUE;
+}
+//*****************************************************************************
+void CBCGPScrollBarImpl::ProcessMouseLeave(CWnd* pWnd)
+{
+	if (m_bTracked)
+	{
+		m_bTracked = FALSE;
+		m_HitTest = CBCGPScrollBar::BCGP_HT_NOWHERE;
+		
+		_RedrawScrollBar(pWnd);
+	}
+}
+//*****************************************************************************
+BOOL CBCGPScrollBarImpl::ProcessCancelMode(CWnd* pWnd, CPoint point)
+{
+	ASSERT_VALID(pWnd);
+
+	if (CWnd::GetCapture () == pWnd && DYNAMIC_DOWNCAST(CBCGPDropDownListBox, pWnd) == NULL)
+	{
+		ReleaseCapture ();
+	}
+	
+	if (m_pLastCapture != NULL)
+	{
+		m_pLastCapture->SetCapture ();
+		m_pLastCapture = NULL;
+	}
+	
+	if (m_TimerDown != 0)
+	{
+		pWnd->KillTimer (SB_TIMER_DOWN);
+		m_TimerDown = 0;
+	}
+	
+	if (m_Timer != 0)
+	{
+		pWnd->KillTimer (SB_TIMER);
+		m_Timer = 0;
+	}
+
+	m_ptTrackStart = CPoint (0, 0);
+
+	CBCGPScrollBar::BCGPSB_HITTEST hit = DoHitTest(pWnd, point);
+
+	if (m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE ||
+		m_HitTest != hit)
+	{
+		m_HitTest	 = hit;
+		m_HitPressed = CBCGPScrollBar::BCGP_HT_NOWHERE;
+
+		_RedrawScrollBar(pWnd);
+	}
+
+	return TRUE;
+}
+//*****************************************************************************
+BOOL CBCGPScrollBarImpl::ProcessTimer(CWnd* pWnd, UINT_PTR nIDEvent)
+{
+	ASSERT_VALID(pWnd);
+
+	if (nIDEvent == SB_TIMER_DOWN && m_TimerDown != 0)
+	{
+		m_TimerDown = 0;
+		
+		pWnd->KillTimer(SB_TIMER_DOWN);
+		
+		m_Timer = pWnd->SetTimer(SB_TIMER, 50, NULL);
+		return TRUE;
+	}
+	else if (nIDEvent == SB_TIMER && m_Timer != 0)
+	{
+		ProcessEvent(pWnd);
+		return TRUE;
+	}
+
+	return FALSE;
+}
+//*****************************************************************************
+int CBCGPScrollBarImpl::PosFromThumb (int thumb, const CSize& szClamp, const SCROLLINFO& si)
+{
+	const int nRange1 = szClamp.cy - szClamp.cx;
+	const int nMin	 = si.nMin;
+	const int nMax	 = si.nMax - (si.nPage - 1);
+	const int nRange2 = nMax - nMin;
+
+	if (nRange2 < 0)
+	{
+		return 0;
+	}
+
+	int nPos = nMin + 
+		(int)(((double)thumb) * ((double)nRange2) / (double)(nRange1) + 0.5);
+
+	if (nPos < nMin)
+	{
+		nPos = nMin;
+	}
+
+	if (nMax < nPos)
+	{
+		nPos = nMax;
+	}
+
+	return nPos;
+}
+//*****************************************************************************
+CBCGPScrollBarImpl::BCGPSB_HITTEST CBCGPScrollBarImpl::DoHitTest(CWnd* pWnd, const CPoint& pt) const
+{
+	CRect rect = m_rect;
+
+	CPoint point(pt);
+
+	if (!m_bInternal)
+	{
+		pWnd->ScreenToClient(&point);
+	}
+
+	CBCGPScrollBar::BCGPSB_HITTEST hit = CBCGPScrollBar::BCGP_HT_NOWHERE;
+
+	if (rect.PtInRect (point))
+	{
+		hit = CBCGPScrollBar::BCGP_HT_CLIENT;
+
+		SCROLLINFO si;
+		_GetScrollInfo(pWnd, si);
+
+		CRect rectThumb (GetThumbRect(pWnd->IsWindowEnabled(), si));
+
+		CRect rectBtn[2];
+		rectBtn[0] = rect;
+
+		if (m_bHorz)
+		{
+			int nSize = ::GetSystemMetrics (SM_CXHSCROLL);
+			if (rect.Width () < nSize * 2)
+			{
+				nSize = rect.Width () / 2;
+			}
+
+			rectBtn[0].right = rect.left + nSize;
+			rectBtn[1] = rectBtn[0];
+			rectBtn[1].OffsetRect (rect.Width () - rectBtn[1].Width (), 0);
+
+			rect.left += rectBtn[0].Width ();
+			rect.right -= rectBtn[1].Width ();
+
+			if (rectThumb.left < rectBtn[0].right || rectBtn[1].left < rectThumb.right)
+			{
+				rectThumb.SetRectEmpty ();
+			}
+		}
+		else
+		{
+			int nSize = ::GetSystemMetrics (SM_CYVSCROLL);
+			if (rect.Height () < nSize * 2)
+			{
+				nSize = rect.Height () / 2;
+			}
+
+			rectBtn[0].bottom = rect.top + nSize;
+			rectBtn[1] = rectBtn[0];
+			rectBtn[1].OffsetRect (0, rect.Height () - rectBtn[1].Height ());
+			
+			rect.top += rectBtn[0].Height ();
+			rect.bottom -= rectBtn[1].Height ();
+
+			if (rectThumb.top < rectBtn[0].bottom || rectBtn[1].top < rectThumb.bottom)
+			{
+				rectThumb.SetRectEmpty ();
+			}
+		}
+
+		if (rectBtn[0].PtInRect (point))
+		{
+			hit = m_bHorz ? CBCGPScrollBar::BCGP_HT_BUTTON_LEFT : CBCGPScrollBar::BCGP_HT_BUTTON_UP;
+		}
+		else
+		{
+			if (rectBtn[1].PtInRect (point))
+			{
+				hit = m_bHorz ? CBCGPScrollBar::BCGP_HT_BUTTON_RIGHT : CBCGPScrollBar::BCGP_HT_BUTTON_DOWN;
+			}
+			else if (!rectThumb.IsRectEmpty ())
+			{
+				if (rectThumb.PtInRect (point))
+				{
+					hit = CBCGPScrollBar::BCGP_HT_THUMB;
+				}
+				else
+				{
+					if (m_bHorz)
+					{
+						if (point.x < rectThumb.left)
+						{
+							hit = CBCGPScrollBar::BCGP_HT_CLIENT_LEFT;
+						}
+						else
+						{
+							hit = CBCGPScrollBar::BCGP_HT_CLIENT_RIGHT;
+						}
+					}
+					else
+					{
+						if (point.y < rectThumb.top)
+						{
+							hit = CBCGPScrollBar::BCGP_HT_CLIENT_UP;
+						}
+						else
+						{
+							hit = CBCGPScrollBar::BCGP_HT_CLIENT_DOWN;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return hit;
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPScrollBar
-
-const UINT SB_TIMER_DOWN = 1111;
-const UINT SB_TIMER      = 2222;
 
 IMPLEMENT_DYNAMIC(CBCGPScrollBar, CScrollBar)
 
 CBCGPScrollBar::CBCGPScrollBar()
 	: m_Style		 (CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER) 
-	, m_bTracked     (FALSE)
-	, m_HitTest      (CBCGPScrollBar::BCGP_HT_NOWHERE)
-	, m_HitPressed   (CBCGPScrollBar::BCGP_HT_NOWHERE)
-	, m_pLastCapture (NULL)
-	, m_TimerDown    (0)
-	, m_Timer        (0)
-	, m_ptTrackStart (0, 0)
 	, m_bAutoDestoyWindow (FALSE)
-	, m_dwDisabledArrows (0)
-	, m_bOnGlass     (FALSE)
+	, m_bOnGlass	 (FALSE)
 {
+	m_bInternal = FALSE;
 }
 
 CBCGPScrollBar::~CBCGPScrollBar()
@@ -81,227 +961,116 @@ END_MESSAGE_MAP()
 /////////////////////////////////////////////////////////////////////////////
 // CBCGPScrollBar message handlers
 
-const int c_ScrollMin      = 4;
-const int c_ScrollThumbMin = 8;
-
-CRect CBCGPScrollBar::GetThumbRect (const CRect& rect, BOOL bHorz) const
-{
-	CRect rectThumb (0, 0, 0, 0);
-
-	if (m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB)
-	{
-		rectThumb = m_rectTrackThumb;
-	}
-	else
-	{
-		if (!IsWindowEnabled () || 
-			(m_dwDisabledArrows & ESB_DISABLE_BOTH) == ESB_DISABLE_BOTH)
-		{
-			return rectThumb;
-		}
-
-		rectThumb = rect;
-
-		int nClientSize = 0;
-		int nThumbSize  = 0;
-		if (bHorz)
-		{
-			nThumbSize = ::GetSystemMetrics (SM_CXHSCROLL);
-			rectThumb.DeflateRect (nThumbSize, 0);
-			nClientSize = rectThumb.Width ();
-		}
-		else
-		{
-			nThumbSize = ::GetSystemMetrics (SM_CYVSCROLL);
-			rectThumb.DeflateRect (0, nThumbSize);
-			nClientSize = rectThumb.Height ();
-		}
-
-		if (nClientSize <= c_ScrollMin)
-		{
-			rectThumb.SetRectEmpty ();
-			return rectThumb;
-		}
-
-		int nThumbPos = nThumbSize;
-
-		SCROLLINFO si;
-		si.cbSize = sizeof (SCROLLINFO);
-		si.fMask  = SIF_RANGE | SIF_POS | SIF_PAGE;
-
-		::GetScrollInfo(GetSafeHwnd (), SB_CTL, &si);
-
-		if (si.nPage != 0)
-		{
-			nThumbSize = max (::MulDiv(nClientSize, si.nPage, si.nMax - si.nMin + 1), c_ScrollThumbMin);
-		}
-
-		if (nClientSize < nThumbSize || nThumbSize == 0)
-		{
-			rectThumb.SetRectEmpty ();
-			return rectThumb;
-		}
-		else
-		{
-			nClientSize -= nThumbSize;
-			int nMax = si.nMax - max (si.nPage - 1, 0);
-			if (si.nMin < nMax)
-			{
-				nThumbPos += ::MulDiv(nClientSize, si.nPos - si.nMin, nMax - si.nMin);
-			}
-		}
-
-		if (bHorz)
-		{
-			rectThumb.left   = rect.left + nThumbPos;
-			rectThumb.right  = rectThumb.left + nThumbSize;
-		}
-		else
-		{
-			rectThumb.top    = rect.top + nThumbPos;
-			rectThumb.bottom = rectThumb.top + nThumbSize;
-		}
-	}
-
-	return rectThumb;
-}
-//*****************************************************************************
 void CBCGPScrollBar::DoPaint (CDC* pDC)
 {
 	CBCGPDrawOnGlass dog(m_bOnGlass);
 
-	CRect rect;
-	GetClientRect (rect);
+	GetClientRect(m_rect);
+	m_bHorz = (GetStyle() & SBS_VERT) == 0;
 
-	DWORD dwStyle  = GetStyle ();
-	BOOL bDisabled = !IsWindowEnabled () || 
-		(m_dwDisabledArrows & ESB_DISABLE_BOTH) == ESB_DISABLE_BOTH;
-
-	if (!bDisabled)
+	SCROLLINFO si;
+	si.cbSize = sizeof(SCROLLINFO);
+	GetScrollInfo(&si, SIF_POS | SIF_RANGE | SIF_PAGE);
+	
+	Render(pDC, IsWindowEnabled(), si);
+}
+//*******************************************************************************
+void CBCGPScrollBar::DoPaintThumb (CDC* pDC, CRect rect, BOOL bHorz, BOOL bHighlighted, BOOL bPressed, BOOL bDisabled)
+{
+	if (m_Style == BCGP_SBSTYLE_OWNER_DRAW)
 	{
-		SCROLLINFO si;
-		si.cbSize = sizeof (SCROLLINFO);
-		GetScrollInfo (&si, SIF_RANGE | SIF_PAGE);
+		BCGPSCROLLBAR_DRAW_INFO info (pDC, this, BCGP_SCROLLBAR_THUMB, rect, 
+			bHorz, bHighlighted, bPressed, FALSE, bDisabled);
 
-		bDisabled = si.nMax <= si.nMin || si.nPage <= 0;
+		ASSERT_VALID (GetOwner ());
+
+		GetOwner ()->SendMessage (BCGM_ON_DRAW_SCROLLBAR, (WPARAM) GetDlgCtrlID (), (LPARAM) &info);
+		return;
 	}
 
-	if (!rect.IsRectEmpty ())
+	if (m_Style == BCGP_SBSTYLE_CUSTOM)
 	{
-		const BOOL bHorz = (dwStyle & SBS_VERT) == 0;
+		DrawCustomBox(pDC, rect, bHorz, bHighlighted, bPressed, bDisabled);
+		return;
+	}
 
-		CRect rectThumb (0, 0, 0, 0);
-		if (!bDisabled)
-		{
-			rectThumb = GetThumbRect (rect, bHorz);
-		}
+	CBCGPVisualManager::GetInstance ()->OnScrollBarDrawThumb (pDC, this, rect, 
+		bHorz, bHighlighted, bPressed, bDisabled);
+}
+//*******************************************************************************
+void CBCGPScrollBar::DoPaintButton (CDC* pDC, CRect rect, BOOL bHorz, BOOL bHighlighted, BOOL bPressed, BOOL bFirst, BOOL bDisabled)
+{
+	if (m_Style == BCGP_SBSTYLE_OWNER_DRAW)
+	{
+		BCGPSCROLLBAR_DRAW_INFO info (pDC, this, BCGP_SCROLLBAR_BUTTON, rect, 
+			bHorz, bHighlighted, bPressed, bFirst, bDisabled);
 
-		CRect rectBtn[2];
-		rectBtn[0] = rect;
+		ASSERT_VALID (GetOwner ());
 
+		GetOwner ()->SendMessage (BCGM_ON_DRAW_SCROLLBAR, (WPARAM) GetDlgCtrlID (), (LPARAM) &info);
+		return;
+	}
+
+	if (bHorz && (GetExStyle() & WS_EX_LAYOUTRTL))
+	{
+		bFirst = !bFirst;
+	}
+
+	if (m_Style == BCGP_SBSTYLE_CUSTOM)
+	{
+		COLORREF clrFill = DrawCustomBox(pDC, rect, bHorz, bHighlighted, bPressed, bDisabled);
+		
+		CBCGPMenuImages::IMAGES_IDS ids;
 		if (bHorz)
 		{
-			int nSize  = ::GetSystemMetrics (SM_CXHSCROLL);
-			if (rect.Width () < nSize * 2)
-			{
-				nSize = rect.Width () / 2;
-			}
-
-			rectBtn[0].right  = rect.left + nSize;
-			rectBtn[1] = rectBtn[0];
-			rectBtn[1].OffsetRect (rect.Width () - rectBtn[1].Width (), 0);
-
-			rect.left += rectBtn[0].Width ();
-			rect.right -= rectBtn[1].Width ();
-
-			if (rectThumb.left < rectBtn[0].right || rectBtn[1].left < rectThumb.right)
-			{
-				rectThumb.SetRectEmpty ();
-			}
+			ids = bFirst ? CBCGPMenuImages::IdArowLeftTab3d : CBCGPMenuImages::IdArowRightTab3d;
 		}
 		else
 		{
-			int nSize  = ::GetSystemMetrics (SM_CYVSCROLL);
-			if (rect.Height () < nSize * 2)
-			{
-				nSize = rect.Height () / 2;
-			}
-
-			rectBtn[0].bottom = rect.top + nSize;
-			rectBtn[1] = rectBtn[0];
-			rectBtn[1].OffsetRect (0, rect.Height () - rectBtn[1].Height ());
-
-			rect.top += rectBtn[0].Height ();
-			rect.bottom -= rectBtn[1].Height ();
-
-			if (rectThumb.top < rectBtn[0].bottom || rectBtn[1].top < rectThumb.bottom)
-			{
-				rectThumb.SetRectEmpty ();
-			}
+			ids = bFirst ? CBCGPMenuImages::IdArowUpLarge : CBCGPMenuImages::IdArowDownLarge;
 		}
-
-		DoPaintButton (pDC, rectBtn[0], bHorz, 
-			m_HitTest == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP, 
-			m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP, TRUE, 
-			bDisabled || (m_dwDisabledArrows & ESB_DISABLE_LTUP) == ESB_DISABLE_LTUP);
 		
-		DoPaintButton (pDC, rectBtn[1], bHorz, 
-			m_HitTest == CBCGPScrollBar::BCGP_HT_BUTTON_RTDN, 
-			m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_RTDN, FALSE, 
-			bDisabled || (m_dwDisabledArrows & ESB_DISABLE_RTDN) == ESB_DISABLE_RTDN);
-
-		if (!bDisabled && !rectThumb.IsRectEmpty ())
+		if (bDisabled)
 		{
-			DoPaintThumb (pDC, rectThumb, bHorz, 
-				m_HitTest == CBCGPScrollBar::BCGP_HT_THUMB || 
-				m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB,
-				m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB, bDisabled);
-
-			BOOL bDrawBack = FALSE;
-			CRect rectBack (rect);
-			if (bHorz)
-			{
-				rectBack.right = rectThumb.left;
-				bDrawBack = rectBack.left < rectBack.right;
-			}
-			else
-			{
-				rectBack.bottom = rectThumb.top;
-				bDrawBack = rectBack.top < rectBack.bottom;
-			}
-
-			if (bDrawBack)
-			{
-				DoPaintBackground (pDC, rectBack, bHorz, 
-					m_HitTest == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP, 
-					m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP, TRUE, bDisabled);
-			}
-
-			bDrawBack = FALSE;
-			rectBack = rect;
-			if (bHorz)
-			{
-				rectBack.left = rectThumb.right;
-				bDrawBack = rectBack.left < rectBack.right;
-			}
-			else
-			{
-				rectBack.top = rectThumb.bottom;
-				bDrawBack = rectBack.top < rectBack.bottom;
-			}
-
-			if (bDrawBack)
-			{
-				DoPaintBackground (pDC, rectBack, bHorz, 
-					m_HitTest == CBCGPScrollBar::BCGP_HT_CLIENT_RTDN, 
-					m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_RTDN, FALSE, bDisabled);
-			}
+			CBCGPMenuImages::IMAGE_STATE state = CBCGPDrawManager::IsDarkColor(clrFill) ? CBCGPMenuImages::ImageDkGray : CBCGPMenuImages::ImageLtGray;
+			CBCGPMenuImages::Draw (pDC, ids, rect, state);
 		}
-		else if (!rect.IsRectEmpty ())
+		else
 		{
-			DoPaintBackground (pDC, rect, bHorz, FALSE, FALSE, TRUE, bDisabled);
+			CBCGPMenuImages::DrawByColor(pDC, ids, rect, clrFill);
 		}
+
+		return;
 	}
+
+	CBCGPVisualManager::GetInstance ()->OnScrollBarDrawButton (pDC, this, rect, bHorz, 
+							bHighlighted, bPressed, bFirst, bDisabled);
+}
+//*******************************************************************************
+void CBCGPScrollBar::DoPaintBackground (CDC* pDC, CRect rect, BOOL bHorz, BOOL bHighlighted, BOOL bPressed, BOOL bFirst, BOOL bDisabled)
+{
+	if (m_Style == BCGP_SBSTYLE_OWNER_DRAW)
+	{
+		BCGPSCROLLBAR_DRAW_INFO info (pDC, this, BCGP_SCROLLBAR_BACKGROUND, rect, 
+			bHorz, bHighlighted, bPressed, bFirst, bDisabled);
+
+		ASSERT_VALID (GetOwner ());
+
+		GetOwner ()->SendMessage (BCGM_ON_DRAW_SCROLLBAR, (WPARAM) GetDlgCtrlID (), (LPARAM) &info);
+		return;
+	}
+
+	if (m_Style == BCGP_SBSTYLE_CUSTOM)
+	{
+		CBCGPDrawManager dm (*pDC);
+
+		COLORREF clrFace = (bPressed && m_ColorTheme.m_clrFacePressed != (COLORREF)-1) ? m_ColorTheme.m_clrFacePressed : m_ColorTheme.m_clrFace;
+		dm.DrawRect (rect, clrFace, bDisabled ? (COLORREF)-1 : m_ColorTheme.m_clrBorder);
+		return;
+	}
+
+	CBCGPVisualManager::GetInstance ()->OnScrollBarFillBackground (pDC, this, rect, bHorz, 
+							bHighlighted, bPressed, bFirst, bDisabled);
 }
 //*****************************************************************************
 int CBCGPScrollBar::OnCreate(LPCREATESTRUCT lpCreateStruct) 
@@ -321,7 +1090,7 @@ void CBCGPScrollBar::PreSubclassWindow()
 //*****************************************************************************
 void CBCGPScrollBar::OnPaint() 
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		Default ();
@@ -338,326 +1107,58 @@ void CBCGPScrollBar::OnPaint()
 //*****************************************************************************
 void CBCGPScrollBar::OnCancelMode() 
 {
-	if (m_TimerDown != 0)
-	{
-		KillTimer (SB_TIMER_DOWN);
-		m_TimerDown = 0;
-	}
-	if (m_Timer != 0)
-	{
-		KillTimer (SB_TIMER);
-		m_Timer = 0;
-	}
-
 	CScrollBar::OnCancelMode();
-
-	if (GetCapture () == this)
-	{
-		ReleaseCapture ();
-	}
-
-	m_ptTrackStart = CPoint (0, 0);
-
-	if (m_pLastCapture != NULL)
-	{
-		m_pLastCapture->SetCapture ();
-		m_pLastCapture = NULL;
-	}
 
 	CPoint point;
 	::GetCursorPos (&point);
-	CBCGPScrollBar::BCGPSB_HITTEST hit = HitTest (point);
 
-	if (m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE ||
-		m_HitTest != hit)
-	{
-		m_HitTest    = hit;
-		m_HitPressed = CBCGPScrollBar::BCGP_HT_NOWHERE;
-
-		RedrawWindow ();
-	}
-}
-//*****************************************************************************
-CBCGPScrollBar::BCGPSB_HITTEST CBCGPScrollBar::HitTest (const CPoint& pt) const
-{
-	CRect rect;
-	GetClientRect (rect);
-
-	CPoint point(pt);
-	ScreenToClient(&point);
-
-	CBCGPScrollBar::BCGPSB_HITTEST hit = CBCGPScrollBar::BCGP_HT_NOWHERE;
-
-	if (rect.PtInRect (point))
-	{
-		hit = CBCGPScrollBar::BCGP_HT_CLIENT;
-
-		BOOL bHorz = (GetStyle () & SBS_VERT) == 0;
-
-		CRect rectThumb (GetThumbRect (rect, bHorz));
-
-		CRect rectBtn[2];
-		rectBtn[0] = rect;
-
-		if (bHorz)
-		{
-			int nSize  = ::GetSystemMetrics (SM_CXHSCROLL);
-			if (rect.Width () < nSize * 2)
-			{
-				nSize = rect.Width () / 2;
-			}
-
-			rectBtn[0].right  = rect.left + nSize;
-			rectBtn[1] = rectBtn[0];
-			rectBtn[1].OffsetRect (rect.Width () - rectBtn[1].Width (), 0);
-
-			rect.left += rectBtn[0].Width ();
-			rect.right -= rectBtn[1].Width ();
-
-			if (rectThumb.left < rectBtn[0].right || rectBtn[1].left < rectThumb.right)
-			{
-				rectThumb.SetRectEmpty ();
-			}
-		}
-		else
-		{
-			int nSize  = ::GetSystemMetrics (SM_CYVSCROLL);
-			if (rect.Height () < nSize * 2)
-			{
-				nSize = rect.Height () / 2;
-			}
-
-			rectBtn[0].bottom = rect.top + nSize;
-			rectBtn[1] = rectBtn[0];
-			rectBtn[1].OffsetRect (0, rect.Height () - rectBtn[1].Height ());
-			
-			rect.top += rectBtn[0].Height ();
-			rect.bottom -= rectBtn[1].Height ();
-
-			if (rectThumb.top < rectBtn[0].bottom || rectBtn[1].top < rectThumb.bottom)
-			{
-				rectThumb.SetRectEmpty ();
-			}
-		}
-
-		if (rectBtn[0].PtInRect (point))
-		{
-			hit = bHorz ? CBCGPScrollBar::BCGP_HT_BUTTON_LEFT : CBCGPScrollBar::BCGP_HT_BUTTON_UP;
-		}
-		else
-		{
-			if (rectBtn[1].PtInRect (point))
-			{
-				hit = bHorz ? CBCGPScrollBar::BCGP_HT_BUTTON_RIGHT : CBCGPScrollBar::BCGP_HT_BUTTON_DOWN;
-			}
-			else if (!rectThumb.IsRectEmpty ())
-			{
-				if (rectThumb.PtInRect (point))
-				{
-					hit = CBCGPScrollBar::BCGP_HT_THUMB;
-				}
-				else
-				{
-					if (bHorz)
-					{
-						if (point.x < rectThumb.left)
-						{
-							hit = CBCGPScrollBar::BCGP_HT_CLIENT_LEFT;
-						}
-						else
-						{
-							hit = CBCGPScrollBar::BCGP_HT_CLIENT_RIGHT;
-						}
-					}
-					else
-					{
-						if (point.y < rectThumb.top)
-						{
-							hit = CBCGPScrollBar::BCGP_HT_CLIENT_UP;
-						}
-						else
-						{
-							hit = CBCGPScrollBar::BCGP_HT_CLIENT_DOWN;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return hit;
+	ProcessCancelMode(this, point);
 }
 //*****************************************************************************
 void CBCGPScrollBar::Process ()
 {
-	CWnd* pWndParent = GetParent ();
-	if (pWndParent->GetSafeHwnd () == NULL)
-	{
-		return;
-	}
-
-	BOOL bProcess = FALSE;
-	BOOL bHorz = (GetStyle () & SBS_VERT) == 0;
-
-	UINT nMessage = bHorz ? WM_HSCROLL : WM_VSCROLL;
-	WPARAM nWParam   = 0;
-	LPARAM nLParam   = (LPARAM)GetSafeHwnd ();
-
-	if ((m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP ||
-		 m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_RTDN) &&
-		 m_HitPressed == m_HitTest)
-	{
-		BOOL bUp = m_HitPressed == CBCGPScrollBar::BCGP_HT_BUTTON_LTUP;
-
-		if (bHorz)
-		{
-			nWParam = bUp ? SB_LINELEFT : SB_LINERIGHT;
-		}
-		else
-		{
-			nWParam = bUp ? SB_LINEUP : SB_LINEDOWN;
-		}
-
-		bProcess = TRUE;
-	}
-	else if ((m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP ||
-			  m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_RTDN) &&
-			  m_HitPressed == m_HitTest)
-	{
-		BOOL bUp = m_HitPressed == CBCGPScrollBar::BCGP_HT_CLIENT_LTUP;
-
-		if (bHorz)
-		{
-			nWParam = bUp ? SB_PAGELEFT : SB_PAGERIGHT;
-		}
-		else
-		{
-			nWParam = bUp ? SB_PAGEUP : SB_PAGEDOWN;
-		}
-
-		bProcess = TRUE;
-	}
-	else if (m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB)
-	{
-	}
-
-	if (bProcess)
-	{
-		pWndParent->SendMessage (nMessage, nWParam, nLParam);
-	}
+	ProcessEvent(this);
 }
 //*****************************************************************************
 void CBCGPScrollBar::OnLButtonDown(UINT /*nFlags*/, CPoint point) 
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		Default ();
 		return;
 	}
 
-	m_pLastCapture = SetCapture ();
-
-	CPoint pt (point);
-	ClientToScreen (&pt);
-	m_HitPressed = HitTest (pt);
-
-	RedrawWindow ();
-
-	if (m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE)
-	{
-		if (m_HitPressed != CBCGPScrollBar::BCGP_HT_THUMB)
-		{
-			Process ();
-
-			m_TimerDown = SetTimer (SB_TIMER_DOWN, 500, NULL);
-		}
-		else
-		{
-			m_ptTrackStart = point;
-
-			CRect rect;
-			GetClientRect (rect);
-
-			m_HitPressed = CBCGPScrollBar::BCGP_HT_NOWHERE;
-			m_rectTrackThumbStart = GetThumbRect (rect, (GetStyle () & SBS_VERT) == 0);
-			m_rectTrackThumb = m_rectTrackThumbStart;
-			m_HitPressed = CBCGPScrollBar::BCGP_HT_THUMB;
-
-			m_TrackPos = GetScrollPos ();
-
-			CWnd* pWndParent = GetParent ();
-			if (pWndParent->GetSafeHwnd () != NULL)
-			{
-				pWndParent->SendMessage ((GetStyle () & SB_VERT) == 0 ? WM_HSCROLL : WM_VSCROLL, 
-						MAKEWPARAM (SB_THUMBTRACK, m_TrackPos), (LPARAM)GetSafeHwnd ());
-			}
-
-			RedrawWindow ();
-		}
-	}
+	ProcessMouseDown(this, point);
 }
 //*****************************************************************************
-void CBCGPScrollBar::OnLButtonUp(UINT /*nFlags*/, CPoint /*point*/) 
+void CBCGPScrollBar::OnLButtonUp(UINT /*nFlags*/, CPoint point) 
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		Default ();
 		return;
 	}
 
-	BOOL bSendEvent = m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE;
-	BOOL bThumb     = m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB;
-	int nTrackPos   = m_TrackPos;
-
-	OnCancelMode ();
-
-	CWnd* pWndParent = GetParent ();
-	if (bSendEvent && pWndParent->GetSafeHwnd () != NULL)
-	{
-		UINT dwScroll = (GetStyle () & SBS_VERT) == 0 ? WM_HSCROLL : WM_VSCROLL;
-
-		if (bThumb)
-		{
-			if (GetScrollPos () != nTrackPos)
-			{
-				SetScrollPos(nTrackPos, FALSE);
-			}
-
-			pWndParent->SendMessage (dwScroll, MAKEWPARAM(SB_THUMBPOSITION, GetScrollPos ()), (LPARAM)GetSafeHwnd ());
-		}
-
-		pWndParent->SendMessage (dwScroll, SB_ENDSCROLL, (LPARAM)GetSafeHwnd ());
-	}
+	ProcessMouseUp(this, point);
 }
 //*****************************************************************************
 void CBCGPScrollBar::OnLButtonDblClk(UINT /*nFlags*/, CPoint point) 
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		Default ();
 		return;
 	}
 
-	ClientToScreen (&point);
-	CBCGPScrollBar::BCGPSB_HITTEST hit = HitTest (point);
-
-	if (hit == BCGP_HT_BUTTON_LTUP || hit == BCGP_HT_BUTTON_RTDN)
-	{
-		CWnd* pWndParent = GetParent ();
-		if (pWndParent->GetSafeHwnd () != NULL)
-		{
-			pWndParent->PostMessage ((GetStyle () & SB_VERT) == 0 ? WM_HSCROLL : WM_VSCROLL, 
-				(hit == BCGP_HT_BUTTON_LTUP ? SB_LINEUP : SB_LINEDOWN), (LPARAM)GetSafeHwnd ());
-		}
-	}
+	ProcessMouseDblClk(this, point);
 }
 //*****************************************************************************
 void CBCGPScrollBar::OnRButtonUp(UINT /*nFlags*/, CPoint /*point*/)
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		Default ();
@@ -666,182 +1167,31 @@ void CBCGPScrollBar::OnRButtonUp(UINT /*nFlags*/, CPoint /*point*/)
 //*****************************************************************************
 void CBCGPScrollBar::OnMouseMove(UINT nFlags, CPoint point) 
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		Default ();
 		return;
 	}
-
-	BOOL bDown = (nFlags & MK_LBUTTON) == MK_LBUTTON;
-
-	if (!bDown)
-	{
-		if (!m_bTracked)
-		{
-			m_bTracked = TRUE;
-			
-			TRACKMOUSEEVENT trackmouseevent;
-			trackmouseevent.cbSize = sizeof(trackmouseevent);
-			trackmouseevent.dwFlags = TME_LEAVE;
-			trackmouseevent.hwndTrack = GetSafeHwnd();
-			trackmouseevent.dwHoverTime = HOVER_DEFAULT;
-			::BCGPTrackMouse (&trackmouseevent);
-		}
-	}
-
-	CPoint pt (point);
-	ClientToScreen (&pt);
-	CBCGPScrollBar::BCGPSB_HITTEST hit = HitTest (pt);
-
-	if (m_HitTest != hit)
-	{
-		m_HitTest = hit;
-		RedrawWindow ();
-	}
-
-	if (bDown && m_HitPressed == CBCGPScrollBar::BCGP_HT_THUMB)
-	{
-		CRect rect;
-		GetClientRect (rect);
-
-		BOOL bHorz = (GetStyle () & SBS_VERT) == 0;
-
-		CSize szClamp (0, 0);
-		int nThumbLength = 0;
-
-		if (bHorz)
-		{
-			szClamp.cx = rect.left + ::GetSystemMetrics (SM_CXHSCROLL);
-			szClamp.cy = rect.right - szClamp.cx - nThumbLength;
-			nThumbLength = m_rectTrackThumbStart.Width ();
-		}
-		else
-		{
-			szClamp.cx = rect.top + ::GetSystemMetrics (SM_CYVSCROLL);
-			szClamp.cy = rect.bottom - szClamp.cx;
-			nThumbLength = m_rectTrackThumbStart.Height ();
-		}
-
-		szClamp.cy -= nThumbLength;
-
-		CPoint ptOffset (point - m_ptTrackStart);
-		CRect rectNew (m_rectTrackThumbStart);
-
-		if (bHorz)
-		{
-			if (abs(ptOffset.y) < 150)
-			{
-				rectNew.OffsetRect (ptOffset.x, 0);
-
-				if (rectNew.left < szClamp.cx)
-				{
-					rectNew.left  = szClamp.cx;
-					rectNew.right = rectNew.left + nThumbLength;
-				}
-				else if (szClamp.cy < rectNew.left)
-				{
-					rectNew.left  = szClamp.cy;
-					rectNew.right = rectNew.left + nThumbLength;
-				}
-			}
-		}
-		else
-		{
-			if (abs(ptOffset.x) < 150)
-			{
-				rectNew.OffsetRect (0, ptOffset.y);
-
-				if (rectNew.top < szClamp.cx)
-				{
-					rectNew.top    = szClamp.cx;
-					rectNew.bottom = rectNew.top + nThumbLength;
-				}
-				else if (szClamp.cy < rectNew.top)
-				{
-					rectNew.top    = szClamp.cy;
-					rectNew.bottom = rectNew.top + nThumbLength;
-				}
-			}
-		}
-
-		if (rectNew != m_rectTrackThumb)
-		{
-			m_rectTrackThumb = rectNew;
-			int nPosNew = PosFromThumb 
-				((bHorz ? m_rectTrackThumb.left : m_rectTrackThumb.top) - szClamp.cx, szClamp);
-
-			if (m_TrackPos != nPosNew)
-			{
-				m_TrackPos = nPosNew;
-
-				CWnd* pWndParent = GetParent ();
-				if (pWndParent->GetSafeHwnd () != NULL)
-				{
-					pWndParent->SendMessage (bHorz ? WM_HSCROLL : WM_VSCROLL, 
-						MAKEWPARAM (SB_THUMBTRACK, m_TrackPos), (LPARAM)GetSafeHwnd ());
-				}
-			}
-
-			RedrawWindow ();
-		}
-	}
-}
-//*****************************************************************************
-int CBCGPScrollBar::PosFromThumb (int thumb, const CSize& szClamp)
-{
-	SCROLLINFO si;
-	si.cbSize = sizeof (SCROLLINFO);
-	GetScrollInfo (&si, SIF_RANGE | SIF_PAGE);
-
-	const int nRange1 = szClamp.cy - szClamp.cx;
-	const int nMin    = si.nMin;
-	const int nMax    = si.nMax - (si.nPage - 1);
-	const int nRange2 = nMax - nMin;
-
-	if (nRange2 < 0)
-	{
-		return 0;
-	}
-
-	int nPos = nMin + 
-		(int)(((double)thumb) * ((double)nRange2) / (double)(nRange1) + 0.5);
-
-	if (nPos < nMin)
-	{
-		nPos = nMin;
-	}
-
-	if (nMax < nPos)
-	{
-		nPos = nMax;
-	}
-
-	return nPos;
+	
+	ProcessMouseMove(this, (nFlags & MK_LBUTTON) == MK_LBUTTON, point);
 }
 //*****************************************************************************
 LRESULT CBCGPScrollBar::OnMouseLeave(WPARAM, LPARAM)
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		return Default ();
 	}
 
-	if (m_bTracked)// && m_HitPressed != CBCGPScrollBar::BCGP_HT_THUMB)
-	{
-		m_bTracked = FALSE;
-		m_HitTest  = CBCGPScrollBar::BCGP_HT_NOWHERE;
-
-		RedrawWindow ();
-	}
-
+	ProcessMouseLeave(this);
 	return 0;
 }
 //*****************************************************************************
 LRESULT CBCGPScrollBar::WindowProc(UINT message, WPARAM wParam, LPARAM lParam) 
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		return CScrollBar::WindowProc (message, wParam, lParam);
@@ -862,8 +1212,8 @@ LRESULT CBCGPScrollBar::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
 		if (m_HitPressed != CBCGPScrollBar::BCGP_HT_THUMB)
 		{
 			SCROLLINFO si;
-			si.cbSize = sizeof (SCROLLINFO);
-			GetScrollInfo (&si);
+			si.cbSize = sizeof(SCROLLINFO);
+			GetScrollInfo(&si);
 
 			if (message == SBM_SETPOS)
 			{
@@ -885,15 +1235,19 @@ LRESULT CBCGPScrollBar::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
 					bRedraw = ((si.fMask & SIF_PAGE) == SIF_PAGE && si.nPage != lpSI->nPage) ||
 						((si.fMask & SIF_POS) == SIF_POS && si.nPos != lpSI->nPos) ||
 						((si.fMask & SIF_RANGE) == SIF_RANGE && (si.nMin != lpSI->nMin || si.nMax != lpSI->nMax)) ||
-						((si.fMask & SIF_TRACKPOS) == SIF_TRACKPOS && si.nTrackPos != lpSI->nTrackPos);
+						((si.fMask & SIF_TRACKPOS) == SIF_TRACKPOS && si.nTrackPos != lpSI->nTrackPos) ||
+						((si.fMask & SIF_DISABLENOSCROLL) != (lpSI->fMask & SIF_DISABLENOSCROLL));
 				}
 			}
 		}
 
-		CWnd::WindowProc(WM_SETREDRAW, (WPARAM)FALSE, 0L);
-		lRes = CScrollBar::WindowProc(message, wParam, lParam);
-		CWnd::WindowProc(WM_SETREDRAW, (WPARAM)TRUE, 0L);
-		
+		lRes = CScrollBar::WindowProc
+							(
+								message == SBM_SETRANGEREDRAW ? SBM_SETRANGE : message, 
+								message == SBM_SETSCROLLINFO ? 0 : wParam, 
+								message == SBM_SETPOS ? 0 : lParam
+							);
+
 		if (bRedraw)
 		{
 			RedrawWindow (NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
@@ -916,7 +1270,7 @@ LRESULT CBCGPScrollBar::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				((SCROLLINFO*)lParam)->nTrackPos = m_TrackPos;
 			}
-		}	
+		}
 	}
 
 	return lRes;
@@ -924,7 +1278,7 @@ LRESULT CBCGPScrollBar::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
 //*****************************************************************************
 BOOL CBCGPScrollBar::PreTranslateMessage (MSG* pMsg)
 {
-	if (CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () &&
+	if ((CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () || m_Style == BCGP_SBSTYLE_CUSTOM) &&
 		m_Style != BCGP_SBSTYLE_DEFAULT)
 	{
 		if (pMsg->message == WM_MOUSEMOVE && m_HitPressed != BCGP_HT_NOWHERE)
@@ -939,26 +1293,14 @@ BOOL CBCGPScrollBar::PreTranslateMessage (MSG* pMsg)
 //*****************************************************************************
 void CBCGPScrollBar::OnTimer(UINT_PTR nIDEvent) 
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		Default ();
 		return;
 	}
 
-	if (nIDEvent == SB_TIMER_DOWN && m_TimerDown != 0)
-	{
-		m_TimerDown = 0;
-
-		KillTimer (SB_TIMER_DOWN);
-
-		m_Timer = SetTimer (SB_TIMER, 50, NULL);
-	}
-	else if (nIDEvent == SB_TIMER && m_Timer != 0)
-	{
-		Process ();
-	}
-	else
+	if (!ProcessTimer(this, nIDEvent))
 	{
 		CScrollBar::OnTimer(nIDEvent);
 	}
@@ -966,7 +1308,7 @@ void CBCGPScrollBar::OnTimer(UINT_PTR nIDEvent)
 //*****************************************************************************
 BOOL CBCGPScrollBar::OnEraseBkgnd(CDC* /*pDC*/) 
 {
-	if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+	if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 		m_Style == BCGP_SBSTYLE_DEFAULT)
 	{
 		return (BOOL) Default ();
@@ -998,7 +1340,7 @@ LRESULT CBCGPScrollBar::OnPrintClient(WPARAM wp, LPARAM lp)
 		CDC* pDC = CDC::FromHandle((HDC) wp);
 		ASSERT_VALID(pDC);
 
-		if (!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () ||
+		if ((!CBCGPVisualManager::GetInstance ()->IsOwnerDrawScrollBar () && m_Style != BCGP_SBSTYLE_CUSTOM) ||
 			m_Style == BCGP_SBSTYLE_DEFAULT)
 		{
 			return Default ();
@@ -1008,4 +1350,820 @@ LRESULT CBCGPScrollBar::OnPrintClient(WPARAM wp, LPARAM lp)
 	}
 
 	return 0;
+}
+//*******************************************************************************
+CBCGPScrollBar::BCGPSB_HITTEST CBCGPScrollBar::HitTest (const CPoint& point) const
+{
+	return DoHitTest((CWnd*)this, point);
+}
+//*******************************************************************************
+void CBCGPScrollBar::RebuildCustomColors()
+{
+	if (m_ColorTheme.m_clrButton == (COLORREF)-1)
+	{
+		if (CBCGPDrawManager::IsDarkColor(m_ColorTheme.m_clrFace))
+		{
+			m_ColorTheme.m_clrButton = CBCGPDrawManager::ColorMakeLighter(m_ColorTheme.m_clrFace, .3);
+		}
+		else
+		{
+			m_ColorTheme.m_clrButton = CBCGPDrawManager::ColorMakeDarker(m_ColorTheme.m_clrFace, .2);
+		}
+	}
+
+	if (m_ColorTheme.m_bHighlightEffect)
+	{
+		if (CBCGPDrawManager::IsDarkColor(m_ColorTheme.m_clrButton))
+		{
+			m_ColorTheme.m_clrButtonHighlighted = CBCGPDrawManager::ColorMakeLighter(m_ColorTheme.m_clrButton);
+		}
+		else
+		{
+			m_ColorTheme.m_clrButtonHighlighted = CBCGPDrawManager::ColorMakeDarker(m_ColorTheme.m_clrButton);
+		}
+
+		if (m_ColorTheme.m_b3DEffect)
+		{
+			m_ColorTheme.m_clrButtonHighlightedGradient = CBCGPDrawManager::ColorMakeLighter(m_ColorTheme.m_clrButtonHighlighted, .5);
+		}
+	}
+
+	if (m_ColorTheme.m_b3DEffect)
+	{
+		m_ColorTheme.m_clrButtonGradient = CBCGPDrawManager::ColorMakeLighter(m_ColorTheme.m_clrButton, .5);
+		m_ColorTheme.m_clrButtonPressedGradient = CBCGPDrawManager::ColorMakeLighter(
+			m_ColorTheme.m_clrButtonPressed != (COLORREF)-1 ? m_ColorTheme.m_clrButtonPressed : m_ColorTheme.m_clrButton, .5);
+	}
+}
+//*******************************************************************************
+COLORREF CBCGPScrollBar::DrawCustomBox(CDC* pDC, CRect rect, BOOL bHorz, BOOL bHighlighted, BOOL bPressed, BOOL bDisabled)
+{
+	COLORREF clrFill = bDisabled ? m_ColorTheme.m_clrFace : bPressed ? (m_ColorTheme.m_clrButtonPressed != (COLORREF)-1 ? m_ColorTheme.m_clrButtonPressed : m_ColorTheme.m_clrButton) : (bHighlighted && m_ColorTheme.m_clrButtonHighlighted != (COLORREF)-1) ? m_ColorTheme.m_clrButtonHighlighted : m_ColorTheme.m_clrButton;
+	COLORREF clrFillGradient = bDisabled ? (COLORREF)-1 : bPressed ? m_ColorTheme.m_clrButtonPressedGradient : (bHighlighted && m_ColorTheme.m_clrButtonHighlightedGradient != (COLORREF)-1) ? m_ColorTheme.m_clrButtonHighlightedGradient : m_ColorTheme.m_clrButtonGradient;
+	COLORREF clrLine = bDisabled ? (COLORREF)-1 : (bPressed && m_ColorTheme.m_clrButtonBorderPressed != (COLORREF)-1) ? m_ColorTheme.m_clrButtonBorderPressed : m_ColorTheme.m_clrButtonBorder;
+
+	CBCGPDrawManager dm (*pDC);
+	
+	if (clrFillGradient == (COLORREF)-1)
+	{
+		dm.DrawRect (rect, clrFill, clrLine);
+	}
+	else
+	{
+		if (bHorz)
+		{
+			dm.FillGradient(rect, clrFill, clrFillGradient);
+		}
+		else
+		{
+			dm.FillGradient(rect, clrFillGradient, clrFill, FALSE);
+		}
+		
+		dm.DrawRect(rect, (COLORREF)-1, clrLine);
+	}
+
+	return clrFill;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// CBCGPInternalScrollBarWrapper
+
+void CBCGPInternalScrollBarWrapper::_RedrawScrollBars(HRGN hRgn, int nBar)
+{
+	if (nBar == -1)
+	{
+		m_ScrollHorz.m_rect.SetRectEmpty();
+		m_ScrollVert.m_rect.SetRectEmpty();
+		m_rectSizeBox.SetRectEmpty();
+	}
+	else if (nBar == SB_HORZ)
+	{
+		m_ScrollHorz.m_rect.SetRectEmpty();
+	}
+	else if (nBar == SB_VERT)
+	{
+		m_ScrollVert.m_rect.SetRectEmpty();
+	}
+
+	CRect rectWindow;
+	m_pWndOwner->GetWindowRect(rectWindow);
+
+	CPoint ptOffset(rectWindow.TopLeft());
+	rectWindow.OffsetRect(-ptOffset);
+
+	CRect rectWindowSt(rectWindow);
+
+	DWORD dwStyle = m_pWndOwner->GetStyle();
+	DWORD dwStyleEx = m_pWndOwner->GetExStyle();
+
+	if ((dwStyle & WS_BORDER) || (dwStyleEx & WS_EX_CLIENTEDGE))
+	{
+		if ((dwStyleEx & WS_EX_TOOLWINDOW) == 0)
+		{
+			rectWindow.DeflateRect(afxData.cxBorder2, afxData.cyBorder2);
+		}
+		else
+		{
+			rectWindow.DeflateRect(CX_BORDER, CY_BORDER);
+		}
+	}
+	
+	if (dwStyleEx & WS_EX_DLGMODALFRAME)
+	{
+		rectWindow.DeflateRect(afxData.cxBorder2 + CX_BORDER, afxData.cyBorder2 + CY_BORDER);
+	}
+	else if (dwStyleEx & WS_EX_STATICEDGE)
+	{
+		rectWindow.DeflateRect(CX_BORDER, CY_BORDER);
+	}
+
+	CRect rectScrollBarH(0, 0, 0, 0);
+	if ((m_dwScrool & WS_HSCROLL) == WS_HSCROLL && nBar != SB_VERT)
+	{
+		rectScrollBarH = rectWindow;
+		rectScrollBarH.top = rectScrollBarH.bottom - GetSystemMetrics(SM_CYHSCROLL);
+
+		if (m_dwScrool & WS_VSCROLL)
+		{
+			if (m_dwScroolEx & WS_EX_LEFTSCROLLBAR)
+			{
+				rectScrollBarH.left += GetSystemMetrics(SM_CXVSCROLL);
+			}
+			else
+			{
+				rectScrollBarH.right -= GetSystemMetrics(SM_CXVSCROLL);
+			}
+		}
+	}
+
+	CRect rectScrollBarV(0, 0, 0, 0);
+	if ((m_dwScrool & WS_VSCROLL) == WS_VSCROLL && nBar != SB_HORZ)
+	{
+		rectScrollBarV = rectWindow;
+		if (m_dwScroolEx & WS_EX_LEFTSCROLLBAR)
+		{
+			rectScrollBarV.right = rectScrollBarV.left + GetSystemMetrics(SM_CXVSCROLL);
+		}
+		else
+		{
+			rectScrollBarV.left = rectScrollBarV.right - GetSystemMetrics(SM_CXVSCROLL);
+		}
+
+		if (m_dwScrool & WS_HSCROLL)
+		{
+			rectScrollBarV.bottom -= GetSystemMetrics(SM_CYHSCROLL);
+		}
+	}
+
+	if ((m_dwScrool & WS_HSCROLL) && (m_dwScrool & WS_VSCROLL) && nBar == -1)
+	{
+		m_rectSizeBox = rectWindow;
+		m_rectSizeBox.top = m_rectSizeBox.bottom - GetSystemMetrics(SM_CYHSCROLL);
+
+		if (m_dwScroolEx & WS_EX_LEFTSCROLLBAR)
+		{
+			m_rectSizeBox.right = m_rectSizeBox.left + GetSystemMetrics(SM_CXVSCROLL);
+		}
+		else
+		{
+			m_rectSizeBox.left = m_rectSizeBox.right - GetSystemMetrics(SM_CXVSCROLL);
+		}
+	}
+
+	CRgn rgnScroll;
+
+	if (!rectScrollBarH.IsRectEmpty())
+	{
+		rgnScroll.CreateRectRgnIndirect(rectScrollBarH);
+	}
+
+	if (!rectScrollBarV.IsRectEmpty())
+	{
+		if (rgnScroll.GetSafeHandle() == NULL)
+		{
+			rgnScroll.CreateRectRgnIndirect(rectScrollBarV);
+		}
+		else
+		{
+			CRgn rgnTemp;
+			rgnTemp.CreateRectRgnIndirect(rectScrollBarV);
+			rgnScroll.CombineRgn(&rgnScroll, &rgnTemp, RGN_OR);
+		}
+	}
+
+	if (!m_rectSizeBox.IsRectEmpty())
+	{
+		if (rgnScroll.GetSafeHandle() == NULL)
+		{
+			rgnScroll.CreateRectRgnIndirect(m_rectSizeBox);
+		}
+		else
+		{
+			CRgn rgnTemp;
+			rgnTemp.CreateRectRgnIndirect(m_rectSizeBox);
+			rgnScroll.CombineRgn(&rgnScroll, &rgnTemp, RGN_OR);
+		}
+	}
+
+	if (rgnScroll.GetSafeHandle() == NULL)
+	{
+		return;
+	}
+
+	rgnScroll.OffsetRgn(ptOffset);
+
+	if (hRgn != NULL)
+	{
+		int nRes = rgnScroll.CombineRgn(&rgnScroll, CRgn::FromHandle(hRgn), RGN_AND);
+		if (nRes == ERROR || nRes == NULLREGION)
+		{
+			return;
+		}
+	}
+
+	CWindowDC dc(m_pWndOwner);
+
+	rgnScroll.OffsetRgn(-ptOffset);
+
+	dc.SelectClipRgn(&rgnScroll, RGN_COPY);
+
+	if (!rectScrollBarH.IsRectEmpty())
+	{
+		SCROLLINFO si;
+		si.cbSize = sizeof(SCROLLINFO);
+		m_pWndOwner->GetScrollInfo(SB_HORZ, &si);
+
+		m_ScrollHorz.SetRect(rectScrollBarH);
+
+		CDC memDC;
+		memDC.CreateCompatibleDC(&dc);
+		CBitmap memBmp;
+		memBmp.CreateCompatibleBitmap(&dc, rectScrollBarH.Width(), rectScrollBarH.Height());
+		CBitmap* pOldBmp = (CBitmap*)memDC.SelectObject(&memBmp);
+
+		m_ScrollHorz.Render(&memDC, m_pWndOwner->IsWindowEnabled(), si, -rectScrollBarH.TopLeft());
+
+		dc.BitBlt(rectScrollBarH.left, rectScrollBarH.top, rectScrollBarH.Width(), rectScrollBarH.Height(), &memDC, 0, 0, SRCCOPY);
+
+		memDC.SelectObject(pOldBmp);
+	}
+
+	if (!rectScrollBarV.IsRectEmpty())
+	{
+		SCROLLINFO si;
+		si.cbSize = sizeof(SCROLLINFO);
+		m_pWndOwner->GetScrollInfo(SB_VERT, &si);
+
+		m_ScrollVert.SetRect(rectScrollBarV);
+
+		CDC memDC;
+		memDC.CreateCompatibleDC(&dc);
+		CBitmap memBmp;
+		memBmp.CreateCompatibleBitmap(&dc, rectScrollBarV.Width(), rectScrollBarV.Height());
+		CBitmap* pOldBmp = (CBitmap*)memDC.SelectObject(&memBmp);
+
+		m_ScrollVert.Render(&memDC, m_pWndOwner->IsWindowEnabled(), si, -rectScrollBarV.TopLeft());
+
+		dc.BitBlt(rectScrollBarV.left, rectScrollBarV.top, rectScrollBarV.Width(), rectScrollBarV.Height(), &memDC, 0, 0, SRCCOPY);
+
+		memDC.SelectObject(pOldBmp);
+	}
+
+	if (!m_rectSizeBox.IsRectEmpty())
+	{
+		dc.FillRect(m_rectSizeBox, &CBCGPVisualManager::GetInstance()->GetDlgBackBrush(NULL));
+	}
+
+	dc.SelectClipRgn(NULL, RGN_COPY);
+}
+
+LRESULT CBCGPInternalScrollBarWrapper::InternalSB_WrapperWindowProc(UINT message, WPARAM wParam, LPARAM lParam, BOOL& bProcessed)
+{
+	bProcessed = FALSE;
+
+#ifdef _BCGSUITE_
+	UNUSED_ALWAYS(message);
+	UNUSED_ALWAYS(wParam);
+	UNUSED_ALWAYS(lParam);
+
+	return 0L;
+#else
+	if (globalData.m_nThemedScrollBars == BCGP_THEMED_SCROLLBAR_DISABLE || !IsInternalScrollBarThemed())
+	{
+		return 0L;
+	}
+
+	ASSERT_VALID(m_pWndOwner);
+
+	if (message == BCGM_CHANGEVISUALMANAGER && !m_bSuppressMessage)
+	{
+		DWORD dwScroll = m_dwScrool;
+
+		if (!CBCGPVisualManager::GetInstance()->IsOwnerDrawScrollBar())
+		{
+			m_dwScrool = 0;
+			m_dwScroolEx = 0;
+
+			m_ScrollHorz.m_rect.SetRectEmpty();
+			m_ScrollVert.m_rect.SetRectEmpty();
+			m_rectSizeBox.SetRectEmpty();
+
+			for (int i = 0; i < 2; i++)
+			{
+				ZeroMemory(&m_ScrollInfo[i], sizeof(SCROLLINFO));
+			}
+		}
+		else
+		{
+			m_dwScrool = m_pWndOwner->GetStyle() & (WS_HSCROLL | WS_VSCROLL);
+			m_dwScroolEx = m_pWndOwner->GetExStyle() & (WS_EX_LEFTSCROLLBAR | WS_EX_LAYOUTRTL);
+		}
+
+		if (dwScroll != m_dwScrool)
+		{
+			m_pWndOwner->SetWindowPos(NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+		}
+
+		return 0L;
+	}
+
+	if (!CBCGPVisualManager::GetInstance()->IsOwnerDrawScrollBar())
+	{
+		return 0L;
+	}
+
+	if (m_pWndOwner->GetSafeHwnd() != NULL && ::IsWindow(m_pWndOwner->GetSafeHwnd()) && 
+		(message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK || 
+		 message == WM_RBUTTONDOWN || message == WM_RBUTTONDBLCLK || 
+		 message == WM_MBUTTONDOWN || message == WM_MBUTTONDBLCLK))
+	{
+		CRect rectWindow;
+		m_pWndOwner->GetWindowRect(rectWindow);
+
+		CRect rectClient;
+		m_pWndOwner->GetClientRect(rectClient);
+		m_pWndOwner->ClientToScreen(rectClient);
+
+		CPoint pt(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
+		m_pWndOwner->ClientToScreen(&pt);
+
+		if (rectWindow.PtInRect(pt) && !rectClient.PtInRect(pt))
+		{
+			LPARAM points;
+			MAKEPOINTS(points).x = (SHORT)pt.x;
+			MAKEPOINTS(points).y = (SHORT)pt.y;
+
+			pt.x -= rectWindow.left;
+			pt.y -= rectWindow.right;
+			LRESULT hitTest = m_ScrollVert.DoHitTest(m_pWndOwner, pt) != CBCGPScrollBarImpl::BCGP_HT_NOWHERE
+								? HTVSCROLL
+								: m_ScrollHorz.DoHitTest(m_pWndOwner, pt) != CBCGPScrollBarImpl::BCGP_HT_NOWHERE
+									? HTHSCROLL
+									: SendMessage(m_pWndOwner->GetSafeHwnd(), WM_NCHITTEST, 0, points);
+
+			if (hitTest == HTHSCROLL || hitTest == HTVSCROLL)
+			{
+				message = message - WM_LBUTTONDOWN + WM_NCLBUTTONDOWN;
+				wParam = hitTest;
+				lParam = points;
+			}
+		}
+	}
+
+	if (message == WM_CREATE)
+	{
+		LRESULT lResult = InternalSB_ControlWindowProc(message, wParam, lParam);
+
+		if (lResult != -1)
+		{
+			m_dwScrool = m_pWndOwner->GetStyle() & (WS_HSCROLL | WS_VSCROLL);
+			m_dwScroolEx = m_pWndOwner->GetExStyle() & (WS_EX_LEFTSCROLLBAR | WS_EX_LAYOUTRTL);
+		}
+
+		bProcessed = TRUE;
+		return lResult;
+	}
+	else if (InternalSB_OnMessageRedraw(message, wParam, lParam) && m_dwScrool != 0)
+	{
+		HWND hwndOwner = m_pWndOwner->GetSafeHwnd();
+
+		LRESULT lResult = InternalSB_ControlWindowProc(message, wParam, lParam);
+
+		if (!::IsWindow(hwndOwner))
+		{
+			bProcessed = TRUE;
+			return lResult;
+		}
+
+		SCROLLINFO si;
+
+		BOOL bRepaint = FALSE;
+		for (int i = 0; i < 2; i++)
+		{
+			ZeroMemory(&si, sizeof(SCROLLINFO));
+			si.cbSize = sizeof(SCROLLINFO);
+
+			m_pWndOwner->GetScrollInfo(i, &si);
+
+			if (!_CompareScrollInfo(m_ScrollInfo[i], si))
+			{
+				m_ScrollInfo[i] = si;
+				bRepaint = TRUE;
+				break;
+			}
+		}
+
+		if (bRepaint)
+		{
+			_RedrawScrollBars(NULL);
+		}
+
+		bProcessed = TRUE;
+		return lResult;
+	}
+	else if (message == BCGM_REDRAW_SCROLLBAR)
+	{
+		_RedrawScrollBars(NULL, (int)wParam);
+	}
+	else if (message == WM_PRINT && !m_bSuppressMessage && m_dwScrool != 0)
+	{
+		DWORD dwFlags = (DWORD)lParam;
+		LRESULT lResult = InternalSB_ControlWindowProc(message, wParam, lParam);
+		bProcessed = TRUE;
+
+		if ((dwFlags & PRF_NONCLIENT) == PRF_NONCLIENT)
+		{
+			CDC* pDC = CDC::FromHandle((HDC)wParam);
+			ASSERT_VALID(pDC);
+			
+			if (!m_rectSizeBox.IsRectEmpty())
+			{
+				pDC->FillRect(m_rectSizeBox, &CBCGPVisualManager::GetInstance()->GetDlgBackBrush(NULL));
+			}
+
+			SCROLLINFO si;
+			si.cbSize = sizeof(SCROLLINFO);
+
+			m_pWndOwner->GetScrollInfo(SB_HORZ, &si);
+			m_ScrollHorz.Render(pDC, m_pWndOwner->IsWindowEnabled(), si);
+
+			m_pWndOwner->GetScrollInfo(SB_VERT, &si);
+			m_ScrollVert.Render(pDC, m_pWndOwner->IsWindowEnabled(), si);
+		}
+
+		return lResult;
+	}
+	else if (message == WM_NCPAINT && !m_bSuppressMessage && m_dwScrool != 0)
+	{
+		m_bSuppressMessage = TRUE;
+
+		DWORD dwStyle = m_pWndOwner->GetStyle();
+
+		SetWindowLongPtr(m_pWndOwner->GetSafeHwnd(), GWL_STYLE, (dwStyle & ~m_dwScrool) | _GetExcludeStyle(m_pWndOwner));
+
+		HWND hwndOwner = m_pWndOwner->GetSafeHwnd();
+
+		LRESULT lResult = InternalSB_ControlWindowProc(message, wParam, lParam);
+
+		if (!::IsWindow(hwndOwner))
+		{
+			bProcessed = TRUE;
+			return lResult;
+		}
+
+		SetWindowLongPtr(m_pWndOwner->GetSafeHwnd(), GWL_STYLE, dwStyle);
+
+		m_bSuppressMessage = FALSE;
+
+		_RedrawScrollBars(wParam > 1 ? (HRGN)wParam : NULL);
+
+		bProcessed = TRUE;
+		return lResult;
+	}
+	else if (message == WM_NCLBUTTONDOWN && (wParam == HTHSCROLL || wParam == HTVSCROLL))
+	{
+		CPoint point(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
+
+		ScreenToBar(m_pWndOwner, point);
+
+		if (wParam == HTHSCROLL)
+		{
+			m_ScrollHorz.ProcessMouseDown(m_pWndOwner, point);
+		}
+		else if (wParam == HTVSCROLL)
+		{
+			m_ScrollVert.ProcessMouseDown(m_pWndOwner, point);
+		}
+
+		bProcessed = TRUE;
+		return 0L;
+	}
+	else if (message == WM_NCLBUTTONUP && (wParam == HTHSCROLL || wParam == HTVSCROLL))
+	{
+		CPoint point(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
+
+		ScreenToBar(m_pWndOwner, point);
+
+		if (wParam == HTHSCROLL)
+		{
+			m_ScrollHorz.ProcessMouseUp(m_pWndOwner, point);
+		}
+		else if (wParam == HTVSCROLL)
+		{
+			m_ScrollVert.ProcessMouseUp(m_pWndOwner, point);
+		}
+
+		bProcessed = TRUE;
+		return 0L;
+	}
+	else if (message == WM_NCLBUTTONDBLCLK && (wParam == HTHSCROLL || wParam == HTVSCROLL))
+	{
+		CPoint point(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
+
+		ScreenToBar(m_pWndOwner, point);
+
+		if (wParam == HTHSCROLL)
+		{
+			m_ScrollHorz.ProcessMouseDblClk(m_pWndOwner, point);
+		}
+		else if (wParam == HTVSCROLL)
+		{
+			m_ScrollVert.ProcessMouseDblClk(m_pWndOwner, point);
+		}
+
+		bProcessed = TRUE;
+		return 0L;
+	}
+	else if (message == WM_LBUTTONUP)
+	{
+		CPoint point(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
+
+		ScreenToBar(m_pWndOwner, point);
+
+		SCROLLINFO si;
+		ZeroMemory(&si, sizeof(SCROLLINFO));
+		si.cbSize = sizeof(SCROLLINFO);
+
+		if (m_ScrollVert.m_HitPressed != CBCGPScrollBarImpl::BCGP_HT_NOWHERE)
+		{
+			m_ScrollVert.ProcessMouseUp(m_pWndOwner, point);
+
+			bProcessed = TRUE;
+		}
+		else if (m_ScrollHorz.m_HitPressed != CBCGPScrollBarImpl::BCGP_HT_NOWHERE)
+		{
+			m_ScrollHorz.ProcessMouseUp(m_pWndOwner, point);
+
+			bProcessed = TRUE;
+		}
+		
+		return 0L;
+	}
+	else if (message == WM_NCMOUSEMOVE && (wParam == HTHSCROLL || wParam == HTVSCROLL))
+	{
+		CPoint point(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
+
+		ScreenToBar(m_pWndOwner, point);
+
+		SCROLLINFO si;
+		ZeroMemory(&si, sizeof(SCROLLINFO));
+		si.cbSize = sizeof(SCROLLINFO);
+
+		if (wParam == HTHSCROLL)
+		{
+			m_ScrollHorz.ProcessMouseMove(m_pWndOwner, m_ScrollHorz.m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE, point);
+		}
+		else if (wParam == HTVSCROLL)
+		{
+			m_ScrollVert.ProcessMouseMove(m_pWndOwner, m_ScrollVert.m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE, point);
+		}
+
+		bProcessed = TRUE;
+		return 0L;
+	}
+	else if (message == WM_NCHITTEST && !m_bSuppressMessage)
+	{
+		HWND hwndOwner = m_pWndOwner->GetSafeHwnd();
+
+		LRESULT lResult = InternalSB_ControlWindowProc(message, wParam, lParam);
+
+		if (!::IsWindow(hwndOwner))
+		{
+			bProcessed = TRUE;
+			return lResult;
+		}
+
+		if (lResult != HTNOWHERE)
+		{
+			bProcessed = TRUE;
+			return lResult;
+		}
+
+		CPoint pt(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
+
+		CRect rectClient;
+		m_pWndOwner->GetClientRect(rectClient);
+		m_pWndOwner->ClientToScreen(rectClient);
+
+		CRect rectWindow;
+		m_pWndOwner->GetWindowRect(rectWindow);
+
+		if ((m_dwScrool & WS_VSCROLL) &&
+			(((m_dwScroolEx & (WS_EX_LEFTSCROLLBAR | WS_EX_LAYOUTRTL)) && rectWindow.left <= pt.x && pt.x < rectClient.left) ||
+				(rectClient.right < pt.x && pt.x <= rectWindow.right)))
+		{
+			lResult = HTVSCROLL;
+		}
+
+		if ((m_dwScrool & WS_HSCROLL) && rectClient.bottom < pt.y && pt.y <= rectWindow.bottom)
+		{
+			lResult = HTHSCROLL;
+		}
+
+		bProcessed = TRUE;
+		return lResult;
+	}
+	else if (message == WM_NCCALCSIZE)
+	{
+		DWORD dwStyle = m_pWndOwner->GetStyle();
+
+		if (!m_bSuppressMessage)
+		{
+			m_dwScrool = dwStyle & (WS_HSCROLL | WS_VSCROLL);
+			m_dwScroolEx = m_pWndOwner->GetExStyle() & (WS_EX_LEFTSCROLLBAR | WS_EX_LAYOUTRTL);
+		}
+
+		if (m_dwScrool != 0)
+		{
+			m_bSuppressMessage = TRUE;
+
+			SetWindowLongPtr(m_pWndOwner->GetSafeHwnd(), GWL_STYLE, (dwStyle & ~m_dwScrool) | _GetExcludeStyle(m_pWndOwner));
+
+			HWND hwndOwner = m_pWndOwner->GetSafeHwnd();
+
+			LRESULT lResult = InternalSB_ControlWindowProc(message, wParam, lParam);
+
+			if (!::IsWindow(hwndOwner))
+			{
+				bProcessed = TRUE;
+				return lResult;
+			}
+
+			SetWindowLongPtr(m_pWndOwner->GetSafeHwnd(), GWL_STYLE, dwStyle);
+
+			m_bSuppressMessage = FALSE;
+
+			LPNCCALCSIZE_PARAMS nccsp = (LPNCCALCSIZE_PARAMS)lParam;
+			RECT* rect = &nccsp->rgrc[0];
+
+			if (m_dwScrool & WS_VSCROLL)
+			{
+				if (((m_dwScroolEx & WS_EX_LEFTSCROLLBAR) != 0 && (m_dwScroolEx & WS_EX_LAYOUTRTL) == 0) ||
+					((m_dwScroolEx & WS_EX_LEFTSCROLLBAR) == 0 && (m_dwScroolEx & WS_EX_LAYOUTRTL) != 0))
+				{
+					rect->left += GetSystemMetrics(SM_CXVSCROLL);
+				}
+				else
+				{
+					rect->right -= GetSystemMetrics(SM_CXVSCROLL);
+				}
+			}
+
+			if (m_dwScrool & WS_HSCROLL)
+			{
+				rect->bottom -= GetSystemMetrics(SM_CYHSCROLL);
+			}
+
+			bProcessed = TRUE;
+			return lResult;
+		}
+	}
+	else if (message == WM_SIZE)
+	{
+		DWORD dwScroll = m_dwScrool;
+
+		LRESULT lResult = InternalSB_ControlWindowProc(message, wParam, lParam);
+
+		m_dwScrool = m_pWndOwner->GetStyle() & (WS_HSCROLL | WS_VSCROLL);
+		if (dwScroll != m_dwScrool)
+		{
+			m_pWndOwner->PostMessage(BCGM_REDRAW_SCROLLBAR, (WPARAM)-1);
+		}
+
+		bProcessed = TRUE;
+		return lResult;
+	}
+	else if ((message == WM_STYLECHANGING || message == WM_STYLECHANGED) && !m_bSuppressMessage)
+	{
+		LPSTYLESTRUCT lpStruct = (LPSTYLESTRUCT)lParam;
+
+		if (wParam == GWL_STYLE)
+		{
+			m_dwScrool = lpStruct->styleNew & (WS_HSCROLL | WS_VSCROLL);
+		}
+		else if (wParam == GWL_EXSTYLE)
+		{
+			m_dwScroolEx = lpStruct->styleNew & (WS_EX_LEFTSCROLLBAR | WS_EX_LAYOUTRTL);
+		}
+	}
+	else if (message == WM_TIMER && 
+			(m_ScrollHorz.m_TimerDown == wParam || m_ScrollHorz.m_Timer == wParam ||
+			m_ScrollVert.m_TimerDown == wParam || m_ScrollVert.m_Timer == wParam))
+	{
+		CPoint point;
+		::GetCursorPos(&point);
+
+		ScreenToBar(m_pWndOwner, point);
+
+		BOOL bRedraw = FALSE;
+
+		CBCGPScrollBarImpl* pImpl = NULL;
+		if (m_ScrollHorz.TimerStarted())
+		{
+			pImpl = &m_ScrollHorz;
+		}
+		else if (m_ScrollVert.TimerStarted())
+		{
+			pImpl = &m_ScrollVert;
+		}
+
+		if (pImpl->m_Timer != 0)
+		{
+			CBCGPScrollBarImpl::BCGPSB_HITTEST hit = pImpl->DoHitTest(m_pWndOwner, point);
+
+			if (hit != pImpl->m_HitTest)
+			{
+				pImpl->m_HitTest = hit;
+				bRedraw = TRUE;
+			}
+		}
+
+		pImpl->ProcessTimer(m_pWndOwner, wParam);
+
+		if (bRedraw)
+		{
+			_RedrawScrollBars(NULL, pImpl->m_bHorz ? SB_HORZ : SB_VERT);
+		}
+
+		bProcessed = TRUE;
+	}
+	else if (message == WM_CANCELMODE)
+	{
+		CPoint point;
+		::GetCursorPos (&point);
+
+		m_ScrollVert.ProcessCancelMode(m_pWndOwner, point);
+		m_ScrollHorz.ProcessCancelMode(m_pWndOwner, point);
+	}
+	else if (message == WM_MOUSELEAVE)
+	{
+		m_ScrollVert.ProcessMouseLeave(m_pWndOwner);
+		m_ScrollHorz.ProcessMouseLeave(m_pWndOwner);
+	}
+	else if (message == WM_MOUSEMOVE)
+	{
+		CPoint point(BCG_GET_X_LPARAM(lParam), BCG_GET_Y_LPARAM(lParam));
+		m_pWndOwner->ClientToScreen(&point);
+
+		ScreenToBar(m_pWndOwner, point);
+
+		BOOL bVertIsPressed = m_ScrollVert.m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE;
+		BOOL bHorzIsPressed = m_ScrollHorz.m_HitPressed != CBCGPScrollBar::BCGP_HT_NOWHERE;
+
+		if (m_ScrollVert.m_rect.PtInRect(point) || bVertIsPressed)
+		{
+			m_ScrollVert.ProcessMouseMove(m_pWndOwner, bVertIsPressed, point);
+		}
+		else
+		{
+			m_ScrollVert.ProcessMouseLeave(m_pWndOwner);
+		}
+
+		if (m_ScrollHorz.m_rect.PtInRect(point) || bHorzIsPressed)
+		{
+			m_ScrollHorz.ProcessMouseMove(m_pWndOwner, bHorzIsPressed, point);
+		}
+		else
+		{
+			m_ScrollHorz.ProcessMouseLeave(m_pWndOwner);
+		}
+	}
+	else if ((message == WM_HSCROLL || message == WM_VSCROLL) && lParam == NULL)
+	{
+		if (LOWORD(wParam) == SB_THUMBTRACK)
+		{
+			bProcessed = InternalSB_OnThumbTrack(message == WM_HSCROLL ? SB_HORZ : SB_VERT, message == WM_HSCROLL ? m_ScrollHorz.m_TrackPos : m_ScrollVert.m_TrackPos);
+		}
+	}
+	else if (message == WM_RBUTTONDOWN || message == WM_RBUTTONUP)
+	{
+		if (m_ScrollVert.m_bTracked || m_ScrollVert.m_HitPressed != CBCGPScrollBarImpl::BCGP_HT_NOWHERE || 
+			m_ScrollHorz.m_bTracked || m_ScrollHorz.m_HitPressed != CBCGPScrollBarImpl::BCGP_HT_NOWHERE)
+		{
+			bProcessed = TRUE;
+		}
+	}
+
+	return 0L;
+#endif
 }

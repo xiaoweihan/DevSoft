@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -110,6 +110,8 @@ protected:
 
 class BCGCBPRODLLEXPORT CBCGPKnob : public CBCGPCircularGaugeImpl
 {
+	friend class CBCGPKnobCtrl;
+
 	DECLARE_DYNCREATE(CBCGPKnob)
 
 public:
@@ -127,7 +129,7 @@ public:
 		SetDirty();
 	}
 
-	void SetImageList(UINT uiResID, int cx = 16, const CBCGPSize& szMargin = CBCGPSize(0, 0));
+	void SetImageList(UINT uiResID, int cx = 16, const CBCGPSize& szMargin = CBCGPSize(0, 0), BOOL bDPIScale = FALSE);
 
 protected:
 	virtual CBCGPSize GetMinSize() const
@@ -141,10 +143,22 @@ protected:
 
 	virtual BOOL GetGestureConfig(CBCGPGestureConfig& gestureConfig);
 	virtual BOOL OnGestureEventRotate(const CBCGPPoint& ptCenter, double dblAngle);
+	
+	virtual void OnChangeVisualManager()
+	{
+		if (GetColors().IsVisualManagerTheme())
+		{
+			SetColors(CBCGPCircularGaugeColors::BCGP_CIRCULAR_GAUGE_VISUAL_MANAGER);
+			Redraw();
+		}
+	}
+
+	void PrepareImage(CBCGPGraphicsManager* pGM);
 
 	CBCGPImage				m_Icons;
 	CBCGPSize				m_sizeIcon;
 	CBCGPSize				m_sizeIconMargin;
+	BOOL					m_bIconsDPIScale;
 };
 
 class BCGCBPRODLLEXPORT CBCGPKnobCtrl : public CBCGPVisualCtrl

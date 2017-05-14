@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -50,6 +50,11 @@ class BCGCBPRODLLEXPORT CBCGPPopupMenu : public CMiniFrameWnd
 	friend class CBCGPRibbonBar;
 	friend class CBCGPRibbonFloaty;
 	friend class CBCGPRibbonPanelMenuBar;
+	friend class CBCGPRibbonComboBox;
+	friend class CBCGPRibbonEditCtrl;
+	friend class CBCGPMenuButton;
+	friend class CBCGPColorBar;
+	friend class CBCGPRibbonButton;
 
 	DECLARE_SERIAL(CBCGPPopupMenu)
 
@@ -235,8 +240,7 @@ public:
 		// This method is obsolete;
 	}
 
-	void EnableMenuLogo (int iLogoSize, LOGO_LOCATION nLogoLocation = MENU_LOGO_LEFT, 
-		BOOL bDrawGutter = FALSE /* Valid for MENU_LOGO_TOP or MENU_LOGO_BOTTOM only */);
+	void EnableMenuLogo(int xLogoSize, LOGO_LOCATION nLogoLocation = MENU_LOGO_LEFT, BOOL bDrawGutter = FALSE);
 
 	BOOL IsDrawGutterAlongWithLogo() const
 	{
@@ -336,13 +340,33 @@ public:
 		return TRUE;
 	}
 
+	virtual int GetMenuRowHeight() const;
+
+	CWnd* GetSafeOwner()	// Valid in the "tack" mode only
+	{
+		if (m_hwndOwner == NULL || !::IsWindow(m_hwndOwner))
+		{
+			return NULL;
+		}
+		
+		return CWnd::FromHandlePermanent(m_hwndOwner);
+	}
+
+	virtual BOOL HasDroppedDown() const
+	{
+		return FALSE;
+	}
+
+	virtual BOOL IsDropListMode();
+	virtual BOOL IsParentEditFocused();
+
 protected:
 	static CBCGPPopupMenu*	m_pActivePopupMenu;
 	static BOOL				m_bForceMenuFocus;	// Menu takes a focus when activated
 	static BOOL				m_bForceRTL;
 
 	CWnd*					m_pMessageWnd;
-
+	HWND					m_hwndOwner;
 	CBCGPToolbarMenuButton*	m_pParentBtn;
 	DROP_DIRECTION			m_DropDirection;
 	CBCGPPopupMenuBar		m_wndMenuBar;
@@ -355,9 +379,11 @@ protected:
 	BOOL					m_bTrackMode;
 	BOOL					m_bHasBeenResized;
 	BOOL					m_bRightAlign;
+	int						m_nConnectedFloatyHeight;
 
 	BOOL					m_bShown;
 	BOOL					m_bTobeDstroyed;
+	BOOL					m_bHotChangedByKeyboard;
 
 	int						m_iMaxWidth;
 	static int				m_nMinWidth;
@@ -412,9 +438,10 @@ protected:
 	//-------------------
 	int						m_iShadowSize;
     static BOOL             m_bForceShadow;     // when TRUE paints shadows even outside main-frame
-	CBitmap					m_bmpShadowRight;	// Saved shadow butmaps
+	CBitmap					m_bmpShadowRight;	// Saved shadow bitmaps
 	CBitmap					m_bmpShadowBottom;
 	CBCGPShadowWnd*			m_pWndShadow;		// Layered shadow window
+	BOOL					m_bShadowHiddenInAnimation;
 
 	//---------------------
 	// Tear-off attributes:
@@ -435,9 +462,9 @@ protected:
 	CSize					m_sizeCurrent;
 	BOOL					m_bIsResizeBarOnTop;
 
-	//------------------------
-	// Quick Cusomization flags
-	//------------------------
+	//---------------------------
+	// Quick Customization flags:
+	//---------------------------
 	BOOL					m_bQuickCusomize;
 	QUICK_CUSTOMIZE_TYPE    m_QuickType;
 
@@ -521,6 +548,7 @@ protected:
 	virtual CBCGPControlBar* CreateTearOffBar (CFrameWnd* pWndMain, UINT uiID, LPCTSTR lpszName);
 	virtual void OnChooseItem (UINT /*uidCmdID*/)	{}
 	virtual void OnChangeHot (int /*nHot*/) {}
+	virtual CFont* GetMenuFont() { return NULL; /* Use default */ }
 
 	BOOL NotifyParentDlg (BOOL bActivate);
 
@@ -579,7 +607,8 @@ protected:
 	virtual HRESULT get_accChildCount(long *pcountChildren);
 	virtual HRESULT get_accChild(VARIANT varChild, IDispatch **ppdispChild);
 	virtual HRESULT get_accRole(VARIANT varChild, VARIANT *pvarRole);
-	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);};
+	virtual HRESULT get_accState(VARIANT varChild, VARIANT *pvarState);
+};
 
 class BCGCBPRODLLEXPORT CBCGPDisableMenuAnimation
 {
@@ -610,19 +639,21 @@ protected:
 class CBCGPShadowWnd : public CMiniFrameWnd
 {
 public:
-	CBCGPShadowWnd(CWnd* pOwner, int nOffset, int nDepth = 0, const CSize& szCorners = CSize(0, 0))
+	CBCGPShadowWnd(CWnd* pOwner, int nOffset, int nDepth = 0, const CSize& szCorners = CSize(0, 0), const CRect& rectPadding = CRect(0, 0, 0, 0))
 	{
 		m_pOwner  = pOwner;
 		m_nOffset = abs(nOffset);
 		m_nDepth  = nDepth == 0 ? m_nOffset : abs(nDepth);
 		m_szCorners = szCorners;
+		m_rectPadding = rectPadding;
 		m_bIsRTL  = FALSE;
 	}
 
 	~CBCGPShadowWnd()
 	{
 	}
-	
+
+	void SetStemRegion(POINT* pts, int nPoints);
 	void Repos();
 	void UpdateTransparency (BYTE nTransparency);
 	
@@ -647,9 +678,11 @@ protected:
 	int					m_nOffset;
 	int					m_nDepth;
 	CSize				m_szCorners;
+	CRect				m_rectPadding;
 	CBCGPShadowRenderer m_Shadow;
 	BOOL				m_bIsRTL;
 	BYTE				m_nTransparency;
+	CRgn				m_rgnStem;
 };
 
 

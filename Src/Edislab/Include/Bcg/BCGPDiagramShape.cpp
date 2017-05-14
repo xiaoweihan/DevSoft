@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of the BCGControlBar Library
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -166,15 +166,7 @@ void CBCGPDiagramShape::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectC
 			}
 			
 			pGM->FillEllipse(m_rect, m_brFill);
-			pGM->DrawEllipse(m_rect, m_brOutline, scaleRatio);
-			
-			if (nShadowDepth == 0)
-			{
-				CBCGPRect r1 = m_rect;
-				r1.DeflateRect(m_sizeScaleRatio.cx, m_sizeScaleRatio.cy);
-				
-				pGM->DrawEllipse(r1, m_brOutline, m_Thickness * scaleRatio, &m_StrokeStyle);
-			}
+			pGM->DrawEllipse(m_rect, m_brOutline, m_Thickness * scaleRatio, &m_StrokeStyle);
 			
 			break;
 
@@ -197,16 +189,13 @@ void CBCGPDiagramShape::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectC
 
 		case Rectangle:
 			{
-				CBCGPRect rrShadow(rectShadow);
-				CBCGPRect rr(m_rect);
-				
 				if (nShadowDepth > 0)
 				{
-					pGM->FillRectangle(rrShadow, m_brShadow);
+					pGM->FillRectangle(rectShadow, m_brShadow);
 				}
 				
-				pGM->FillRectangle(rr, m_brFill);
-				pGM->DrawRectangle(rr, m_brOutline, m_Thickness * scaleRatio, &m_StrokeStyle);
+				pGM->FillRectangle(m_rect, m_brFill);
+				pGM->DrawRectangle(m_rect, m_brOutline, m_Thickness * scaleRatio, &m_StrokeStyle);
 			}
 			break;
 			
@@ -232,11 +221,14 @@ void CBCGPDiagramShape::DrawTextData(CBCGPGraphicsManager* pGM, const CBCGPRect&
 		return;
 	}
 
-	for (int i = 0; i < m_arData.GetSize (); i++)
+	for (int i = 0; i < (int)m_arData.GetSize (); i++)
 	{
 		CBCGPDiagramTextDataObject* pData = DYNAMIC_DOWNCAST(CBCGPDiagramTextDataObject, m_arData[i]);
 		if (pData != NULL)
 		{
+			CBCGPSize size = pData->GetDefaultSize(pGM, this);
+
+			pData->SetSize (size);
 			pData->Draw (pGM, rect, rectTextClip);
 		}
 	}
@@ -447,7 +439,9 @@ void CBCGPDiagramShape::SetConnectionPorts()
 {
 	if (m_shape == Rhombus)
 	{
-		const CBCGPRect& rect = GetRect();
+		CBCGPRect rect = GetRect();
+		rect.Normalize();
+
 		const CBCGPSize sizeMin = GetMinSize();
 		
 		if (!sizeMin.IsEmpty())
@@ -458,6 +452,8 @@ void CBCGPDiagramShape::SetConnectionPorts()
 			}
 		}
 		
+ 		rect.OffsetRect (-m_ptDrawOffset);
+
 		m_mapConnectionPorts[CP_Center] = rect.CenterPoint();
 
 		m_mapConnectionPorts[CP_Left] = CBCGPPoint (rect.left, rect.CenterPoint().y);
@@ -1142,32 +1138,45 @@ void CBCGPDiagramImageObject::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect&
 		CBCGPRect rectDst = m_rect;
 		CBCGPSize sizeSrc = rectSrc.Size ();
 
+		HorizontalAlign horizontalAlign = m_HorizontalAlign;
+		VerticalAlign verticalAlign = m_VerticalAlign;
+
 		double aspect = 1.0;
 		if (m_bLockAspectRatio)
 		{
-			if (m_HorizontalAlign == HA_Stretch && m_VerticalAlign != VA_Stretch)
+			double aspectH = 1.0;
+			if (horizontalAlign == HA_Stretch)
 			{
-				aspect = rectDst.Width() / sizeSrc.Width ();
+				aspect = aspectH = rectDst.Width() / sizeSrc.Width ();
+				horizontalAlign = HA_Center;
 			}
-			else if (m_HorizontalAlign != HA_Stretch && m_VerticalAlign == VA_Stretch)
+
+			double aspectV = 1.0;
+			if (verticalAlign == VA_Stretch)
 			{
-				aspect = rectDst.Height() / sizeSrc.Height ();
+				aspect = aspectV = rectDst.Height() / sizeSrc.Height ();
+				verticalAlign = VA_Center;
+			}
+
+			if (m_HorizontalAlign == HA_Stretch && m_VerticalAlign == VA_Stretch)
+			{
+				aspect = min (aspectH, aspectV);
 			}
 
 			sizeSrc *= aspect;
 		}
 
-		if (m_HorizontalAlign != HA_Stretch)
+		if (horizontalAlign != HA_Stretch)
 		{
-			if (m_HorizontalAlign == HA_Left)
+			if (horizontalAlign == HA_Left)
 			{
 				rectDst.right = rectDst.left + sizeSrc.Width ();
 			}
-			else if (m_HorizontalAlign == HA_Right)
+			else if (horizontalAlign == HA_Right)
 			{
 				rectDst.left = rectDst.right - sizeSrc.Width ();
 			}
-			else if (m_HorizontalAlign == HA_Center)
+			else if (horizontalAlign == HA_Center)
 			{
 				rectDst.left += (rectDst.Width() - sizeSrc.Width ()) / 2;
 				rectDst.right = rectDst.left + sizeSrc.Width ();
@@ -1183,17 +1192,17 @@ void CBCGPDiagramImageObject::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect&
 			}
 		}
 
-		if (m_VerticalAlign != VA_Stretch)
+		if (verticalAlign != VA_Stretch)
 		{
-			if (m_VerticalAlign == VA_Top)
+			if (verticalAlign == VA_Top)
 			{
 				rectDst.bottom = rectDst.top + sizeSrc.Height ();
 			}
-			else if (m_VerticalAlign == VA_Bottom)
+			else if (verticalAlign == VA_Bottom)
 			{
 				rectDst.top = rectDst.bottom - sizeSrc.Height ();
 			}
-			else if (m_VerticalAlign == VA_Center)
+			else if (verticalAlign == VA_Center)
 			{
 				rectDst.top += (rectDst.Height() - sizeSrc.Height ()) / 2;
 				rectDst.bottom = rectDst.top + sizeSrc.Height ();
@@ -1262,6 +1271,8 @@ CBCGPDiagramTableShape::CBCGPDiagramTableShape (const CBCGPRect& rect, const CBC
 
 	m_bCaption = FALSE;
 	m_brCaptionFill = brFill;
+
+	m_bShowConnectionPorts = FALSE;
 }
 //*******************************************************************************
 CBCGPDiagramTableShape::CBCGPDiagramTableShape(const CBCGPDiagramTableShape& src)
@@ -1280,6 +1291,8 @@ void CBCGPDiagramTableShape::SetCaption (const CString& strText, const CBCGPColo
 
 	m_brCaptionFill = brCaptionFill;
 	m_bCaption = bShowCaption;
+
+	m_bRepos = TRUE;
 }
 //*******************************************************************************
 CString CBCGPDiagramTableShape::GetCaptionText() const
@@ -1317,9 +1330,19 @@ BOOL CBCGPDiagramTableShape::IsCaptionEnabled () const
 	return m_bCaption;
 }
 //*******************************************************************************
+void CBCGPDiagramTableShape::EnableConnectionPortsMarkers (BOOL bShow)
+{
+	m_bShowConnectionPorts = bShow;
+}
+//*******************************************************************************
+BOOL CBCGPDiagramTableShape::IsConnectionPortsMarkersEnabled () const
+{
+	return m_bShowConnectionPorts;
+}
+//*******************************************************************************
 UINT CBCGPDiagramTableShape::ConnectionPortID (int nRowIndex, BOOL bLeft) const
 {
-	if (nRowIndex > 0 && nRowIndex < m_arData.GetSize ())
+	if (nRowIndex > 0 && nRowIndex < (int)m_arData.GetSize ())
 	{
 		return CP_CustomFirst + 2 * nRowIndex + (bLeft ? 0 : 1);
 	}
@@ -1329,10 +1352,14 @@ UINT CBCGPDiagramTableShape::ConnectionPortID (int nRowIndex, BOOL bLeft) const
 //*******************************************************************************
 void CBCGPDiagramTableShape::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip, DWORD dwFlags)
 {
-	if (!!m_brCaptionFill.IsEmpty ())
+	if (m_brCaptionFill.IsEmpty ())
 	{
 		CBCGPDiagramShape::OnDraw(pGM, rectClip, dwFlags);
-		//DrawConnectionPorts (pGM, m_brOutline, m_brOutline);
+
+		if (m_bShowConnectionPorts)
+		{
+			DrawConnectionPorts (pGM, m_brOutline, m_brOutline);
+		}
 		return;
 	}
 
@@ -1343,16 +1370,18 @@ void CBCGPDiagramTableShape::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& 
 	
 	ASSERT_VALID(pGM);
 	
+	const double scaleRatio = GetScaleRatioMid();
+
 	int nShadowDepth = pGM->IsSupported(BCGP_GRAPHICS_MANAGER_COLOR_OPACITY) ? 3 : 0;
 	
 	CBCGPRect rectShadow = m_rect;
-	rectShadow.OffsetRect(nShadowDepth * m_sizeScaleRatio.cx, nShadowDepth * m_sizeScaleRatio.cy);
+	rectShadow.OffsetRect(nShadowDepth * scaleRatio, nShadowDepth * scaleRatio);
 	
 	switch (m_shape)
 	{
 	case Box:
 		{
-			CBCGPSize sizeRadius(5 * m_sizeScaleRatio.cx, 5 * m_sizeScaleRatio.cy);
+			CBCGPSize sizeRadius(scaleRatio * 5, scaleRatio * 5);
 
 			CBCGPRoundedRect rrShadow(rectShadow, sizeRadius.cx, sizeRadius.cy);
 			CBCGPRoundedRect rr(m_rect, sizeRadius.cx, sizeRadius.cy);
@@ -1366,10 +1395,10 @@ void CBCGPDiagramTableShape::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& 
 			
 			if (m_bCaption && !m_brCaptionFill.IsEmpty ())
 			{
-// 				if (m_bRepos)
-// 				{
-// 					Repos ();
-// 				}
+				if (m_bRepos)
+				{
+					Repos ();
+				}
 
 				double cyCaption = m_CaptionData.GetSize ().cy;
 				if (m_CaptionData.GetText ().IsEmpty ())
@@ -1380,19 +1409,19 @@ void CBCGPDiagramTableShape::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& 
 					cyCaption = textData.GetSize ().cy;
 				}
 
-				CBCGPRect rectItemClip = GetRect ();
-				rectItemClip.bottom = rectItemClip.top + cyCaption + 2 * BCGP_DIAGRAM_TEXT_PADDING * m_sizeScaleRatio.cy;
-				rectItemClip.InflateRect (m_sizeScaleRatio.cx, m_sizeScaleRatio.cy);
-				rectItemClip.IntersectRect (rectClip);
+				CBCGPRect rect = GetRect ();
+				rect.bottom = rect.top + cyCaption + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING;
 		
-				CBCGPRoundedRect rrCaption(rectItemClip, sizeRadius.cx, sizeRadius.cy);
+				CBCGPRoundedRect rrCaption(rect, sizeRadius.cx, sizeRadius.cy);
+
 				CBCGPGeometry captionGeometry;
-				rectItemClip.top += rrCaption.radiusY + m_sizeScaleRatio.cy;
-				pGM->CombineGeometry(captionGeometry, CBCGPRoundedRectangleGeometry(rrCaption), CBCGPRectangleGeometry(rectItemClip), RGN_OR);
+				rect.top += rrCaption.radiusY;
+				pGM->CombineGeometry(captionGeometry, CBCGPRoundedRectangleGeometry(rrCaption), CBCGPRectangleGeometry(rect), RGN_OR);
+
 				pGM->FillGeometry (captionGeometry, m_brCaptionFill);
 			}
 
-			pGM->DrawRoundedRectangle(rr, m_brOutline, m_Thickness * GetScaleRatioMid (), &m_StrokeStyle);
+			pGM->DrawRoundedRectangle(rr, m_brOutline, m_Thickness * scaleRatio, &m_StrokeStyle);
 		}
 		break;
 
@@ -1403,7 +1432,11 @@ void CBCGPDiagramTableShape::OnDraw(CBCGPGraphicsManager* pGM, const CBCGPRect& 
 	
 	DrawTextData (pGM, rectClip);
 	SetConnectionPorts();
-	//DrawConnectionPorts (pGM, m_brOutline, m_brOutline);
+
+	if (m_bShowConnectionPorts)
+	{
+		DrawConnectionPorts (pGM, m_brOutline, m_brOutline);
+	}
 }
 //*******************************************************************************
 void CBCGPDiagramTableShape::DrawTextData(CBCGPGraphicsManager* pGM, const CBCGPRect& rectClip)
@@ -1411,8 +1444,10 @@ void CBCGPDiagramTableShape::DrawTextData(CBCGPGraphicsManager* pGM, const CBCGP
 	ASSERT_VALID (this);
 	ASSERT_VALID (pGM);
 
+	const double scaleRatio = GetScaleRatioMid();
+
 	CBCGPRect rect = GetRect();
-	rect.DeflateRect (BCGP_DIAGRAM_TEXT_PADDING, BCGP_DIAGRAM_TEXT_PADDING);
+	rect.DeflateRect (scaleRatio * BCGP_DIAGRAM_TEXT_PADDING, scaleRatio * BCGP_DIAGRAM_TEXT_PADDING);
 
 	CBCGPRect rectTextClip = rect;
 	if (!rectTextClip.IntersectRect (rectClip))
@@ -1431,36 +1466,34 @@ void CBCGPDiagramTableShape::DrawTextData(CBCGPGraphicsManager* pGM, const CBCGP
 	{
 		CBCGPSize size = m_CaptionData.GetDefaultSize(pGM, this);
 		CBCGPRect rectItem(ptOffset, CBCGPSize(rect.Width (), size.cy));
-		m_bRepos = FALSE;
 
 		m_CaptionData.SetSize (size);
 		m_CaptionData.Draw (pGM, rectItem, rectTextClip);
 
-		ptOffset.y += size.cy + 2 * BCGP_DIAGRAM_TEXT_PADDING;
+		ptOffset.y += size.cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING;
 
 		if (!m_brOutline.IsEmpty ())
 		{
-			double dy = ptOffset.y - BCGP_DIAGRAM_TEXT_PADDING;
-			pGM->DrawLine (rect.left, dy, rect.right, dy, m_brOutline, GetScaleRatioMid ());
+			double dy = ptOffset.y - scaleRatio * BCGP_DIAGRAM_TEXT_PADDING;
+			pGM->DrawLine (rect.left, dy, rect.right, dy, m_brOutline, scaleRatio);
 		}
 	}
 
 	//-------------------
 	// Draw data objects:
 	//-------------------
-	for (int i = 0; i < m_arData.GetSize (); i++)
+	for (int i = 0; i < (int)m_arData.GetSize (); i++)
 	{
 		CBCGPDiagramTextDataObject* pData = DYNAMIC_DOWNCAST(CBCGPDiagramTextDataObject, m_arData[i]);
 		if (pData != NULL)
 		{
 			CBCGPSize size = pData->GetDefaultSize(pGM, this);
 			CBCGPRect rectItem(ptOffset, CBCGPSize(rect.Width (), size.cy));
-			m_bRepos = FALSE;
 
 			pData->SetSize (size);
 			pData->Draw (pGM, rectItem, rectTextClip);
 
-			ptOffset.y += size.cy + 2 * BCGP_DIAGRAM_TEXT_PADDING;
+			ptOffset.y += size.cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING;
 		}
 
 		if (ptOffset.y >= rectTextClip.bottom)
@@ -1470,6 +1503,8 @@ void CBCGPDiagramTableShape::DrawTextData(CBCGPGraphicsManager* pGM, const CBCGP
 	}
 
 	pGM->ReleaseClipArea ();
+
+	m_bRepos = FALSE;
 }
 //*******************************************************************************
 void CBCGPDiagramTableShape::OnScaleRatioChanged(const CBCGPSize& sizeScaleRatioOld)
@@ -1477,7 +1512,8 @@ void CBCGPDiagramTableShape::OnScaleRatioChanged(const CBCGPSize& sizeScaleRatio
 	CBCGPDiagramShape::OnScaleRatioChanged(sizeScaleRatioOld);
 
 	m_CaptionData.SetFontScale (m_sizeScaleRatio.cy);
-	//m_bRepos = TRUE;
+
+	m_bRepos = TRUE;
 }
 //*******************************************************************************
 void CBCGPDiagramTableShape::SetConnectionPorts()
@@ -1487,7 +1523,13 @@ void CBCGPDiagramTableShape::SetConnectionPorts()
 		Repos ();
 	}
 
+	const double scaleRatio = GetScaleRatioMid();
+
 	CBCGPRect rect = GetRect();
+	rect.Normalize();
+
+	rect.OffsetRect (-m_ptDrawOffset);
+
 	const CBCGPSize sizeMin = GetMinSize();
 	
 	if (!sizeMin.IsEmpty())
@@ -1497,11 +1539,10 @@ void CBCGPDiagramTableShape::SetConnectionPorts()
 			return;
 		}
 	}
-	
-	rect.DeflateRect (4.0, 0);
+
+	rect.DeflateRect (4.0 * scaleRatio, 0);
 
 	CBCGPPoint ptOffset = rect.TopLeft ();
-	ptOffset.y += BCGP_DIAGRAM_TEXT_PADDING;
 
 	// Caption:
 	if (m_bCaption)
@@ -1511,28 +1552,30 @@ void CBCGPDiagramTableShape::SetConnectionPorts()
 			CBCGPDiagramTextDataObject textData;
 			textData.CopyFrom (m_CaptionData);
 			textData.SetText (_T("Wq"), FALSE);
-			ptOffset.y += textData.GetSize ().cy + 2 * BCGP_DIAGRAM_TEXT_PADDING;
+			ptOffset.y += textData.GetSize ().cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING;
 		}
 		else
 		{
-			ptOffset.y += m_CaptionData.GetSize ().cy + 2 * BCGP_DIAGRAM_TEXT_PADDING;
+			ptOffset.y += m_CaptionData.GetSize ().cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING;
 		}
 	}
 
+	m_mapConnectionPorts[CP_Center] = rect.CenterPoint();
+
 	// Data items:
-	for (int i = 0; i < m_arData.GetSize (); i++)
+	for (int i = 0; i < (int)m_arData.GetSize (); i++)
 	{
 		CBCGPDiagramTextDataObject* pData = DYNAMIC_DOWNCAST(CBCGPDiagramTextDataObject, m_arData[i]);
 		if (pData != NULL)
 		{
 			const CBCGPSize& size = pData->GetSize ();
-			CBCGPRect rectItem(ptOffset, CBCGPSize(rect.Width (), size.cy));
+			CBCGPRect rectItem(ptOffset, CBCGPSize(rect.Width (), size.cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING));
 
 			double y = min (rect.bottom, rectItem.CenterPoint().y);
 			m_mapConnectionPorts[CP_CustomFirst + 2 * i]	  = CBCGPPoint (rectItem.left, y);
 			m_mapConnectionPorts[CP_CustomFirst + 2 * i  + 1] = CBCGPPoint (rectItem.right, y);
 
-			ptOffset.y += size.cy + 2 * BCGP_DIAGRAM_TEXT_PADDING;
+			ptOffset.y += rectItem.Height ();
 		}
 	}
 }
@@ -1547,45 +1590,22 @@ UINT CBCGPDiagramTableShape::HitTestConnectionPort(const CBCGPPoint& pt) const
 		return HTNOWHERE;
 	}
 
-	CBCGPPoint ptOffset = rect.TopLeft ();
+	UINT nPartID = HitTestPart(pt);
 
-	// Caption:
-	if (m_CaptionData.GetText ().IsEmpty ())
+	int nIndex = nPartID - P_CustomFirst;
+	if (nIndex >= 0 && nIndex < (int)m_arData.GetSize ())
 	{
-		CBCGPDiagramTextDataObject textData;
-		textData.CopyFrom (m_CaptionData);
-		textData.SetText (_T("Wq"), FALSE);
-		ptOffset.y += textData.GetSize ().cy + 2 * BCGP_DIAGRAM_TEXT_PADDING;
-	}
-	else
-	{
-		ptOffset.y += m_CaptionData.GetSize ().cy + 2 * BCGP_DIAGRAM_TEXT_PADDING;
-	}
-
-	// Data items:
-	for (int i = 0; i < m_arData.GetSize (); i++)
-	{
-		CBCGPDiagramTextDataObject* pData = DYNAMIC_DOWNCAST(CBCGPDiagramTextDataObject, m_arData[i]);
-		if (pData != NULL)
+		if (pt.x <= rect.CenterPoint ().x)
 		{
-			CBCGPRect rectItem(ptOffset, CBCGPSize(rect.Width (), pData->GetSize ().cy + 2 * BCGP_DIAGRAM_TEXT_PADDING));
-			if (rectItem.PtInRect (pt))
-			{
-				if (pt.x <= rectItem.CenterPoint ().x)
-				{
-					return CP_CustomFirst + 2 * i;
-				}
-				else
-				{
-					return CP_CustomFirst + 2 * i + 1;
-				}
-			}
-
-			ptOffset.y += rectItem.Height ();
+			return CP_CustomFirst + 2 * nIndex;
+		}
+		else
+		{
+			return CP_CustomFirst + 2 * nIndex + 1;
 		}
 	}
 
-	return  HTCLIENT;
+	return HTCLIENT;
 }
 //*******************************************************************************
 void CBCGPDiagramTableShape::Repos ()
@@ -1617,7 +1637,7 @@ void CBCGPDiagramTableShape::Repos ()
 	CBCGPSize sizeCaption = m_CaptionData.GetDefaultSize (pGM, this);
 	m_CaptionData.SetSize (sizeCaption);
 
-	for (int i = 0; i < m_arData.GetSize (); i++)
+	for (int i = 0; i < (int)m_arData.GetSize (); i++)
 	{
 		CBCGPDiagramTextDataObject* pData = DYNAMIC_DOWNCAST(CBCGPDiagramTextDataObject, m_arData[i]);
 		if (pData != NULL)
@@ -1644,4 +1664,137 @@ void CBCGPDiagramTableShape::CopyFrom(const CBCGPBaseVisualObject& srcObj)
 	m_bCaption = src.m_bCaption;
 	m_CaptionData.CopyFrom (src.m_CaptionData);
 	m_brCaptionFill = src.m_brCaptionFill;
+}
+//*******************************************************************************
+UINT CBCGPDiagramTableShape::HitTestPart (const CBCGPPoint& pt) const
+{
+	CBCGPRect rect = GetRect();
+	rect.Normalize();
+	
+	if (!rect.PtInRect(pt))
+	{
+		return HTNOWHERE; // P_None
+	}
+	
+	const double scaleRatio = GetScaleRatioMid();
+	
+	CBCGPPoint ptOffset = rect.TopLeft ();
+	
+	// Caption:
+	if (m_bCaption)
+	{
+		CBCGPSize sizeText;
+		if (m_CaptionData.GetText ().IsEmpty ())
+		{
+			CBCGPDiagramTextDataObject textData;
+			textData.CopyFrom (m_CaptionData);
+			textData.SetText (_T("Wq"), FALSE);
+
+			sizeText = textData.GetSize ();
+		}
+		else
+		{
+			sizeText = m_CaptionData.GetSize ();
+		}
+		
+		CBCGPRect rectCaption(ptOffset, CBCGPSize(rect.Width (), sizeText.cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING));
+		if (rectCaption.PtInRect (pt))
+		{
+			return HTCAPTION; // P_Caption
+		}
+
+		ptOffset.y += rectCaption.Height ();
+	}
+	
+	// Data items:
+	for (int i = 0; i < (int)m_arData.GetSize (); i++)
+	{
+		CBCGPDiagramTextDataObject* pData = DYNAMIC_DOWNCAST(CBCGPDiagramTextDataObject, m_arData[i]);
+		if (pData != NULL)
+		{
+			CBCGPRect rectItem(ptOffset, CBCGPSize(rect.Width (), pData->GetSize ().cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING));
+			if (rectItem.PtInRect (pt))
+			{
+				return P_CustomFirst + i;
+			}
+			
+			ptOffset.y += rectItem.Height ();
+		}
+	}
+
+	return HTCLIENT;
+}
+//*******************************************************************************
+BOOL CBCGPDiagramTableShape::GetPartRect (UINT nPartID, CBCGPRect& rectPart) const
+{
+	rectPart.SetRectEmpty();
+
+	CBCGPRect rect = GetRect();
+	rect.Normalize();
+	
+	const double scaleRatio = GetScaleRatioMid();
+	
+	CBCGPPoint ptOffset = rect.TopLeft ();
+	
+	// Caption:
+	if (m_bCaption)
+	{
+		CBCGPSize sizeText;
+		if (m_CaptionData.GetText ().IsEmpty ())
+		{
+			CBCGPDiagramTextDataObject textData;
+			textData.CopyFrom (m_CaptionData);
+			textData.SetText (_T("Wq"), FALSE);
+			
+			sizeText = textData.GetSize ();
+		}
+		else
+		{
+			sizeText = m_CaptionData.GetSize ();
+		}
+		
+		CBCGPRect rectCaption(ptOffset, CBCGPSize(rect.Width (), sizeText.cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING));
+
+		if (nPartID == P_Caption)
+		{
+			rectCaption.bottom = min (rect.bottom, rectCaption.bottom);
+
+			rectPart = rectCaption;
+			return TRUE;
+		}
+		
+		ptOffset.y += rectCaption.Height ();
+	}
+	
+	// Data items:
+	for (int i = 0; i < (int)m_arData.GetSize (); i++)
+	{
+		CBCGPDiagramTextDataObject* pData = DYNAMIC_DOWNCAST(CBCGPDiagramTextDataObject, m_arData[i]);
+		if (pData != NULL)
+		{
+			CBCGPRect rectItem(ptOffset, CBCGPSize(rect.Width (), pData->GetSize ().cy + scaleRatio * 2 * BCGP_DIAGRAM_TEXT_PADDING));
+
+			if (nPartID == (UINT)P_CustomFirst + i)
+			{
+				rectItem.bottom = min (rect.bottom, rectItem.bottom);
+
+				rectPart = rectItem;
+				return TRUE;
+			}
+			
+			ptOffset.y += rectItem.Height ();
+		}
+	}
+	
+	return FALSE;
+}
+//*******************************************************************************
+CBCGPDiagramTextDataObject* CBCGPDiagramTableShape::GetPartTextData (UINT nPartID)
+{
+	if (nPartID == P_Caption)
+	{
+		return &m_CaptionData;
+	}
+
+	return GetTextData (nPartID - P_CustomFirst);
 }

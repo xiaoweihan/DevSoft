@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a part of BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -34,10 +34,10 @@ static char THIS_FILE[]=__FILE__;
 #endif
 
 static int g_nSliderSpacingForMove = 4;
-
 static int g_nSliderID = 1;
 
 IMPLEMENT_DYNCREATE (CBCGPBarContainerManager, CObject)
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -48,12 +48,11 @@ CBCGPBarContainerManager::CBCGPBarContainerManager() : m_pRootContainer (NULL),
 													 m_pDefaultSlider (NULL),
 													 m_bDestroyRootContainer (TRUE)
 {
-	
 }
 
 CBCGPBarContainerManager::~CBCGPBarContainerManager()
 {
-	// should not be destroyed when the rrot container is "exported" to another 
+	// should not be destroyed when the root container is "exported" to another 
 	// manager (when one multi miniframe is docked to another multi miniframe)
 	if (m_bDestroyRootContainer)
 	{
@@ -396,8 +395,8 @@ CBCGPDockingControlBar* CBCGPBarContainerManager::AddControlBarToRecentContainer
 	if (pContainer->IsContainerEmpty ())
 	{
 		// this container becomes non-empty
-		// we need to ckeck parent containers in order to ensure their 
-		// slider existance
+		// we need to check parent containers in order to ensure their 
+		// slider existence
 		CBCGPBarContainer* pParentContainer = pContainer->GetParentContainer ();
 		while (pParentContainer != m_pRootContainer &&
 				pParentContainer != NULL)
@@ -1015,7 +1014,7 @@ BOOL CBCGPBarContainerManager::AddControlBarAndSlider (CBCGPDockingControlBar* p
 		return FALSE;
 	}
 
-	// insert the new bar into the list of control bars accordig to its 
+	// insert the new bar into the list of control bars according to its 
 	// hit test (side) relatively to the nearest bar
 	switch (dwAlignment & CBRS_ALIGN_ANY)
 	{
@@ -1332,7 +1331,7 @@ void CBCGPBarContainerManager::Serialize (CArchive& ar)
 		}
 		else if (m_pDockSite->IsKindOf (RUNTIME_CLASS (CBCGPMiniFrameWnd)))
 		{
-			pDockManager = globalUtils.GetDockManager (m_pDockSite->GetParent ());
+			pDockManager = globalUtils.GetDockManager (((CBCGPMiniFrameWnd*)m_pDockSite)->GetParent ());
 		}
 
 		if (pDockManager == NULL)
@@ -1414,7 +1413,7 @@ CBCGPBarContainer* CBCGPBarContainerManager::FindContainer (CBCGPDockingControlB
 	return NULL;
 }
 //-----------------------------------------------------------------------------------//
-// Look for control bar that contains point according to secitivity: if we're looking
+// Look for control bar that contains point according to sensitivity: if we're looking
 // for the exact bar, the point must be in the area between bars' bounds and deflated bars'
 // bounds; otherwise the point must be inside inflated bars' window rectangle
 //-----------------------------------------------------------------------------------//
@@ -1428,11 +1427,15 @@ CBCGPDockingControlBar* CBCGPBarContainerManager::ControlBarFromPoint (CPoint po
 	
 	bIsTabArea = FALSE;
 
-
 	for (POSITION pos = m_lstControlBars.GetHeadPosition (); pos != NULL;)
 	{
 		CBCGPDockingControlBar* pBar = 
 			DYNAMIC_DOWNCAST (CBCGPDockingControlBar, m_lstControlBars.GetNext (pos));
+
+		if (pBar == NULL || !pBar->IsBarVisible())
+		{
+			continue;
+		}
 
 		CRect rectWnd;
 		pBar->GetWindowRect (rectWnd);
@@ -1457,7 +1460,6 @@ CBCGPDockingControlBar* CBCGPBarContainerManager::ControlBarFromPoint (CPoint po
 		int nCaptionHeight = pBar->GetCaptionHeight ();
 		rectWnd.top += nCaptionHeight;
 		rectWnd.bottom -= rectTabAreaBottom.Height ();
-
 
 		if (rectWnd.PtInRect (point))
 		{
@@ -1506,6 +1508,7 @@ CBCGPDockingControlBar* CBCGPBarContainerManager::ControlBarFromPoint (CPoint po
 			}
 		}
 	}
+
 	return NULL;
 }
 //-----------------------------------------------------------------------------------//

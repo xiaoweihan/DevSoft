@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -30,6 +30,8 @@ class CBCGPChartVisualObject;
 // return value: new (translated) data
 typedef CBCGPChartData (CALLBACK* BCGPCHART_TRANSITION_CALLBACK)(const CArray<CBCGPChartData, CBCGPChartData>& arData, 
 					int nDataPointIndex, CBCGPChartSeries* pFormulaSeries, LPARAM lp);
+
+typedef BOOL (CALLBACK* BCGPCHART_ERRORBARS_CALLBACK)(int nDataPointIndex, CBCGPChartSeries* pFormulaSeries, LPARAM lp, double& dValue, double& dMinus, double& dPlus);
 
 
 //****************************************************************************************
@@ -437,6 +439,120 @@ protected:
 	virtual CBCGPChartValue CalculateYValue(double dblXVal);
 protected:
 	BCGPCHART_VSERIES_CALLBACK	m_pfnVirtualCallback;
+};
+
+//****************************************************************************************
+// CBCGPChartErrorBarsFormula - generates error bars for a given series.
+//****************************************************************************************
+
+class BCGCBPRODLLEXPORT CBCGPChartErrorBarsFormula : public CBCGPChartBaseFormula
+{
+	DECLARE_DYNCREATE(CBCGPChartErrorBarsFormula)
+
+protected:
+	CBCGPChartErrorBarsFormula();
+	void CommonInit();
+
+public:
+	enum ErrorBarsType
+	{
+		EBT_SEM_SE,  // Standard error of the mean based on a sample of the population
+		EBT_SEM_SD,  // Standard error of the mean based on the entire population
+		EBT_STD_S,   // Standard deviation based on a sample of the population (corrected sample standard deviation)
+		EBT_STD_P,   // Standard deviation based on the entire population
+		EBT_FIXED,
+		EBT_PERCENT,
+		EBT_DIFF,
+		EBT_CUSTOM
+	};
+
+public:
+// Construction
+	CBCGPChartErrorBarsFormula(ErrorBarsType type, LPARAM lParam = NULL, BCGPCHART_ERRORBARS_CALLBACK pCallback = NULL);
+	CBCGPChartErrorBarsFormula(const CBCGPChartErrorBarsFormula& src);
+
+// Operations
+	void SetInputSeries(CBCGPChartSeries* pSeries);
+
+	void SetErrorBarsType(ErrorBarsType type, LPARAM lParam = NULL, BCGPCHART_ERRORBARS_CALLBACK pCallback = NULL);
+	ErrorBarsType GetErrorBarsType() const {return m_Type;}
+
+// Copy
+	virtual void CopyFrom(const CBCGPChartBaseFormula& src);
+
+// Overrides
+public:
+	virtual void GeneratePoints();
+
+	double GetMean() const
+	{
+		return m_Count == 0 ? 0.0 : m_Sum / (double)m_Count;
+	}
+
+	// mean absolute deviation (MAD)
+	double GetMAD() const
+	{
+		return m_Count == 0 ? 0.0 : m_SumAE / (double)m_Count;
+	}
+
+	// population variance (uncorrected sample variance)
+	double GetVariance_P() const
+	{
+		return m_Count < 1 ? 0.0 : m_SumSE / (double)m_Count;
+	}
+
+	// sample variance (corrected sample variance)
+	double GetVariance_S() const
+	{
+		return m_Count < 2 ? 0.0 : m_SumSE / (double)(m_Count - 1);
+	}
+
+	// population standard deviation (uncorrected sample standard deviation)
+	double GetSD_P() const
+	{
+		return sqrt(GetVariance_P());
+	}
+
+	// corrected sample standard deviation (standard deviation)
+	double GetSD_S() const
+	{
+		return sqrt(GetVariance_S());
+	}
+
+	double GetSEM_SE() const
+	{
+		return m_Count == 0 ? 0.0 : GetSD_S() / sqrt((double)m_Count);
+	}
+	double GetSEM_SD() const
+	{
+		return m_Count == 0 ? 0.0 : GetSD_P() / sqrt((double)m_Count);
+	}
+
+	double GetFixedValue() const
+	{
+		return m_Fixed;
+	}
+	void SetFixedValue(double value);
+
+	double GetPercentValue() const
+	{
+		return m_Percent;
+	}
+	void SetPercentValue(double value);
+
+protected:
+	ErrorBarsType				m_Type;
+	BCGPCHART_ERRORBARS_CALLBACK m_pfnErrorBarsCallback;
+
+	BOOL						m_IgnoreZeroValues;
+
+	double						m_Fixed;
+	double						m_Percent;
+
+	double						m_Count;
+	double						m_Sum;   // sum of values
+	double						m_SumAE; // sum of absolute errors
+	double						m_SumSE; // sum of squared errors
 };
 
 #endif // !defined(AFX_BCGPCHARTFORMULA_H__FE0BBF37_BD61_474E_B4BE_D6D7AFEC94AC__INCLUDED_)

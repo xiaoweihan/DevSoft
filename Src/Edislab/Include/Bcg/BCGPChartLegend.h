@@ -2,7 +2,7 @@
 // COPYRIGHT NOTES
 // ---------------
 // This is a sample for BCGControlBar Library Professional Edition
-// Copyright (C) 1998-2014 BCGSoft Ltd.
+// Copyright (C) 1998-2016 BCGSoft Ltd.
 // All rights reserved.
 //
 // This source code can be used, distributed or modified
@@ -74,7 +74,7 @@ struct BCGCBPRODLLEXPORT BCGPChartCellParams
 	BCGPChartCellParams()
 	{
 		m_szScaleRatio.SetSize(1., 1.);
-		m_textFormat.Create(BCGPChartFormatLabel::m_strDefaultFontFamily, 12.0f);
+		m_textFormat.Create(BCGPChartFormatLabel::m_strDefaultFontFamily, BCGPChartFormatLabel::GetFontSize(12.0f));
 	}
 
 	CBCGPBrush				m_brContentFill; // fill color of legend entry
@@ -500,6 +500,7 @@ protected:
 	virtual void OnDrawLegendGridLines(CBCGPGraphicsManager* pGM);
 
 	virtual void OnAfterLegendDraw(CBCGPGraphicsManager* pGM, DWORD dwFlags);
+
 	virtual BOOL OnAdjustLegendBounds(const CBCGPSize& szLegendSize, const CBCGPRect& rectControl, 
 		CBCGPRect& rectLegendBounds) 
 	{
