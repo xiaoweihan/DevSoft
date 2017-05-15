@@ -3,6 +3,12 @@
 #include <boost/foreach.hpp>
 #include <boost/thread/lock_guard.hpp>
 #include "SensorData.h"
+
+CSensorDataManager& CSensorDataManager::CreateInstance()
+{
+	return s_obj;
+}
+
 void CSensorDataManager::AddSensorData(int nSensorID)
 {
 	using namespace boost;
@@ -43,11 +49,25 @@ void CSensorDataManager::DelSensorData(int nSensorID)
 	m_SensorDataMap.erase(Iter);
 }
 
+CSensorData* CSensorDataManager::GetSensorDataBySensorID( int nSensorID )
+{
+	using namespace boost;
+	lock_guard<mutex> Lock(m_SensorDataMapLock);
+
+	auto Iter = m_SensorDataMap.find(nSensorID);
+	//不存在才添加
+	if (Iter == m_SensorDataMap.end())
+	{
+		return nullptr;
+	}
+
+	return Iter->second;
+}
+
 CSensorDataManager::CSensorDataManager(void)
 {
 	m_SensorDataMap.clear();
 }
-
 
 CSensorDataManager::~CSensorDataManager(void)
 {
@@ -62,3 +82,5 @@ CSensorDataManager::~CSensorDataManager(void)
 
 	m_SensorDataMap.clear();
 }
+
+CSensorDataManager CSensorDataManager::s_obj;

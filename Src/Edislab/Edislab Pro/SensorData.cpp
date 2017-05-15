@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "SensorData.h"
 #include <boost/thread/lock_guard.hpp>
+#include <boost/foreach.hpp>
 #include "Log.h"
 //Ä¬ÈÏ¸öÊý
 const int DEFAULT_MAX_LENGTH = 60;
@@ -40,7 +41,7 @@ void CSensorData::AddSensorData(float fData)
 
 }
 
-void CSensorData::GetSensorData(std::list<float>& SensorDataList)
+void CSensorData::GetSensorData(std::vector<float>& SensorDataList)
 {
 	SensorDataList.clear();
 	if (m_nSensorID < 0)
@@ -50,6 +51,21 @@ void CSensorData::GetSensorData(std::list<float>& SensorDataList)
 	}
 	using namespace boost;
 	lock_guard<mutex> Lock(m_DataLock);
+	BOOST_FOREACH(auto& V,m_SensorDataList)
+	{
+		SensorDataList.push_back(V);
+	}
+}
 
-	SensorDataList.assign(m_SensorDataList.begin(),m_SensorDataList.end());
+float CSensorData::GetSensorData( int nIndex )
+{
+	using namespace boost;
+	lock_guard<mutex> Lock(m_DataLock);
+
+	if (nIndex < 0 || nIndex >= (int)m_SensorDataList.size())
+	{
+		return 0.0f;
+	}
+
+	return m_SensorDataList[nIndex];
 }

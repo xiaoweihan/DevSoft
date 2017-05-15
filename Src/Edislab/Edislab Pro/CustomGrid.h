@@ -92,8 +92,28 @@ public:
 	//获取表头信息
 	void GetHeaderInfo(std::vector<HEADRER_INFO>& HeaderInfoArray);
 
-	//填充数据
-	void FillData(void);
+	//设置回调函数
+	void SetCallBack(BCGPGRID_CALLBACK pCallBack)
+	{
+		m_pCallBack = pCallBack;
+	}
+
+	//设置虚行数
+	void SetDisplayVirtualRows(int nVirtualRows)
+	{
+		m_nDisplayVitrualRows = nVirtualRows;
+	}
+
+	//刷新虚表显示
+	void Refresh(void)
+	{
+		//清空缓存
+		if (TRUE == IsVirtualMode())
+		{
+			m_CachedItems.CleanUpCache();
+		}
+		AdjustLayout();
+	}
 private:
 	//创建列信息
 	void CreateHeaderInfo(void);
@@ -101,6 +121,8 @@ private:
 	void CreateColumnInfo(void);
 protected:
 	std::vector<HEADRER_INFO> m_HeaderInfoArray;
+	BCGPGRID_CALLBACK m_pCallBack;
+	int m_nDisplayVitrualRows;
 public:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);

@@ -12,7 +12,8 @@
 //默认增加列的宽度
 const int DEFAULT_COLUMN_WIDTH = 20;
 IMPLEMENT_DYNCREATE(CCustomGrid, CBCGPGridCtrl)
-CCustomGrid::CCustomGrid()
+CCustomGrid::CCustomGrid():m_nDisplayVitrualRows(60),
+m_pCallBack(nullptr)
 {
 	m_HeaderInfoArray.clear();
 }
@@ -55,6 +56,13 @@ int CCustomGrid::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	SetEditFirstClick(FALSE);
 	SetWholeRowSel(TRUE);
 	m_ColumnsEx.EnableAutoSize(TRUE);
+
+	if (nullptr != m_pCallBack)
+	{
+		EnableVirtualMode(m_pCallBack,(LPARAM)this);
+		SetVirtualRows(m_nDisplayVitrualRows);
+	}
+
 	CreateHeaderInfo();
 	CreateColumnInfo();
 	AdjustLayout();
@@ -421,43 +429,6 @@ void CCustomGrid::GetHeaderInfo(std::vector<HEADRER_INFO>& HeaderInfoArray)
 
 	HeaderInfoArray.assign(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end());
 }
-
-/*******************************************************************
-*函数名称:FillData
-*功能描述:测试填充数据
-*输入参数:None
-*输出参数:None
-*返回值:None
-*作者:xiaowei.han
-*日期:2017/05/13 16:03:45
-*******************************************************************/
-void CCustomGrid::FillData(void)
-{
-	if (NULL == GetSafeHwnd())
-	{
-		return;
-	}
-	RemoveAll();
-	int nColumnCount = GetColumnCount();
-	for (int nRow = 0; nRow < 60; nRow++)
-	{
-		CBCGPGridRow* pRow = CreateRow(nColumnCount);
-		
-		if (nullptr != pRow)
-		{
-			for (int i = 0; i < GetColumnCount (); i++)
-			{
-				CString strItem;
-				pRow->GetItem(i)->SetValue((_variant_t) strItem);
-			}
-		}
-		AddRow (pRow, FALSE);
-	}
-
-	AdjustLayout();
-
-}
-
 
 
 void CCustomGrid::CreateColumnInfo(void)
