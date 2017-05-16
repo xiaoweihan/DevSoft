@@ -248,14 +248,11 @@ void CDlgGridContainer::YieldDataProc( void )
 	{
 		return;
 	}
+	boost::mt19937 rng(time(nullptr));
+	boost::random::uniform_real_distribution<float> Ui(100.0f,110.0f);
 	while (m_bLoop)
 	{
-
-		boost::mt19937 rng(time(nullptr));
-		boost::random::uniform_real_distribution<float> Ui(100.0f,110.0f);
-		pData->AddSensorData(Ui(rng));
-		
+		pData->AddSensorData(Ui(rng));	
 		boost::this_thread::sleep(boost::posix_time::seconds(1));
-
 	}
 }
