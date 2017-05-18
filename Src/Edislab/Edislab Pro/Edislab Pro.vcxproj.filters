@@ -309,9 +309,6 @@
     <ClInclude Include="SerialPortService.h">
       <Filter>Com</Filter>
     </ClInclude>
-    <ClInclude Include="SensorComManager.h">
-      <Filter>Com</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -471,9 +468,6 @@
       <Filter>Com</Filter>
     </ClCompile>
     <ClCompile Include="SerialPortService.cpp">
-      <Filter>Com</Filter>
-    </ClCompile>
-    <ClCompile Include="SensorComManager.cpp">
       <Filter>Com</Filter>
     </ClCompile>
   </ItemGroup>

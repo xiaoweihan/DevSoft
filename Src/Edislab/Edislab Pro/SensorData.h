@@ -34,7 +34,7 @@ public:
 	void GetSensorData(std::vector<float>& SensorDataList);
 
 	//根据索引获取数据
-	float GetSensorData(int nIndex);
+	bool GetSensorData(int nIndex,float& fValue);
 private:
 	//用于同步的锁
 	boost::mutex m_DataLock;

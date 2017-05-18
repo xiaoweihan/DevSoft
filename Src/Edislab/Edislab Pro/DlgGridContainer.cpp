@@ -48,7 +48,11 @@ static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)
 					CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
 					if (nullptr != pData)
 					{
-						pdi->item.varValue = pData->GetSensorData(nRow);
+						float fValue = 0.0f;
+						if (pData->GetSensorData(nRow,fValue))
+						{
+							pdi->item.varValue = fValue;
+						}		
 					}
 				}
 			}
@@ -117,7 +121,7 @@ BOOL CDlgGridContainer::OnInitDialog()
 				TempHeaderInfo.Reset();
 			}
 			m_DisplayGrid.SetHeaderInfoArray(HeaderInfoArray);
-			m_DisplayGrid.SetDisplayVirtualRows(60);
+			m_DisplayGrid.SetDisplayVirtualRows(10000);
 			m_DisplayGrid.SetCallBack(GridCallback);
 			m_DisplayGrid.Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
 		}	

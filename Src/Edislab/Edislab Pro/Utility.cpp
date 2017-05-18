@@ -118,6 +118,11 @@ int Utility::AfxBCGPMessageBox( const CString& strText,UINT nType )
 
 BYTE Utility::CalCRC8( BYTE* pBuf,int nsize )
 {
+	if (nullptr == pBuf || 0 == nsize)
+	{
+		return 0;
+	}
+
 	BYTE crc = 0;
 	while(nsize--)
 	{

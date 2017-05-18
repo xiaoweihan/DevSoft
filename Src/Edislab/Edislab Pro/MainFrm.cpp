@@ -8,7 +8,9 @@
 //#include "LogImpl.h"
 #include "Msg.h"
 #include "Utility.h"
-#include "GlobalDataManager.h"
+//#include "GlobalDataManager.h"
+#include "SerialPortService.h"
+#include "Global.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -173,7 +175,7 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	SetTimer(TIMER_ID,TIMER_GAP,NULL);
 	if (g_bAutoSelect)
 	{	
-		//COMIPLE.StartCom(this);
+		CSerialPortService::CreateInstance().StartSerialPortService();
 	}
 
 	return 0;
@@ -1856,6 +1858,8 @@ void CMainFrame::OnClose()
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
 	KillTimer(TIMER_ID);
+
+	CSerialPortService::CreateInstance().StopSerialPortService();
 	CBCGPFrameWnd::OnClose();
 }
 

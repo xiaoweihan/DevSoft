@@ -62,6 +62,32 @@ CSerialPortService* CSensorComManager::QueryComBySensorID( int nSensorID )
 	return Iter->second;
 }
 
+void CSensorComManager::StartSensorCollect()
+{
+	using namespace boost;
+	lock_guard<mutex> Lock(m_Lock);
+	BOOST_FOREACH(auto& V,m_SensorComMap)
+	{
+		if (nullptr != V.second)
+		{
+			V.second->StartSensorCollect();
+		}
+	}
+}
+
+void CSensorComManager::StopSensorCollect()
+{
+	using namespace boost;
+	lock_guard<mutex> Lock(m_Lock);
+	BOOST_FOREACH(auto& V,m_SensorComMap)
+	{
+		if (nullptr != V.second)
+		{
+			V.second->StopSensorCollect();
+		}
+	}
+}
+
 CSensorComManager::CSensorComManager( void )
 {
 	m_SensorComMap.clear();

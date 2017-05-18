@@ -34,6 +34,26 @@ CGridDisplayColumnInfo::~CGridDisplayColumnInfo(void)
 
 void CGridDisplayColumnInfo::InitGridDisplayInfo()
 {
+
+	GRID_DISPLAY_INFO TempInfo;
+	TempInfo.strHeadName = _T("当前");
+	COLUMN_INFO TempColumnInfo;
+	TempColumnInfo.strColumnName = _T("t(s)时间");
+	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);
+
+	
+	TempColumnInfo.Reset();
+	TempColumnInfo.strColumnName = _T("大气压强[Kpa]");
+	TempColumnInfo.nSensorID = 0;
+	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);	
+
+	TempColumnInfo.Reset();
+	TempColumnInfo.strColumnName = _T("湿度二[%RH]");
+	TempColumnInfo.nSensorID = 1;
+	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);	
+
+	CGridDisplayColumnInfo::CreateInstance().AddDisplayColumnInfo(TempInfo);
+
 }
 
 /*******************************************************************

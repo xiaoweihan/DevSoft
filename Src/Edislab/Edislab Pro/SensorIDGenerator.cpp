@@ -18,11 +18,12 @@ CSensorIDGenerator& CSensorIDGenerator::CreateInstance( void )
 
 int CSensorIDGenerator::QuerySensorTypeIDByName( const std::string& strSensorName )
 {
+	
 	if (strSensorName.empty())
 	{
 		return -1;
 	}
-
+	int nSensorID = -1;
 	using namespace boost;
 	lock_guard<mutex> Lock(m_Lock);
 	BOOST_FOREACH(auto& Element,m_SensorTypeArray)
@@ -30,11 +31,12 @@ int CSensorIDGenerator::QuerySensorTypeIDByName( const std::string& strSensorNam
 		//如果存在则返回ID
 		if (Element.strSensorName == strSensorName)
 		{
-			return Element.nSensorID;
+			nSensorID = Element.nSensorID;
+			break;
 		}
 	}
 
-	return -1;
+	return nSensorID;
 }
 
 int CSensorIDGenerator::AddSensor( const std::string& strSensorName )
@@ -83,6 +85,18 @@ void CSensorIDGenerator::DelSensor( const std::string& strSensorName )
 		}
 	}
 
+}
+
+void CSensorIDGenerator::GetAllSensorName(std::vector<std::string>& SensorNameArray)
+{
+	SensorNameArray.clear();
+	using namespace boost;
+	lock_guard<mutex> Lock(m_Lock);
+
+	BOOST_FOREACH(auto& Element,m_SensorTypeArray)
+	{
+		SensorNameArray.push_back(Element.strSensorName);
+	}
 }
 
 int CSensorIDGenerator::s_nTypeIndex = 0;

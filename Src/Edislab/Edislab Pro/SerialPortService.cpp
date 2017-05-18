@@ -8,12 +8,18 @@
 #include "Utility.h"
 //接收缓冲区的大小
 const int MAX_BUFFER_SIZE = 100;
+
+CSerialPortService& CSerialPortService::CreateInstance()
+{
+	return s_obj;
+}
+
 CSerialPortService::CSerialPortService():
 	m_bLoop(false),
 	m_nSerialPort(-1),
 	m_pDeviceNameBuffer(nullptr),
 	m_nDeviceNameBufferLength(0),
-	m_bCopyDeviceName(false)
+	m_bCopyDeviceName(true)
 {
 }
 
@@ -53,7 +59,7 @@ void CSerialPortService::StartSerialPortService(void)
 	}
 
 	//开启读取线程
-	if (m_pReceThread)
+	if (!m_pReceThread)
 	{
 		m_bLoop = true;
 		//开始通信
@@ -70,6 +76,98 @@ void CSerialPortService::StopSerialPortService(void)
 		m_pReceThread->join();
 	}
 	m_Com.Close();
+}
+
+void CSerialPortService::StartSensorCollect(const std::string& strSensorName)
+{
+	//if (nullptr == m_pDeviceNameBuffer || 0 == m_nDeviceNameBufferLength)
+	//{
+	//	return;
+	//}
+
+	if (strSensorName.empty())
+	{
+		return;
+	}
+
+	int nSensorNameLength = (int)strSensorName.length();
+	int nFrameLength =  1 + 1 + 1 + nSensorNameLength;
+	int nTotalLength = nFrameLength + 2;
+
+	BYTE* pData = new BYTE[nTotalLength];
+
+	if (nullptr == pData)
+	{
+		return;
+	}
+
+	pData[0] = 0xAB;
+	pData[1] = (BYTE)nFrameLength;
+	pData[2] = (BYTE)nSensorNameLength;
+
+	memcpy(pData + 3,strSensorName.c_str(),nSensorNameLength);
+	pData[nSensorNameLength + 3] = 0x00;
+	pData[nSensorNameLength + 4] = Utility::CalCRC8(pData,nTotalLength - 1);
+
+	unsigned int nWriteBytes = 0;
+	if (m_Com.Write(pData,nTotalLength,nWriteBytes))
+	{
+		if (nWriteBytes != nTotalLength)
+		{
+			ERROR_LOG("StartSensorCollect [%s] failed.",strSensorName.c_str());
+		}
+	}
+	else
+	{
+		ERROR_LOG("StartSensorCollect [%s] failed.",strSensorName.c_str());
+	}
+	DELETE_ARRAY_POINTER(pData);
+
+}
+
+void CSerialPortService::StopSensorCollect(const std::string& strSensorName)
+{
+	//if (nullptr == m_pDeviceNameBuffer || 0 == m_nDeviceNameBufferLength)
+	//{
+	//	return;
+	//}
+
+	if (strSensorName.empty())
+	{
+		return;
+	}
+	int nSensorNameLength = (int)strSensorName.length();
+	int nFrameLength =  1 + 1 + 1 + nSensorNameLength;
+	int nTotalLength = nFrameLength + 2;
+
+	BYTE* pData = new BYTE[nTotalLength];
+
+	if (nullptr == pData)
+	{
+		return;
+	}
+
+	pData[0] = 0xAB;
+	pData[1] = (BYTE)nFrameLength;
+	pData[2] = (BYTE)nSensorNameLength;
+
+	memcpy(pData + 3,strSensorName.c_str(),nSensorNameLength);
+	pData[nSensorNameLength + 3] = 0x01;
+	pData[nSensorNameLength + 4] = Utility::CalCRC8(pData,nTotalLength - 1);
+
+	unsigned int nWriteBytes = 0;
+	if (m_Com.Write(pData,nTotalLength,nWriteBytes))
+	{
+		if (nWriteBytes != nTotalLength)
+		{
+			ERROR_LOG("StopSensorCollect [%s] failed.",strSensorName.c_str());
+		}
+	}
+	else
+	{
+		ERROR_LOG("StopSensorCollect [%s] failed.",strSensorName.c_str());
+	}
+	DELETE_ARRAY_POINTER(pData);
 }
 
 //开启接收线程
@@ -133,18 +231,36 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 							int nDeviceNameLength = pData[2];
 							memcpy(szDeviceName, pData + 3, nDeviceNameLength);
 							//拷贝数据名称
-							CopyDeviceName(pData + 3,nDeviceNameLength);
+							//CopyDeviceName(pData + 3,nDeviceNameLength);
 							//下线通知
 							if (0x00 == pData[chLength])
 							{
-								NECESSARY_LOG("the device [%s] is off.",szDeviceName);
+								DEBUG_LOG("the device [%s] is off.",szDeviceName);
+
+								//根据名称删除数据
+								int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(std::string((char*)szDeviceName));
+
+								if (nSensorID >= 0)
+								{
+									CSensorDataManager::CreateInstance().DelSensorData(nSensorID);
+								}
+
+
 								//从传感器ID管理中删除
 								CSensorIDGenerator::CreateInstance().DelSensor(std::string((char*)szDeviceName));
 							}
 							//上限通知
 							else
 							{
-								NECESSARY_LOG("the device [%s] is on.",szDeviceName);
+								DEBUG_LOG("the device [%s] is on.",szDeviceName);
+								//添加传感器
+								int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(std::string((char*)szDeviceName));
+								if (nSensorID >= 0)
+								{
+									//添加对应SensorID的数据
+									CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
+								}
+
 							}
 						}
 					}
@@ -183,7 +299,7 @@ void CSerialPortService::HandleDeviceDataMsg(void)
 							int nDeviceNameLength = pData[2];
 							memcpy(szDeviceName, pData + 3, nDeviceNameLength);
 							//拷贝数据名称
-							CopyDeviceName(pData + 3,nDeviceNameLength);
+							//CopyDeviceName(pData + 3,nDeviceNameLength);
 							//获取数据
 							float fValue = 0.0f;
 							memcpy(&fValue, pData + 3 + nDeviceNameLength, 4);
@@ -251,4 +367,6 @@ void CSerialPortService::CopyDeviceName( BYTE* pData,int nDataLength )
 		}
 	}
 }
+
+CSerialPortService CSerialPortService::s_obj;
 

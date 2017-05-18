@@ -18,6 +18,9 @@ public:
 	//删除设备
 	void DelSensor(const std::string& strSensorName);
 
+	//获取所有的传感器名称
+	void GetAllSensorName(std::vector<std::string>& SensorNameArray);
+
 private:
 	CSensorIDGenerator(void);
 	virtual ~CSensorIDGenerator(void);

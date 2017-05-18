@@ -6,9 +6,13 @@
 #include "SerialPort.h"
 class CSerialPortService
 {
+
 public:
+	static CSerialPortService& CreateInstance();
+private:
 	CSerialPortService();
 	~CSerialPortService();
+public:
 	void SetSerialPortOption(int nPort, const COMPROPERTY& Options)
 	{
 		m_nSerialPort = nPort;
@@ -17,6 +21,11 @@ public:
 	//开启服务
 	void StartSerialPortService(void);
 	void StopSerialPortService(void);
+
+	//开始采集命令
+	void StartSensorCollect(const std::string& strSensorName);
+	//停止采集
+	void StopSensorCollect(const std::string& strSensorName);
 private:
 	void ReceiveProc(void);
 
@@ -53,6 +62,8 @@ private:
 
 	//是否拷贝设备名称
 	bool m_bCopyDeviceName;
+
+	static CSerialPortService s_obj;
 };
 
 #endif

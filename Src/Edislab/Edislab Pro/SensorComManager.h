@@ -17,6 +17,11 @@ public:
 
 	//根据设备的ID找对应的通信类
 	CSerialPortService* QueryComBySensorID(int nSensorID);
+
+	//所有传感器开始采集
+	void StartSensorCollect();
+
+	void StopSensorCollect();
 private:
 	CSensorComManager(void);
 	~CSensorComManager(void);

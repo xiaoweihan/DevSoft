@@ -17,10 +17,8 @@ Histroy:
 #include "Log.h"
 #include "Utility.h"
 #include "SensorIDGenerator.h"
-#include "SensorComManager.h"
 #include "SensorDataManager.h"
 #include "SerialPortService.h"
-#include "GridDisplayColumnInfo.h"
 //定制的删除器
 static void DeleteFunction(std::ifstream* pReader)
 {
@@ -118,36 +116,6 @@ bool CSensorConfig::LoadSensorConfig( void )
 		return false;
 	}
 	return true;
-}
-
-/*****************************************************************************
-* @FunctionName : GetSensorConfigBySensorName
-* @FunctionDestription : 根据传感器名称获取传感器配置信息
-* @author : xiaowei.han
-* @date : 2017/3/25 10:26
-* @version : ver 1.0
-* @inparam :
-* @outparam: 
-* @return : 
-*****************************************************************************/
-bool CSensorConfig::GetSensorConfigBySensorName( const std::string& strSensorName,LP_SENSOR_CONFIG_ELEMENT pConfig )
-{
-	bool bResult = false;
-	if (nullptr == pConfig || strSensorName.empty())
-	{
-		return bResult;
-	}
-
-	BOOST_FOREACH(auto& Element,m_SensorConfigArray)
-	{
-		if (Element.strSensorName == strSensorName)
-		{
-			*pConfig = Element;
-			bResult = true;
-			break;
-		}
-	}
-	return bResult;
 }
 
 bool CSensorConfig::LoadSensorList( rapidjson::Document& Parser )
@@ -365,11 +333,12 @@ bool CSensorConfig::LoadSensorList( rapidjson::Document& Parser )
 
 bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 {
+
 	if (!Parser.HasMember("ComConfig"))
 	{
 		return false;
 	}
-
+#if 0
 	const rapidjson::Value& ComArray = Parser["ComConfig"];
 
 	if (ComArray.IsArray())
@@ -433,57 +402,113 @@ bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 					continue;
 				}
 				ComElement.bUseFlowControl = (*Iter)["UseFlowControl"].GetBool();
-				//添加传感器
-				int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(ComElement.strSensorName);
-				if (nSensorID >= 0)
-				{
-					//添加对应SensorID的数据
-					CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
-					//添加通信类
-					CSensorComManager::CreateInstance().AddSensorCom(nSensorID);
-					CSerialPortService* pCom = CSensorComManager::CreateInstance().QueryComBySensorID(nSensorID);
-					if (nullptr != pCom)
-					{
-						//通信配置
-						COMPROPERTY SensorComOption;
-						SensorComOption.nBaudRate = ComElement.nBaudRate;
-						SensorComOption.nDataBits = ComElement.nDataBits;
-						SensorComOption.nPairty = ComElement.nPairty;
-						SensorComOption.nStopBits = ComElement.nStopBits;
-						if (ComElement.bUseFlowControl)
-						{
-							SensorComOption.nFlowControl = 1;
-						}
-						else
-						{
-							SensorComOption.nFlowControl = 0;
-						}
-						pCom->SetSerialPortOption(ComElement.nComIndex,SensorComOption);
-					}
 
+
+
+				//通信配置
+				COMPROPERTY SensorComOption;
+				SensorComOption.nBaudRate = ComElement.nBaudRate;
+				SensorComOption.nDataBits = ComElement.nDataBits;
+				SensorComOption.nPairty = ComElement.nPairty;
+				SensorComOption.nStopBits = ComElement.nStopBits;
+				if (ComElement.bUseFlowControl)
+				{
+					SensorComOption.nFlowControl = 1;
 				}
-				ComElement.nSensorID = nSensorID;
+				else
+				{
+					SensorComOption.nFlowControl = 0;
+				}
+				CSerialPortService::CreateInstance().SetSerialPortOption(ComElement.nComIndex,SensorComOption);
+				//开启
+				CSerialPortService::CreateInstance().StartSerialPortService();
+
 				m_SensorComConfigArray.push_back(ComElement);
 			}
 		}
 	}
+#endif
 
+	const rapidjson::Value& ComArray = Parser["ComConfig"];
 
-
-	GRID_DISPLAY_INFO TempInfo;
-	TempInfo.strHeadName = _T("当前");
-	COLUMN_INFO TempColumnInfo;
-	TempColumnInfo.strColumnName = _T("t(s)时间");
-	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);
-
-	BOOST_FOREACH(auto& v,m_SensorComConfigArray)
+	SENSOR_COM_CONFIG_ELEMENT ComElement;
+	if (ComArray.IsObject())
 	{
-		TempColumnInfo.Reset();
-		TempColumnInfo.strColumnName = v.strSensorName.c_str();
-		TempColumnInfo.nSensorID = v.nSensorID;
-		TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);	
+		//// 传感器名称
+		//if (!ComArray.HasMember("SensorName") || !ComArray["SensorName"].IsString())
+		//{
+		//	return false;
+		//}
+
+		//ComElement.strSensorName = Utility::ConverUTF8ToGB2312(ComArray["SensorName"].GetString());
+
+		// 端口号
+		if (!ComArray.HasMember("PortName") || !ComArray["PortName"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nComIndex = ComArray["PortName"].GetInt();
+
+		// 校验类型
+		if (!ComArray.HasMember("Pairty") || !ComArray["Pairty"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nPairty = ComArray["Pairty"].GetInt();
+
+		// 停止位
+		if (!ComArray.HasMember("StopBits") || !ComArray["StopBits"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nStopBits = ComArray["StopBits"].GetInt();
+
+		// 通信字节位数
+		if (!ComArray.HasMember("DataBits") || !ComArray["DataBits"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nDataBits = ComArray["DataBits"].GetInt();
+
+		// 波特率
+		if (!ComArray.HasMember("BaudRate") || !ComArray["BaudRate"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nBaudRate = ComArray["BaudRate"].GetInt();
+
+		// 是否使用流控
+		if (!ComArray.HasMember("UseFlowControl") || !ComArray["UseFlowControl"].IsBool())
+		{
+			return false;
+		}
+		ComElement.bUseFlowControl = ComArray["UseFlowControl"].GetBool();
+
+		m_SensorComConfig = ComElement;
+		//通信配置
+		COMPROPERTY SensorComOption;
+		SensorComOption.nBaudRate = ComElement.nBaudRate;
+		SensorComOption.nDataBits = ComElement.nDataBits;
+		SensorComOption.nPairty = ComElement.nPairty;
+		SensorComOption.nStopBits = ComElement.nStopBits;
+		if (ComElement.bUseFlowControl)
+		{
+			SensorComOption.nFlowControl = 1;
+		}
+		else
+		{
+			SensorComOption.nFlowControl = 0;
+		}
+		CSerialPortService::CreateInstance().SetSerialPortOption(ComElement.nComIndex,SensorComOption);
+		//开启
+		CSerialPortService::CreateInstance().StartSerialPortService();
+
 	}
-	CGridDisplayColumnInfo::CreateInstance().AddDisplayColumnInfo(TempInfo);
 	return true;
 }
 

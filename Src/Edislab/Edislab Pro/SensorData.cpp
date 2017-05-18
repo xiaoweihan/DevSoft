@@ -57,15 +57,17 @@ void CSensorData::GetSensorData(std::vector<float>& SensorDataList)
 	}
 }
 
-float CSensorData::GetSensorData( int nIndex )
+
+bool CSensorData::GetSensorData(int nIndex,float& fValue)
 {
 	using namespace boost;
 	lock_guard<mutex> Lock(m_DataLock);
 
 	if (nIndex < 0 || nIndex >= (int)m_SensorDataList.size())
 	{
-		return 0.0f;
+		return false;
 	}
 
-	return m_SensorDataList[nIndex];
+	fValue = m_SensorDataList[nIndex];
+	return true;
 }

@@ -269,7 +269,6 @@
     <ClInclude Include="Observable.h" />
     <ClInclude Include="Observer.h" />
     <ClInclude Include="Resource.h" />
-    <ClInclude Include="SensorComManager.h" />
     <ClInclude Include="SensorConfig.h" />
     <ClInclude Include="SensorData.h" />
     <ClInclude Include="SensorDataManager.h" />
@@ -327,7 +326,6 @@
     <ClCompile Include="MainFrm.cpp" />
     <ClCompile Include="Observable.cpp" />
     <ClCompile Include="Observer.cpp" />
-    <ClCompile Include="SensorComManager.cpp" />
     <ClCompile Include="SensorConfig.cpp" />
     <ClCompile Include="SensorData.cpp" />
     <ClCompile Include="SensorDataManager.cpp" />
