@@ -228,9 +228,6 @@
     <ClInclude Include="Observable.h">
       <Filter>ObserverModal</Filter>
     </ClInclude>
-    <ClInclude Include="GridControlFactory.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
     <ClInclude Include="GridCtrlBase.h">
       <Filter>GridCtrl</Filter>
     </ClInclude>
@@ -238,12 +235,6 @@
       <Filter>GridCtrl</Filter>
     </ClInclude>
     <ClInclude Include="GridDefine.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
-    <ClInclude Include="GridViewManager.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
-    <ClInclude Include="CustomLabGridCtrl.h">
       <Filter>GridCtrl</Filter>
     </ClInclude>
     <ClInclude Include="DlgDeviceSet.h">
@@ -410,19 +401,10 @@
     <ClCompile Include="Observable.cpp">
       <Filter>ObserverModal</Filter>
     </ClCompile>
-    <ClCompile Include="GridControlFactory.cpp">
-      <Filter>GridCtrl</Filter>
-    </ClCompile>
     <ClCompile Include="GridCtrlBase.cpp">
       <Filter>GridCtrl</Filter>
     </ClCompile>
     <ClCompile Include="GridDataManager.cpp">
-      <Filter>GridCtrl</Filter>
-    </ClCompile>
-    <ClCompile Include="GridViewManager.cpp">
-      <Filter>GridCtrl</Filter>
-    </ClCompile>
-    <ClCompile Include="CustomLabGridCtrl.cpp">
       <Filter>GridCtrl</Filter>
     </ClCompile>
     <ClCompile Include="ChartXY.cpp">

@@ -2,7 +2,6 @@
 
 #include "BaseDialog.h"
 #include "WidgetLayout.h"
-#include "GridControlFactory.h"
 // CDlgGridPanel 对话框
 
 class CDlgGridPanel : public CBaseDialog
@@ -23,8 +22,6 @@ public:
 	int GetWidgetNum(void) const;
 
 private:
-	//数据理器
-	CGridControlFactory m_Grid;
 	//布局器
 	CWidgetLayout m_WidgetLayout;
 	//窗口

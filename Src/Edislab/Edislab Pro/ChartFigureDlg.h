@@ -47,4 +47,5 @@ public:
 	afx_msg void OnChartZoomIn();
 	afx_msg void OnChartZoomOut();
 	afx_msg void OnChartShowAll();
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 };

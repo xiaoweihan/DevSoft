@@ -85,7 +85,7 @@ BOOL CBaseDialog::PreTranslateMessage(MSG* pMsg)
 			return TRUE;
 		}
 	}
-#if 1
+#if 0
 	if (WM_LBUTTONDOWN == pMsg->message||WM_RBUTTONDOWN==pMsg->message)
 	{
 		CWnd* parent = GetParent();

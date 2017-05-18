@@ -34,16 +34,6 @@ CGridDisplayColumnInfo::~CGridDisplayColumnInfo(void)
 
 void CGridDisplayColumnInfo::InitGridDisplayInfo()
 {
-	GRID_DISPLAY_INFO TempInfo;
-	TempInfo.strHeadName = _T("当前");
-	COLUMN_INFO TempColumnInfo;
-	TempColumnInfo.strColumnName = _T("t(s)时间");
-	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);
-	TempColumnInfo.Reset();
-	TempColumnInfo.strColumnName = _T("p(kpa)压强");
-	TempColumnInfo.nSensorID = 1;
-	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);
-	m_HeaderInfoArray.push_back(TempInfo);
 }
 
 /*******************************************************************
@@ -145,6 +135,11 @@ int CGridDisplayColumnInfo::QuerySensorIDByColumnName(const CString& strColumnNa
 		}
 	}
 	return -1;
+}
+
+void CGridDisplayColumnInfo::AddDisplayColumnInfo( const GRID_DISPLAY_INFO& GridColumnInfo )
+{
+	m_HeaderInfoArray.push_back(GridColumnInfo);
 }
 
 CGridDisplayColumnInfo CGridDisplayColumnInfo::s_obj;

@@ -473,7 +473,7 @@ void HandleDelElement(CEdislabProView* pView)
 		CDlgTabPanel* tabPanel = pView->GetCurrentPage();
 		if(tabPanel)
 		{
-			tabPanel->DelWnd(tabPanel->GetActiveDlg());
+			tabPanel->DelWnd();
 		}
 	}
 }

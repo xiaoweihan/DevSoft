@@ -5,21 +5,29 @@
 #include "SensorIDGenerator.h"
 #include "SensorDataManager.h"
 #include "SensorData.h"
+#include "Utility.h"
+//接收缓冲区的大小
+const int MAX_BUFFER_SIZE = 100;
 CSerialPortService::CSerialPortService():
 	m_bLoop(false),
-	m_nSerialPort(-1)
+	m_nSerialPort(-1),
+	m_pDeviceNameBuffer(nullptr),
+	m_nDeviceNameBufferLength(0),
+	m_bCopyDeviceName(false)
 {
 }
 
 
 CSerialPortService::~CSerialPortService()
 {
+	DELETE_ARRAY_POINTER(m_pDeviceNameBuffer);
+	m_nDeviceNameBufferLength = 0;
 }
 
 //开启串口服务
 void CSerialPortService::StartSerialPortService(void)
 {
-	char szCom[100] = { 0 };
+	char szCom[MAX_BUFFER_SIZE] = { 0 };
 
 	sprintf_s(szCom, "\\\\.\\COM%d", m_nSerialPort);
 
@@ -100,8 +108,7 @@ void CSerialPortService::ReceiveProc(void)
 
 void CSerialPortService::HandleDeviceOnOffMsg(void)
 {
-	static bool bSample = false;
-	BYTE szDeviceName[100] = { 0 };
+	BYTE szDeviceName[MAX_BUFFER_SIZE] = { 0 };
 	//再接收一个字节
 	BYTE chLength = 0;
 	unsigned int nReadByte = 0;
@@ -125,42 +132,19 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 							//获取传感器名称长度
 							int nDeviceNameLength = pData[2];
 							memcpy(szDeviceName, pData + 3, nDeviceNameLength);
+							//拷贝数据名称
+							CopyDeviceName(pData + 3,nDeviceNameLength);
+							//下线通知
 							if (0x00 == pData[chLength])
 							{
 								NECESSARY_LOG("the device [%s] is off.",szDeviceName);
 								//从传感器ID管理中删除
 								CSensorIDGenerator::CreateInstance().DelSensor(std::string((char*)szDeviceName));
 							}
+							//上限通知
 							else
 							{
 								NECESSARY_LOG("the device [%s] is on.",szDeviceName);
-								//开始采集
-								if (!bSample)
-								{ 
-									BYTE Bffer[18] = { 0 };
-									Bffer[0] = 0xAB;
-									Bffer[1] = 0x10;
-									Bffer[2] = 0x0D;
-									Bffer[3] = 0xB4;
-									Bffer[4] = 0xF3;
-									Bffer[5] = 0xC6;
-									Bffer[6] = 0xF8;
-									Bffer[7] = 0xD1;
-									Bffer[8] = 0xB9;
-									Bffer[9] = 0xC7;
-									Bffer[10] = 0xBF;
-									Bffer[11] = 0x5B;
-									Bffer[12] = 0x4B;
-									Bffer[13] = 0x70;
-									Bffer[14] = 0x61;
-									Bffer[15] = 0x5D;
-									Bffer[16] = 0x00;
-									Bffer[17] = 0x83;
-									
-									unsigned int nWriteLength = 0;
-									m_Com.Write(Bffer, sizeof(Bffer), nWriteLength);
-
-								}
 							}
 						}
 					}
@@ -174,7 +158,7 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 
 void CSerialPortService::HandleDeviceDataMsg(void)
 {
-	BYTE szDeviceName[100] = { 0 };
+	BYTE szDeviceName[MAX_BUFFER_SIZE] = { 0 };
 	//再接收一个字节
 	BYTE chLength = 0;
 	unsigned int nReadByte = 0;
@@ -198,29 +182,25 @@ void CSerialPortService::HandleDeviceDataMsg(void)
 							//获取传感器名称长度
 							int nDeviceNameLength = pData[2];
 							memcpy(szDeviceName, pData + 3, nDeviceNameLength);
+							//拷贝数据名称
+							CopyDeviceName(pData + 3,nDeviceNameLength);
 							//获取数据
 							float fValue = 0.0f;
 							memcpy(&fValue, pData + 3 + nDeviceNameLength, 4);
 							if (fValue > 0)
 							{
 								NECESSARY_LOG("the device [%s] data is [%.1f].",szDeviceName,fValue);
-
 								//根据传感器名称获取ID
 								int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(std::string((char*)szDeviceName));
-
 								if (nSensorID >= 0)
 								{
 									//根据ID获取数据
 									CSensorData* pSensorData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
-
 									if (nullptr != pSensorData)
 									{
 										pSensorData->AddSensorData(fValue);
 									}
-
 								}
-
-
 							}			
 						}
 					}
@@ -249,5 +229,26 @@ BYTE CSerialPortService::CalCRC8( BYTE* pBuf,unsigned int nsize )
 		pBuf++;
 	}
 	return crc;
+}
+
+void CSerialPortService::CopyDeviceName( BYTE* pData,int nDataLength )
+{
+	if (nullptr == pData || 0 == nDataLength)
+	{
+		return;
+	}
+
+	if (m_bCopyDeviceName)
+	{
+		DELETE_ARRAY_POINTER(m_pDeviceNameBuffer);
+		m_nDeviceNameBufferLength = 0;
+		m_pDeviceNameBuffer = new BYTE[nDataLength];
+		if (nullptr != m_pDeviceNameBuffer)
+		{
+			memcpy(m_pDeviceNameBuffer,pData,nDataLength);
+			m_nDeviceNameBufferLength = nDataLength;
+			m_bCopyDeviceName = false;
+		}
+	}
 }
 

@@ -4,7 +4,6 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "DlgGridPanel.h"
-//#include "GridControlFactory.h"
 #include "DlgGridContainer.h"
 #include "Log.h"
 // CDlgGridPanel 对话框
@@ -89,10 +88,6 @@ void CDlgGridPanel::CreatePanel( void )
 //添加新的想
 void CDlgGridPanel::addPanel()
 {
-#if 0
-	CWnd* pWnd = m_Grid.AddGridCtrl(this);
-	m_vecPanel.push_back(pWnd);
-#endif
 	CDlgGridContainer* pWnd = new CDlgGridContainer(this);
 	if (nullptr == pWnd)
 	{
@@ -126,8 +121,6 @@ void CDlgGridPanel::delPanel(CWnd* pDlg)
 				break;
 			}
 		}
-		
-		//m_Grid.RemoveGridCtrl(pDlg);
 		delete pDlg;
 		pDlg = nullptr;
 	}

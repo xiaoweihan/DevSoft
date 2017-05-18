@@ -12,7 +12,9 @@
 #include "GridDisplayColumnInfo.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
+#include "DlgTabPanel.h"
 #include "Msg.h"
+#include "Global.h"
 const int TIMER_ID = 1;
 const int TIMER_GAP = 3000;
 // CDlgGridContainer 对话框
@@ -88,16 +90,12 @@ BOOL CDlgGridContainer::OnInitDialog()
 {
 	CBCGPDialog::OnInitDialog();
 	EnableVisualManagerStyle(TRUE,TRUE);
-	CSensorDataManager::CreateInstance().AddSensorData(1);
+	//if (!m_pYieldDataThread)
+	//{
+	//	m_bLoop = true;
 
-	if (!m_pYieldDataThread)
-	{
-		m_bLoop = true;
-
-		m_pYieldDataThread = boost::make_shared<boost::thread>(boost::bind(&CDlgGridContainer::YieldDataProc,this));
-	}
-
-
+	//	m_pYieldDataThread = boost::make_shared<boost::thread>(boost::bind(&CDlgGridContainer::YieldDataProc,this));
+	//}
 	if (NULL == m_DisplayGrid.GetSafeHwnd())
 	{
 		std::vector<HEADRER_INFO> HeaderInfoArray;
@@ -122,11 +120,10 @@ BOOL CDlgGridContainer::OnInitDialog()
 			m_DisplayGrid.SetDisplayVirtualRows(60);
 			m_DisplayGrid.SetCallBack(GridCallback);
 			m_DisplayGrid.Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
-			//m_DisplayGrid.FillData();
 		}	
 	}
 	SetTimer(TIMER_ID,TIMER_GAP,NULL);
-	return TRUE;  // return TRUE unless you set the focus to a control
+	return TRUE;
 	// 异常: OCX 属性页应返回 FALSE
 }
 
@@ -138,7 +135,9 @@ void CDlgGridContainer::OnSize(UINT nType, int cx, int cy)
 	// TODO: 在此处添加消息处理程序代码
 	if (NULL != m_DisplayGrid.GetSafeHwnd())
 	{
-		m_DisplayGrid.MoveWindow(0,0,cx,cy);
+		CRect rc(0,0,cx,cy);
+		rc.DeflateRect(5,5);
+		m_DisplayGrid.MoveWindow(&rc);
 	}
 }
 
@@ -147,12 +146,31 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 {
 	// TODO: 在此添加专用代码和/或调用基类
 
-	if (pMsg->message == WM_KEYDOWN)
+
+	switch (pMsg->message)
 	{
-		if (VK_ESCAPE == pMsg->wParam || VK_RETURN == pMsg->wParam)
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
 		{
-			return TRUE;
+			CWnd* pGridPanel = GetParent();
+
+			if (nullptr != pGridPanel)
+			{
+				if (nullptr != pGridPanel)
+				{
+					CDlgTabPanel* pTabWnd = dynamic_cast<CDlgTabPanel*>(pGridPanel->GetParent());
+
+					if (nullptr != pTabWnd)
+					{
+						pTabWnd->SetActive(CDlgTabPanel::GRID_INDEX,this);
+					}
+				}
+			}
 		}
+		break;
+	default:
+		break;
 	}
 
 	if (WM_LBUTTONDOWN == pMsg->message|| WM_RBUTTONDOWN == pMsg->message)
@@ -161,6 +179,14 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 		if (NULL != pWnd)
 		{
 			pWnd->PostMessage(WM_NOTIFY_ACTIVE_WND_TYPE,0,0);
+		}
+	}
+
+	if (pMsg->message == WM_KEYDOWN)
+	{
+		if (VK_ESCAPE == pMsg->wParam || VK_RETURN == pMsg->wParam)
+		{
+			return TRUE;
 		}
 	}
 
@@ -235,8 +261,58 @@ void CDlgGridContainer::RefreshGrid(void)
 void CDlgGridContainer::OnPaint()
 {
 	CPaintDC dc(this); // device context for painting
-	// TODO: 在此处添加消息处理程序代码
-	// 不为绘图消息调用 CBCGPDialog::OnPaint()
+	//描绘边框
+	CWnd* pGridPanel = GetParent();
+	if(nullptr != pGridPanel)
+	{
+		CDlgTabPanel* pTabPanel = dynamic_cast<CDlgTabPanel*>(pGridPanel->GetParent());
+		if(nullptr != pTabPanel)
+		{
+			CRect rc;
+			GetClientRect(rc);
+			if(this == pTabPanel->GetActiveDlg())//当前窗口激活
+			{
+				CPen BoradrPen;
+				BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
+				CPen* pOldPen = dc.SelectObject(&BoradrPen);
+				
+				dc.MoveTo(rc.left,rc.top);
+				dc.LineTo(rc.right,rc.top);
+
+				dc.MoveTo(rc.right,rc.top);
+				dc.LineTo(rc.right,rc.bottom);
+
+				dc.MoveTo(rc.right,rc.bottom);
+				dc.LineTo(rc.left,rc.bottom);
+
+				dc.MoveTo(rc.left,rc.bottom);
+				dc.LineTo(rc.left,rc.top);
+
+				dc.SelectObject(pOldPen);
+				BoradrPen.DeleteObject();
+			}
+			else
+			{
+				CPen BoradrPen;
+				BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
+				CPen* pOldPen = dc.SelectObject(&BoradrPen);
+				dc.MoveTo(rc.left,rc.top);
+				dc.LineTo(rc.right,rc.top);
+
+				dc.MoveTo(rc.right,rc.top);
+				dc.LineTo(rc.right,rc.bottom);
+
+				dc.MoveTo(rc.right,rc.bottom);
+				dc.LineTo(rc.left,rc.bottom);
+
+				dc.MoveTo(rc.left,rc.bottom);
+				dc.LineTo(rc.left,rc.top);
+
+				dc.SelectObject(pOldPen);
+				BoradrPen.DeleteObject();
+			}
+		}
+	}
 }
 
 void CDlgGridContainer::YieldDataProc( void )

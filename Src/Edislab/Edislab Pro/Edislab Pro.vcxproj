@@ -234,7 +234,6 @@
     <ClInclude Include="CParagraphFormat.h" />
     <ClInclude Include="CSelection.h" />
     <ClInclude Include="CustomGrid.h" />
-    <ClInclude Include="CustomLabGridCtrl.h" />
     <ClInclude Include="DataDefine.h" />
     <ClInclude Include="DlgAcquirationPara.h" />
     <ClInclude Include="DlgAddPage.h" />
@@ -257,13 +256,11 @@
     <ClInclude Include="GaugeDlg.h" />
     <ClInclude Include="GaugeManager.h" />
     <ClInclude Include="Global.h" />
-    <ClInclude Include="GridControlFactory.h" />
     <ClInclude Include="GridCtrlBase.h" />
     <ClInclude Include="GridDataManager.h" />
     <ClInclude Include="GridDefine.h" />
     <ClInclude Include="GridDisplayColumnInfo.h" />
     <ClInclude Include="GridView.h" />
-    <ClInclude Include="GridViewManager.h" />
     <ClInclude Include="Lock.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Macro.h" />
@@ -300,7 +297,6 @@
     <ClCompile Include="ConcreteTabWnd.cpp" />
     <ClCompile Include="ConverEncode.cpp" />
     <ClCompile Include="CustomGrid.cpp" />
-    <ClCompile Include="CustomLabGridCtrl.cpp" />
     <ClCompile Include="DlgAcquirationPara.cpp" />
     <ClCompile Include="DlgAddPage.cpp" />
     <ClCompile Include="DlgChartSet.cpp" />
@@ -322,12 +318,10 @@
     <ClCompile Include="GaugeManager.cpp" />
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="GlobalDataManager.cpp" />
-    <ClCompile Include="GridControlFactory.cpp" />
     <ClCompile Include="GridCtrlBase.cpp" />
     <ClCompile Include="GridDataManager.cpp" />
     <ClCompile Include="GridDisplayColumnInfo.cpp" />
     <ClCompile Include="GridView.cpp" />
-    <ClCompile Include="GridViewManager.cpp" />
     <ClCompile Include="Lock.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MainFrm.cpp" />

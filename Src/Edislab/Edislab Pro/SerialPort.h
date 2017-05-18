@@ -1,5 +1,5 @@
-#ifndef BASHLIB_H
-#define BASHLIB_H
+#ifndef SERIAL_PORT_H
+#define SERIAL_PORT_H
 #include <Windows.h>
 
 //串口属性结构体定义

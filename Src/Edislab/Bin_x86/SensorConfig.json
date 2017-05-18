@@ -7,6 +7,15 @@
 		"DataBits": 8,
 		"BaudRate": 115200,
 		"UseFlowControl": false
+	},
+	{
+		"SensorName": "温度[℃]",
+		"PortName": 2,
+		"Pairty": 0,
+		"StopBits": 0,
+		"DataBits": 8,
+		"BaudRate": 115200,
+		"UseFlowControl": false
 	}],
 	"SensorConfig": [{
 		"SensorID": 1,

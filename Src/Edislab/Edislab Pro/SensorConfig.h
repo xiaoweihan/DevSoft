@@ -11,8 +11,8 @@ Histroy:
 #include <vector>
 #include <boost/thread/mutex.hpp>
 #include <string>
+#include <rapidjson/document.h>
 #include "Type.h"
-#define COM_TEST (1)
 class CSensorConfig
 {
 
@@ -29,6 +29,10 @@ public:
 	//根据传感器名称获取传感器COM的配置
 	bool GetSensorConfigBySensorName(const std::string& strSensorName,LP_SENSOR_CONFIG_ELEMENT pConfig);
 private:
+	//加载传感器列表信息
+	bool LoadSensorList(rapidjson::Document& Parser);
+	//加载传感器通信配置信息
+	bool LoadSensorComList(rapidjson::Document& Parser);
 	//锁
 	boost::mutex m_RWLock;
 	//保存传感器的配置信息

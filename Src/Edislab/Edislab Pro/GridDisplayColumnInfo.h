@@ -63,6 +63,9 @@ public:
 
 	//根据列名称获取对应的传感器ID
 	int QuerySensorIDByColumnName(const CString& strColumnName);
+
+	//添加列信息
+	void AddDisplayColumnInfo(const GRID_DISPLAY_INFO& GridColumnInfo);
 protected:
 	CGridDisplayColumnInfo(void);
 	~CGridDisplayColumnInfo(void);

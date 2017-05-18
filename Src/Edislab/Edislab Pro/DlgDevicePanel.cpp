@@ -107,7 +107,6 @@ void CDlgDevicePanel::addPanel()
 }
 void CDlgDevicePanel::delPanel(CWnd* pDlg)
 {
-#if 1
 	if(pDlg)
 	{
 		m_WidgetLayout.DelWidget(pDlg);
@@ -130,9 +129,7 @@ void CDlgDevicePanel::delPanel(CWnd* pDlg)
 		m_dataManager.delGaugeDlg(dynamic_cast<GaugeDlg*>(pDlg));
 		delete pDlg;
 		pDlg = NULL;
-	}
-#endif
-	
+	}	
 }
 void CDlgDevicePanel::DestroyPanel( void )
 {

@@ -17,9 +17,6 @@ public:
 	//开启服务
 	void StartSerialPortService(void);
 	void StopSerialPortService(void);
-	//接收缓冲区的大小
-	enum {MAX_BUFFER_SIZE = 1024};
-
 private:
 	void ReceiveProc(void);
 
@@ -31,15 +28,15 @@ private:
 
 	//进行CRC校验和
 	BYTE CalCRC8(BYTE* pBuf,unsigned int nsize);
+
+	//拷贝数据名称
+	void CopyDeviceName(BYTE* pData,int nDataLength);
 private:
-	//默认的接收缓冲区大小
-	int m_nRecvBufferSize;
+	//存放设备名称的数据
+	BYTE* m_pDeviceNameBuffer;
 
-	//缓冲区已经接收的数据长度
-	int m_nRecvDataLength;
-
-	//接收缓冲区
-	BYTE m_RecvBuffer[MAX_BUFFER_SIZE];
+	//存放设备名称数据的长度
+	int m_nDeviceNameBufferLength;
 
 	//串口号
 	int m_nSerialPort;
@@ -53,6 +50,9 @@ private:
 
 	//串口类
 	CHandleCom m_Com;
+
+	//是否拷贝设备名称
+	bool m_bCopyDeviceName;
 };
 
 #endif

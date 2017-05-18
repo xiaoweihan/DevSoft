@@ -507,3 +507,10 @@ void CCustomGrid::OnTimer(UINT_PTR nIDEvent)
 
 	CBCGPGridCtrl::OnTimer(nIDEvent);
 }
+
+
+BOOL CCustomGrid::PreTranslateMessage(MSG* pMsg)
+{
+	// TODO: 在此添加专用代码和/或调用基类
+	return CBCGPGridCtrl::PreTranslateMessage(pMsg);
+}
