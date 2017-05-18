@@ -1,7 +1,10 @@
 #include "stdafx.h"
 #include "SerialPortService.h"
 #include <boost/bind.hpp>
-#include <iostream>
+#include "Log.h"
+#include "SensorIDGenerator.h"
+#include "SensorDataManager.h"
+#include "SensorData.h"
 CSerialPortService::CSerialPortService():
 	m_bLoop(false)
 {
@@ -12,44 +15,55 @@ CSerialPortService::~CSerialPortService()
 {
 }
 
+//开启串口服务
 void CSerialPortService::StartSerialPortService(void)
 {
-
 	char szCom[100] = { 0 };
 
 	sprintf_s(szCom, "\\\\.\\COM%d", m_nSerialPort);
 
+	//打开串口
 	if (!m_Com.Open(szCom))
 	{
+		ERROR_LOG("open com failed.");
 		return;
 	}
 
+	//设置通信选项
 	if (!m_Com.SetComProperty(&m_SerialPortOpt))
 	{
+		ERROR_LOG("SetComProperty failed.");
 		return;
 	}
 
+	//设置读取的超时时间
 	if (!m_Com.SetTimeout(1000))
 	{
+		ERROR_LOG("SetTimeout failed.");
 		return;
 	}
 
-	m_bLoop = true;
-
-	//开始通信
-	m_pReceThread = boost::make_shared<boost::thread>(boost::bind(&CSerialPortService::ReceiveProc,this));
-
+	//开启读取线程
+	if (m_pReceThread)
+	{
+		m_bLoop = true;
+		//开始通信
+		m_pReceThread = boost::make_shared<boost::thread>(boost::bind(&CSerialPortService::ReceiveProc,this));
+	}
 }
 
+//停止串口服务
 void CSerialPortService::StopSerialPortService(void)
 {
 	m_bLoop = false;
-
-	m_pReceThread->join();
-
+	if (m_pReceThread)
+	{
+		m_pReceThread->join();
+	}
 	m_Com.Close();
 }
 
+//开启接收线程
 void CSerialPortService::ReceiveProc(void)
 {
 	BYTE chHead = 0;
@@ -63,9 +77,11 @@ void CSerialPortService::ReceiveProc(void)
 			{
 				switch (chHead)
 				{
+					//上线或者下线
 				case 0xBA:
 					HandleDeviceOnOffMsg();
 					break;
+					//周期上报数据
 				case 0xBD:
 					HandleDeviceDataMsg();
 					break;
@@ -84,7 +100,6 @@ void CSerialPortService::ReceiveProc(void)
 void CSerialPortService::HandleDeviceOnOffMsg(void)
 {
 	static bool bSample = false;
-	using namespace std;
 	BYTE szDeviceName[100] = { 0 };
 	//再接收一个字节
 	BYTE chLength = 0;
@@ -111,11 +126,22 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 							memcpy(szDeviceName, pData + 3, nDeviceNameLength);
 							if (0x00 == pData[chLength])
 							{
-								cout << szDeviceName << " is off !" << endl;
+								NECESSARY_LOG("the device [%s] is off.",szDeviceName);
+								//从传感器ID管理中删除
+								CSensorIDGenerator::CreateInstance().DelSensor(std::string((char*)szDeviceName));
 							}
 							else
 							{
-								cout << szDeviceName << " is on !" << endl;
+								NECESSARY_LOG("the device [%s] is on.",szDeviceName);
+								//从传感器ID管理中删除
+								int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(std::string((char*)szDeviceName));
+								
+								//添加对应SensorID的数据
+								if (nSensorID >= 0)
+								{
+									CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
+								}
+
 
 								//开始采集
 								if (!bSample)
@@ -157,9 +183,6 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 
 void CSerialPortService::HandleDeviceDataMsg(void)
 {
-
-
-	using namespace std;
 	BYTE szDeviceName[100] = { 0 };
 	//再接收一个字节
 	BYTE chLength = 0;
@@ -184,16 +207,29 @@ void CSerialPortService::HandleDeviceDataMsg(void)
 							//获取传感器名称长度
 							int nDeviceNameLength = pData[2];
 							memcpy(szDeviceName, pData + 3, nDeviceNameLength);
-							
-
 							//获取数据
 							float fValue = 0.0f;
-
 							memcpy(&fValue, pData + 3 + nDeviceNameLength, 4);
-
 							if (fValue > 0)
 							{
-								cout << szDeviceName << " value is: " << fValue << endl;
+								NECESSARY_LOG("the device [%s] data is [%.1f].",szDeviceName,fValue);
+
+								//根据传感器名称获取ID
+								int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(std::string((char*)szDeviceName));
+
+								if (nSensorID >= 0)
+								{
+									//根据ID获取数据
+									CSensorData* pSensorData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
+
+									if (nullptr != pSensorData)
+									{
+										pSensorData->AddSensorData(fValue);
+									}
+
+								}
+
+
 							}			
 						}
 					}
@@ -207,4 +243,20 @@ void CSerialPortService::HandleDeviceDataMsg(void)
 
 }
 
+BYTE CSerialPortService::CalCRC8( BYTE* pBuf,unsigned int nsize )
+{
+	BYTE crc = 0;
+
+	if (nullptr == pBuf || 0 == nsize)
+	{
+		return crc;
+	}
+
+	while (nsize--)
+	{
+		crc ^= *pBuf;
+		pBuf++;
+	}
+	return crc;
+}
 

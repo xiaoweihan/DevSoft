@@ -1,16 +1,14 @@
-#pragma once
+#ifndef SERIAL_PORT_SERVICE_H
+#define SERIAL_PORT_SERVICE_H
 #include <boost/thread.hpp>
 #include <boost/smart_ptr.hpp>
 #include <boost/atomic.hpp>
 #include "SerialPort.h"
-
 class CSerialPortService
 {
 public:
 	CSerialPortService();
 	~CSerialPortService();
-
-
 	void SetSerialPortOption(int nPort, const COMPROPERTY& Options)
 	{
 		m_nSerialPort = nPort;
@@ -31,17 +29,8 @@ private:
 	//处理接收数据信息
 	void HandleDeviceDataMsg(void);
 
-	BYTE CalCRC8(BYTE* pBuf, unsigned int nsize)
-	{
-		BYTE crc = 0;
-		while (nsize--)
-		{
-			crc ^= *pBuf;
-			pBuf++;
-		}
-		return crc;
-	}
-
+	//进行CRC校验和
+	BYTE CalCRC8(BYTE* pBuf,unsigned int nsize);
 private:
 	//默认的接收缓冲区大小
 	int m_nRecvBufferSize;
@@ -66,3 +55,4 @@ private:
 	CHandleCom m_Com;
 };
 
+#endif

@@ -9,12 +9,12 @@ typedef struct _comproperty
 	unsigned int nBaudRate;
 	//通信字节位数
 	int nDataBits;
-	//停止位
-	int nStopBits;//(0:1个停止位 1:1.5个停止位(Linux暂不支持1.5个停止位) 2:2个停止位)
-	//校验类型
-	int nPairty;//(0:不使用校验  1:奇数校验 2:偶数校验 3:标记校验（Linux下没有此项） 4:空格校验)
-	//流控制
-	int nFlowControl;//(0:不使用流控 1:使用硬件流控)
+	//停止位(0:1个停止位 1:1.5个停止位(Linux暂不支持1.5个停止位) 2:2个停止位)
+	int nStopBits;
+	//校验类型(0:不使用校验  1:奇数校验 2:偶数校验 3:标记校验（Linux下没有此项） 4:空格校验)
+	int nPairty;
+	//流控制(0:不使用流控 1:使用硬件流控)
+	int nFlowControl;
 }COMPROPERTY,*LPCOMPROPERTY;
 
 //操作COM口的类

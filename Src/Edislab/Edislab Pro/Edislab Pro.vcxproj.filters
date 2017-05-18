@@ -321,6 +321,12 @@
     <ClInclude Include="DlgGridContainer.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="SerialPort.h">
+      <Filter>Com</Filter>
+    </ClInclude>
+    <ClInclude Include="SerialPortService.h">
+      <Filter>Com</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -493,6 +499,12 @@
     </ClCompile>
     <ClCompile Include="DlgGridContainer.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SerialPort.cpp">
+      <Filter>Com</Filter>
+    </ClCompile>
+    <ClCompile Include="SerialPortService.cpp">
+      <Filter>Com</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
