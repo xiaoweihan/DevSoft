@@ -225,7 +225,6 @@
     <ClInclude Include="CDocuments.h" />
     <ClInclude Include="CFont0.h" />
     <ClInclude Include="CommandEntry.h" />
-    <ClInclude Include="ComImple.h" />
     <ClInclude Include="ChartFigureDlg.h" />
     <ClInclude Include="ChartManager.h" />
     <ClInclude Include="ChartXY.h" />
@@ -237,8 +236,6 @@
     <ClInclude Include="CustomGrid.h" />
     <ClInclude Include="CustomLabGridCtrl.h" />
     <ClInclude Include="DataDefine.h" />
-    <ClInclude Include="DeviceView.h" />
-    <ClInclude Include="DiagramView.h" />
     <ClInclude Include="DlgAcquirationPara.h" />
     <ClInclude Include="DlgAddPage.h" />
     <ClInclude Include="DlgChartSet.h" />
@@ -275,6 +272,7 @@
     <ClInclude Include="Observable.h" />
     <ClInclude Include="Observer.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="SensorComManager.h" />
     <ClInclude Include="SensorConfig.h" />
     <ClInclude Include="SensorData.h" />
     <ClInclude Include="SensorDataManager.h" />
@@ -297,15 +295,12 @@
     <ClCompile Include="ChartManager.cpp" />
     <ClCompile Include="ChartXY.cpp" />
     <ClCompile Include="CommandEntry.cpp" />
-    <ClCompile Include="ComImple.cpp" />
     <ClCompile Include="ChartFigureDlg.cpp" />
     <ClCompile Include="ConcreteSplitAlgorithm.cpp" />
     <ClCompile Include="ConcreteTabWnd.cpp" />
     <ClCompile Include="ConverEncode.cpp" />
     <ClCompile Include="CustomGrid.cpp" />
     <ClCompile Include="CustomLabGridCtrl.cpp" />
-    <ClCompile Include="DeviceView.cpp" />
-    <ClCompile Include="DiagramView.cpp" />
     <ClCompile Include="DlgAcquirationPara.cpp" />
     <ClCompile Include="DlgAddPage.cpp" />
     <ClCompile Include="DlgChartSet.cpp" />
@@ -338,6 +333,7 @@
     <ClCompile Include="MainFrm.cpp" />
     <ClCompile Include="Observable.cpp" />
     <ClCompile Include="Observer.cpp" />
+    <ClCompile Include="SensorComManager.cpp" />
     <ClCompile Include="SensorConfig.cpp" />
     <ClCompile Include="SensorData.cpp" />
     <ClCompile Include="SensorDataManager.cpp" />

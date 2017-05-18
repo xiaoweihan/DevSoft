@@ -95,5 +95,4 @@ private:
 
 	void AdapterLabData(int nLab );
 };
-
 #endif

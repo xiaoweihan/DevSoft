@@ -17,7 +17,10 @@ Histroy:
 #include <fstream>
 #include "Log.h"
 #include "Utility.h"
-
+#include "SensorIDGenerator.h"
+#include "SensorComManager.h"
+#include "SensorDataManager.h"
+#include "SerialPortService.h"
 //定制的删除器
 static void DeleteFunction(std::ifstream* pReader)
 {
@@ -71,8 +74,6 @@ CSensorConfig& CSensorConfig::CreateInstance( void )
 *****************************************************************************/
 bool CSensorConfig::LoadSensorConfig( void )
 {
-
-#if 1
 	std::string strConfigPath = Utility::GetExeDirecory() + std::string("\\SensorConfig.json");
 
 	//判断文件是否存在
@@ -182,7 +183,7 @@ bool CSensorConfig::LoadSensorConfig( void )
 						}
 
 						Element.nSensorCategory =  (*Iter)["SensorCategory"].GetInt();
-						
+
 						// 量程信息
 						if(!Iter->HasMember("RangeInfo") || !(*Iter)["RangeInfo"].IsArray())
 						{
@@ -214,7 +215,7 @@ bool CSensorConfig::LoadSensorConfig( void )
 								continue;
 							}
 
-						    RangeInfo.nDefaultvalue = (*rangeIter)["Defaultvalue"].GetInt();
+							RangeInfo.nDefaultvalue = (*rangeIter)["Defaultvalue"].GetInt();
 
 							// 最小值
 							if (!rangeIter->HasMember("Minvalue") || !(*rangeIter)["Minvalue"].IsInt())
@@ -305,79 +306,107 @@ bool CSensorConfig::LoadSensorConfig( void )
 			}
 		}
 
- 		if (Parser.HasMember("ComConfig"))
- 		{
- 
- 			const rapidjson::Value& ComArray = Parser["ComConfig"];
- 
- 			if (ComArray.IsArray())
- 			{
- 				for (auto Iter = ComArray.Begin(); Iter != ComArray.End(); ++Iter)
- 				{
- 					SENSOR_COM_CONFIG_ELEMENT ComElement;
- 					if (Iter->IsObject())
- 					{
+		if (Parser.HasMember("ComConfig"))
+		{
+
+			const rapidjson::Value& ComArray = Parser["ComConfig"];
+
+			if (ComArray.IsArray())
+			{
+				for (auto Iter = ComArray.Begin(); Iter != ComArray.End(); ++Iter)
+				{
+					SENSOR_COM_CONFIG_ELEMENT ComElement;
+					if (Iter->IsObject())
+					{
 						// 传感器名称
- 						if (!Iter->HasMember("SensorName") || !(*Iter)["SensorName"].IsString())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.strSensorName = Utility::ConverUTF8ToGB2312((*Iter)["SensorName"].GetString());
- 
+						if (!Iter->HasMember("SensorName") || !(*Iter)["SensorName"].IsString())
+						{
+							continue;
+						}
+
+						ComElement.strSensorName = Utility::ConverUTF8ToGB2312((*Iter)["SensorName"].GetString());
+
 						// 端口号
- 						if (!Iter->HasMember("PortName") || !(*Iter)["PortName"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nComIndex = (*Iter)["PortName"].GetInt();
- 
+						if (!Iter->HasMember("PortName") || !(*Iter)["PortName"].IsInt())
+						{
+							continue;
+						}
+
+						ComElement.nComIndex = (*Iter)["PortName"].GetInt();
+
 						// 校验类型
- 						if (!Iter->HasMember("Pairty") || !(*Iter)["Pairty"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nPairty = (*Iter)["Pairty"].GetInt();
- 
+						if (!Iter->HasMember("Pairty") || !(*Iter)["Pairty"].IsInt())
+						{
+							continue;
+						}
+
+						ComElement.nPairty = (*Iter)["Pairty"].GetInt();
+
 						// 停止位
- 						if (!Iter->HasMember("StopBits") || !(*Iter)["StopBits"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nStopBits = (*Iter)["StopBits"].GetInt();
- 
+						if (!Iter->HasMember("StopBits") || !(*Iter)["StopBits"].IsInt())
+						{
+							continue;
+						}
+
+						ComElement.nStopBits = (*Iter)["StopBits"].GetInt();
+
 						// 通信字节位数
- 						if (!Iter->HasMember("DataBits") || !(*Iter)["DataBits"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nDataBits = (*Iter)["DataBits"].GetInt();
- 
+						if (!Iter->HasMember("DataBits") || !(*Iter)["DataBits"].IsInt())
+						{
+							continue;
+						}
+
+						ComElement.nDataBits = (*Iter)["DataBits"].GetInt();
+
 						// 波特率
- 						if (!Iter->HasMember("BaudRate") || !(*Iter)["BaudRate"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nBaudRate = (*Iter)["BaudRate"].GetInt();
- 
+						if (!Iter->HasMember("BaudRate") || !(*Iter)["BaudRate"].IsInt())
+						{
+							continue;
+						}
+
+						ComElement.nBaudRate = (*Iter)["BaudRate"].GetInt();
+
 						// 是否使用流控
- 						if (!Iter->HasMember("UseFlowControl") || !(*Iter)["UseFlowControl"].IsBool())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.bUseFlowControl = (*Iter)["UseFlowControl"].GetBool();
- 
- 						m_SensorComConfigArray.push_back(ComElement);
- 					}
- 				}
- 			}
- 		}
+						if (!Iter->HasMember("UseFlowControl") || !(*Iter)["UseFlowControl"].IsBool())
+						{
+							continue;
+						}
+						ComElement.bUseFlowControl = (*Iter)["UseFlowControl"].GetBool();
+						//添加传感器
+						int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(ComElement.strSensorName);
+						if (nSensorID >= 0)
+						{
+							//添加对应SensorID的数据
+							CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
+							//添加通信类
+							CSensorComManager::CreateInstance().AddSensorCom(nSensorID);
+							CSerialPortService* pCom = CSensorComManager::CreateInstance().QueryComBySensorID(nSensorID);
+							if (nullptr != pCom)
+							{
+								//通信配置
+								COMPROPERTY SensorComOption;
+								SensorComOption.nBaudRate = ComElement.nBaudRate;
+								SensorComOption.nDataBits = ComElement.nDataBits;
+								SensorComOption.nPairty = ComElement.nPairty;
+								SensorComOption.nStopBits = ComElement.nStopBits;
+								if (ComElement.bUseFlowControl)
+								{
+									SensorComOption.nFlowControl = 1;
+								}
+								else
+								{
+									SensorComOption.nFlowControl = 0;
+								}
+								pCom->SetSerialPortOption(ComElement.nComIndex,SensorComOption);
+							}
+
+						}
+						ComElement.nSensorID = nSensorID;
+						m_SensorComConfigArray.push_back(ComElement);
+					}
+				}
+			}
+		}
 
 	}
 	catch (boost::filesystem::filesystem_error& e)
@@ -386,8 +415,6 @@ bool CSensorConfig::LoadSensorConfig( void )
 
 		return false;
 	}
-#endif
-
 	return true;
 }
 
@@ -403,9 +430,7 @@ bool CSensorConfig::LoadSensorConfig( void )
 *****************************************************************************/
 bool CSensorConfig::GetSensorConfigBySensorName( const std::string& strSensorName,LP_SENSOR_CONFIG_ELEMENT pConfig )
 {
-
 	bool bResult = false;
-#if 1
 	if (nullptr == pConfig || strSensorName.empty())
 	{
 		return bResult;
@@ -420,29 +445,7 @@ bool CSensorConfig::GetSensorConfigBySensorName( const std::string& strSensorNam
 			break;
 		}
 	}
-#endif
 	return bResult;
-
 }
-
-#ifdef COM_TEST
-bool CSensorConfig::GetFirstSensorConfig( LP_SENSOR_CONFIG_ELEMENT pConfig )
-{
-#if 0
-	if (nullptr == pConfig)
-	{
-		return false;
-	}
-
-	if (m_SensorConfigArray.empty())
-	{
-		return false;
-	}
-
-	*pConfig = m_SensorConfigArray[0];
-#endif
-	return true;
-}
-#endif
 
 CSensorConfig CSensorConfig::s_SensorConfig;

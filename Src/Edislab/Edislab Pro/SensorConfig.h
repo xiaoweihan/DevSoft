@@ -26,13 +26,8 @@ private:
 public:
 	//加载配置信息
 	bool LoadSensorConfig(void);
-
 	//根据传感器名称获取传感器COM的配置
 	bool GetSensorConfigBySensorName(const std::string& strSensorName,LP_SENSOR_CONFIG_ELEMENT pConfig);
-
-#ifdef COM_TEST
-	bool GetFirstSensorConfig(LP_SENSOR_CONFIG_ELEMENT pConfig);
-#endif
 private:
 	//锁
 	boost::mutex m_RWLock;

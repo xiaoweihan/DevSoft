@@ -7,6 +7,8 @@
 
 #ifndef GLOBAL_H
 #define GLOBAL_H
+
+#if 1
 #include <set>
 #include <vector>
 
@@ -249,6 +251,6 @@ typedef struct _PairIndex
 //
 ////Êý¾ÝÍ·
 //extern vector<PAIRINDEX>		g_LabDataIndex;
-
+#endif
 extern BOOL g_bAutoSelect;
 #endif

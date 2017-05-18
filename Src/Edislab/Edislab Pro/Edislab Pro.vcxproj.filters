@@ -174,12 +174,6 @@
     <ClInclude Include="DlgGridPanel.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="DeviceView.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="DiagramView.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="GridView.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -224,9 +218,6 @@
     </ClInclude>
     <ClInclude Include="ChartManager.h">
       <Filter>ChartFigure</Filter>
-    </ClInclude>
-    <ClInclude Include="ComImple.h">
-      <Filter>Com</Filter>
     </ClInclude>
     <ClInclude Include="Global.h">
       <Filter>Global</Filter>
@@ -327,6 +318,9 @@
     <ClInclude Include="SerialPortService.h">
       <Filter>Com</Filter>
     </ClInclude>
+    <ClInclude Include="SensorComManager.h">
+      <Filter>Com</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -377,12 +371,6 @@
     <ClCompile Include="DlgGridPanel.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="DeviceView.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="DiagramView.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="GridView.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -412,9 +400,6 @@
     </ClCompile>
     <ClCompile Include="ChartFigureDlg.cpp">
       <Filter>ChartFigure</Filter>
-    </ClCompile>
-    <ClCompile Include="ComImple.cpp">
-      <Filter>Com</Filter>
     </ClCompile>
     <ClCompile Include="Global.cpp">
       <Filter>Global</Filter>
@@ -504,6 +489,9 @@
       <Filter>Com</Filter>
     </ClCompile>
     <ClCompile Include="SerialPortService.cpp">
+      <Filter>Com</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorComManager.cpp">
       <Filter>Com</Filter>
     </ClCompile>
   </ItemGroup>

@@ -15,6 +15,16 @@ typedef struct _comproperty
 	int nPairty;
 	//流控制(0:不使用流控 1:使用硬件流控)
 	int nFlowControl;
+
+
+	_comproperty()
+	{
+		nBaudRate = 115200;
+		nDataBits = 8;
+		nStopBits = 0;
+		nPairty = 0;
+		nFlowControl = 0;
+	}
 }COMPROPERTY,*LPCOMPROPERTY;
 
 //操作COM口的类

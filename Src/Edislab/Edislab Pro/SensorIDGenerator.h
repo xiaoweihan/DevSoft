@@ -6,6 +6,7 @@
 class CSensorIDGenerator
 {
 public:
+	//创建单实例
 	static CSensorIDGenerator& CreateInstance(void);
 
 	//根据设备名称查询设备编号
@@ -21,9 +22,12 @@ private:
 	CSensorIDGenerator(void);
 	virtual ~CSensorIDGenerator(void);
 private:
+	//唯一的单实例
 	static CSensorIDGenerator s_Instance;
+	//设备ID生成器
 	static int s_nTypeIndex;
 private:
+	//设备名称与设备ID表
 	std::vector<SENSOR_TYPE_INFO_ELEMENT> m_SensorTypeArray;
 	//锁
 	boost::mutex m_Lock;

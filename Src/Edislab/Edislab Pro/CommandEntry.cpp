@@ -8,7 +8,6 @@
 #include "DlgTabPanel.h"
 #include "DlgPageNameConfig.h"
 #include "Utility.h"
-#include "ComImple.h"
 #include "CApplication.h"
 #include "CDocuments.h"
 #include "CFont0.h"
@@ -19,7 +18,6 @@
 #include "Global.h"
 #include "SensorConfig.h"
 #include "Log.h"
-
 //最大页面数
 const int MAX_PAGE_NUM = 4;
 //表格的最大个数
@@ -555,6 +553,8 @@ void HandleStart(CEdislabProView* pView)
 	{
 		return;
 	}
+
+#if 0
 	//获取第一个传感器
 	SENSOR_CONFIG_ELEMENT TempSensor;
 	if (!CSensorConfig::CreateInstance().GetFirstSensorConfig(&TempSensor))
@@ -598,6 +598,7 @@ void HandleStart(CEdislabProView* pView)
 
 	delete []pBuffer;
 	pBuffer = nullptr;
+#endif
 
 	s_bStartCapture = !s_bStartCapture;
 	
@@ -617,7 +618,7 @@ void HandleAutoSelect(CEdislabProView* pView)
 	}
 
 	g_bAutoSelect = TRUE;
-	COMIPLE.StartCom(pWnd);
+	//COMIPLE.StartCom(pWnd);
 	
 }
 

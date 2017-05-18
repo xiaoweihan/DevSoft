@@ -6,7 +6,8 @@
 #include "SensorDataManager.h"
 #include "SensorData.h"
 CSerialPortService::CSerialPortService():
-	m_bLoop(false)
+	m_bLoop(false),
+	m_nSerialPort(-1)
 {
 }
 
@@ -133,16 +134,6 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 							else
 							{
 								NECESSARY_LOG("the device [%s] is on.",szDeviceName);
-								//从传感器ID管理中删除
-								int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(std::string((char*)szDeviceName));
-								
-								//添加对应SensorID的数据
-								if (nSensorID >= 0)
-								{
-									CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
-								}
-
-
 								//开始采集
 								if (!bSample)
 								{ 

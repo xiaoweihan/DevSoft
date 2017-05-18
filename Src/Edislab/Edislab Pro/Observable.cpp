@@ -6,6 +6,7 @@
 ******************************************************************************************/
 #include "stdafx.h"
 #include "Observable.h"
+
 #include "Observer.h"
 #include "Global.h"
 #include "GlobalDataManager.h"
