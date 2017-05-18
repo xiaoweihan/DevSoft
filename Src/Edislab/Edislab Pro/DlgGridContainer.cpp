@@ -121,7 +121,7 @@ BOOL CDlgGridContainer::OnInitDialog()
 				TempHeaderInfo.Reset();
 			}
 			m_DisplayGrid.SetHeaderInfoArray(HeaderInfoArray);
-			m_DisplayGrid.SetDisplayVirtualRows(10000);
+			m_DisplayGrid.SetDisplayVirtualRows(600);
 			m_DisplayGrid.SetCallBack(GridCallback);
 			m_DisplayGrid.Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
 		}	
