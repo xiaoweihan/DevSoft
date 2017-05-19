@@ -5,9 +5,9 @@
 #include "SerialPort.h"
 
 //串口默认的接受缓冲区大小
-#define  COM_IN_SIZE       (1024)
+#define  COM_IN_SIZE       (1024 * 1024)
 //串口默认的发送缓冲区大小
-#define  COM_OUT_SIZE   (1024)
+#define  COM_OUT_SIZE   (1024 * 1024)
 //不使用流控制
 # define   NO_USE_FLOW_CONTROL            (0)
 //使用硬件流控制(RTS/CTS方式)

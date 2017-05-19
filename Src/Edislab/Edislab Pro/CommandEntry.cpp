@@ -2,6 +2,7 @@
 #include "Edislab Pro.h"
 #include "Edislab ProView.h"
 #include <boost/foreach.hpp>
+#include <boost/thread.hpp>
 #include "CommandEntry.h"
 #include "boost/crc.hpp"
 #include "Msg.h"
@@ -570,6 +571,7 @@ void HandleStart(CEdislabProView* pView)
 	{
 		BOOST_FOREACH(auto& V,SensorNameArray)
 		{
+			//CSerialPortService::CreateInstance().SetSensorFrequence(V,5000);
 			CSerialPortService::CreateInstance().StartSensorCollect(V);
 		}
 	}

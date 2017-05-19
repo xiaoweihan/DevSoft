@@ -18,7 +18,7 @@
 #include "Global.h"
 #include "Utility.h"
 const int TIMER_ID = 1;
-const int TIMER_GAP = 3000;
+const int TIMER_GAP = 1000;
 // CDlgGridContainer ¶Ô»°¿ò
 #pragma warning(disable:4244)
 static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)

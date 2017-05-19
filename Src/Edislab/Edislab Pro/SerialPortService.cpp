@@ -9,7 +9,7 @@
 #include "Msg.h"
 //接收缓冲区的大小
 const int MAX_BUFFER_SIZE = 100;
-const int DEFAULT_TIME_OUT = 1000;
+const int DEFAULT_TIME_OUT = 1500;
 CSerialPortService& CSerialPortService::CreateInstance()
 {
 	return s_obj;
@@ -287,18 +287,24 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 							else
 							{
 								DEBUG_LOG("the device [%s] is on.",szDeviceName);
-								//添加传感器
-								int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(std::string((char*)szDeviceName));
-								if (nSensorID >= 0)
-								{
-									//添加对应SensorID的数据
-									CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
-								}
 
-								//通知设备上线
-								std::string* pDeviceName = new std::string((char*)szDeviceName);
-								//通知设备下线
-								::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pDeviceName,1);
+								//判断传感器是否已经存在
+								if (!CSensorIDGenerator::CreateInstance().IsSensorExist(std::string((char*)szDeviceName)))
+								{
+									//添加传感器
+									int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(std::string((char*)szDeviceName));
+									if (nSensorID >= 0)
+									{
+										//添加对应SensorID的数据
+										CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
+									}
+
+									//通知设备上线
+									std::string* pDeviceName = new std::string((char*)szDeviceName);
+									//通知设备下线
+									::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pDeviceName,1);
+									SetSensorFrequence(std::string((char*)szDeviceName),1000);
+								}
 							}
 						}
 					}

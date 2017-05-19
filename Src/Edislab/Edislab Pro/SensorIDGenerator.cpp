@@ -99,6 +99,25 @@ void CSensorIDGenerator::GetAllSensorName(std::vector<std::string>& SensorNameAr
 	}
 }
 
+bool CSensorIDGenerator::IsSensorExist(const std::string& strSensorName)
+{
+	bool bResult = false;
+	using namespace boost;
+	lock_guard<mutex> Lock(m_Lock);
+
+	BOOST_FOREACH(auto& Element,m_SensorTypeArray)
+	{
+		//如果存在则返回ID
+		if (Element.strSensorName == strSensorName)
+		{
+			bResult = true;
+			break;
+		}
+	}
+
+	return bResult;
+}
+
 int CSensorIDGenerator::s_nTypeIndex = 0;
 
 CSensorIDGenerator CSensorIDGenerator::s_Instance;

@@ -21,6 +21,9 @@ public:
 	//获取所有的传感器名称
 	void GetAllSensorName(std::vector<std::string>& SensorNameArray);
 
+	//判断传感器名称是否存在
+	bool IsSensorExist(const std::string& strSensorName);
+
 private:
 	CSensorIDGenerator(void);
 	virtual ~CSensorIDGenerator(void);
