@@ -9,7 +9,8 @@
 #include "CustomGrid.h"
 #include <algorithm>
 #include <boost/foreach.hpp>
-#include "GridDisplayColumnInfo.h"
+#include "SensorIDGenerator.h"
+#include "Utility.h"
 //默认增加列的宽度
 const int DEFAULT_COLUMN_WIDTH = 20;
 IMPLEMENT_DYNCREATE(CCustomGrid, CBCGPGridCtrl)
@@ -320,7 +321,9 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 
 	auto ColumnPred = [&strColumnName](const CString& strName)->bool
 	{
-		if (strName == strColumnName || CGridDisplayColumnInfo::CreateInstance().QuerySensorIDByColumnName(strName) < 0)
+		CString strAddColumnName = strName;
+		std::string strTempColumnName = Utility::WideChar2MultiByte(strAddColumnName.GetBuffer(0));
+		if (strName == strColumnName || CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strTempColumnName) < 0)
 		{
 			return true;
 		}

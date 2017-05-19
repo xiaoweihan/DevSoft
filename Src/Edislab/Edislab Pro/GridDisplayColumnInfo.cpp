@@ -130,25 +130,25 @@ bool CGridDisplayColumnInfo::IsColumnExistInFixedHeader(const CString& strHeader
 	return true;
 }
 
-int CGridDisplayColumnInfo::QuerySensorIDByColumnName(const CString& strColumnName)
-{
-	if (strColumnName.IsEmpty())
-	{
-		return -1;
-	}
-
-	BOOST_FOREACH(auto& HeaderElement,m_HeaderInfoArray)
-	{
-		BOOST_FOREACH(auto& ColumnElement,HeaderElement.ContainColumnIndexArray)
-		{
-			if (ColumnElement.strColumnName == strColumnName)
-			{
-				return ColumnElement.nSensorID;
-			}
-		}
-	}
-	return -1;
-}
+//int CGridDisplayColumnInfo::QuerySensorIDByColumnName(const CString& strColumnName)
+//{
+//	if (strColumnName.IsEmpty())
+//	{
+//		return -1;
+//	}
+//
+//	BOOST_FOREACH(auto& HeaderElement,m_HeaderInfoArray)
+//	{
+//		BOOST_FOREACH(auto& ColumnElement,HeaderElement.ContainColumnIndexArray)
+//		{
+//			if (ColumnElement.strColumnName == strColumnName)
+//			{
+//				return ColumnElement.nSensorID;
+//			}
+//		}
+//	}
+//	return -1;
+//}
 
 void CGridDisplayColumnInfo::AddDisplayColumnInfo( const GRID_DISPLAY_INFO& GridColumnInfo )
 {

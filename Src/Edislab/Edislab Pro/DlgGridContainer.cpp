@@ -10,11 +10,13 @@
 #include <boost/bind.hpp>
 #include "Log.h"
 #include "GridDisplayColumnInfo.h"
+#include "SensorIDGenerator.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
 #include "DlgTabPanel.h"
 #include "Msg.h"
 #include "Global.h"
+#include "Utility.h"
 const int TIMER_ID = 1;
 const int TIMER_GAP = 3000;
 // CDlgGridContainer 对话框
@@ -34,9 +36,10 @@ static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)
 			if (nCol >= 0 && nRow >= 0)
 			{
 				//获取列名称
-				CString strColumnName = pGridCtrl->GetColumnName(nCol);
+				CString strTempColumnName = pGridCtrl->GetColumnName(nCol);
+				std::string strColumnName = Utility::WideChar2MultiByte(strTempColumnName.GetBuffer(0));
 
-				int nSensorID = CGridDisplayColumnInfo::CreateInstance().QuerySensorIDByColumnName(strColumnName);
+				int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
 				if (nSensorID >= 0)
 				{
 					//根据传感器ID获取传感器数据
