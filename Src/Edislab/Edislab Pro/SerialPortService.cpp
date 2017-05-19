@@ -6,9 +6,10 @@
 #include "SensorDataManager.h"
 #include "SensorData.h"
 #include "Utility.h"
+#include "Msg.h"
 //接收缓冲区的大小
 const int MAX_BUFFER_SIZE = 100;
-
+const int DEFAULT_TIME_OUT = 1000;
 CSerialPortService& CSerialPortService::CreateInstance()
 {
 	return s_obj;
@@ -52,7 +53,7 @@ void CSerialPortService::StartSerialPortService(void)
 	}
 
 	//设置读取的超时时间
-	if (!m_Com.SetTimeout(1000))
+	if (!m_Com.SetTimeout(DEFAULT_TIME_OUT))
 	{
 		ERROR_LOG("SetTimeout failed.");
 		return;
@@ -93,22 +94,17 @@ void CSerialPortService::StartSensorCollect(const std::string& strSensorName)
 	int nSensorNameLength = (int)strSensorName.length();
 	int nFrameLength =  1 + 1 + 1 + nSensorNameLength;
 	int nTotalLength = nFrameLength + 2;
-
 	BYTE* pData = new BYTE[nTotalLength];
-
 	if (nullptr == pData)
 	{
 		return;
 	}
-
 	pData[0] = 0xAB;
 	pData[1] = (BYTE)nFrameLength;
 	pData[2] = (BYTE)nSensorNameLength;
-
 	memcpy(pData + 3,strSensorName.c_str(),nSensorNameLength);
 	pData[nSensorNameLength + 3] = 0x00;
 	pData[nSensorNameLength + 4] = Utility::CalCRC8(pData,nTotalLength - 1);
-
 	unsigned int nWriteBytes = 0;
 	if (m_Com.Write(pData,nTotalLength,nWriteBytes))
 	{
@@ -122,7 +118,6 @@ void CSerialPortService::StartSensorCollect(const std::string& strSensorName)
 		ERROR_LOG("StartSensorCollect [%s] failed.",strSensorName.c_str());
 	}
 	DELETE_ARRAY_POINTER(pData);
-
 }
 
 void CSerialPortService::StopSensorCollect(const std::string& strSensorName)
@@ -131,7 +126,6 @@ void CSerialPortService::StopSensorCollect(const std::string& strSensorName)
 	//{
 	//	return;
 	//}
-
 	if (strSensorName.empty())
 	{
 		return;
@@ -139,22 +133,17 @@ void CSerialPortService::StopSensorCollect(const std::string& strSensorName)
 	int nSensorNameLength = (int)strSensorName.length();
 	int nFrameLength =  1 + 1 + 1 + nSensorNameLength;
 	int nTotalLength = nFrameLength + 2;
-
 	BYTE* pData = new BYTE[nTotalLength];
-
 	if (nullptr == pData)
 	{
 		return;
 	}
-
 	pData[0] = 0xAB;
 	pData[1] = (BYTE)nFrameLength;
 	pData[2] = (BYTE)nSensorNameLength;
-
 	memcpy(pData + 3,strSensorName.c_str(),nSensorNameLength);
 	pData[nSensorNameLength + 3] = 0x01;
 	pData[nSensorNameLength + 4] = Utility::CalCRC8(pData,nTotalLength - 1);
-
 	unsigned int nWriteBytes = 0;
 	if (m_Com.Write(pData,nTotalLength,nWriteBytes))
 	{
@@ -236,20 +225,21 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 							if (0x00 == pData[chLength])
 							{
 								DEBUG_LOG("the device [%s] is off.",szDeviceName);
-
-								//根据名称删除数据
+								//根据名称查询到设备的ID
 								int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(std::string((char*)szDeviceName));
-
+								//根据设备ID删除设备的数据
 								if (nSensorID >= 0)
 								{
 									CSensorDataManager::CreateInstance().DelSensorData(nSensorID);
 								}
-
-
 								//从传感器ID管理中删除
 								CSensorIDGenerator::CreateInstance().DelSensor(std::string((char*)szDeviceName));
+							
+								std::string* pDeviceName = new std::string((char*)szDeviceName);
+								//通知设备下线
+								::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pDeviceName,0);
 							}
-							//上限通知
+							//设备上线通知
 							else
 							{
 								DEBUG_LOG("the device [%s] is on.",szDeviceName);
@@ -261,6 +251,10 @@ void CSerialPortService::HandleDeviceOnOffMsg(void)
 									CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
 								}
 
+								//通知设备上线
+								std::string* pDeviceName = new std::string((char*)szDeviceName);
+								//通知设备下线
+								::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pDeviceName,1);
 							}
 						}
 					}

@@ -5,12 +5,16 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "MainFrm.h"
-//#include "LogImpl.h"
+#include "Edislab ProView.h"
+#include <string>
 #include "Msg.h"
 #include "Utility.h"
 //#include "GlobalDataManager.h"
 #include "SerialPortService.h"
 #include "Global.h"
+#include "SensorConfig.h"
+#include "GridDisplayColumnInfo.h"
+#include "SensorIDGenerator.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -39,6 +43,7 @@ const UINT uiLastUserToolBarId = uiFirstUserToolBarId + iMaxUserToolbars - 1;
 BEGIN_MESSAGE_MAP(CMainFrame, CBCGPFrameWnd)
 	ON_WM_CREATE()
 	ON_MESSAGE(WM_NOTIFY_ACTIVE_WND_TYPE,&CMainFrame::NotifyActiveWnd)
+	ON_MESSAGE(WM_NOTIFY_DETECT_DEVICE,&CMainFrame::NotifyDeviceOnOrOff)
 #if 0
 	ON_COMMAND(ID_SELECT_SENSOR, &CMainFrame::HandleSelctSensor)
 	ON_COMMAND(ID_COLLECT_PARAM, &CMainFrame::HandleCaptureParam)
@@ -173,6 +178,25 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	//创建RibbonBar
 	CreateRibbonBar();
 	SetTimer(TIMER_ID,TIMER_GAP,NULL);
+
+	const SENSOR_COM_CONFIG_ELEMENT& ComConfig = CSensorConfig::CreateInstance().GetComConfig();
+	COMPROPERTY SensorComOption;
+	SensorComOption.nBaudRate = ComConfig.nBaudRate;
+	SensorComOption.nDataBits = ComConfig.nDataBits;
+	SensorComOption.nPairty = ComConfig.nPairty;
+	SensorComOption.nStopBits = ComConfig.nStopBits;
+	if (ComConfig.bUseFlowControl)
+	{
+		SensorComOption.nFlowControl = 1;
+	}
+	else
+	{
+		SensorComOption.nFlowControl = 0;
+	}
+
+	using namespace boost;
+	CSerialPortService::CreateInstance().SetSerialPortOption(ComConfig.nComIndex,SensorComOption);
+	//开启自动监测
 	if (g_bAutoSelect)
 	{	
 		CSerialPortService::CreateInstance().StartSerialPortService();
@@ -1955,4 +1979,46 @@ void CMainFrame::ShowRibbonCatagory( CBCGPRibbonCategory* pCatagory,bool bShow /
 	}
 }
 
+LRESULT CMainFrame::NotifyDeviceOnOrOff( WPARAM wp,LPARAM lp )
+{
+
+	std::string* pDeviceName = (std::string*)wp;
+	int nOnFlag = (int)lp;
+
+	if (nullptr == pDeviceName)
+	{
+		return 0L;
+	}
+	std::string strDeviceName = *pDeviceName;
+	//释放内存
+	delete pDeviceName;
+	pDeviceName = nullptr;
+
+	//设备上线
+	if (nOnFlag)
+	{
+		//如果该设备尚不存在ID
+		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strDeviceName);
+		if (nSensorID < 0)
+		{
+			return 0L;
+		}
+		COLUMN_INFO AddColumnInfo;
+		AddColumnInfo.nSensorID = nSensorID;
+		AddColumnInfo.strColumnName = CString(strDeviceName.c_str());
+		CGridDisplayColumnInfo::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
+	}
+	//设备下线
+	else
+	{
+		CGridDisplayColumnInfo::CreateInstance().RemoveColumnInfo(_T("当前"),CString(strDeviceName.c_str()));
+	}
+	//获取设备名称
+	CEdislabProView* pView = dynamic_cast<CEdislabProView*>(GetActiveView());
+	if (nullptr != pView)
+	{
+		pView->NotifyDetectDevice(strDeviceName,nOnFlag);
+	}
+	return 0L;
+}
 

@@ -37,12 +37,7 @@ static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)
 				CString strColumnName = pGridCtrl->GetColumnName(nCol);
 
 				int nSensorID = CGridDisplayColumnInfo::CreateInstance().QuerySensorIDByColumnName(strColumnName);
-
-				if (nSensorID < 0)
-				{
-					pdi->item.varValue = nRow + 1;
-				}
-				else
+				if (nSensorID >= 0)
 				{
 					//根据传感器ID获取传感器数据
 					CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
@@ -124,7 +119,7 @@ BOOL CDlgGridContainer::OnInitDialog()
 			m_DisplayGrid.SetDisplayVirtualRows(600);
 			m_DisplayGrid.SetCallBack(GridCallback);
 			m_DisplayGrid.Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
-		}	
+		}
 	}
 	SetTimer(TIMER_ID,TIMER_GAP,NULL);
 	return TRUE;
@@ -227,38 +222,37 @@ void CDlgGridContainer::OnDestroy()
 	KillTimer(TIMER_ID);
 }
 
+void CDlgGridContainer::NotifyDetectSensor(const std::string& strDeviceName,int nOnFlag)
+{
+	if (m_DisplayGrid.GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+
+	if (strDeviceName.empty())
+	{
+		return;
+	}
+
+	//上线
+	if (nOnFlag)
+	{
+		m_DisplayGrid.AddColumnInfo(_T("当前"),CString(strDeviceName.c_str()));
+	}
+	//下线
+	else
+	{
+		m_DisplayGrid.RemoveColumn(CString(strDeviceName.c_str()));
+	}
+}
+
 void CDlgGridContainer::RefreshGrid(void)
 {
 	if (NULL == m_DisplayGrid.GetSafeHwnd())
 	{
 		return;
 	}
-#if 0
-	static int nIndex = 0;
-	CBCGPGridRow* pRow = nullptr;
-	CBCGPGridItem* pItem = nullptr;
-	for (int i = 0; i < m_DisplayGrid.GetRowCount(); ++i)
-	{
-		pRow = m_DisplayGrid.GetRow(i);
-		
-		if (nullptr != pRow)
-		{
-			pItem = pRow->GetItem(1);
-
-			CString strIndex;
-			strIndex.Format(_T("%d"),nIndex++);
-			if (nullptr != pItem)
-			{
-				pItem->SetValue((_variant_t)strIndex);
-			}
-		}
-
-	}
-	m_DisplayGrid.AdjustLayout();
-#endif
-
 	m_DisplayGrid.Refresh();
-	
 }
 
 

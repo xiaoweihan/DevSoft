@@ -35,25 +35,18 @@ CGridDisplayColumnInfo::~CGridDisplayColumnInfo(void)
 void CGridDisplayColumnInfo::InitGridDisplayInfo()
 {
 
+	//刚开始的初始化为X和Y
 	GRID_DISPLAY_INFO TempInfo;
 	TempInfo.strHeadName = _T("当前");
 	COLUMN_INFO TempColumnInfo;
-	TempColumnInfo.strColumnName = _T("t(s)时间");
+	TempColumnInfo.strColumnName = _T("X");
 	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);
-
-	
 	TempColumnInfo.Reset();
-	TempColumnInfo.strColumnName = _T("大气压强[Kpa]");
+	TempColumnInfo.strColumnName = _T("Y");
 	TempColumnInfo.nSensorID = 0;
 	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);	
-
-	TempColumnInfo.Reset();
-	TempColumnInfo.strColumnName = _T("湿度二[%RH]");
-	TempColumnInfo.nSensorID = 1;
-	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);	
-
-	CGridDisplayColumnInfo::CreateInstance().AddDisplayColumnInfo(TempInfo);
-
+	
+	m_HeaderInfoArray.push_back(TempInfo);
 }
 
 /*******************************************************************
@@ -160,6 +153,116 @@ int CGridDisplayColumnInfo::QuerySensorIDByColumnName(const CString& strColumnNa
 void CGridDisplayColumnInfo::AddDisplayColumnInfo( const GRID_DISPLAY_INFO& GridColumnInfo )
 {
 	m_HeaderInfoArray.push_back(GridColumnInfo);
+}
+
+void CGridDisplayColumnInfo::AddDisplayColumnInfo( const CString& strHeaderName,const COLUMN_INFO& AddColumnInfo )
+{
+	//查找行头信息
+	auto HeaderPred = [&strHeaderName](const GRID_DISPLAY_INFO& Info)->bool
+	{
+		if (Info.strHeadName == strHeaderName)
+		{
+			return true;
+		}
+		return false;
+	};
+
+	auto ColumnPred = [&AddColumnInfo](const COLUMN_INFO& ColumnInfo)->bool
+	{
+		if (ColumnInfo.nSensorID < 0 || ColumnInfo.strColumnName == AddColumnInfo.strColumnName)
+		{
+			return true;
+		}
+		return false;
+	};
+
+	auto HeaderIter = std::find_if(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end(),HeaderPred);
+	
+	//存在
+	if (HeaderIter != m_HeaderInfoArray.end())
+	{
+		
+		//在从中插找ID小于0的因素
+		auto ColumnIter = std::find_if(HeaderIter->ContainColumnIndexArray.begin(),HeaderIter->ContainColumnIndexArray.end(),ColumnPred);
+		//存在
+		if (ColumnIter != HeaderIter->ContainColumnIndexArray.end())
+		{
+			if (ColumnIter->nSensorID < 0)
+			{
+				ColumnIter->nSensorID = AddColumnInfo.nSensorID;
+				ColumnIter->strColumnName = AddColumnInfo.strColumnName;
+			}
+		}
+		else
+		{
+			HeaderIter->ContainColumnIndexArray.push_back(AddColumnInfo);
+		}
+	}
+}
+
+void CGridDisplayColumnInfo::RemoveColumnInfo( const CString& strHeaderName,const CString& strColumnName )
+{
+
+	//查找行头信息
+	auto HeaderPred = [&strHeaderName](const GRID_DISPLAY_INFO& Info)->bool
+	{
+		if (Info.strHeadName == strHeaderName)
+		{
+			return true;
+		}
+		return false;
+	};
+
+	auto ColumnPred = [&strColumnName](const COLUMN_INFO& ColumnInfo)->bool
+	{
+		if (ColumnInfo.strColumnName == strColumnName)
+		{
+			return true;
+		}
+		return false;
+	};
+
+	auto HeaderIter = std::find_if(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end(),HeaderPred);
+
+	//存在
+	if (HeaderIter != m_HeaderInfoArray.end())
+	{
+
+		//在从中插找ID小于0的因素
+		auto ColumnIter = std::find_if(HeaderIter->ContainColumnIndexArray.begin(),HeaderIter->ContainColumnIndexArray.end(),ColumnPred);
+		//存在
+		if (ColumnIter != HeaderIter->ContainColumnIndexArray.end())
+		{
+			HeaderIter->ContainColumnIndexArray.erase(ColumnIter);
+
+			//如果元素为空了，则移除整列
+			if (HeaderIter->ContainColumnIndexArray.empty())
+			{
+				m_HeaderInfoArray.erase(HeaderIter);
+			}
+		}
+	}
+}
+
+void CGridDisplayColumnInfo::RemoveHeader( const CString& strHeaderName )
+{
+	//查找行头信息
+	auto HeaderPred = [&strHeaderName](const GRID_DISPLAY_INFO& Info)->bool
+	{
+		if (Info.strHeadName == strHeaderName)
+		{
+			return true;
+		}
+		return false;
+	};
+
+	auto HeaderIter = std::find_if(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end(),HeaderPred);
+
+	//存在
+	if (HeaderIter != m_HeaderInfoArray.end())
+	{
+		m_HeaderInfoArray.erase(HeaderIter);
+	}
 }
 
 CGridDisplayColumnInfo CGridDisplayColumnInfo::s_obj;

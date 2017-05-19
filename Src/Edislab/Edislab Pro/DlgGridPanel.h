@@ -3,7 +3,7 @@
 #include "BaseDialog.h"
 #include "WidgetLayout.h"
 // CDlgGridPanel 对话框
-
+class CDlgGridContainer;
 class CDlgGridPanel : public CBaseDialog
 {
 	DECLARE_DYNAMIC(CDlgGridPanel)
@@ -21,11 +21,13 @@ public:
 	//获取Grid的个数
 	int GetWidgetNum(void) const;
 
+	//通知发现新的传感器
+	void NotifyDetectSensor(const std::string& strDeviceName,int nOnFlag);
 private:
 	//布局器
 	CWidgetLayout m_WidgetLayout;
 	//窗口
-	std::vector<CWnd*> m_vecPanel;
+	std::vector<CDlgGridContainer*> m_vecPanel;
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持

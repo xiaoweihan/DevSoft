@@ -53,6 +53,8 @@ public:
 	void AddChart();
 	//添回仪表
 	void AddGauge();
+	//通知发现新传感器
+	void NotifyDectectSensor(const std::string& strDeviceName,int nOnFlag);
 #if 0
 	//删除窗格
 	void DelWnd(CWnd* dlg);

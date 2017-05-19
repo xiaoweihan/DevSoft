@@ -575,6 +575,7 @@ void HandleStart(CEdislabProView* pView)
 	}
 	s_bStartCapture = !s_bStartCapture;
 }
+
 //自动识别
 void HandleAutoSelect(CEdislabProView* pView)
 {

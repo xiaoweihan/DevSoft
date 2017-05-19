@@ -490,24 +490,6 @@ bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 		ComElement.bUseFlowControl = ComArray["UseFlowControl"].GetBool();
 
 		m_SensorComConfig = ComElement;
-		//Õ®–≈≈‰÷√
-		COMPROPERTY SensorComOption;
-		SensorComOption.nBaudRate = ComElement.nBaudRate;
-		SensorComOption.nDataBits = ComElement.nDataBits;
-		SensorComOption.nPairty = ComElement.nPairty;
-		SensorComOption.nStopBits = ComElement.nStopBits;
-		if (ComElement.bUseFlowControl)
-		{
-			SensorComOption.nFlowControl = 1;
-		}
-		else
-		{
-			SensorComOption.nFlowControl = 0;
-		}
-		CSerialPortService::CreateInstance().SetSerialPortOption(ComElement.nComIndex,SensorComOption);
-		//ø™∆Ù
-		CSerialPortService::CreateInstance().StartSerialPortService();
-
 	}
 	return true;
 }

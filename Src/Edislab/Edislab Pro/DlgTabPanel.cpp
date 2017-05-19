@@ -184,48 +184,15 @@ void CDlgTabPanel::AddGauge()
 		panle->addPanel();
 	}
 }
-#if 0
-//删除窗格
-void CDlgTabPanel::DelWnd(CWnd* dlg)
+
+void CDlgTabPanel::NotifyDectectSensor( const std::string& strDeviceName,int nOnFlag )
 {
-#if 0
-	if(dlg)
+	CDlgGridPanel* panle = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
+	if(nullptr != panle)
 	{
-		m_pActiveDlg = NULL;
-		int type = GRID_INDEX;
-		//从grid中删除
-		if(dynamic_cast<CCustomGrid*>(dlg))
-		{
-			CDlgGridPanel* panleDiagram = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
-			if(panleDiagram)
-			{
-				panleDiagram->delPanel(dlg);
-			}
-		}
-		//从图表中删除
-		else if(dynamic_cast<ChartFigureDlg*>(dlg))		{
-			CDlgDiagramPanel* panleDiagram = dynamic_cast<CDlgDiagramPanel*>(m_pPanel[DIAGRAM_INDEX]);
-			if(panleDiagram)
-			{
-				panleDiagram->delPanel(dynamic_cast<ChartFigureDlg*>(dlg));
-			}
-			type = DIAGRAM_INDEX;
-		}
-		//从仪表中删除
-		else if(dynamic_cast<GaugeDlg*>(dlg))
-		{
-			CDlgDevicePanel* panleDevice = dynamic_cast<CDlgDevicePanel*>(m_pPanel[DEVICE_INDEX]);
-			if(panleDevice)
-			{
-				panleDevice->delPanel(dynamic_cast<GaugeDlg*>(dlg));
-			}
-			type = DEVICE_INDEX;
-		}
-		SetActive(type);
+		panle->NotifyDetectSensor(strDeviceName,nOnFlag);
 	}
-#endif
 }
-#endif
 
 void CDlgTabPanel::DelWnd( void )
 {
@@ -382,23 +349,6 @@ void CDlgTabPanel::PostNcDestroy()
 	delete this;
 	CBCGPDialog::PostNcDestroy();
 }
-//设置当前激活窗口
-//void CDlgTabPanel::SetActiveDlg(CWnd* dlg)
-//{
-//	//if(m_pActiveDlg)
-//	//{
-//	//	//取消激活 边窗变化
-//	//	m_pActiveDlg->Invalidate();
-//	//}
-//	//m_pActiveDlg = dlg;
-//	//if(m_pActiveDlg)
-//	//{
-//	//	//激活 边窗变化
-//	//	m_pActiveDlg->Invalidate();
-//	//}
-//	//m_pActiveDlg = dlg;
-//	//m_pActiveDlg = dlg;
-//}
 
 CWnd* CDlgTabPanel::GetActiveDlg()
 {

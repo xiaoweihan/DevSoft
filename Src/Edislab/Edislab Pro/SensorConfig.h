@@ -26,6 +26,11 @@ private:
 public:
 	//加载配置信息
 	bool LoadSensorConfig(void);
+	//获取COM配置
+	const SENSOR_COM_CONFIG_ELEMENT& GetComConfig()
+	{
+		return m_SensorComConfig;
+	}
 private:
 	//加载传感器列表信息
 	bool LoadSensorList(rapidjson::Document& Parser);

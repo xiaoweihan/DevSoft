@@ -3,7 +3,7 @@
 //
 
 #pragma once
-
+#include <string>
 #include "ConcreteTabWnd.h"
 
 class CDlgTabPanel;
@@ -99,6 +99,11 @@ public:
 	afx_msg void OnFileOpen();
 	afx_msg void OnFileSave();
 	afx_msg void OnFileSaveAs();
+
+	//通知刷新所有Tab页中的grid信息
+	void NotifyDetectDevice(const std::string& strDeviceName,int nOnFlag);
+
+
 };
 
 #ifndef _DEBUG  // Edislab ProView.cpp 中的调试版本

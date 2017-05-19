@@ -29,7 +29,7 @@ public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnDestroy();
-
+	void NotifyDetectSensor(const std::string& strDeviceName,int nOnFlag);
 private:
 	void RefreshGrid(void);
 public:

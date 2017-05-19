@@ -66,10 +66,18 @@ public:
 
 	//添加列信息
 	void AddDisplayColumnInfo(const GRID_DISPLAY_INFO& GridColumnInfo);
+
+	//在某个头中添加一列信息
+	void AddDisplayColumnInfo(const CString& strHeaderName,const COLUMN_INFO& AddColumnInfo);
+
+    //移除某一列
+	void RemoveColumnInfo(const CString& strHeaderName,const CString& strColumnName);
+	
+	//移除某一表头
+	void RemoveHeader(const CString& strHeaderName);
 protected:
 	CGridDisplayColumnInfo(void);
 	~CGridDisplayColumnInfo(void);
-
 private:
 	void InitGridDisplayInfo();
 protected:

@@ -9,6 +9,7 @@
 #include "CustomGrid.h"
 #include <algorithm>
 #include <boost/foreach.hpp>
+#include "GridDisplayColumnInfo.h"
 //默认增加列的宽度
 const int DEFAULT_COLUMN_WIDTH = 20;
 IMPLEMENT_DYNCREATE(CCustomGrid, CBCGPGridCtrl)
@@ -151,6 +152,17 @@ void CCustomGrid::AddHeaderInfo(const HEADRER_INFO& HeaderInfo)
 		return;
 	}
 	m_HeaderInfoArray.push_back(HeaderInfo);
+
+	//首先删除所有的列
+	RemoveAll();
+	//删除所有列信息
+	m_ColumnsEx.RemoveAllHeaderItems();
+	m_ColumnsEx.DeleteAllColumns();
+	//重新设置列
+	CreateHeaderInfo();
+	CreateColumnInfo();
+	AdjustLayout();
+#if 0
 	//获取前面列的个数
 	int nTotalColumnCounts = m_ColumnsEx.GetColumnCount();
 	//需要合并的列信息
@@ -170,6 +182,7 @@ void CCustomGrid::AddHeaderInfo(const HEADRER_INFO& HeaderInfo)
 	MergeLinesArray.Add (0);
 	m_ColumnsEx.AddHeaderItem (&MergeColumnsArray,&MergeLinesArray,-1,HeaderInfo.strHeadName,HDF_CENTER);
 	AdjustLayout();
+#endif
 }
 
 /*******************************************************************
@@ -209,6 +222,8 @@ void CCustomGrid::RemoveHeaderInfo(const CString& strHeaderName)
 	}
 	//如果找到
 	m_HeaderInfoArray.erase(Iter);
+	//首先删除所有的列
+	RemoveAll();
 	//删除所有列信息
 	m_ColumnsEx.RemoveAllHeaderItems();
 	m_ColumnsEx.DeleteAllColumns();
@@ -233,8 +248,6 @@ void CCustomGrid::RemoveColumn(const CString& strColumnName)
 	{
 		return;
 	}
-	//首先删除所有的列
-	RemoveAll();
 	//查找某列的名字是否等于要删除的
 	auto Pred = [&strColumnName](const HEADRER_INFO& Info)->bool
 	{
@@ -265,7 +278,8 @@ void CCustomGrid::RemoveColumn(const CString& strColumnName)
 	{
 		Iter->ContainColumnIndexArray.erase(FindIter);
 	}
-
+	//首先删除所有的列
+	RemoveAll();
 	m_ColumnsEx.RemoveAllHeaderItems();
 	m_ColumnsEx.DeleteAllColumns();
 	CreateHeaderInfo();
@@ -288,9 +302,6 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 	{
 		return;
 	}
-	//查找列头
-	//首先删除所有的列
-	RemoveAll();
 	//查找某列的名字是否等于要删除的
 	auto HeaderPred = [&strHeaderName](const HEADRER_INFO& Info)->bool
 	{
@@ -309,7 +320,7 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 
 	auto ColumnPred = [&strColumnName](const CString& strName)->bool
 	{
-		if (strName == strColumnName)
+		if (strName == strColumnName || CGridDisplayColumnInfo::CreateInstance().QuerySensorIDByColumnName(strName) < 0)
 		{
 			return true;
 		}
@@ -322,7 +333,17 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 	{
 		HeaderIter->ContainColumnIndexArray.push_back(strColumnName);
 	}
+	//存在
+	else
+	{
+		if (*ColumnIter != strColumnName)
+		{
+			*ColumnIter = strColumnName;
+		}
+	}
 
+	//首先删除所有的列
+	RemoveAll();
 	//删除所有列信息
 	m_ColumnsEx.RemoveAllHeaderItems();
 	m_ColumnsEx.DeleteAllColumns();

@@ -3,7 +3,14 @@
 #include <boost/thread.hpp>
 #include <boost/smart_ptr.hpp>
 #include <boost/atomic.hpp>
+#include <boost/function.hpp>
+#include <string>
 #include "SerialPort.h"
+
+//设备上线下线回调定义
+typedef boost::function<void(const std::string&,bool)> pDeviceCallBack;
+
+
 class CSerialPortService
 {
 
@@ -26,6 +33,12 @@ public:
 	void StartSensorCollect(const std::string& strSensorName);
 	//停止采集
 	void StopSensorCollect(const std::string& strSensorName);
+
+	//注册设备上下线回调
+	void RegisterDeviceCallBack(pDeviceCallBack DeviceCallback)
+	{
+		m_pCallBack = DeviceCallback;
+	}
 private:
 	void ReceiveProc(void);
 
@@ -64,6 +77,9 @@ private:
 	bool m_bCopyDeviceName;
 
 	static CSerialPortService s_obj;
+
+	//设备上线下线回调
+	pDeviceCallBack m_pCallBack;
 };
 
 #endif
