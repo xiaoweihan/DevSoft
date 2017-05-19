@@ -43,7 +43,6 @@ void CGridDisplayColumnInfo::InitGridDisplayInfo()
 	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);
 	TempColumnInfo.Reset();
 	TempColumnInfo.strColumnName = _T("Y");
-	TempColumnInfo.nSensorID = 0;
 	TempInfo.ContainColumnIndexArray.push_back(TempColumnInfo);	
 	
 	m_HeaderInfoArray.push_back(TempInfo);

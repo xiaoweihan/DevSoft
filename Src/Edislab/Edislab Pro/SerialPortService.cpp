@@ -159,6 +159,50 @@ void CSerialPortService::StopSensorCollect(const std::string& strSensorName)
 	DELETE_ARRAY_POINTER(pData);
 }
 
+void CSerialPortService::SetSensorFrequence(const std::string& strSensorName,int nMillSecond)
+{
+	if (strSensorName.empty())
+	{
+		return;
+	}
+
+	//设置采样周期
+	int nSensorNameLength = (int)strSensorName.length();
+	int nMsgLength = 6 + nSensorNameLength;
+
+	BYTE* pSendBuffer = new BYTE[nMsgLength];
+
+	if (nullptr == pSendBuffer)
+	{
+		return;
+	}
+
+
+	ZeroMemory(pSendBuffer,nMsgLength);
+	pSendBuffer[0] = 0xAF;
+	pSendBuffer[1] = nMsgLength - 2;
+	pSendBuffer[2] = nSensorNameLength;
+	memcpy(pSendBuffer + 3,strSensorName.c_str(),nSensorNameLength);
+	pSendBuffer[nMsgLength - 3] = (BYTE)(nMillSecond & 0x00FF);
+	pSendBuffer[nMsgLength - 2] = (BYTE)((nMillSecond & 0xFF00) >> 8);
+	pSendBuffer[nMsgLength - 1] = Utility::CalCRC8(pSendBuffer,nMsgLength - 1);
+
+
+	unsigned int nWriteBytes = 0;
+	if (m_Com.Write(pSendBuffer,nMsgLength,nWriteBytes))
+	{
+		if (nWriteBytes != nMsgLength)
+		{
+			ERROR_LOG("SetSensorFrequence [%s] failed.",strSensorName.c_str());
+		}
+	}
+	else
+	{
+		ERROR_LOG("SetSensorFrequence [%s] failed.",strSensorName.c_str());
+	}
+	DELETE_ARRAY_POINTER(pSendBuffer);
+}
+
 //开启接收线程
 void CSerialPortService::ReceiveProc(void)
 {

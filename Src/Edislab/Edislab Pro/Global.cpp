@@ -7,4 +7,4 @@
 #include "stdafx.h"
 #include "Global.h"
 
-BOOL g_bAutoSelect = FALSE;
+BOOL g_bAutoSelect = TRUE;

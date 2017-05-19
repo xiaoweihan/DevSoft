@@ -34,6 +34,9 @@ public:
 	//停止采集
 	void StopSensorCollect(const std::string& strSensorName);
 
+	//设置上报周期
+	void SetSensorFrequence(const std::string& strSensorName,int nMillSecond);
+
 	//注册设备上下线回调
 	void RegisterDeviceCallBack(pDeviceCallBack DeviceCallback)
 	{
