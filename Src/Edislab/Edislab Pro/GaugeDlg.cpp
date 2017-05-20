@@ -363,30 +363,67 @@ void GaugeDlg::OnPaint()
 		{
 			CRect rc;
 			GetClientRect(rc);
-			CRgn rgn;
-			rgn.CreateRectRgnIndirect(rc);
-			dc.SelectClipRgn(&rgn);
-			if(this==pTabPanel->GetActiveDlg())//当前窗口激活
+			//CRgn rgn;
+			//rgn.CreateRectRgnIndirect(rc);
+			//dc.SelectClipRgn(&rgn);
+			if(this == pTabPanel->GetActiveDlg())//当前窗口激活
 			{
+				//CPen BoradrPen;
+				//BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
+				//CPen* pOldPen = dc.SelectObject(&BoradrPen);
+				//CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));
+				//CBrush *pOldBrush = dc.SelectObject(pBrush);  
+				//dc.Rectangle(&rc);
+				//dc.SelectObject(pOldPen);
+				//dc.SelectObject(pOldBrush);
+				//BoradrPen.DeleteObject();
+
 				CPen BoradrPen;
 				BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
-				CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));
-				CBrush *pOldBrush = dc.SelectObject(pBrush);  
-				dc.Rectangle(&rc);
+
+				dc.MoveTo(rc.left,rc.top);
+				dc.LineTo(rc.right,rc.top);
+
+				dc.MoveTo(rc.right,rc.top);
+				dc.LineTo(rc.right,rc.bottom);
+
+				dc.MoveTo(rc.right,rc.bottom);
+				dc.LineTo(rc.left,rc.bottom);
+
+				dc.MoveTo(rc.left,rc.bottom);
+				dc.LineTo(rc.left,rc.top);
+
 				dc.SelectObject(pOldPen);
-				dc.SelectObject(pOldBrush);
 				BoradrPen.DeleteObject();
-			}else
+			}
+			else
 			{
+				//CPen BoradrPen;
+				//BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
+				//CPen* pOldPen = dc.SelectObject(&BoradrPen);
+				//CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));
+				//CBrush *pOldBrush = dc.SelectObject(pBrush);
+				//dc.Rectangle(&rc);
+				//dc.SelectObject(pOldPen);
+				//dc.SelectObject(pOldBrush);
+				//BoradrPen.DeleteObject();
 				CPen BoradrPen;
 				BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
-				CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));
-				CBrush *pOldBrush = dc.SelectObject(pBrush);
-				dc.Rectangle(&rc);
+				dc.MoveTo(rc.left,rc.top);
+				dc.LineTo(rc.right,rc.top);
+
+				dc.MoveTo(rc.right,rc.top);
+				dc.LineTo(rc.right,rc.bottom);
+
+				dc.MoveTo(rc.right,rc.bottom);
+				dc.LineTo(rc.left,rc.bottom);
+
+				dc.MoveTo(rc.left,rc.bottom);
+				dc.LineTo(rc.left,rc.top);
+
 				dc.SelectObject(pOldPen);
-				dc.SelectObject(pOldBrush);
 				BoradrPen.DeleteObject();
 			}
 		}
@@ -436,7 +473,35 @@ void GaugeDlg::OnLButtonDown(UINT nFlags, CPoint point)
 BOOL GaugeDlg::PreTranslateMessage(MSG* pMsg)
 {
 	// TODO: Add your specialized code here and/or call the base class
-	if (WM_LBUTTONDOWN == pMsg->message||WM_RBUTTONDOWN==pMsg->message)
+
+
+	//begin add by hanxiaowei
+
+	switch (pMsg->message)
+	{
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+		{
+			CWnd* pDevicePanel = GetParent();
+			if (nullptr != pDevicePanel)
+			{
+				CDlgTabPanel* pTabWnd = dynamic_cast<CDlgTabPanel*>(pDevicePanel->GetParent());
+
+				if (nullptr != pTabWnd)
+				{
+					pTabWnd->SetActive(CDlgTabPanel::DEVICE_INDEX,this);
+				}	
+			}
+		}
+		break;
+	default:
+		break;
+	}
+	//end add by hanxiaowei
+
+
+	if (WM_LBUTTONDOWN == pMsg->message || WM_RBUTTONDOWN == pMsg->message)
 	{
 		CWnd* pWnd = AfxGetMainWnd();
 		if (NULL != pWnd)

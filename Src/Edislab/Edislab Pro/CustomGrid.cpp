@@ -9,10 +9,13 @@
 #include "CustomGrid.h"
 #include <algorithm>
 #include <boost/foreach.hpp>
+#include "SensorIDGenerator.h"
+#include "Utility.h"
 //默认增加列的宽度
 const int DEFAULT_COLUMN_WIDTH = 20;
 IMPLEMENT_DYNCREATE(CCustomGrid, CBCGPGridCtrl)
-CCustomGrid::CCustomGrid()
+CCustomGrid::CCustomGrid():m_nDisplayVitrualRows(60),
+m_pCallBack(nullptr)
 {
 	m_HeaderInfoArray.clear();
 }
@@ -55,6 +58,13 @@ int CCustomGrid::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	SetEditFirstClick(FALSE);
 	SetWholeRowSel(TRUE);
 	m_ColumnsEx.EnableAutoSize(TRUE);
+
+	if (nullptr != m_pCallBack)
+	{
+		EnableVirtualMode(m_pCallBack,(LPARAM)this);
+		SetVirtualRows(m_nDisplayVitrualRows);
+	}
+
 	CreateHeaderInfo();
 	CreateColumnInfo();
 	AdjustLayout();
@@ -91,6 +101,7 @@ void CCustomGrid::OnPosSizeChanged()
 BEGIN_MESSAGE_MAP(CCustomGrid, CBCGPGridCtrl)
 	ON_WM_CREATE()
 	ON_WM_SIZE()
+	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 /*******************************************************************
@@ -142,6 +153,17 @@ void CCustomGrid::AddHeaderInfo(const HEADRER_INFO& HeaderInfo)
 		return;
 	}
 	m_HeaderInfoArray.push_back(HeaderInfo);
+
+	//首先删除所有的列
+	RemoveAll();
+	//删除所有列信息
+	m_ColumnsEx.RemoveAllHeaderItems();
+	m_ColumnsEx.DeleteAllColumns();
+	//重新设置列
+	CreateHeaderInfo();
+	CreateColumnInfo();
+	AdjustLayout();
+#if 0
 	//获取前面列的个数
 	int nTotalColumnCounts = m_ColumnsEx.GetColumnCount();
 	//需要合并的列信息
@@ -161,6 +183,7 @@ void CCustomGrid::AddHeaderInfo(const HEADRER_INFO& HeaderInfo)
 	MergeLinesArray.Add (0);
 	m_ColumnsEx.AddHeaderItem (&MergeColumnsArray,&MergeLinesArray,-1,HeaderInfo.strHeadName,HDF_CENTER);
 	AdjustLayout();
+#endif
 }
 
 /*******************************************************************
@@ -200,6 +223,8 @@ void CCustomGrid::RemoveHeaderInfo(const CString& strHeaderName)
 	}
 	//如果找到
 	m_HeaderInfoArray.erase(Iter);
+	//首先删除所有的列
+	RemoveAll();
 	//删除所有列信息
 	m_ColumnsEx.RemoveAllHeaderItems();
 	m_ColumnsEx.DeleteAllColumns();
@@ -224,8 +249,6 @@ void CCustomGrid::RemoveColumn(const CString& strColumnName)
 	{
 		return;
 	}
-	//首先删除所有的列
-	RemoveAll();
 	//查找某列的名字是否等于要删除的
 	auto Pred = [&strColumnName](const HEADRER_INFO& Info)->bool
 	{
@@ -256,7 +279,8 @@ void CCustomGrid::RemoveColumn(const CString& strColumnName)
 	{
 		Iter->ContainColumnIndexArray.erase(FindIter);
 	}
-
+	//首先删除所有的列
+	RemoveAll();
 	m_ColumnsEx.RemoveAllHeaderItems();
 	m_ColumnsEx.DeleteAllColumns();
 	CreateHeaderInfo();
@@ -279,9 +303,6 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 	{
 		return;
 	}
-	//查找列头
-	//首先删除所有的列
-	RemoveAll();
 	//查找某列的名字是否等于要删除的
 	auto HeaderPred = [&strHeaderName](const HEADRER_INFO& Info)->bool
 	{
@@ -300,7 +321,9 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 
 	auto ColumnPred = [&strColumnName](const CString& strName)->bool
 	{
-		if (strName == strColumnName)
+		CString strAddColumnName = strName;
+		std::string strTempColumnName = Utility::WideChar2MultiByte(strAddColumnName.GetBuffer(0));
+		if (strName == strColumnName || CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strTempColumnName) < 0)
 		{
 			return true;
 		}
@@ -313,7 +336,17 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 	{
 		HeaderIter->ContainColumnIndexArray.push_back(strColumnName);
 	}
+	//存在
+	else
+	{
+		if (*ColumnIter != strColumnName)
+		{
+			*ColumnIter = strColumnName;
+		}
+	}
 
+	//首先删除所有的列
+	RemoveAll();
 	//删除所有列信息
 	m_ColumnsEx.RemoveAllHeaderItems();
 	m_ColumnsEx.DeleteAllColumns();
@@ -421,47 +454,6 @@ void CCustomGrid::GetHeaderInfo(std::vector<HEADRER_INFO>& HeaderInfoArray)
 	HeaderInfoArray.assign(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end());
 }
 
-/*******************************************************************
-*函数名称:FillData
-*功能描述:测试填充数据
-*输入参数:None
-*输出参数:None
-*返回值:None
-*作者:xiaowei.han
-*日期:2017/05/13 16:03:45
-*******************************************************************/
-void CCustomGrid::FillData(void)
-{
-
-	//只有在调试模式下才起作用
-#ifdef _DEBUG
-	if (NULL == GetSafeHwnd())
-	{
-		return;
-	}
-	RemoveAll();
-	int nColumnCount = GetColumnCount();
-	for (int nRow = 0; nRow < 60; nRow++)
-	{
-		CBCGPGridRow* pRow = CreateRow(nColumnCount);
-		
-		if (nullptr != pRow)
-		{
-			for (int i = 0; i < GetColumnCount (); i++)
-			{
-				CString strItem;
-				strItem.Format (_T("%c%d"), _T('A') + i, nRow + 1);
-				pRow->GetItem(i)->SetValue ((_variant_t) strItem);
-			}
-		}
-		AddRow (pRow, FALSE);
-	}
-
-	AdjustLayout();
-#endif
-}
-
-
 
 void CCustomGrid::CreateColumnInfo(void)
 {
@@ -531,3 +523,18 @@ void CCustomGrid::OnSize(UINT nType, int cx, int cy)
 }
 
 
+
+
+void CCustomGrid::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO: 在此添加消息处理程序代码和/或调用默认值
+
+	CBCGPGridCtrl::OnTimer(nIDEvent);
+}
+
+
+BOOL CCustomGrid::PreTranslateMessage(MSG* pMsg)
+{
+	// TODO: 在此添加专用代码和/或调用基类
+	return CBCGPGridCtrl::PreTranslateMessage(pMsg);
+}

@@ -5,7 +5,7 @@ IMPLEMENT_DYNCREATE(CConcreteTabWnd,CBaseTabWnd)
 CConcreteTabWnd::CConcreteTabWnd( CWnd* pParenWnd /*= NULL*/ ):
 CBaseTabWnd(pParenWnd)
 {
-	m_bAutoDestoyWindow = TRUE;
+	m_bAutoDestoyWindow = FALSE;
 }
 
 CConcreteTabWnd::~CConcreteTabWnd( void )
@@ -28,13 +28,11 @@ void CConcreteTabWnd::OnLButtonDown(UINT nFlags, CPoint point)
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
 
-	CWnd* pWnd = AfxGetMainWnd();
+	//CWnd* pWnd = AfxGetMainWnd();
 
-	if (NULL != pWnd)
-	{
-		pWnd->PostMessage(WM_NOTIFY_ACTIVE_WND_TYPE,2,0);
-	}
-
-
+	//if (NULL != pWnd)
+	//{
+	//	pWnd->PostMessage(WM_NOTIFY_ACTIVE_WND_TYPE,2,0);
+	//}
 	CBaseTabWnd::OnLButtonDown(nFlags, point);
 }

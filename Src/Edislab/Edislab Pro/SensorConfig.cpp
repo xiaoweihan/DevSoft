@@ -13,11 +13,12 @@ Histroy:
 #include <boost/foreach.hpp>
 #include <boost/smart_ptr.hpp>
 #include <rapidjson/istreamwrapper.h>
-#include <rapidjson/document.h>
 #include <fstream>
 #include "Log.h"
 #include "Utility.h"
-
+#include "SensorIDGenerator.h"
+#include "SensorDataManager.h"
+#include "SerialPortService.h"
 //定制的删除器
 static void DeleteFunction(std::ifstream* pReader)
 {
@@ -71,8 +72,6 @@ CSensorConfig& CSensorConfig::CreateInstance( void )
 *****************************************************************************/
 bool CSensorConfig::LoadSensorConfig( void )
 {
-
-#if 1
 	std::string strConfigPath = Utility::GetExeDirecory() + std::string("\\SensorConfig.json");
 
 	//判断文件是否存在
@@ -99,286 +98,16 @@ bool CSensorConfig::LoadSensorConfig( void )
 		rapidjson::Document Parser;
 		Parser.ParseStream(JsonReader);
 
-		// 解析传感器配置
-		if (Parser.HasMember("SensorConfig"))
+		//加载传感器列表
+		if (!LoadSensorList(Parser))
 		{
-			const rapidjson::Value& ProcessArray = Parser["SensorConfig"];
-
-			if (ProcessArray.IsArray())
-			{
-				for (auto Iter = ProcessArray.Begin(); Iter != ProcessArray.End(); ++Iter)
-				{
-					SENSOR_CONFIG_ELEMENT Element;
-					if (Iter->IsObject())
-					{
-						// 传感器ID
-						if (!Iter->HasMember("SensorID") || !(*Iter)["SensorID"].IsInt())
-						{
-							continue;
-						}
-
-						Element.nSensorID = (*Iter)["SensorID"].GetInt();
-
-						// 传感器名
-						if (!Iter->HasMember("SensorName") || !(*Iter)["SensorName"].IsString())
-						{
-							continue;
-						}
-
-						Element.strSensorName = Utility::ConverUTF8ToGB2312((*Iter)["SensorName"].GetString());
-
-						// 是否添加到列表
-						if (!Iter->HasMember("AddtoSensorlist") || !(*Iter)["AddtoSensorlist"].IsBool())
-						{
-							continue;
-						}
-
-						Element.bAddtoSensorlist = (*Iter)["AddtoSensorlist"].GetBool();
-
-						// 类型名称
-						if (!Iter->HasMember("TypeName") || !(*Iter)["TypeName"].IsString())
-						{
-							continue;
-						}
-
-						Element.strSensorTypeName =  Utility::ConverUTF8ToGB2312((*Iter)["TypeName"].GetString());
-
-						// 是否多采样
-						if (!Iter->HasMember("MultiSample") || !(*Iter)["MultiSample"].IsBool())
-						{
-							continue;
-						}
-
-						Element.bMultiSample =  (*Iter)["MultiSample"].GetBool();
-
-						// 传感器型号
-						if (!Iter->HasMember("SensorModelName") || !(*Iter)["SensorModelName"].IsString())
-						{
-							continue;
-						}
-
-						Element.strSensorModelName =  Utility::ConverUTF8ToGB2312((*Iter)["SensorModelName"].GetString());
-
-						// 传感器符号
-						if (!Iter->HasMember("Symbol") || !(*Iter)["Symbol"].IsString())
-						{
-							continue;
-						}
-
-						Element.strSensorSymbol =  Utility::ConverUTF8ToGB2312((*Iter)["Symbol"].GetString());
-
-						// 传感器描述
-						if (!Iter->HasMember("Description") || !(*Iter)["Description"].IsString())
-						{
-							continue;
-						}
-
-						Element.strSensorDescription =  Utility::ConverUTF8ToGB2312((*Iter)["Description"].GetString());
-
-						// 传感器类型（物理\化学\生物或者全部？）
-						if (!Iter->HasMember("SensorCategory") || !(*Iter)["SensorCategory"].IsInt())
-						{
-							continue;
-						}
-
-						Element.nSensorCategory =  (*Iter)["SensorCategory"].GetInt();
-						
-						// 量程信息
-						if(!Iter->HasMember("RangeInfo") || !(*Iter)["RangeInfo"].IsArray())
-						{
-							continue;
-						}
-
-						for(auto rangeIter = (*Iter)["RangeInfo"].Begin(); rangeIter != (*Iter)["RangeInfo"].End() ; ++rangeIter)
-						{
-							SENSOR_RANGE_INFO_ELEMENT RangeInfo;
-							// 量程名
-							if (!rangeIter->HasMember("Name") || !(*rangeIter)["Name"].IsString())
-							{
-								continue;
-							}
-
-							RangeInfo.strRangeName =  Utility::ConverUTF8ToGB2312 ((*rangeIter)["Name"].GetString());
-
-							// 校准值
-							if (!rangeIter->HasMember("Calibrationvalue") || !(*rangeIter)["Calibrationvalue"].IsInt())
-							{
-								continue;
-							}
-
-							RangeInfo.nCalibrationvalue =  (*rangeIter)["Calibrationvalue"].GetInt();
-
-							// 默认值
-							if (!rangeIter->HasMember("Defaultvalue") || !(*rangeIter)["Defaultvalue"].IsInt())
-							{
-								continue;
-							}
-
-						    RangeInfo.nDefaultvalue = (*rangeIter)["Defaultvalue"].GetInt();
-
-							// 最小值
-							if (!rangeIter->HasMember("Minvalue") || !(*rangeIter)["Minvalue"].IsInt())
-							{
-								continue;
-							}
-
-							RangeInfo.nMinvalue = (*rangeIter)["Minvalue"].GetInt();
-
-							// 最大值
-							if (!rangeIter->HasMember("Maxvalue") || !(*rangeIter)["Maxvalue"].IsInt())
-							{
-								continue;
-							}
-
-							RangeInfo.nMaxvalue = (*rangeIter)["Maxvalue"].GetInt();
-
-							// monitor
-							if (!rangeIter->HasMember("Monitor") || !(*rangeIter)["Monitor"].IsString())
-							{
-								continue;
-							}
-
-							RangeInfo.strMonitorvalue = Utility::ConverUTF8ToGB2312((*rangeIter)["Monitor"].GetString());
-
-							// 精度
-							if (!rangeIter->HasMember("Accuracy") || !(*rangeIter)["Accuracy"].IsInt())
-							{
-								continue;
-							}
-
-							RangeInfo.nAccuracy = (*rangeIter)["Accuracy"].GetInt();
-
-							// 单位
-							if (!rangeIter->HasMember("Unit") || !(*rangeIter)["Unit"].IsString())
-							{
-								continue;
-							}
-
-							RangeInfo.strUnitName = Utility::ConverUTF8ToGB2312((*rangeIter)["Unit"].GetString());
-
-							// 转换公式
-							if (!rangeIter->HasMember("Converformula") || !(*rangeIter)["Converformula"].IsString())
-							{
-								continue;
-							}
-
-							RangeInfo.strConverformula = Utility::ConverUTF8ToGB2312((*rangeIter)["Converformula"].GetString());
-
-							Element.SensorRangeInfoArray.push_back(RangeInfo);
-						}
-
-						// 默认频率
-						if (!Iter->HasMember("Defaultfrequency") || !(*Iter)["Defaultfrequency"].IsFloat())
-						{
-							continue;
-						}
-
-						Element.fSensorDefaultfrequency =  (*Iter)["SensorCategory"].GetFloat();
-
-						// 最小频率
-						if (!Iter->HasMember("Minfrequency") || !(*Iter)["Minfrequency"].IsFloat())
-						{
-							continue;
-						}
-
-						Element.nSensorMinfrequency =  (*Iter)["Minfrequency"].GetFloat();
-
-						// 最大频率
-						if (!Iter->HasMember("Maxfrequency") || !(*Iter)["Maxfrequency"].IsFloat())
-						{
-							continue;
-						}
-
-						Element.nSensorMaxfrequency =  (*Iter)["Maxfrequency"].GetFloat();
-
-						// 时长
-						if (!Iter->HasMember("Timelength") || !(*Iter)["Timelength"].IsInt())
-						{
-							continue;
-						}
-
-						Element.nSensorTimeLength =  (*Iter)["Timelength"].GetInt();
-
-						m_SensorConfigArray.push_back(Element);
-					}
-				}
-			}
+			return false;
 		}
-
- 		if (Parser.HasMember("ComConfig"))
- 		{
- 
- 			const rapidjson::Value& ComArray = Parser["ComConfig"];
- 
- 			if (ComArray.IsArray())
- 			{
- 				for (auto Iter = ComArray.Begin(); Iter != ComArray.End(); ++Iter)
- 				{
- 					SENSOR_COM_CONFIG_ELEMENT ComElement;
- 					if (Iter->IsObject())
- 					{
-						// 传感器名称
- 						if (!Iter->HasMember("SensorName") || !(*Iter)["SensorName"].IsString())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.strSensorName = Utility::ConverUTF8ToGB2312((*Iter)["SensorName"].GetString());
- 
-						// 端口号
- 						if (!Iter->HasMember("PortName") || !(*Iter)["PortName"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nComIndex = (*Iter)["PortName"].GetInt();
- 
-						// 校验类型
- 						if (!Iter->HasMember("Pairty") || !(*Iter)["Pairty"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nPairty = (*Iter)["Pairty"].GetInt();
- 
-						// 停止位
- 						if (!Iter->HasMember("StopBits") || !(*Iter)["StopBits"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nStopBits = (*Iter)["StopBits"].GetInt();
- 
-						// 通信字节位数
- 						if (!Iter->HasMember("DataBits") || !(*Iter)["DataBits"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nDataBits = (*Iter)["DataBits"].GetInt();
- 
-						// 波特率
- 						if (!Iter->HasMember("BaudRate") || !(*Iter)["BaudRate"].IsInt())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.nBaudRate = (*Iter)["BaudRate"].GetInt();
- 
-						// 是否使用流控
- 						if (!Iter->HasMember("UseFlowControl") || !(*Iter)["UseFlowControl"].IsBool())
- 						{
- 							continue;
- 						}
- 
- 						ComElement.bUseFlowControl = (*Iter)["UseFlowControl"].GetBool();
- 
- 						m_SensorComConfigArray.push_back(ComElement);
- 					}
- 				}
- 			}
- 		}
-
+		//加载传感器通信配置
+		if (!LoadSensorComList(Parser))
+		{
+			return false;
+		}
 	}
 	catch (boost::filesystem::filesystem_error& e)
 	{
@@ -386,63 +115,383 @@ bool CSensorConfig::LoadSensorConfig( void )
 
 		return false;
 	}
-#endif
+	return true;
+}
+
+bool CSensorConfig::LoadSensorList( rapidjson::Document& Parser )
+{
+	// 解析传感器配置
+	if (!Parser.HasMember("SensorConfig"))
+	{
+		return false;
+	}
+
+	const rapidjson::Value& ProcessArray = Parser["SensorConfig"];
+
+	if (ProcessArray.IsArray())
+	{
+		for (auto Iter = ProcessArray.Begin(); Iter != ProcessArray.End(); ++Iter)
+		{
+			SENSOR_CONFIG_ELEMENT Element;
+			if (Iter->IsObject())
+			{
+				// 传感器ID
+				if (!Iter->HasMember("SensorID") || !(*Iter)["SensorID"].IsInt())
+				{
+					continue;
+				}
+
+				Element.nSensorID = (*Iter)["SensorID"].GetInt();
+
+				// 传感器名
+				if (!Iter->HasMember("SensorName") || !(*Iter)["SensorName"].IsString())
+				{
+					continue;
+				}
+
+				Element.strSensorName = Utility::ConverUTF8ToGB2312((*Iter)["SensorName"].GetString());
+
+				// 是否添加到列表
+				if (!Iter->HasMember("AddtoSensorlist") || !(*Iter)["AddtoSensorlist"].IsBool())
+				{
+					continue;
+				}
+
+				Element.bAddtoSensorlist = (*Iter)["AddtoSensorlist"].GetBool();
+
+				// 类型名称
+				if (!Iter->HasMember("TypeName") || !(*Iter)["TypeName"].IsString())
+				{
+					continue;
+				}
+
+				Element.strSensorTypeName =  Utility::ConverUTF8ToGB2312((*Iter)["TypeName"].GetString());
+
+				// 是否多采样
+				if (!Iter->HasMember("MultiSample") || !(*Iter)["MultiSample"].IsBool())
+				{
+					continue;
+				}
+
+				Element.bMultiSample =  (*Iter)["MultiSample"].GetBool();
+
+				// 传感器型号
+				if (!Iter->HasMember("SensorModelName") || !(*Iter)["SensorModelName"].IsString())
+				{
+					continue;
+				}
+
+				Element.strSensorModelName =  Utility::ConverUTF8ToGB2312((*Iter)["SensorModelName"].GetString());
+
+				// 传感器符号
+				if (!Iter->HasMember("Symbol") || !(*Iter)["Symbol"].IsString())
+				{
+					continue;
+				}
+
+				Element.strSensorSymbol =  Utility::ConverUTF8ToGB2312((*Iter)["Symbol"].GetString());
+
+				// 传感器描述
+				if (!Iter->HasMember("Description") || !(*Iter)["Description"].IsString())
+				{
+					continue;
+				}
+
+				Element.strSensorDescription =  Utility::ConverUTF8ToGB2312((*Iter)["Description"].GetString());
+
+				// 传感器类型（物理\化学\生物或者全部？）
+				if (!Iter->HasMember("SensorCategory") || !(*Iter)["SensorCategory"].IsInt())
+				{
+					continue;
+				}
+
+				Element.nSensorCategory =  (*Iter)["SensorCategory"].GetInt();
+
+				// 量程信息
+				if(!Iter->HasMember("RangeInfo") || !(*Iter)["RangeInfo"].IsArray())
+				{
+					continue;
+				}
+
+				for(auto rangeIter = (*Iter)["RangeInfo"].Begin(); rangeIter != (*Iter)["RangeInfo"].End() ; ++rangeIter)
+				{
+					SENSOR_RANGE_INFO_ELEMENT RangeInfo;
+					// 量程名
+					if (!rangeIter->HasMember("Name") || !(*rangeIter)["Name"].IsString())
+					{
+						continue;
+					}
+
+					RangeInfo.strRangeName =  Utility::ConverUTF8ToGB2312 ((*rangeIter)["Name"].GetString());
+
+					// 校准值
+					if (!rangeIter->HasMember("Calibrationvalue") || !(*rangeIter)["Calibrationvalue"].IsInt())
+					{
+						continue;
+					}
+
+					RangeInfo.nCalibrationvalue =  (*rangeIter)["Calibrationvalue"].GetInt();
+
+					// 默认值
+					if (!rangeIter->HasMember("Defaultvalue") || !(*rangeIter)["Defaultvalue"].IsInt())
+					{
+						continue;
+					}
+
+					RangeInfo.nDefaultvalue = (*rangeIter)["Defaultvalue"].GetInt();
+
+					// 最小值
+					if (!rangeIter->HasMember("Minvalue") || !(*rangeIter)["Minvalue"].IsInt())
+					{
+						continue;
+					}
+
+					RangeInfo.nMinvalue = (*rangeIter)["Minvalue"].GetInt();
+
+					// 最大值
+					if (!rangeIter->HasMember("Maxvalue") || !(*rangeIter)["Maxvalue"].IsInt())
+					{
+						continue;
+					}
+
+					RangeInfo.nMaxvalue = (*rangeIter)["Maxvalue"].GetInt();
+
+					// monitor
+					if (!rangeIter->HasMember("Monitor") || !(*rangeIter)["Monitor"].IsString())
+					{
+						continue;
+					}
+
+					RangeInfo.strMonitorvalue = Utility::ConverUTF8ToGB2312((*rangeIter)["Monitor"].GetString());
+
+					// 精度
+					if (!rangeIter->HasMember("Accuracy") || !(*rangeIter)["Accuracy"].IsInt())
+					{
+						continue;
+					}
+
+					RangeInfo.nAccuracy = (*rangeIter)["Accuracy"].GetInt();
+
+					// 单位
+					if (!rangeIter->HasMember("Unit") || !(*rangeIter)["Unit"].IsString())
+					{
+						continue;
+					}
+
+					RangeInfo.strUnitName = Utility::ConverUTF8ToGB2312((*rangeIter)["Unit"].GetString());
+
+					// 转换公式
+					if (!rangeIter->HasMember("Converformula") || !(*rangeIter)["Converformula"].IsString())
+					{
+						continue;
+					}
+
+					RangeInfo.strConverformula = Utility::ConverUTF8ToGB2312((*rangeIter)["Converformula"].GetString());
+
+					Element.SensorRangeInfoArray.push_back(RangeInfo);
+				}
+
+				// 默认频率
+				if (!Iter->HasMember("Defaultfrequency") || !(*Iter)["Defaultfrequency"].IsFloat())
+				{
+					continue;
+				}
+
+				Element.fSensorDefaultfrequency =  (*Iter)["SensorCategory"].GetFloat();
+
+				// 最小频率
+				if (!Iter->HasMember("Minfrequency") || !(*Iter)["Minfrequency"].IsFloat())
+				{
+					continue;
+				}
+
+				Element.nSensorMinfrequency =  (*Iter)["Minfrequency"].GetFloat();
+
+				// 最大频率
+				if (!Iter->HasMember("Maxfrequency") || !(*Iter)["Maxfrequency"].IsFloat())
+				{
+					continue;
+				}
+
+				Element.nSensorMaxfrequency =  (*Iter)["Maxfrequency"].GetFloat();
+
+				// 时长
+				if (!Iter->HasMember("Timelength") || !(*Iter)["Timelength"].IsInt())
+				{
+					continue;
+				}
+
+				Element.nSensorTimeLength =  (*Iter)["Timelength"].GetInt();
+
+				m_SensorConfigArray.push_back(Element);
+			}
+		}
+	}
 
 	return true;
 }
 
-/*****************************************************************************
-* @FunctionName : GetSensorConfigBySensorName
-* @FunctionDestription : 根据传感器名称获取传感器配置信息
-* @author : xiaowei.han
-* @date : 2017/3/25 10:26
-* @version : ver 1.0
-* @inparam :
-* @outparam: 
-* @return : 
-*****************************************************************************/
-bool CSensorConfig::GetSensorConfigBySensorName( const std::string& strSensorName,LP_SENSOR_CONFIG_ELEMENT pConfig )
+bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 {
 
-	bool bResult = false;
-#if 1
-	if (nullptr == pConfig || strSensorName.empty())
+	if (!Parser.HasMember("ComConfig"))
 	{
-		return bResult;
+		return false;
 	}
+#if 0
+	const rapidjson::Value& ComArray = Parser["ComConfig"];
 
-	BOOST_FOREACH(auto& Element,m_SensorConfigArray)
+	if (ComArray.IsArray())
 	{
-		if (Element.strSensorName == strSensorName)
+		for (auto Iter = ComArray.Begin(); Iter != ComArray.End(); ++Iter)
 		{
-			*pConfig = Element;
-			bResult = true;
-			break;
+			SENSOR_COM_CONFIG_ELEMENT ComElement;
+			if (Iter->IsObject())
+			{
+				// 传感器名称
+				if (!Iter->HasMember("SensorName") || !(*Iter)["SensorName"].IsString())
+				{
+					continue;
+				}
+
+				ComElement.strSensorName = Utility::ConverUTF8ToGB2312((*Iter)["SensorName"].GetString());
+
+				// 端口号
+				if (!Iter->HasMember("PortName") || !(*Iter)["PortName"].IsInt())
+				{
+					continue;
+				}
+
+				ComElement.nComIndex = (*Iter)["PortName"].GetInt();
+
+				// 校验类型
+				if (!Iter->HasMember("Pairty") || !(*Iter)["Pairty"].IsInt())
+				{
+					continue;
+				}
+
+				ComElement.nPairty = (*Iter)["Pairty"].GetInt();
+
+				// 停止位
+				if (!Iter->HasMember("StopBits") || !(*Iter)["StopBits"].IsInt())
+				{
+					continue;
+				}
+
+				ComElement.nStopBits = (*Iter)["StopBits"].GetInt();
+
+				// 通信字节位数
+				if (!Iter->HasMember("DataBits") || !(*Iter)["DataBits"].IsInt())
+				{
+					continue;
+				}
+
+				ComElement.nDataBits = (*Iter)["DataBits"].GetInt();
+
+				// 波特率
+				if (!Iter->HasMember("BaudRate") || !(*Iter)["BaudRate"].IsInt())
+				{
+					continue;
+				}
+
+				ComElement.nBaudRate = (*Iter)["BaudRate"].GetInt();
+
+				// 是否使用流控
+				if (!Iter->HasMember("UseFlowControl") || !(*Iter)["UseFlowControl"].IsBool())
+				{
+					continue;
+				}
+				ComElement.bUseFlowControl = (*Iter)["UseFlowControl"].GetBool();
+
+
+
+				//通信配置
+				COMPROPERTY SensorComOption;
+				SensorComOption.nBaudRate = ComElement.nBaudRate;
+				SensorComOption.nDataBits = ComElement.nDataBits;
+				SensorComOption.nPairty = ComElement.nPairty;
+				SensorComOption.nStopBits = ComElement.nStopBits;
+				if (ComElement.bUseFlowControl)
+				{
+					SensorComOption.nFlowControl = 1;
+				}
+				else
+				{
+					SensorComOption.nFlowControl = 0;
+				}
+				CSerialPortService::CreateInstance().SetSerialPortOption(ComElement.nComIndex,SensorComOption);
+				//开启
+				CSerialPortService::CreateInstance().StartSerialPortService();
+
+				m_SensorComConfigArray.push_back(ComElement);
+			}
 		}
 	}
 #endif
-	return bResult;
 
-}
+	const rapidjson::Value& ComArray = Parser["ComConfig"];
 
-#ifdef COM_TEST
-bool CSensorConfig::GetFirstSensorConfig( LP_SENSOR_CONFIG_ELEMENT pConfig )
-{
-#if 0
-	if (nullptr == pConfig)
+	SENSOR_COM_CONFIG_ELEMENT ComElement;
+	if (ComArray.IsObject())
 	{
-		return false;
-	}
+		//// 传感器名称
+		//if (!ComArray.HasMember("SensorName") || !ComArray["SensorName"].IsString())
+		//{
+		//	return false;
+		//}
 
-	if (m_SensorConfigArray.empty())
-	{
-		return false;
-	}
+		//ComElement.strSensorName = Utility::ConverUTF8ToGB2312(ComArray["SensorName"].GetString());
 
-	*pConfig = m_SensorConfigArray[0];
-#endif
+		// 端口号
+		if (!ComArray.HasMember("PortName") || !ComArray["PortName"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nComIndex = ComArray["PortName"].GetInt();
+
+		// 校验类型
+		if (!ComArray.HasMember("Pairty") || !ComArray["Pairty"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nPairty = ComArray["Pairty"].GetInt();
+
+		// 停止位
+		if (!ComArray.HasMember("StopBits") || !ComArray["StopBits"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nStopBits = ComArray["StopBits"].GetInt();
+
+		// 通信字节位数
+		if (!ComArray.HasMember("DataBits") || !ComArray["DataBits"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nDataBits = ComArray["DataBits"].GetInt();
+
+		// 波特率
+		if (!ComArray.HasMember("BaudRate") || !ComArray["BaudRate"].IsInt())
+		{
+			return false;
+		}
+
+		ComElement.nBaudRate = ComArray["BaudRate"].GetInt();
+
+		// 是否使用流控
+		if (!ComArray.HasMember("UseFlowControl") || !ComArray["UseFlowControl"].IsBool())
+		{
+			return false;
+		}
+		ComElement.bUseFlowControl = ComArray["UseFlowControl"].GetBool();
+
+		m_SensorComConfig = ComElement;
+	}
 	return true;
 }
-#endif
 
 CSensorConfig CSensorConfig::s_SensorConfig;

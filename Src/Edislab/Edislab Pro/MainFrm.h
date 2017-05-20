@@ -135,7 +135,6 @@ protected:
 
 	afx_msg void HandleRadioClick(UINT nID);
 	afx_msg void OnUpdateRadioButton(CCmdUI* pCmdUI);
-
 #if 0
 protected:
 	//Ribbon消息相应函数
@@ -227,6 +226,9 @@ public:
 
 private:
 	void ShowRibbonCatagory(CBCGPRibbonCategory* pCatagory,bool bShow = false);
+
+	//设备上线的回调
+	afx_msg LRESULT NotifyDeviceOnOrOff(WPARAM wp,LPARAM lp);
 };
 
 

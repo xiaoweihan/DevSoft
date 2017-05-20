@@ -385,15 +385,20 @@ void CEdislabProView::DeleteCurrentPage( void )
 	if (NULL != m_TabWnd.GetSafeHwnd())
 	{
 		int nActiveTab = m_TabWnd.GetActiveTab();
+		CDlgTabPanel* pActiveWnd = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetActiveWnd());
+
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->DestroyWindow();
+		}
 
 		if (nActiveTab >= 0)
 		{
 			m_TabWnd.RemoveTab(nActiveTab,TRUE);
-
 			if (nActiveTab >= m_TabWnd.GetTabsNum() && m_TabWnd.GetTabsNum() > 0)
 			{
 				m_TabWnd.SetActiveTab(m_TabWnd.GetTabsNum() - 1);
-			}
+			}	
 		}	
 	}
 }
@@ -513,4 +518,23 @@ void CEdislabProView::OnFileSaveAs()
 	// TODO: 在此添加命令处理程序代码
 
 	OnFileSave();
+}
+
+void CEdislabProView::NotifyDetectDevice( const std::string& strDeviceName,int nOnFlag )
+{
+	if (NULL == m_TabWnd.GetSafeHwnd())
+	{
+		return;
+	}
+	int nTabWndNum = m_TabWnd.GetTabsNum();
+	CDlgTabPanel* pPanel = nullptr;
+	for (int i = 0; i < nTabWndNum; ++i)
+	{
+		pPanel = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetTabWnd(i));
+
+		if (nullptr != pPanel)
+		{
+			pPanel->NotifyDectectSensor(strDeviceName,nOnFlag);
+		}
+	}
 }

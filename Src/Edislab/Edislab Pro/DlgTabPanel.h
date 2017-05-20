@@ -1,6 +1,4 @@
 #pragma once
-
-
 // CDlgTabPanel 对话框
 #include "WidgetLayout.h"
 class CBaseDialog;
@@ -49,19 +47,22 @@ public:
 	int GetDiagramNum(void) const;
 
 	void SetDiagramNum(int DiagramNum);
-
 	//添加表格
 	void AddGrid();
 	//添加图表
 	void AddChart();
 	//添回仪表
 	void AddGauge();
+	//通知发现新传感器
+	void NotifyDectectSensor(const std::string& strDeviceName,int nOnFlag);
+#if 0
 	//删除窗格
 	void DelWnd(CWnd* dlg);
-	void SetActive(int type);
-	//
-	void SetActiveDlg(CWnd* dlg);
+	void SetActiveDlg(CWnd* dlg);	
+#endif
 	CWnd* GetActiveDlg();
+	void SetActive(int nType,CWnd* pActiveWnd);
+	void DelWnd(void);
 	//准备显示元素
 	void PrepareDisplayElement(void);
 protected:
@@ -93,7 +94,10 @@ private:
 	//Diagram的数量
 	int m_nDiagramNum;
 
-	class CWnd* m_pActiveDlg;
+	CWnd* m_pActiveDlg;
+
+	//活动窗口的类型
+	int m_nActiveWndType;
 public:
 	virtual BOOL OnInitDialog();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
@@ -101,4 +105,5 @@ public:
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	virtual void PostNcDestroy();
+	afx_msg void OnPaint();
 };

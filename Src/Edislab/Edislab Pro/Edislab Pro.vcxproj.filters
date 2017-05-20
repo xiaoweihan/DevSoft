@@ -174,12 +174,6 @@
     <ClInclude Include="DlgGridPanel.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="DeviceView.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="DiagramView.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="GridView.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -225,9 +219,6 @@
     <ClInclude Include="ChartManager.h">
       <Filter>ChartFigure</Filter>
     </ClInclude>
-    <ClInclude Include="ComImple.h">
-      <Filter>Com</Filter>
-    </ClInclude>
     <ClInclude Include="Global.h">
       <Filter>Global</Filter>
     </ClInclude>
@@ -237,9 +228,6 @@
     <ClInclude Include="Observable.h">
       <Filter>ObserverModal</Filter>
     </ClInclude>
-    <ClInclude Include="GridControlFactory.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
     <ClInclude Include="GridCtrlBase.h">
       <Filter>GridCtrl</Filter>
     </ClInclude>
@@ -247,12 +235,6 @@
       <Filter>GridCtrl</Filter>
     </ClInclude>
     <ClInclude Include="GridDefine.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
-    <ClInclude Include="GridViewManager.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
-    <ClInclude Include="CustomLabGridCtrl.h">
       <Filter>GridCtrl</Filter>
     </ClInclude>
     <ClInclude Include="DlgDeviceSet.h">
@@ -309,6 +291,24 @@
     <ClInclude Include="CustomGrid.h">
       <Filter>UIExtend</Filter>
     </ClInclude>
+    <ClInclude Include="GridDisplayColumnInfo.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SensorData.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SensorDataManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgGridContainer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SerialPort.h">
+      <Filter>Com</Filter>
+    </ClInclude>
+    <ClInclude Include="SerialPortService.h">
+      <Filter>Com</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -359,12 +359,6 @@
     <ClCompile Include="DlgGridPanel.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="DeviceView.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="DiagramView.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="GridView.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -395,9 +389,6 @@
     <ClCompile Include="ChartFigureDlg.cpp">
       <Filter>ChartFigure</Filter>
     </ClCompile>
-    <ClCompile Include="ComImple.cpp">
-      <Filter>Com</Filter>
-    </ClCompile>
     <ClCompile Include="Global.cpp">
       <Filter>Global</Filter>
     </ClCompile>
@@ -407,19 +398,10 @@
     <ClCompile Include="Observable.cpp">
       <Filter>ObserverModal</Filter>
     </ClCompile>
-    <ClCompile Include="GridControlFactory.cpp">
-      <Filter>GridCtrl</Filter>
-    </ClCompile>
     <ClCompile Include="GridCtrlBase.cpp">
       <Filter>GridCtrl</Filter>
     </ClCompile>
     <ClCompile Include="GridDataManager.cpp">
-      <Filter>GridCtrl</Filter>
-    </ClCompile>
-    <ClCompile Include="GridViewManager.cpp">
-      <Filter>GridCtrl</Filter>
-    </ClCompile>
-    <ClCompile Include="CustomLabGridCtrl.cpp">
       <Filter>GridCtrl</Filter>
     </ClCompile>
     <ClCompile Include="ChartXY.cpp">
@@ -469,6 +451,24 @@
     </ClCompile>
     <ClCompile Include="CustomGrid.cpp">
       <Filter>UIExtend</Filter>
+    </ClCompile>
+    <ClCompile Include="GridDisplayColumnInfo.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorData.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorDataManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgGridContainer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SerialPort.cpp">
+      <Filter>Com</Filter>
+    </ClCompile>
+    <ClCompile Include="SerialPortService.cpp">
+      <Filter>Com</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

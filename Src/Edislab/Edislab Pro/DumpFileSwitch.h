@@ -9,7 +9,6 @@ Histroy:
 *******************************************************************************/
 #ifndef DUMP_FILE_SWITCH_H
 #define DUMP_FILE_SWITCH_H
-#include <Windows.h>
 class CDumpFileSwitch
 {
 public:
@@ -22,6 +21,9 @@ public:
 private:
     CDumpFileSwitch(void);
     ~CDumpFileSwitch(void);
+
+private:
+	static CDumpFileSwitch s_obj;
 };
 
 

@@ -1,6 +1,8 @@
 #include "StdAfx.h"
 #include "Edislab Pro.h"
 #include "Edislab ProView.h"
+#include <boost/foreach.hpp>
+#include <boost/thread.hpp>
 #include "CommandEntry.h"
 #include "boost/crc.hpp"
 #include "Msg.h"
@@ -8,7 +10,6 @@
 #include "DlgTabPanel.h"
 #include "DlgPageNameConfig.h"
 #include "Utility.h"
-#include "ComImple.h"
 #include "CApplication.h"
 #include "CDocuments.h"
 #include "CFont0.h"
@@ -19,7 +20,8 @@
 #include "Global.h"
 #include "SensorConfig.h"
 #include "Log.h"
-
+#include "SensorIDGenerator.h"
+#include "SerialPortService.h"
 //最大页面数
 const int MAX_PAGE_NUM = 4;
 //表格的最大个数
@@ -475,7 +477,7 @@ void HandleDelElement(CEdislabProView* pView)
 		CDlgTabPanel* tabPanel = pView->GetCurrentPage();
 		if(tabPanel)
 		{
-			tabPanel->DelWnd(tabPanel->GetActiveDlg());
+			tabPanel->DelWnd();
 		}
 	}
 }
@@ -555,53 +557,27 @@ void HandleStart(CEdislabProView* pView)
 	{
 		return;
 	}
-	//获取第一个传感器
-	SENSOR_CONFIG_ELEMENT TempSensor;
-	if (!CSensorConfig::CreateInstance().GetFirstSensorConfig(&TempSensor))
-	{
-		ERROR_LOG("GetFirstSensorConfig failed.");
-		return;
-	}
 
-	//使用CRC-32算法
-	int nNameLength = static_cast<int>(TempSensor.strSensorName.length());
-
-	int nTotalLength = 1 + 1 + 1 + nNameLength + 1 + 1;
-
-	BYTE* pBuffer = new BYTE[nTotalLength];
-
-	if (nullptr == pBuffer)
-	{
-		return;
-	}
-	ZeroMemory(pBuffer,nTotalLength);
-
-	//发送开始采集
-	pBuffer[0] = 0xAB;
-	pBuffer[1] = nTotalLength - 1 - 1;
-	pBuffer[2] = nNameLength;
-	memcpy(pBuffer + 3,TempSensor.strSensorName.c_str(),nNameLength);
-	//停止采集
+	std::vector<std::string> SensorNameArray;
+	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray);
 	if (s_bStartCapture)
 	{
-		pBuffer[nTotalLength - 2] = 0x01;
+		BOOST_FOREACH(auto& V,SensorNameArray)
+		{
+			CSerialPortService::CreateInstance().StopSensorCollect(V);
+		}
 	}
-	//开始采集
 	else
 	{
-		pBuffer[nTotalLength - 2] = 0x00;
+		BOOST_FOREACH(auto& V,SensorNameArray)
+		{
+			//CSerialPortService::CreateInstance().SetSensorFrequence(V,5000);
+			CSerialPortService::CreateInstance().StartSensorCollect(V);
+		}
 	}
-	
-	pBuffer[nTotalLength - 1] = Utility::CalCRC8(pBuffer,nTotalLength - 1);
-
-	COMIPLE.SendComData(pBuffer,nTotalLength);
-
-	delete []pBuffer;
-	pBuffer = nullptr;
-
 	s_bStartCapture = !s_bStartCapture;
-	
 }
+
 //自动识别
 void HandleAutoSelect(CEdislabProView* pView)
 {
@@ -617,7 +593,7 @@ void HandleAutoSelect(CEdislabProView* pView)
 	}
 
 	g_bAutoSelect = TRUE;
-	COMIPLE.StartCom(pWnd);
+	//COMIPLE.StartCom(pWnd);
 	
 }
 

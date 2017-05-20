@@ -102,7 +102,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -124,7 +124,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -147,7 +147,7 @@
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS</PreprocessorDefinitions>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
@@ -174,7 +174,7 @@
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -225,7 +225,6 @@
     <ClInclude Include="CDocuments.h" />
     <ClInclude Include="CFont0.h" />
     <ClInclude Include="CommandEntry.h" />
-    <ClInclude Include="ComImple.h" />
     <ClInclude Include="ChartFigureDlg.h" />
     <ClInclude Include="ChartManager.h" />
     <ClInclude Include="ChartXY.h" />
@@ -235,16 +234,14 @@
     <ClInclude Include="CParagraphFormat.h" />
     <ClInclude Include="CSelection.h" />
     <ClInclude Include="CustomGrid.h" />
-    <ClInclude Include="CustomLabGridCtrl.h" />
     <ClInclude Include="DataDefine.h" />
-    <ClInclude Include="DeviceView.h" />
-    <ClInclude Include="DiagramView.h" />
     <ClInclude Include="DlgAcquirationPara.h" />
     <ClInclude Include="DlgAddPage.h" />
     <ClInclude Include="DlgChartSet.h" />
     <ClInclude Include="DlgDevicePanel.h" />
     <ClInclude Include="DlgDeviceSet.h" />
     <ClInclude Include="DlgDiagramPanel.h" />
+    <ClInclude Include="DlgGridContainer.h" />
     <ClInclude Include="DlgGridPanel.h" />
     <ClInclude Include="DlgPageNameConfig.h" />
     <ClInclude Include="DlgSensorChoose.h" />
@@ -259,12 +256,11 @@
     <ClInclude Include="GaugeDlg.h" />
     <ClInclude Include="GaugeManager.h" />
     <ClInclude Include="Global.h" />
-    <ClInclude Include="GridControlFactory.h" />
     <ClInclude Include="GridCtrlBase.h" />
     <ClInclude Include="GridDataManager.h" />
     <ClInclude Include="GridDefine.h" />
+    <ClInclude Include="GridDisplayColumnInfo.h" />
     <ClInclude Include="GridView.h" />
-    <ClInclude Include="GridViewManager.h" />
     <ClInclude Include="Lock.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Macro.h" />
@@ -274,7 +270,11 @@
     <ClInclude Include="Observer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SensorConfig.h" />
+    <ClInclude Include="SensorData.h" />
+    <ClInclude Include="SensorDataManager.h" />
     <ClInclude Include="SensorIDGenerator.h" />
+    <ClInclude Include="SerialPort.h" />
+    <ClInclude Include="SerialPortService.h" />
     <ClInclude Include="SplitBar.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
@@ -291,21 +291,18 @@
     <ClCompile Include="ChartManager.cpp" />
     <ClCompile Include="ChartXY.cpp" />
     <ClCompile Include="CommandEntry.cpp" />
-    <ClCompile Include="ComImple.cpp" />
     <ClCompile Include="ChartFigureDlg.cpp" />
     <ClCompile Include="ConcreteSplitAlgorithm.cpp" />
     <ClCompile Include="ConcreteTabWnd.cpp" />
     <ClCompile Include="ConverEncode.cpp" />
     <ClCompile Include="CustomGrid.cpp" />
-    <ClCompile Include="CustomLabGridCtrl.cpp" />
-    <ClCompile Include="DeviceView.cpp" />
-    <ClCompile Include="DiagramView.cpp" />
     <ClCompile Include="DlgAcquirationPara.cpp" />
     <ClCompile Include="DlgAddPage.cpp" />
     <ClCompile Include="DlgChartSet.cpp" />
     <ClCompile Include="DlgDevicePanel.cpp" />
     <ClCompile Include="DlgDeviceSet.cpp" />
     <ClCompile Include="DlgDiagramPanel.cpp" />
+    <ClCompile Include="DlgGridContainer.cpp" />
     <ClCompile Include="DlgGridPanel.cpp" />
     <ClCompile Include="DlgPageNameConfig.cpp" />
     <ClCompile Include="DlgSensorChoose.cpp" />
@@ -320,18 +317,21 @@
     <ClCompile Include="GaugeManager.cpp" />
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="GlobalDataManager.cpp" />
-    <ClCompile Include="GridControlFactory.cpp" />
     <ClCompile Include="GridCtrlBase.cpp" />
     <ClCompile Include="GridDataManager.cpp" />
+    <ClCompile Include="GridDisplayColumnInfo.cpp" />
     <ClCompile Include="GridView.cpp" />
-    <ClCompile Include="GridViewManager.cpp" />
     <ClCompile Include="Lock.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MainFrm.cpp" />
     <ClCompile Include="Observable.cpp" />
     <ClCompile Include="Observer.cpp" />
     <ClCompile Include="SensorConfig.cpp" />
+    <ClCompile Include="SensorData.cpp" />
+    <ClCompile Include="SensorDataManager.cpp" />
     <ClCompile Include="SensorIDGenerator.cpp" />
+    <ClCompile Include="SerialPort.cpp" />
+    <ClCompile Include="SerialPortService.cpp" />
     <ClCompile Include="SplitBar.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

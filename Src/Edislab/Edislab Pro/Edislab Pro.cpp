@@ -203,7 +203,7 @@ void CEdislabProApp::Init( void )
 	CLog::CreateInstance().SetLogLevel(LOG_ERROR);
 #endif
 	//设置生成的dump文件路径
-	std::string strDumpFilePath = strLogDir + std::string("Edislab.dmp");
+	std::string strDumpFilePath = Utility::GetExeDirecory() + std::string("\\Edislab.dmp");
 	CDumpFileSwitch::CreateInstance().SetDumpFilePath(strDumpFilePath.c_str());
 	CDumpFileSwitch::CreateInstance().OpenSwitch();
 

@@ -9,8 +9,8 @@ Histroy:
 *******************************************************************************/
 #include "stdafx.h"
 #include "DumpFileSwitch.h"
-#include <ImageHlp.h>
 #include <Windows.h>
+#include <ImageHlp.h>
 #include <string>
 #pragma warning(push)
 #pragma warning(disable:4996)
@@ -32,8 +32,8 @@ static LONG __stdcall CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExcept
 *****************************************************************************/
 CDumpFileSwitch& CDumpFileSwitch::CreateInstance( void )
 {
-    static CDumpFileSwitch s_DumpFileSwitch;
-    return s_DumpFileSwitch;
+ 
+    return s_obj;
 }
 
 /*****************************************************************************
@@ -202,3 +202,5 @@ LONG __stdcall CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionInfo
     return EXCEPTION_EXECUTE_HANDLER;
 }
 #pragma warning(pop)
+
+CDumpFileSwitch CDumpFileSwitch::s_obj;

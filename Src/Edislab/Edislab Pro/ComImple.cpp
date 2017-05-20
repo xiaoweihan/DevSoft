@@ -186,12 +186,14 @@ CSerialPort::CSerialPort(void)
 
 	s_bloop = true;
 
+#if 0
 	m_HandleDecode = CreateThread(NULL,0,DecodeComDataProc,this,0,&dwThreadID);
 
 	if (NULL == m_HandleDecode)
 	{
 		return;
 	}
+#endif
 }
 
 /*************************************************************************************************

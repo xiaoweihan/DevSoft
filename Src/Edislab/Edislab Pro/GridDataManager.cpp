@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "GridDataManager.h"
-
+#include "Global.h"
 
 CGridDataManager::CGridDataManager(void)
 {
