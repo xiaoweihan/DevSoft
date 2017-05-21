@@ -1,5 +1,8 @@
 #pragma once
 #include "BaseDialog.h"
+#include "Type.h"
+#include "SensorConfig.h"
+#include <set>
 
 // CDlgSensorChoose 对话框
 
@@ -52,6 +55,20 @@ private:
 
 	// 分辨率数值（部分传感器的分辨率参数不是文本表示的，此文本框会提供位置信息）
 	CBCGPStatic m_StaticResolutionRatio;
+
+	// 当前可选的传感器列表
+	std::map<int, SENSOR_CONFIG_ELEMENT> m_mapCurrentSensor;
+
+	// 已选的传感器
+	std::map<int, SENSOR_CONFIG_ELEMENT> m_mapChooseSensor;
+
+	// 记录当前已选的传感器ID，可能存在选中多个
+	std::multiset<int> m_setChooseSensorID;
+private:
+	void RefreshSensorList();
+
+	void RefreshRange();
+
 public:
 	afx_msg void OnBnClickedCheckAutoRecognize();
 	virtual BOOL OnInitDialog();
@@ -60,4 +77,5 @@ public:
 	afx_msg void OnBnClickedBtnDeleteAll();
 	afx_msg void OnBnClickedBtnChooseConnected();
 	afx_msg void OnBnClickedBtnOk();
+	afx_msg void OnCbnSelchangeCmbSensorType();
 };
