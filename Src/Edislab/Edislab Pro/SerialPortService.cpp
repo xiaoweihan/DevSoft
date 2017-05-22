@@ -1,91 +1,76 @@
 #include "stdafx.h"
 #include "SerialPortService.h"
 #include <boost/bind.hpp>
+#include <boost/asio/placeholders.hpp>
+#include <boost/thread.hpp>
+#include <boost/date_time/posix_time/ptime.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "Log.h"
 #include "SensorIDGenerator.h"
 #include "SensorDataManager.h"
 #include "SensorData.h"
 #include "Utility.h"
 #include "Msg.h"
-//接收缓冲区的大小
-const int MAX_BUFFER_SIZE = 100;
-const int DEFAULT_TIME_OUT = 1500;
+//接收缓冲区的大小(1MB)
+const int MAX_BUFFER_SIZE = (1 << 20);
+//存放传感器名称的数组大小
+const int MAX_SENSOR_NAME_LENGTH = 100;
+
 CSerialPortService& CSerialPortService::CreateInstance()
 {
 	return s_obj;
 }
 
 CSerialPortService::CSerialPortService():
-	m_bLoop(false),
-	m_nSerialPort(-1),
-	m_pDeviceNameBuffer(nullptr),
-	m_nDeviceNameBufferLength(0),
-	m_bCopyDeviceName(true)
+	m_Work(m_IoService),
+	m_SerialPort(m_IoService),
+	m_nUseBufferBytes(0),
+	m_pRecvBuffer(nullptr)
 {
+
+	if (nullptr == m_pRecvBuffer)
+	{
+		m_pRecvBuffer = new BYTE[MAX_BUFFER_SIZE];
+	}
+
 }
 
 
 CSerialPortService::~CSerialPortService()
 {
-	DELETE_ARRAY_POINTER(m_pDeviceNameBuffer);
-	m_nDeviceNameBufferLength = 0;
+	if (nullptr != m_pRecvBuffer)
+	{
+		delete[]m_pRecvBuffer;
+		m_pRecvBuffer = nullptr;
+	}
+	m_nUseBufferBytes = 0;
 }
 
-//开启串口服务
 void CSerialPortService::StartSerialPortService(void)
 {
-	char szCom[MAX_BUFFER_SIZE] = { 0 };
-
-	sprintf_s(szCom, "\\\\.\\COM%d", m_nSerialPort);
-
-	//打开串口
-	if (!m_Com.Open(szCom))
+	//初始化串口
+	if (!InitSerialPort())
 	{
-		ERROR_LOG("open com failed.");
+		ERROR_LOG("InitSerialPort failed.");
 		return;
 	}
-
-	//设置通信选项
-	if (!m_Com.SetComProperty(&m_SerialPortOpt))
-	{
-		ERROR_LOG("SetComProperty failed.");
-		return;
-	}
-
-	//设置读取的超时时间
-	if (!m_Com.SetTimeout(DEFAULT_TIME_OUT))
-	{
-		ERROR_LOG("SetTimeout failed.");
-		return;
-	}
-
-	//开启读取线程
-	if (!m_pReceThread)
-	{
-		m_bLoop = true;
-		//开始通信
-		m_pReceThread = boost::make_shared<boost::thread>(boost::bind(&CSerialPortService::ReceiveProc,this));
-	}
+	//开始异步读取数据
+	m_SerialPort.async_read_some(boost::asio::buffer(m_pRecvBuffer + m_nUseBufferBytes, MAX_BUFFER_SIZE - m_nUseBufferBytes), boost::bind(&CSerialPortService::ReadHandler, this, boost::asio::placeholders::error,
+		                                              boost::asio::placeholders::bytes_transferred));
+	
+	boost::system::error_code ec;
+	m_IoService.run(ec);
 }
 
-//停止串口服务
 void CSerialPortService::StopSerialPortService(void)
 {
-	m_bLoop = false;
-	if (m_pReceThread)
-	{
-		m_pReceThread->join();
-	}
-	m_Com.Close();
+	m_IoService.stop();
+	m_SerialPort.close();
 }
 
-void CSerialPortService::StartSensorCollect(const std::string& strSensorName)
-{
-	//if (nullptr == m_pDeviceNameBuffer || 0 == m_nDeviceNameBufferLength)
-	//{
-	//	return;
-	//}
 
+void CSerialPortService::StartSensorCollect( const std::string& strSensorName )
+{
 	if (strSensorName.empty())
 	{
 		return;
@@ -105,27 +90,12 @@ void CSerialPortService::StartSensorCollect(const std::string& strSensorName)
 	memcpy(pData + 3,strSensorName.c_str(),nSensorNameLength);
 	pData[nSensorNameLength + 3] = 0x00;
 	pData[nSensorNameLength + 4] = Utility::CalCRC8(pData,nTotalLength - 1);
-	unsigned int nWriteBytes = 0;
-	if (m_Com.Write(pData,nTotalLength,nWriteBytes))
-	{
-		if (nWriteBytes != nTotalLength)
-		{
-			ERROR_LOG("StartSensorCollect [%s] failed.",strSensorName.c_str());
-		}
-	}
-	else
-	{
-		ERROR_LOG("StartSensorCollect [%s] failed.",strSensorName.c_str());
-	}
-	DELETE_ARRAY_POINTER(pData);
+	
+	AsyncWriteData(pData,nTotalLength);
 }
 
-void CSerialPortService::StopSensorCollect(const std::string& strSensorName)
+void CSerialPortService::StopSensorCollect( const std::string& strSensorName )
 {
-	//if (nullptr == m_pDeviceNameBuffer || 0 == m_nDeviceNameBufferLength)
-	//{
-	//	return;
-	//}
 	if (strSensorName.empty())
 	{
 		return;
@@ -144,22 +114,11 @@ void CSerialPortService::StopSensorCollect(const std::string& strSensorName)
 	memcpy(pData + 3,strSensorName.c_str(),nSensorNameLength);
 	pData[nSensorNameLength + 3] = 0x01;
 	pData[nSensorNameLength + 4] = Utility::CalCRC8(pData,nTotalLength - 1);
-	unsigned int nWriteBytes = 0;
-	if (m_Com.Write(pData,nTotalLength,nWriteBytes))
-	{
-		if (nWriteBytes != nTotalLength)
-		{
-			ERROR_LOG("StopSensorCollect [%s] failed.",strSensorName.c_str());
-		}
-	}
-	else
-	{
-		ERROR_LOG("StopSensorCollect [%s] failed.",strSensorName.c_str());
-	}
-	DELETE_ARRAY_POINTER(pData);
+	
+	AsyncWriteData(pData,nTotalLength);
 }
 
-void CSerialPortService::SetSensorFrequence(const std::string& strSensorName,int nMillSecond)
+void CSerialPortService::SetSensorFrequence( const std::string& strSensorName,int nMillSecond )
 {
 	if (strSensorName.empty())
 	{
@@ -169,14 +128,11 @@ void CSerialPortService::SetSensorFrequence(const std::string& strSensorName,int
 	//设置采样周期
 	int nSensorNameLength = (int)strSensorName.length();
 	int nMsgLength = 6 + nSensorNameLength;
-
 	BYTE* pSendBuffer = new BYTE[nMsgLength];
-
 	if (nullptr == pSendBuffer)
 	{
 		return;
 	}
-
 
 	ZeroMemory(pSendBuffer,nMsgLength);
 	pSendBuffer[0] = 0xAF;
@@ -187,229 +143,271 @@ void CSerialPortService::SetSensorFrequence(const std::string& strSensorName,int
 	pSendBuffer[nMsgLength - 2] = (BYTE)((nMillSecond & 0xFF00) >> 8);
 	pSendBuffer[nMsgLength - 1] = Utility::CalCRC8(pSendBuffer,nMsgLength - 1);
 
-
-	unsigned int nWriteBytes = 0;
-	if (m_Com.Write(pSendBuffer,nMsgLength,nWriteBytes))
-	{
-		if (nWriteBytes != nMsgLength)
-		{
-			ERROR_LOG("SetSensorFrequence [%s] failed.",strSensorName.c_str());
-		}
-	}
-	else
-	{
-		ERROR_LOG("SetSensorFrequence [%s] failed.",strSensorName.c_str());
-	}
-	DELETE_ARRAY_POINTER(pSendBuffer);
+	AsyncWriteData(pSendBuffer,nMsgLength);
 }
 
-//开启接收线程
-void CSerialPortService::ReceiveProc(void)
-{
-	BYTE chHead = 0;
-	unsigned int nReadByte = 0;
-	while (m_bLoop)
-	{
-		//读取头
-		if (m_Com.Read(&chHead,sizeof(chHead),nReadByte))
-		{
-			if (nReadByte == sizeof(chHead))
-			{
-				switch (chHead)
-				{
-					//上线或者下线
-				case 0xBA:
-					HandleDeviceOnOffMsg();
-					break;
-					//周期上报数据
-				case 0xBD:
-					HandleDeviceDataMsg();
-					break;
-				default:
-					break;
-				}
-			}	
-		}
-		else
-		{
-			boost::this_thread::sleep(boost::posix_time::seconds(1));
-		}
-	}
-}
-
-void CSerialPortService::HandleDeviceOnOffMsg(void)
-{
-	BYTE szDeviceName[MAX_BUFFER_SIZE] = { 0 };
-	//再接收一个字节
-	BYTE chLength = 0;
-	unsigned int nReadByte = 0;
-	if (m_Com.Read(&chLength, sizeof(chLength), nReadByte))
-	{
-		if (nReadByte == sizeof(chLength))
-		{
-			//接收剩下的内容
-			BYTE* pData = new BYTE[chLength + 2];
-			if (nullptr != pData)
-			{
-				pData[0] = 0xBA;
-				pData[1] = chLength;
-				if (m_Com.Read(pData + 2, chLength, nReadByte))
-				{
-					if (chLength == nReadByte)
-					{
-						//判断是否符合CRC
-						if (CalCRC8(pData, chLength + 1) == pData[chLength + 1])
-						{
-							//获取传感器名称长度
-							int nDeviceNameLength = pData[2];
-							memcpy(szDeviceName, pData + 3, nDeviceNameLength);
-							//拷贝数据名称
-							//CopyDeviceName(pData + 3,nDeviceNameLength);
-							//下线通知
-							if (0x00 == pData[chLength])
-							{
-								DEBUG_LOG("the device [%s] is off.",szDeviceName);
-								//根据名称查询到设备的ID
-								int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(std::string((char*)szDeviceName));
-								//根据设备ID删除设备的数据
-								if (nSensorID >= 0)
-								{
-									CSensorDataManager::CreateInstance().DelSensorData(nSensorID);
-								}
-								//从传感器ID管理中删除
-								CSensorIDGenerator::CreateInstance().DelSensor(std::string((char*)szDeviceName));
-							
-								std::string* pDeviceName = new std::string((char*)szDeviceName);
-								//通知设备下线
-								::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pDeviceName,0);
-							}
-							//设备上线通知
-							else
-							{
-								DEBUG_LOG("the device [%s] is on.",szDeviceName);
-
-								//判断传感器是否已经存在
-								if (!CSensorIDGenerator::CreateInstance().IsSensorExist(std::string((char*)szDeviceName)))
-								{
-									//添加传感器
-									int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(std::string((char*)szDeviceName));
-									if (nSensorID >= 0)
-									{
-										//添加对应SensorID的数据
-										CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
-									}
-
-									//通知设备上线
-									std::string* pDeviceName = new std::string((char*)szDeviceName);
-									//通知设备下线
-									::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pDeviceName,1);
-									SetSensorFrequence(std::string((char*)szDeviceName),1000);
-								}
-							}
-						}
-					}
-				}
-				delete pData;
-				pData = nullptr;
-			}
-		}
-	}
-}
-
-void CSerialPortService::HandleDeviceDataMsg(void)
-{
-	BYTE szDeviceName[MAX_BUFFER_SIZE] = { 0 };
-	//再接收一个字节
-	BYTE chLength = 0;
-	unsigned int nReadByte = 0;
-	if (m_Com.Read(&chLength, sizeof(chLength), nReadByte))
-	{
-		if (nReadByte == sizeof(chLength))
-		{
-			//接收剩下的内容
-			BYTE* pData = new BYTE[chLength + 2];
-			if (nullptr != pData)
-			{
-				pData[0] = 0xBD;
-				pData[1] = chLength;
-				if (m_Com.Read(pData + 2, chLength, nReadByte))
-				{
-					if (chLength == nReadByte)
-					{
-						//判断是否符合CRC
-						if (CalCRC8(pData, chLength + 1) == pData[chLength + 1])
-						{
-							//获取传感器名称长度
-							int nDeviceNameLength = pData[2];
-							memcpy(szDeviceName, pData + 3, nDeviceNameLength);
-							//拷贝数据名称
-							//CopyDeviceName(pData + 3,nDeviceNameLength);
-							//获取数据
-							float fValue = 0.0f;
-							memcpy(&fValue, pData + 3 + nDeviceNameLength, 4);
-							if (fValue > 0)
-							{
-								NECESSARY_LOG("the device [%s] data is [%.1f].",szDeviceName,fValue);
-								//根据传感器名称获取ID
-								int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(std::string((char*)szDeviceName));
-								if (nSensorID >= 0)
-								{
-									//根据ID获取数据
-									CSensorData* pSensorData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
-									if (nullptr != pSensorData)
-									{
-										pSensorData->AddSensorData(fValue);
-									}
-								}
-							}			
-						}
-					}
-				}
-				delete pData;
-				pData = nullptr;
-			}
-		}
-	}
-
-
-}
-
-BYTE CSerialPortService::CalCRC8( BYTE* pBuf,unsigned int nsize )
-{
-	BYTE crc = 0;
-
-	if (nullptr == pBuf || 0 == nsize)
-	{
-		return crc;
-	}
-
-	while (nsize--)
-	{
-		crc ^= *pBuf;
-		pBuf++;
-	}
-	return crc;
-}
-
-void CSerialPortService::CopyDeviceName( BYTE* pData,int nDataLength )
+void CSerialPortService::AsyncWriteData(BYTE* pData, int nDataLength)
 {
 	if (nullptr == pData || 0 == nDataLength)
 	{
 		return;
 	}
 
-	if (m_bCopyDeviceName)
+	boost::this_thread::sleep(boost::posix_time::seconds(1));
+	m_SerialPort.async_write_some(boost::asio::buffer(pData,nDataLength),boost::bind(&CSerialPortService::WriteHandler,this,pData,nDataLength, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+}
+
+//任务通知完成回调
+void CSerialPortService::ReadHandler(const boost::system::error_code& ec, std::size_t bytes_transferred)
+{
+	if (ec)
 	{
-		DELETE_ARRAY_POINTER(m_pDeviceNameBuffer);
-		m_nDeviceNameBufferLength = 0;
-		m_pDeviceNameBuffer = new BYTE[nDataLength];
-		if (nullptr != m_pDeviceNameBuffer)
-		{
-			memcpy(m_pDeviceNameBuffer,pData,nDataLength);
-			m_nDeviceNameBufferLength = nDataLength;
-			m_bCopyDeviceName = false;
-		}
+		return;
 	}
+	//分析是否有整的数据包
+	int nRecvBytes = static_cast<int>(bytes_transferred);
+	m_nUseBufferBytes += nRecvBytes;
+	//处理数据
+	int nHandledBytes = HandlerData(m_pRecvBuffer,m_nUseBufferBytes);
+	//移动数据块
+	memmove(m_pRecvBuffer, m_pRecvBuffer + nHandledBytes, (m_nUseBufferBytes - nHandledBytes));
+	m_nUseBufferBytes -= nHandledBytes;
+	m_SerialPort.async_read_some(boost::asio::buffer(m_pRecvBuffer + m_nUseBufferBytes, MAX_BUFFER_SIZE - m_nUseBufferBytes), boost::bind(&CSerialPortService::ReadHandler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+}
+
+/**************************************************************************
+@FunctionName:HandlerData
+@FunctionDestription:处理数据
+@InputParam:
+@OutPutParam:
+@ReturnValue:返回已经处理的字节数
+**************************************************************************/
+int CSerialPortService::HandlerData(BYTE* pData, int nDataLength)
+{
+	int nHandledBytes = 0;
+	if (nullptr == pData || 0 == nDataLength)
+	{
+		return 0;
+	}
+	char szSensorName[MAX_SENSOR_NAME_LENGTH] = { 0 };
+	int nIndex = 0;
+
+	while (nIndex < nDataLength)
+	{	
+		//传感器上下线通知
+		if (pData[nIndex] == 0xBA)
+		{
+			//确保数组不越界
+			if (nIndex + 1 < nDataLength)
+			{
+				//获取数据长度
+				int nFrameLength = (int)pData[nIndex + 1];
+				//判断整包长度
+				if ((nIndex + nFrameLength + 1) < nDataLength)
+				{
+					if (Utility::CalCRC8(&pData[nIndex], nFrameLength + 1) == pData[nIndex + nFrameLength + 1])
+					{
+						int nSensorNameLength = (int)pData[nIndex + 1 + 1];
+						//获取传感器名称
+						memcpy(szSensorName, &pData[nIndex + 1 + 1 + 1], nSensorNameLength);
+						//传感器上线
+						if (pData[nIndex + 1 + 1 + 1 + nSensorNameLength] == 0x01)
+						{
+							DEBUG_LOG("the device [%s] is on.",szSensorName);
+
+							//判断传感器是否已经存在
+							if (!CSensorIDGenerator::CreateInstance().IsSensorExist(szSensorName))
+							{
+								//添加传感器
+								int nSensorID = CSensorIDGenerator::CreateInstance().AddSensor(szSensorName);
+								if (nSensorID >= 0)
+								{
+									//添加对应SensorID的数据
+									CSensorDataManager::CreateInstance().AddSensorData(nSensorID);
+								}
+
+								//通知设备上线
+								std::string* pDeviceName = new std::string(szSensorName);
+								//通知设备下线
+								::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pDeviceName,1);
+							}
+						}
+						//传感器下线
+						else
+						{
+							DEBUG_LOG("the device [%s] is off.",szSensorName);
+							//根据名称查询到设备的ID
+							int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(szSensorName);
+							//根据设备ID删除设备的数据
+							if (nSensorID >= 0)
+							{
+								CSensorDataManager::CreateInstance().DelSensorData(nSensorID);
+							}
+							//从传感器ID管理中删除
+							CSensorIDGenerator::CreateInstance().DelSensor(szSensorName);
+
+							std::string* pDeviceName = new std::string(szSensorName);
+							//通知设备下线
+							::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pDeviceName,0);
+						}
+						nIndex += (nFrameLength + 2);
+						//修改数据的处理
+						nHandledBytes += (nFrameLength + 2);
+						continue;
+					}
+				}
+			}
+		}
+
+		//传感器上报数据通知
+		else if (pData[nIndex] == 0xBD)
+		{
+			//处理数据上报通知
+			if (nIndex + 1 < nDataLength)
+			{
+				//获取数据长度
+				int nFrameLength = (int)pData[nIndex + 1];
+				//判断整包长度
+				if ((nIndex + nFrameLength + 1) < nDataLength)
+				{
+					if (Utility::CalCRC8(&pData[nIndex], nFrameLength + 1) == pData[nIndex + nFrameLength + 1])
+					{
+						int nSensorNameLength = (int)pData[nIndex + 1 + 1];
+						//获取传感器名称
+						memcpy(szSensorName, &pData[nIndex + 1 + 1 + 1], nSensorNameLength);
+						float fValue = 0.0f;
+						memcpy(&fValue, &pData[nIndex + 1 + 1 + 1 + nSensorNameLength], 4);
+						nIndex += (nFrameLength + 2);
+						//修改数据的处理
+						nHandledBytes += (nFrameLength + 2);
+						
+						//拷贝数据
+						if (fValue > 0)
+						{
+							NECESSARY_LOG("the device [%s] data is [%.2f].",szSensorName,fValue);
+							//根据传感器名称获取ID
+							int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(szSensorName);
+							if (nSensorID >= 0)
+							{
+								//根据ID获取数据
+								CSensorData* pSensorData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
+								if (nullptr != pSensorData)
+								{
+									pSensorData->AddSensorData(fValue);
+								}
+							}
+						}
+						//boost::posix_time::ptime p = boost::posix_time::second_clock::local_time();
+						//std::cout << "["<<p<<"] "<<"the sensor [" << szSensorName << "] value is [" << fValue << "]" << std::endl;
+						continue;
+					}
+				}
+			}
+		}
+		else
+		{		
+		}
+		++nIndex;
+	}
+	return nHandledBytes;
+}
+
+void CSerialPortService::WriteHandler(BYTE* pData, int nDataLength, const boost::system::error_code& ec, std::size_t bytes_transferred)
+{
+	using namespace std;
+	if (ec)
+	{
+		return;
+	}
+
+	if (nDataLength != bytes_transferred)
+	{
+		ERROR_LOG("WriteHandler failed.");
+		return;
+	}
+
+	DELETE_ARRAY_POINTER(pData);
+}
+
+bool CSerialPortService::InitSerialPort(void)
+{
+
+	boost::system::error_code ec;
+	m_SerialPort.open(m_SerialOption.strSerialPort, ec);
+	if (ec)
+	{
+		return false;
+	}
+	//波特率
+	m_SerialPort.set_option(boost::asio::serial_port::baud_rate(m_SerialOption.nBaudRate),ec);    
+	if (ec)
+	{
+		return false;
+	}
+
+	if (m_SerialOption.bFlowControl)
+	{
+		m_SerialPort.set_option(boost::asio::serial_port::flow_control(boost::asio::serial_port::flow_control::hardware));  //流控制
+	}
+	else
+	{
+		m_SerialPort.set_option(boost::asio::serial_port::flow_control(boost::asio::serial_port::flow_control::none));  //流控制
+	}
+	if (ec)
+	{
+		return false;
+	}
+
+	switch (m_SerialOption.nPairty)
+	{
+		//不使用校验
+	case 0:
+		m_SerialPort.set_option(boost::asio::serial_port::parity(boost::asio::serial_port::parity::none),ec); //奇偶校验
+		break;
+		//奇数校验
+	case 1:
+		m_SerialPort.set_option(boost::asio::serial_port::parity(boost::asio::serial_port::parity::odd), ec);
+		break;
+		//偶数校验
+	case 2:
+		m_SerialPort.set_option(boost::asio::serial_port::parity(boost::asio::serial_port::parity::even), ec);
+		break;
+	default:
+		m_SerialPort.set_option(boost::asio::serial_port::parity(boost::asio::serial_port::parity::none), ec);
+		break;
+	}
+	if (ec)
+	{
+		return false;
+	}
+
+	switch (m_SerialOption.nStopBits)
+	{
+	case 0:
+		m_SerialPort.set_option(boost::asio::serial_port::stop_bits(boost::asio::serial_port::stop_bits::one),ec); //停止位
+		break;
+	case 1:
+		m_SerialPort.set_option(boost::asio::serial_port::stop_bits(boost::asio::serial_port::stop_bits::onepointfive),ec); //停止位
+		break;
+	case 2:
+		m_SerialPort.set_option(boost::asio::serial_port::stop_bits(boost::asio::serial_port::stop_bits::two),ec); //停止位
+		break;
+	default:
+		m_SerialPort.set_option(boost::asio::serial_port::stop_bits(boost::asio::serial_port::stop_bits::one), ec);
+		break;
+	}
+
+	if (ec)
+	{
+		return false;
+	}
+
+	m_SerialPort.set_option(boost::asio::serial_port::character_size(m_SerialOption.nDataBits),ec);// 通信字节位数，4—8
+	if (ec)
+	{
+		return false;
+	}
+	return true;
 }
 
 CSerialPortService CSerialPortService::s_obj;

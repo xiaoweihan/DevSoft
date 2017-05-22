@@ -1,15 +1,31 @@
-#ifndef SERIAL_PORT_SERVICE_H
-#define SERIAL_PORT_SERVICE_H
-#include <boost/thread.hpp>
-#include <boost/smart_ptr.hpp>
-#include <boost/atomic.hpp>
-#include <boost/function.hpp>
+#pragma once
+#include <boost/asio/io_service.hpp>
+#include <boost/asio/serial_port.hpp>
 #include <string>
-#include "SerialPort.h"
-
-//设备上线下线回调定义
-typedef boost::function<void(const std::string&,bool)> pDeviceCallBack;
-
+typedef struct _comproperty
+{
+	//串口编号
+	std::string strSerialPort;
+	//波特率
+	unsigned int nBaudRate;
+	//通信字节位数
+	int nDataBits;
+	//(0:1个停止位 1:1.5个停止位(Linux暂不支持1.5个停止位) 2:2个停止位)
+	int nStopBits;
+	//(0:不使用校验  1:奇数校验 2:偶数校验 3:标记校验（Linux下没有此项） 4:空格校验)
+	int nPairty;
+	//(0:不使用流控 1:使用硬件流控)
+	bool bFlowControl;
+	_comproperty()
+	{
+		strSerialPort = "";
+		nBaudRate = 9600;
+		nDataBits = 8;
+		nStopBits = 0;
+		nPairty = 0;
+		bFlowControl = false;
+	}
+}COMPROPERTY, *LPCOMPROPERTY;
 
 class CSerialPortService
 {
@@ -19,70 +35,53 @@ public:
 private:
 	CSerialPortService();
 	~CSerialPortService();
+
 public:
-	void SetSerialPortOption(int nPort, const COMPROPERTY& Options)
+	void SetSerialPortOption(const COMPROPERTY& Options)
 	{
-		m_nSerialPort = nPort;
-		m_SerialPortOpt = Options;
+		m_SerialOption = Options;
 	}
+
 	//开启服务
 	void StartSerialPortService(void);
+
+	//停止服务
 	void StopSerialPortService(void);
 
 	//开始采集命令
 	void StartSensorCollect(const std::string& strSensorName);
+
 	//停止采集
 	void StopSensorCollect(const std::string& strSensorName);
 
 	//设置上报周期
 	void SetSensorFrequence(const std::string& strSensorName,int nMillSecond);
-
-	//注册设备上下线回调
-	void RegisterDeviceCallBack(pDeviceCallBack DeviceCallback)
-	{
-		m_pCallBack = DeviceCallback;
-	}
 private:
-	void ReceiveProc(void);
+	//接收完成通知
+	void ReadHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
 
-	//处理上线和下线消息
-	void HandleDeviceOnOffMsg(void);
+	//判断是否有整包数据
+	int HandlerData(BYTE* pData,int nDataLength);
 
-	//处理接收数据信息
-	void HandleDeviceDataMsg(void);
+	//发送完成通知
+	void WriteHandler(BYTE* pData, int nDataLength, const boost::system::error_code& ec, std::size_t bytes_transferred);
 
-	//进行CRC校验和
-	BYTE CalCRC8(BYTE* pBuf,unsigned int nsize);
-
-	//拷贝数据名称
-	void CopyDeviceName(BYTE* pData,int nDataLength);
+	//设置传感器开始采集
+	void AsyncWriteData(BYTE* pData, int nDataLength);
 private:
-	//存放设备名称的数据
-	BYTE* m_pDeviceNameBuffer;
-
-	//存放设备名称数据的长度
-	int m_nDeviceNameBufferLength;
-
-	//串口号
-	int m_nSerialPort;
-
-	//串口配置
-	COMPROPERTY m_SerialPortOpt;
-
-	boost::shared_ptr<boost::thread> m_pReceThread;
-
-	boost::atomic_bool m_bLoop;
-
-	//串口类
-	CHandleCom m_Com;
-
-	//是否拷贝设备名称
-	bool m_bCopyDeviceName;
-
+	//初始化串口
+	bool InitSerialPort(void);
+	//接收缓冲区
+	BYTE* m_pRecvBuffer;
+	//已经占用的字节
+	int m_nUseBufferBytes;
+	//串口通信配置项
+	COMPROPERTY m_SerialOption;
+	//IoService
+	boost::asio::io_service m_IoService;
+	boost::asio::io_service::work m_Work;
+	boost::asio::serial_port m_SerialPort;
+	//单实例对象
 	static CSerialPortService s_obj;
-
-	//设备上线下线回调
-	pDeviceCallBack m_pCallBack;
 };
 
-#endif

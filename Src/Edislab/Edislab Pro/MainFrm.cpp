@@ -185,17 +185,9 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	SensorComOption.nDataBits = ComConfig.nDataBits;
 	SensorComOption.nPairty = ComConfig.nPairty;
 	SensorComOption.nStopBits = ComConfig.nStopBits;
-	if (ComConfig.bUseFlowControl)
-	{
-		SensorComOption.nFlowControl = 1;
-	}
-	else
-	{
-		SensorComOption.nFlowControl = 0;
-	}
+	SensorComOption.bFlowControl = ComConfig.bUseFlowControl;
 
-	using namespace boost;
-	CSerialPortService::CreateInstance().SetSerialPortOption(ComConfig.nComIndex,SensorComOption);
+	CSerialPortService::CreateInstance().SetSerialPortOption(SensorComOption);
 	//¿ªÆô×Ô¶¯¼à²â
 	if (g_bAutoSelect)
 	{	
