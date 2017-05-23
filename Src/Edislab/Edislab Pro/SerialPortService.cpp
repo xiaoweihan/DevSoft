@@ -48,24 +48,41 @@ CSerialPortService::~CSerialPortService()
 
 void CSerialPortService::StartSerialPortService(void)
 {
-	//初始化串口
-	if (!InitSerialPort())
+	auto ThreadProc = [this]()->void
 	{
-		ERROR_LOG("InitSerialPort failed.");
-		return;
+		//初始化串口
+		if (!InitSerialPort())
+		{
+			ERROR_LOG("InitSerialPort failed.");
+			return;
+		}
+		//开始异步读取数据
+		m_SerialPort.async_read_some(boost::asio::buffer(m_pRecvBuffer + m_nUseBufferBytes, MAX_BUFFER_SIZE - m_nUseBufferBytes), boost::bind(&CSerialPortService::ReadHandler, this, boost::asio::placeholders::error,
+			boost::asio::placeholders::bytes_transferred));
+
+		boost::system::error_code ec;
+		m_IoService.run(ec);
+
+	};
+
+
+	if (!m_pRecvThread)
+	{
+		m_pRecvThread = boost::make_shared<boost::thread>(ThreadProc);
 	}
-	//开始异步读取数据
-	m_SerialPort.async_read_some(boost::asio::buffer(m_pRecvBuffer + m_nUseBufferBytes, MAX_BUFFER_SIZE - m_nUseBufferBytes), boost::bind(&CSerialPortService::ReadHandler, this, boost::asio::placeholders::error,
-		                                              boost::asio::placeholders::bytes_transferred));
-	
-	boost::system::error_code ec;
-	m_IoService.run(ec);
+
 }
 
 void CSerialPortService::StopSerialPortService(void)
 {
-	m_IoService.stop();
-	m_SerialPort.close();
+
+	if (m_pRecvThread)
+	{
+		m_IoService.stop();
+		m_SerialPort.close();
+		m_pRecvThread->join();
+	}
+	
 }
 
 
@@ -153,7 +170,7 @@ void CSerialPortService::AsyncWriteData(BYTE* pData, int nDataLength)
 		return;
 	}
 
-	boost::this_thread::sleep(boost::posix_time::seconds(1));
+	//boost::this_thread::sleep(boost::posix_time::seconds(1));
 	m_SerialPort.async_write_some(boost::asio::buffer(pData,nDataLength),boost::bind(&CSerialPortService::WriteHandler,this,pData,nDataLength, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 }
 
@@ -208,6 +225,7 @@ int CSerialPortService::HandlerData(BYTE* pData, int nDataLength)
 					if (Utility::CalCRC8(&pData[nIndex], nFrameLength + 1) == pData[nIndex + nFrameLength + 1])
 					{
 						int nSensorNameLength = (int)pData[nIndex + 1 + 1];
+						memset(szSensorName,0,sizeof(szSensorName));
 						//获取传感器名称
 						memcpy(szSensorName, &pData[nIndex + 1 + 1 + 1], nSensorNameLength);
 						//传感器上线
@@ -274,6 +292,7 @@ int CSerialPortService::HandlerData(BYTE* pData, int nDataLength)
 					{
 						int nSensorNameLength = (int)pData[nIndex + 1 + 1];
 						//获取传感器名称
+						memset(szSensorName,0,sizeof(szSensorName));
 						memcpy(szSensorName, &pData[nIndex + 1 + 1 + 1], nSensorNameLength);
 						float fValue = 0.0f;
 						memcpy(&fValue, &pData[nIndex + 1 + 1 + 1 + nSensorNameLength], 4);

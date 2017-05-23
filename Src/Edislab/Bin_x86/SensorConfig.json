@@ -1,6 +1,6 @@
 {
 	"ComConfig": {
-		"PortName": 3,
+		"PortName": "COM3",
 		"Pairty": 0,
 		"StopBits": 0,
 		"DataBits": 8,

@@ -148,7 +148,7 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 {
 	// TODO: 在此添加专用代码和/或调用基类
 
-
+	//告诉布局管理器当前活动的窗口
 	switch (pMsg->message)
 	{
 	case WM_LBUTTONDOWN:
@@ -175,6 +175,7 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 		break;
 	}
 
+	//向主窗口发送消息告诉主窗口当前活动页
 	if (WM_LBUTTONDOWN == pMsg->message|| WM_RBUTTONDOWN == pMsg->message)
 	{
 		CWnd* pWnd = AfxGetMainWnd();
@@ -184,6 +185,7 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 		}
 	}
 
+	//屏蔽Enter和ESC
 	if (pMsg->message == WM_KEYDOWN)
 	{
 		if (VK_ESCAPE == pMsg->wParam || VK_RETURN == pMsg->wParam)

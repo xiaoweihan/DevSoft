@@ -1,6 +1,8 @@
 #pragma once
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/serial_port.hpp>
+#include <boost/thread.hpp>
+#include <boost/smart_ptr.hpp>
 #include <string>
 typedef struct _comproperty
 {
@@ -83,5 +85,8 @@ private:
 	boost::asio::serial_port m_SerialPort;
 	//单实例对象
 	static CSerialPortService s_obj;
+
+	//接收线程
+	boost::shared_ptr<boost::thread> m_pRecvThread;
 };
 

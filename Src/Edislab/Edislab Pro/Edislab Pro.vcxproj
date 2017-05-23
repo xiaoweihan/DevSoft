@@ -273,7 +273,6 @@
     <ClInclude Include="SensorData.h" />
     <ClInclude Include="SensorDataManager.h" />
     <ClInclude Include="SensorIDGenerator.h" />
-    <ClInclude Include="SerialPort.h" />
     <ClInclude Include="SerialPortService.h" />
     <ClInclude Include="SplitBar.h" />
     <ClInclude Include="stdafx.h" />
@@ -330,7 +329,6 @@
     <ClCompile Include="SensorData.cpp" />
     <ClCompile Include="SensorDataManager.cpp" />
     <ClCompile Include="SensorIDGenerator.cpp" />
-    <ClCompile Include="SerialPort.cpp" />
     <ClCompile Include="SerialPortService.cpp" />
     <ClCompile Include="SplitBar.cpp" />
     <ClCompile Include="stdafx.cpp">

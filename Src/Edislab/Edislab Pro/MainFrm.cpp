@@ -186,7 +186,7 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	SensorComOption.nPairty = ComConfig.nPairty;
 	SensorComOption.nStopBits = ComConfig.nStopBits;
 	SensorComOption.bFlowControl = ComConfig.bUseFlowControl;
-
+	SensorComOption.strSerialPort = ComConfig.strSerialPort;
 	CSerialPortService::CreateInstance().SetSerialPortOption(SensorComOption);
 	//¿ªÆô×Ô¶¯¼à²â
 	if (g_bAutoSelect)

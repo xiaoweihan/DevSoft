@@ -237,7 +237,7 @@ bool CSensorConfig::LoadSensorList( rapidjson::Document& Parser )
 						continue;
 					}
 
-					RangeInfo.strRangeName =  Utility::ConverUTF8ToGB2312 ((*rangeIter)["Name"].GetString());
+					RangeInfo.strRangeName =  (*rangeIter)["Name"].GetString();//Utility::ConverUTF8ToGB2312 ((*rangeIter)["Name"].GetString());
 
 					// 校准值
 					if (!rangeIter->HasMember("Calibrationvalue") || !(*rangeIter)["Calibrationvalue"].IsInt())
@@ -458,12 +458,12 @@ bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 		//ComElement.strSensorName = Utility::ConverUTF8ToGB2312(ComArray["SensorName"].GetString());
 
 		// 端口号
-		if (!ComArray.HasMember("PortName") || !ComArray["PortName"].IsInt())
+		if (!ComArray.HasMember("PortName") || !ComArray["PortName"].IsString())
 		{
 			return false;
 		}
 
-		ComElement.nComIndex = ComArray["PortName"].GetInt();
+		ComElement.strSerialPort = ComArray["PortName"].GetString();
 
 		// 校验类型
 		if (!ComArray.HasMember("Pairty") || !ComArray["Pairty"].IsInt())

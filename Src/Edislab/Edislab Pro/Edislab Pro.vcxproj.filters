@@ -303,9 +303,6 @@
     <ClInclude Include="DlgGridContainer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="SerialPort.h">
-      <Filter>Com</Filter>
-    </ClInclude>
     <ClInclude Include="SerialPortService.h">
       <Filter>Com</Filter>
     </ClInclude>
@@ -463,9 +460,6 @@
     </ClCompile>
     <ClCompile Include="DlgGridContainer.cpp">
       <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="SerialPort.cpp">
-      <Filter>Com</Filter>
     </ClCompile>
     <ClCompile Include="SerialPortService.cpp">
       <Filter>Com</Filter>
