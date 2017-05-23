@@ -72,6 +72,21 @@ CSensorConfig& CSensorConfig::CreateInstance( void )
 *****************************************************************************/
 bool CSensorConfig::LoadSensorConfig( void )
 {
+	// 添加传感器分类信息
+	SENSOR_TYPE_INFO typeInfo;
+	typeInfo.enumType = SENSOR_PHYSICS;
+	typeInfo.strTypeName = "物理";
+	m_SensorTypeInfo.push_back(typeInfo);
+	typeInfo.enumType = SENSOR_CHEMISTRY;
+	typeInfo.strTypeName = "化学";
+	m_SensorTypeInfo.push_back(typeInfo);
+	typeInfo.enumType = SENSOR_BIOLOGY;
+	typeInfo.strTypeName = "生物";
+	m_SensorTypeInfo.push_back(typeInfo);
+	typeInfo.enumType = SENSOR_ALL;
+	typeInfo.strTypeName = "所有";
+	m_SensorTypeInfo.push_back(typeInfo);
+
 	std::string strConfigPath = Utility::GetExeDirecory() + std::string("\\SensorConfig.json");
 
 	//判断文件是否存在
@@ -493,5 +508,37 @@ bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 	}
 	return true;
 }
+
+const void CSensorConfig::GetSensorList(std::vector<SENSOR_CONFIG_ELEMENT> &vecSensorArry, SENSOR_TYPE enumType)
+{
+      BOOST_FOREACH(auto &sensor, m_SensorConfigArray)
+	  {
+	       if (sensor.nSensorCategory & enumType)
+	       {
+			   vecSensorArry.push_back(sensor);
+	       }
+	  }
+}
+
+SENSOR_CONFIG_ELEMENT CSensorConfig::GetSensorInfo(int nSensorID)
+{
+	BOOST_FOREACH(auto &sensor, m_SensorConfigArray)
+	{
+		if (nSensorID == sensor.nSensorID)
+		{
+			return sensor;
+		}
+	}
+
+	return SENSOR_CONFIG_ELEMENT();
+}
+
+
+
+
+
+
+
+
 
 CSensorConfig CSensorConfig::s_SensorConfig;

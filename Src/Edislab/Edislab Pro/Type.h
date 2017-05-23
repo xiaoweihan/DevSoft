@@ -101,6 +101,20 @@ typedef struct _add_page_element
 
 }ADD_PAGE_ELEMENT,* LP_ADD_PAGE_ELEMENT;
 
+enum SENSOR_TYPE{
+	SENSOR_PHYSICS = 1,
+	SENSOR_CHEMISTRY = 2,
+	SENSOR_BIOLOGY = 4,
+	SENSOR_ALL = 0xFFFFFF
+};
+
+typedef struct _sensor_type_info
+{
+	SENSOR_TYPE enumType;
+	std::string strTypeName;
+}SENSOR_TYPE_INFO, *LP_SENSOR_TYPE_INFO;
+
+
 //传感器信息定义
 typedef struct _sensor_com_config_element
 {
