@@ -30,6 +30,9 @@ namespace Utility
 
 	//UTF-8->GBK
 	std::string ConverUTF8ToGB2312( const std::string& strContent );
+
+	//UTF-8->ASCII
+	std::string ConverUTF8ToASCII(std::string& strContent);
 }
 
 //É¾³ýÊý×éµÄºê
