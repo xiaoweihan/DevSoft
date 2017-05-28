@@ -282,6 +282,7 @@ int ChartFigureDlg::readData()
 
 void ChartFigureDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 {
+#if 0
 	// TODO: Add your message handler code here
 	CMenu   menu;   //定义下面要用到的cmenu对象
 	menu.LoadMenu(IDR_MENU_CHART); //装载自定义的右键菜单 
@@ -292,6 +293,17 @@ void ChartFigureDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 		//GetCursorPos(&point1);//获取当前光标的位置，以便使得菜单可以跟随光标  
 		pContextMenu->TrackPopupMenu(TPM_LEFTALIGN|TPM_RIGHTBUTTON,point.x,point.y,this); 
 	}
+#endif
+
+
+
+	CBCGPContextMenuManager* pContexMenuManager = theApp.GetContextMenuManager();
+	if (nullptr != pContexMenuManager)
+	{
+		pContexMenuManager->ShowPopupMenu(IDR_MENU_CHART,point.x,point.y,pWnd,TRUE);
+	}
+
+	
 }
 
 

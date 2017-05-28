@@ -174,9 +174,6 @@
     <ClInclude Include="DlgGridPanel.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="GridView.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="SplitBar.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -354,9 +351,6 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="DlgGridPanel.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="GridView.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="SplitBar.cpp">

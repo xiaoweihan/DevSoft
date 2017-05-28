@@ -260,7 +260,6 @@
     <ClInclude Include="GridDataManager.h" />
     <ClInclude Include="GridDefine.h" />
     <ClInclude Include="GridDisplayColumnInfo.h" />
-    <ClInclude Include="GridView.h" />
     <ClInclude Include="Lock.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Macro.h" />
@@ -319,7 +318,6 @@
     <ClCompile Include="GridCtrlBase.cpp" />
     <ClCompile Include="GridDataManager.cpp" />
     <ClCompile Include="GridDisplayColumnInfo.cpp" />
-    <ClCompile Include="GridView.cpp" />
     <ClCompile Include="Lock.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MainFrm.cpp" />

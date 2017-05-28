@@ -24,7 +24,7 @@ namespace Utility
 	//从硬盘位图文件加载位图
 	HBITMAP LoadBitmapFromFile(const char* szBitmapFile);
 
-	int AfxBCGPMessageBox(const CString& strText,UINT nType);
+	int AfxBCGPMessageBox(const CString& strText,UINT nType = MB_OK);
 
 	BYTE CalCRC8(BYTE* pBuf,int nsize);
 

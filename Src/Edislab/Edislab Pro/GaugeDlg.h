@@ -65,6 +65,5 @@ public:
 	afx_msg void OnGaugeCorrect();
 	afx_msg void OnUpdateGaugeCorrect(CCmdUI *pCmdUI);
 	afx_msg void OnPaint();
-	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 };

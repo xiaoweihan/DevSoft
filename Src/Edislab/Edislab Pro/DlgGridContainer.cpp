@@ -82,6 +82,8 @@ BEGIN_MESSAGE_MAP(CDlgGridContainer, CBCGPDialog)
 	ON_WM_TIMER()
 	ON_WM_DESTROY()
 	ON_WM_PAINT()
+	ON_MESSAGE(WM_NOTIFY_RBUTTON_DOWN,&CDlgGridContainer::NotifyGridClickRButton)
+	ON_COMMAND(ID_MENU_GRID_OPTION, &CDlgGridContainer::OnMenuGridOption)
 END_MESSAGE_MAP()
 
 
@@ -251,6 +253,19 @@ void CDlgGridContainer::NotifyDetectSensor(const std::string& strDeviceName,int 
 	}
 }
 
+LRESULT CDlgGridContainer::NotifyGridClickRButton(WPARAM wp,LPARAM lp)
+{
+	CPoint pt;
+	pt.x = (int)wp;
+	pt.y = (int)lp;
+	CBCGPContextMenuManager* pContexMenuManager = theApp.GetContextMenuManager();
+	if (nullptr != pContexMenuManager)
+	{
+		pContexMenuManager->ShowPopupMenu(IDR_MENU_GRID,pt.x,pt.y,this,TRUE);
+	}
+	return 0L;
+}
+
 void CDlgGridContainer::RefreshGrid(void)
 {
 	if (NULL == m_DisplayGrid.GetSafeHwnd())
@@ -334,4 +349,11 @@ void CDlgGridContainer::YieldDataProc( void )
 		pData->AddSensorData(Ui(rng));	
 		boost::this_thread::sleep(boost::posix_time::seconds(1));
 	}
+}
+
+
+void CDlgGridContainer::OnMenuGridOption()
+{
+	// TODO: 在此添加命令处理程序代码
+	Utility::AfxBCGPMessageBox(_T("OK!"));
 }

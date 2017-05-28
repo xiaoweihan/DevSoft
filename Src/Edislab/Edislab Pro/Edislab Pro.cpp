@@ -176,6 +176,11 @@ void CEdislabProApp::OnAppAbout()
 
 void CEdislabProApp::PreLoadState()
 {
+
+	GetContextMenuManager()->AddMenu (_T("GRID"), IDR_MENU_GRID);
+	GetContextMenuManager()->AddMenu (_T("DEVICE"), IDR_MENU_GAUGE);
+	GetContextMenuManager()->AddMenu (_T("CHART"), IDR_MENU_CHART);
+
 }
 
 void CEdislabProApp::LoadCustomState()
