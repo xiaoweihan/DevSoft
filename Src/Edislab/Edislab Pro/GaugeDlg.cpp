@@ -248,6 +248,7 @@ int GaugeDlg::readData()
 
 void GaugeDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 {
+#if 0
 	// TODO: Add your message handler code here
 	CMenu   menu;   //定义下面要用到的cmenu对象
 	menu.LoadMenu(IDR_MENU_GAUGE); //装载自定义的右键菜单 
@@ -273,6 +274,13 @@ void GaugeDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 		//	break;
 		//}
 	}
+#endif
+	CBCGPContextMenuManager* pContexMenuManager = theApp.GetContextMenuManager();
+	if (nullptr != pContexMenuManager)
+	{
+		pContexMenuManager->ShowPopupMenu(IDR_MENU_GAUGE,point.x,point.y,pWnd,TRUE);
+	}
+	
 }
 
 
@@ -462,14 +470,6 @@ void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
 	Invalidate(TRUE);
 }
 
-
-void GaugeDlg::OnLButtonDown(UINT nFlags, CPoint point)
-{
-	// TODO: 在此添加消息处理程序代码和/或调用默认值
-	CBaseDialog::OnLButtonDown(nFlags, point);
-}
-
-
 BOOL GaugeDlg::PreTranslateMessage(MSG* pMsg)
 {
 	// TODO: Add your specialized code here and/or call the base class
@@ -511,3 +511,4 @@ BOOL GaugeDlg::PreTranslateMessage(MSG* pMsg)
 	}
 	return CBaseDialog::PreTranslateMessage(pMsg);
 }
+

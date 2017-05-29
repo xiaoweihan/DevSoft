@@ -82,6 +82,8 @@ BEGIN_MESSAGE_MAP(CDlgGridContainer, CBCGPDialog)
 	ON_WM_TIMER()
 	ON_WM_DESTROY()
 	ON_WM_PAINT()
+	ON_MESSAGE(WM_NOTIFY_RBUTTON_DOWN,&CDlgGridContainer::NotifyGridClickRButton)
+	ON_COMMAND(ID_MENU_GRID_OPTION, &CDlgGridContainer::OnMenuGridOption)
 END_MESSAGE_MAP()
 
 
@@ -148,7 +150,7 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 {
 	// TODO: 在此添加专用代码和/或调用基类
 
-
+	//告诉布局管理器当前活动的窗口
 	switch (pMsg->message)
 	{
 	case WM_LBUTTONDOWN:
@@ -175,6 +177,7 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 		break;
 	}
 
+	//向主窗口发送消息告诉主窗口当前活动页
 	if (WM_LBUTTONDOWN == pMsg->message|| WM_RBUTTONDOWN == pMsg->message)
 	{
 		CWnd* pWnd = AfxGetMainWnd();
@@ -184,6 +187,7 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 		}
 	}
 
+	//屏蔽Enter和ESC
 	if (pMsg->message == WM_KEYDOWN)
 	{
 		if (VK_ESCAPE == pMsg->wParam || VK_RETURN == pMsg->wParam)
@@ -247,6 +251,19 @@ void CDlgGridContainer::NotifyDetectSensor(const std::string& strDeviceName,int 
 	{
 		m_DisplayGrid.RemoveColumn(CString(strDeviceName.c_str()));
 	}
+}
+
+LRESULT CDlgGridContainer::NotifyGridClickRButton(WPARAM wp,LPARAM lp)
+{
+	CPoint pt;
+	pt.x = (int)wp;
+	pt.y = (int)lp;
+	CBCGPContextMenuManager* pContexMenuManager = theApp.GetContextMenuManager();
+	if (nullptr != pContexMenuManager)
+	{
+		pContexMenuManager->ShowPopupMenu(IDR_MENU_GRID,pt.x,pt.y,this,TRUE);
+	}
+	return 0L;
 }
 
 void CDlgGridContainer::RefreshGrid(void)
@@ -332,4 +349,11 @@ void CDlgGridContainer::YieldDataProc( void )
 		pData->AddSensorData(Ui(rng));	
 		boost::this_thread::sleep(boost::posix_time::seconds(1));
 	}
+}
+
+
+void CDlgGridContainer::OnMenuGridOption()
+{
+	// TODO: 在此添加命令处理程序代码
+	Utility::AfxBCGPMessageBox(_T("OK!"));
 }

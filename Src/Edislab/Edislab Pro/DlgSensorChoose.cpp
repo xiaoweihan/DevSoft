@@ -67,9 +67,9 @@ void CDlgSensorChoose::InitCtrls()
 	if (m_CmbSensorType.GetSafeHwnd())
 	{
 		//CString strCategoryArray[] = {_T("所有"),_T("物理"),_T("化学"),_T("生物")};
-		 std::vector<SENSOR_TYPE_INFO> vecSensorType = CSensorConfig::CreateInstance().GetSensorTypeInfo();
-		 CString strName;
-		 int nIndex;
+		std::vector<SENSOR_TYPE_INFO> vecSensorType = CSensorConfig::CreateInstance().GetSensorTypeInfo();
+		CString strName;
+		int nIndex = 0;
 		BOOST_FOREACH(auto& Element,vecSensorType)
 		{
 			strName = Element.strTypeName.c_str();
@@ -264,7 +264,7 @@ void CDlgSensorChoose::RefreshRange()
 
 			CString str;
 			int nIndex = 0;
-			for (int n = 0; n<sensor.SensorRangeInfoArray.size(); ++n)
+			for (int n = 0; n < (int)sensor.SensorRangeInfoArray.size(); ++n)
 			{
 				str = sensor.SensorRangeInfoArray[n].strRangeName.c_str();
 				nIndex = str.Find('(');

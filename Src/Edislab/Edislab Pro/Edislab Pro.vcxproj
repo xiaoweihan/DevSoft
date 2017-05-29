@@ -260,7 +260,6 @@
     <ClInclude Include="GridDataManager.h" />
     <ClInclude Include="GridDefine.h" />
     <ClInclude Include="GridDisplayColumnInfo.h" />
-    <ClInclude Include="GridView.h" />
     <ClInclude Include="Lock.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Macro.h" />
@@ -273,7 +272,6 @@
     <ClInclude Include="SensorData.h" />
     <ClInclude Include="SensorDataManager.h" />
     <ClInclude Include="SensorIDGenerator.h" />
-    <ClInclude Include="SerialPort.h" />
     <ClInclude Include="SerialPortService.h" />
     <ClInclude Include="SplitBar.h" />
     <ClInclude Include="stdafx.h" />
@@ -320,7 +318,6 @@
     <ClCompile Include="GridCtrlBase.cpp" />
     <ClCompile Include="GridDataManager.cpp" />
     <ClCompile Include="GridDisplayColumnInfo.cpp" />
-    <ClCompile Include="GridView.cpp" />
     <ClCompile Include="Lock.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MainFrm.cpp" />
@@ -330,7 +327,6 @@
     <ClCompile Include="SensorData.cpp" />
     <ClCompile Include="SensorDataManager.cpp" />
     <ClCompile Include="SensorIDGenerator.cpp" />
-    <ClCompile Include="SerialPort.cpp" />
     <ClCompile Include="SerialPortService.cpp" />
     <ClCompile Include="SplitBar.cpp" />
     <ClCompile Include="stdafx.cpp">

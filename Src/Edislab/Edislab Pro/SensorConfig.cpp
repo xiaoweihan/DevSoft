@@ -237,7 +237,8 @@ bool CSensorConfig::LoadSensorList( rapidjson::Document& Parser )
 						continue;
 					}
 
-					RangeInfo.strRangeName =  Utility::ConverUTF8ToGB2312 ((*rangeIter)["Name"].GetString());
+					std::string strRangeName = (*rangeIter)["Name"].GetString();
+					RangeInfo.strRangeName =  Utility::ConverUTF8ToASCII(strRangeName);
 
 					// 校准值
 					if (!rangeIter->HasMember("Calibrationvalue") || !(*rangeIter)["Calibrationvalue"].IsInt())
@@ -353,117 +354,18 @@ bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 	{
 		return false;
 	}
-#if 0
-	const rapidjson::Value& ComArray = Parser["ComConfig"];
-
-	if (ComArray.IsArray())
-	{
-		for (auto Iter = ComArray.Begin(); Iter != ComArray.End(); ++Iter)
-		{
-			SENSOR_COM_CONFIG_ELEMENT ComElement;
-			if (Iter->IsObject())
-			{
-				// 传感器名称
-				if (!Iter->HasMember("SensorName") || !(*Iter)["SensorName"].IsString())
-				{
-					continue;
-				}
-
-				ComElement.strSensorName = Utility::ConverUTF8ToGB2312((*Iter)["SensorName"].GetString());
-
-				// 端口号
-				if (!Iter->HasMember("PortName") || !(*Iter)["PortName"].IsInt())
-				{
-					continue;
-				}
-
-				ComElement.nComIndex = (*Iter)["PortName"].GetInt();
-
-				// 校验类型
-				if (!Iter->HasMember("Pairty") || !(*Iter)["Pairty"].IsInt())
-				{
-					continue;
-				}
-
-				ComElement.nPairty = (*Iter)["Pairty"].GetInt();
-
-				// 停止位
-				if (!Iter->HasMember("StopBits") || !(*Iter)["StopBits"].IsInt())
-				{
-					continue;
-				}
-
-				ComElement.nStopBits = (*Iter)["StopBits"].GetInt();
-
-				// 通信字节位数
-				if (!Iter->HasMember("DataBits") || !(*Iter)["DataBits"].IsInt())
-				{
-					continue;
-				}
-
-				ComElement.nDataBits = (*Iter)["DataBits"].GetInt();
-
-				// 波特率
-				if (!Iter->HasMember("BaudRate") || !(*Iter)["BaudRate"].IsInt())
-				{
-					continue;
-				}
-
-				ComElement.nBaudRate = (*Iter)["BaudRate"].GetInt();
-
-				// 是否使用流控
-				if (!Iter->HasMember("UseFlowControl") || !(*Iter)["UseFlowControl"].IsBool())
-				{
-					continue;
-				}
-				ComElement.bUseFlowControl = (*Iter)["UseFlowControl"].GetBool();
-
-
-
-				//通信配置
-				COMPROPERTY SensorComOption;
-				SensorComOption.nBaudRate = ComElement.nBaudRate;
-				SensorComOption.nDataBits = ComElement.nDataBits;
-				SensorComOption.nPairty = ComElement.nPairty;
-				SensorComOption.nStopBits = ComElement.nStopBits;
-				if (ComElement.bUseFlowControl)
-				{
-					SensorComOption.nFlowControl = 1;
-				}
-				else
-				{
-					SensorComOption.nFlowControl = 0;
-				}
-				CSerialPortService::CreateInstance().SetSerialPortOption(ComElement.nComIndex,SensorComOption);
-				//开启
-				CSerialPortService::CreateInstance().StartSerialPortService();
-
-				m_SensorComConfigArray.push_back(ComElement);
-			}
-		}
-	}
-#endif
-
 	const rapidjson::Value& ComArray = Parser["ComConfig"];
 
 	SENSOR_COM_CONFIG_ELEMENT ComElement;
 	if (ComArray.IsObject())
 	{
-		//// 传感器名称
-		//if (!ComArray.HasMember("SensorName") || !ComArray["SensorName"].IsString())
-		//{
-		//	return false;
-		//}
-
-		//ComElement.strSensorName = Utility::ConverUTF8ToGB2312(ComArray["SensorName"].GetString());
-
 		// 端口号
-		if (!ComArray.HasMember("PortName") || !ComArray["PortName"].IsInt())
+		if (!ComArray.HasMember("PortName") || !ComArray["PortName"].IsString())
 		{
 			return false;
 		}
 
-		ComElement.nComIndex = ComArray["PortName"].GetInt();
+		ComElement.strSerialPort = ComArray["PortName"].GetString();
 
 		// 校验类型
 		if (!ComArray.HasMember("Pairty") || !ComArray["Pairty"].IsInt())

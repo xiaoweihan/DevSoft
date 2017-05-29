@@ -6,11 +6,13 @@
 *日期:2017/04/22
 **********************************************************/
 #include "stdafx.h"
+#include "Edislab Pro.h"
 #include "CustomGrid.h"
 #include <algorithm>
 #include <boost/foreach.hpp>
 #include "SensorIDGenerator.h"
 #include "Utility.h"
+#include "Msg.h"
 //默认增加列的宽度
 const int DEFAULT_COLUMN_WIDTH = 20;
 IMPLEMENT_DYNCREATE(CCustomGrid, CBCGPGridCtrl)
@@ -46,8 +48,9 @@ int CCustomGrid::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	{
 		return -1;
 	}
-	EnableMarkSortedColumn(TRUE, FALSE);
-	EnableHeader(TRUE, BCGP_GRID_HEADER_HIDE_ITEMS);
+	//EnableMarkSortedColumn(TRUE,TRUE);
+	EnableHeader(TRUE, BCGP_GRID_HEADER_HIDE_ITEMS | BCGP_GRID_HEADER_SELECT);
+	EnableRowHeader (TRUE, BCGP_GRID_HEADER_MOVE_ITEMS | BCGP_GRID_HEADER_SELECT);
 	SetClearInplaceEditOnEnter(FALSE);
 	EnableInvertSelOnCtrl();
 	SetScrollBarsStyle(CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER);
@@ -102,6 +105,8 @@ BEGIN_MESSAGE_MAP(CCustomGrid, CBCGPGridCtrl)
 	ON_WM_CREATE()
 	ON_WM_SIZE()
 	ON_WM_TIMER()
+	ON_WM_RBUTTONDOWN()
+	ON_WM_CONTEXTMENU()
 END_MESSAGE_MAP()
 
 /*******************************************************************
@@ -537,4 +542,23 @@ BOOL CCustomGrid::PreTranslateMessage(MSG* pMsg)
 {
 	// TODO: 在此添加专用代码和/或调用基类
 	return CBCGPGridCtrl::PreTranslateMessage(pMsg);
+}
+
+
+void CCustomGrid::OnRButtonDown(UINT nFlags, CPoint point)
+{
+	// TODO: 在此添加消息处理程序代码和/或调用默认值
+	CBCGPGridCtrl::OnRButtonDown(nFlags, point);
+}
+
+
+void CCustomGrid::OnContextMenu(CWnd* pWnd, CPoint point)
+{
+	// TODO: 在此处添加消息处理程序代码
+	CWnd* pParentWnd = GetParent();
+
+	if (nullptr != pParentWnd && NULL != pParentWnd->GetSafeHwnd())
+	{
+		pParentWnd->PostMessage(WM_NOTIFY_RBUTTON_DOWN,(WPARAM)point.x,(LPARAM)point.y);
+	}
 }

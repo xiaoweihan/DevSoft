@@ -140,3 +140,19 @@ std::string Utility::ConverUTF8ToGB2312( const std::string& strContent )
 	ConverEncode::UTF_8ToGB2312(strGB2312Content,szContent,static_cast<int>(strContent.length()));
 	return strGB2312Content;
 }
+
+std::string Utility::ConverUTF8ToASCII( std::string& strContent )
+{
+	std::string strResult;
+
+	try
+	{
+		strResult = ConverEncode::UTF_8ToASCII(strContent);
+	}
+	catch(...)
+	{
+
+	}
+
+	return strResult;
+}

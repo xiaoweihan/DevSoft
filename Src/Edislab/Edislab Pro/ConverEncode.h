@@ -17,7 +17,10 @@ public:
 	//urlutf8½âÂë
 	static std::string UrlUTF8Decode(std::string str);   
 	//urlgb2312½âÂë
-	static std::string UrlGB2312Decode(std::string str);              
+	static std::string UrlGB2312Decode(std::string str);  
+	//UTF-8->ASCII±àÂë
+	static std::string UTF_8ToASCII(std::string& strSrc);
+
 private:
 	static void Gb2312ToUnicode(WCHAR* pOut,char *gbBuffer);
 	static void UTF_8ToUnicode(WCHAR* pOut,char *pText);

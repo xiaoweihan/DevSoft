@@ -571,7 +571,6 @@ void HandleStart(CEdislabProView* pView)
 	{
 		BOOST_FOREACH(auto& V,SensorNameArray)
 		{
-			//CSerialPortService::CreateInstance().SetSensorFrequence(V,5000);
 			CSerialPortService::CreateInstance().StartSensorCollect(V);
 		}
 	}

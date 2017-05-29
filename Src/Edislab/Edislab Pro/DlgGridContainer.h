@@ -30,6 +30,7 @@ public:
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnDestroy();
 	void NotifyDetectSensor(const std::string& strDeviceName,int nOnFlag);
+	afx_msg LRESULT NotifyGridClickRButton(WPARAM wp,LPARAM lp);
 private:
 	void RefreshGrid(void);
 public:
@@ -40,4 +41,6 @@ private:
 	boost::shared_ptr<boost::thread> m_pYieldDataThread;
 	boost::atomic_bool m_bLoop;
 	void YieldDataProc(void);
+public:
+	afx_msg void OnMenuGridOption();
 };

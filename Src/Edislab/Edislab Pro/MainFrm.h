@@ -229,6 +229,7 @@ private:
 
 	//设备上线的回调
 	afx_msg LRESULT NotifyDeviceOnOrOff(WPARAM wp,LPARAM lp);
+
 };
 
 

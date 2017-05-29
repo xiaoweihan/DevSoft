@@ -24,12 +24,15 @@ namespace Utility
 	//从硬盘位图文件加载位图
 	HBITMAP LoadBitmapFromFile(const char* szBitmapFile);
 
-	int AfxBCGPMessageBox(const CString& strText,UINT nType);
+	int AfxBCGPMessageBox(const CString& strText,UINT nType = MB_OK);
 
 	BYTE CalCRC8(BYTE* pBuf,int nsize);
 
 	//UTF-8->GBK
 	std::string ConverUTF8ToGB2312( const std::string& strContent );
+
+	//UTF-8->ASCII
+	std::string ConverUTF8ToASCII(std::string& strContent);
 }
 
 //删除数组的宏

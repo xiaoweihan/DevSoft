@@ -123,7 +123,7 @@ typedef struct _sensor_com_config_element
 	//传感器名称
 	std::string strSensorName;
 	//COM口索引
-	int nComIndex;
+	std::string strSerialPort;
 	//波特率
 	unsigned int nBaudRate;
 	//通信字节位数
@@ -143,7 +143,7 @@ typedef struct _sensor_com_config_element
 		nDataBits = 8;
 		nStopBits = 0;
 		nPairty = 0;
-		nComIndex = -1;
+		strSerialPort = "";
 		bUseFlowControl = false;
 	}
 }SENSOR_COM_CONFIG_ELEMENT,* LP_SENSOR_COM_CONFIG_ELEMENT;
