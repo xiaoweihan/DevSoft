@@ -108,10 +108,16 @@ enum SENSOR_TYPE{
 	SENSOR_ALL = 0xFFFFFF
 };
 
+// 传感器类型信息
 typedef struct _sensor_type_info
 {
 	SENSOR_TYPE enumType;
 	std::string strTypeName;
+
+	_sensor_type_info()
+	{
+		enumType = SENSOR_ALL;
+	}
 }SENSOR_TYPE_INFO, *LP_SENSOR_TYPE_INFO;
 
 
@@ -154,8 +160,8 @@ typedef struct _sensor_range_info_element
 	//量程名称
 	std::string strRangeName;
 	//校准值
-	//std::string strCalibrationvalue;
-	int nCalibrationvalue;
+	std::string strCalibrationvalue;
+	//int nCalibrationvalue;
 	//默认值
 	int nDefaultvalue;
 	//最大值
@@ -192,6 +198,9 @@ typedef struct _sensor_config_element
 	std::string strSensorDescription;
 	//传感器的COM通信配置信息
 	//SENSOR_COM_CONFIG_ELEMENT SensorComConfigInfo;
+	// 当前选择的量程信息   add by tangmh
+	int nCurRangeIndex;
+	// end add
 	//量程信息
 	std::vector<SENSOR_RANGE_INFO_ELEMENT> SensorRangeInfoArray;
 	//默认频率
@@ -212,7 +221,8 @@ typedef struct _sensor_config_element
 
 	_sensor_config_element(void)
 	{
-		nSensorID = 0;
+		nCurRangeIndex = -1;
+		nSensorID = -1;
 		bAddtoSensorlist = true;
 		SensorRangeInfoArray.clear();
 	}

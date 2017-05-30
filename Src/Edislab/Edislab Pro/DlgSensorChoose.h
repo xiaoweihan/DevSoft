@@ -78,4 +78,6 @@ public:
 	afx_msg void OnBnClickedBtnChooseConnected();
 	afx_msg void OnBnClickedBtnOk();
 	afx_msg void OnCbnSelchangeCmbSensorType();
+	afx_msg void OnLbnSelchangeSelectedSensorList();
+	afx_msg void OnCbnSelchangeCmbRange();
 };

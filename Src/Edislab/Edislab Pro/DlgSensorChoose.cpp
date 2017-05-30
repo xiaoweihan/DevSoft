@@ -44,6 +44,8 @@ BEGIN_MESSAGE_MAP(CDlgSensorChoose, CDialog)
 	ON_BN_CLICKED(IDC_BTN_CHOOSE_CONNECTED, &CDlgSensorChoose::OnBnClickedBtnChooseConnected)
 	ON_BN_CLICKED(ID_BTN_OK, &CDlgSensorChoose::OnBnClickedBtnOk)
 	ON_CBN_SELCHANGE(IDC_CMB_SENSOR_TYPE, &CDlgSensorChoose::OnCbnSelchangeCmbSensorType)
+	ON_LBN_SELCHANGE(IDC_SELECTED_SENSOR_LIST, &CDlgSensorChoose::OnLbnSelchangeSelectedSensorList)
+	ON_CBN_SELCHANGE(IDC_CMB_RANGE, &CDlgSensorChoose::OnCbnSelchangeCmbRange)
 END_MESSAGE_MAP()
 
 
@@ -86,6 +88,12 @@ void CDlgSensorChoose::InitCtrls()
 	if (m_ListChoosedSensor.GetSafeHwnd())
 	{
 		m_ListChoosedSensor.EnableItemDescription(TRUE, 1);
+	}
+
+	if (m_CheckAutoChoose.GetSafeHwnd())
+	{
+		m_CheckAutoChoose.SetCheck(TRUE);
+		OnBnClickedCheckAutoRecognize();
 	}
 
 }
@@ -136,25 +144,31 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 	if (m_mapCurrentSensor.cend() != iter)
 	{
 		CString str;
+        // 拼凑添加项的头
 		int nNum = m_setChooseSensorID.count(iter->second.nSensorID);
 		if (nNum == 0)
 		{
-			str.Format(_T("数据列：%s(%s)"), iter->second.strSensorSymbol, iter->second.strSensorName);
+			str.Format(_T("数据列：%s(%s)"), CString(iter->second.strSensorSymbol.c_str()), CString(iter->second.strSensorName.c_str()));
 		}
 		else
 		{
-            str.Format(_T("数据列：%s_%d(%s)"), iter->second.SensorRangeInfoArray[0].strRangeName, nNum, iter->second.strSensorName);
+            str.Format(_T("数据列：%s_%d(%s)"), CString(iter->second.strSensorSymbol.c_str()), nNum, CString(iter->second.strSensorName.c_str()));
 		}
 		
-		m_ListChoosedSensor.EnableItemDescription(TRUE ,1);
-		nIndex = m_ListChoosedSensor.AddString(str);
-	    str = iter->second.SensorRangeInfoArray[0].strRangeName.c_str();
-		nIndex = str.Find('(');
-		str.Left(nIndex);
-	    m_ListChoosedSensor.SetItemDescription(nIndex, str);
-		m_ListChoosedSensor.SetItemData(nIndex, iter->second.nSensorID);
-
+		// 拼凑添加项描述文字
 		m_setChooseSensorID.insert(iter->second.nSensorID);
+		if (iter->second.SensorRangeInfoArray.size() > 0)
+		{
+			nIndex = m_ListChoosedSensor.AddString(str);
+			str = iter->second.SensorRangeInfoArray[0].strRangeName.c_str();
+			int nCharPos = str.Find('(');
+			str = str.Left(nCharPos);
+			str = _T("量程：") + str;
+			
+			m_ListChoosedSensor.SetItemDescription(nIndex, str);
+			// 将sensor ID作为item Data
+			m_ListChoosedSensor.SetItemData(nIndex, iter->second.nSensorID);
+		}
 	}
 }
 
@@ -197,6 +211,19 @@ void CDlgSensorChoose::OnBnClickedBtnOk()
 	// TODO: 在此添加控件通知处理程序代码
 }
 
+void CDlgSensorChoose::OnCbnSelchangeCmbSensorType()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	RefreshSensorList();
+}
+
+
+void CDlgSensorChoose::OnLbnSelchangeSelectedSensorList()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	RefreshRange();
+}
+
 // 刷新表格
 void CDlgSensorChoose::RefreshSensorList()
 {
@@ -229,7 +256,7 @@ void CDlgSensorChoose::RefreshSensorList()
 	{
 		type = SENSOR_ALL;
 	}
-	
+
 	CSensorConfig::CreateInstance().GetSensorList(vecSensorList, type);
 	BOOST_FOREACH(auto &sensor, vecSensorList)
 	{
@@ -251,7 +278,7 @@ void CDlgSensorChoose::RefreshRange()
 		const SENSOR_CONFIG_ELEMENT &sensor = CSensorConfig::CreateInstance().GetSensorInfo(nIndex);
 		if (-1 != sensor.nSensorID)
 		{
-			m_CmbRange.Clear();
+			m_CmbRange.ResetContent();
 			m_CmbRange.ShowWindow(TRUE);
 			if(sensor.SensorRangeInfoArray.size() == 1)
 			{
@@ -259,7 +286,7 @@ void CDlgSensorChoose::RefreshRange()
 			}
 			else
 			{
-				m_CmbRange.EnableWindow(FALSE);
+				m_CmbRange.EnableWindow(TRUE);
 			}
 
 			CString str;
@@ -274,11 +301,13 @@ void CDlgSensorChoose::RefreshRange()
 
 				str = sensor.SensorRangeInfoArray[n].strRangeName.c_str();
 				nIndex = str.Find('(');
-				str.Right(nIndex);
+				str = str.Right(str.GetLength() - nIndex);
 				str.Remove('(');
 				str.Remove(')');
 				m_StaticResolutionRatio.SetWindowText(str);
 			}
+
+			m_CmbRange.SetCurSel(0);
 		}
 		else
 		{
@@ -288,9 +317,40 @@ void CDlgSensorChoose::RefreshRange()
 	}
 }
 
-void CDlgSensorChoose::OnCbnSelchangeCmbSensorType()
+void CDlgSensorChoose::OnCbnSelchangeCmbRange()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	int nCurSel = m_ListChoosedSensor.GetCurSel();
 
-	RefreshSensorList();
+	SENSOR_CONFIG_ELEMENT &sensor = CSensorConfig::CreateInstance().GetSensorInfo(m_ListChoosedSensor.GetItemData(nCurSel));
+	if (-1 != sensor.nSensorID)
+	{
+		nCurSel = m_CmbRange.GetCurSel();
+		int nIndex = (int)m_CmbRange.GetItemData(nCurSel);
+		// 修改当前选择的量程信息
+		sensor.nCurRangeIndex = nIndex;
+		if (nIndex < sensor.SensorRangeInfoArray.size())
+		{
+			// 修改分辨率信息
+			CString str (sensor.SensorRangeInfoArray[nIndex].strRangeName.c_str());
+			nCurSel = str.Find('(');
+			str = str.Right(str.GetLength() - nCurSel);
+			str.Remove('(');
+			str.Remove(')');
+			m_StaticResolutionRatio.SetWindowText(str);
+
+			// 修改已选择的传感器上方显示的描述信息
+			str = sensor.SensorRangeInfoArray[nIndex].strRangeName.c_str();
+			int nCharPos = str.Find('(');
+			str = str.Left(nCharPos);
+			str = _T("量程：") + str;
+			m_ListChoosedSensor.SetItemDescription(m_ListChoosedSensor.GetCurSel(), str);
+			m_ListChoosedSensor.Invalidate(TRUE);
+
+			return;
+		}
+	}
+
+	m_StaticResolutionRatio.SetWindowText(_T(""));
+	m_CmbRange.EnableWindow(FALSE);
 }
