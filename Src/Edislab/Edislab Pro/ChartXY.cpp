@@ -1029,7 +1029,7 @@ void ChartXY::updateData(CGlobalDataManager* dbMgr)
 	{
 		return;
 	}
-	m_allData = dbMgr->getAllData();
+	m_allData = m_dbMgr->getAllData();
 	map<int, bool> oldVisible = m_mapVisible;
 	m_mapVisible.clear();
 	for(int i=0; i<m_allData.size(); ++i)

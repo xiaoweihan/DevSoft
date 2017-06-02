@@ -43,4 +43,9 @@ private:
 	void YieldDataProc(void);
 public:
 	afx_msg void OnMenuGridOption();
+	//begin add by xiaowei.han
+	afx_msg LRESULT NotifyActive(WPARAM wp,LPARAM lp);
+private:
+	BOOL m_bActiveFlag;
+	//end add by xiaowei.han
 };

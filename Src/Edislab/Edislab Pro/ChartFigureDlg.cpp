@@ -11,9 +11,11 @@
 #include "Msg.h"
 // ChartFigureDlg 对话框
 IMPLEMENT_DYNAMIC(ChartFigureDlg, CBaseDialog)
-
+#define TIMER_CHART_EVENT 1000011
+#define TIMER_CHART 300
 ChartFigureDlg::ChartFigureDlg(CWnd* pParent /*=NULL*/)
-	: CBaseDialog(ChartFigureDlg::IDD, pParent)
+	: CBaseDialog(ChartFigureDlg::IDD, pParent),
+	m_bActiveFlag(FALSE)
 {
 	m_charxy = NULL;
 }
@@ -48,6 +50,8 @@ BEGIN_MESSAGE_MAP(ChartFigureDlg, CBaseDialog)
 	ON_COMMAND(ID_CHART_ZOOM_IN, &ChartFigureDlg::OnChartZoomIn)
 	ON_COMMAND(ID_CHART_ZOOM_OUT, &ChartFigureDlg::OnChartZoomOut)
 	ON_COMMAND(ID_CHART_SHOW_ALL, &ChartFigureDlg::OnChartShowAll)
+	ON_WM_TIMER()
+	ON_MESSAGE(WM_SET_DLG_ACTIVE,&ChartFigureDlg::NotifyActive)
 END_MESSAGE_MAP()
 
 BOOL ChartFigureDlg::OnInitDialog()
@@ -70,6 +74,7 @@ BOOL ChartFigureDlg::OnInitDialog()
 	GetClientRect(rect);
 	CSize size(rect.Width(), rect.Height());
 	m_charxy->resize(size);
+	SetTimer(TIMER_CHART_EVENT, TIMER_CHART, NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
 				  // 异常: OCX 属性页应返回 FALSE
 }
@@ -144,9 +149,11 @@ void ChartFigureDlg::OnPaint()
 	CPaintDC dc(this); // device context for painting
 					   // TODO: 在此处添加消息处理程序代码
 					   // 不为绘图消息调用 CWnd::OnPaint()
-	CDialog::OnPaint();
+	//CDialog::OnPaint();
 	if (m_charxy)
+	{
 		m_charxy->paintEvent();
+	}
 	//描绘边框
 	CWnd* parent = GetParent();
 	if(parent)
@@ -157,20 +164,9 @@ void ChartFigureDlg::OnPaint()
 		{
 			CRect rc;
 			GetClientRect(rc);
-			//CRgn rgn;
-			//rgn.CreateRectRgnIndirect(rc);
-			//dc.SelectClipRgn(&rgn);
-			if(this == pTabPanel->GetActiveDlg())//当前窗口激活
+			//if(this == pTabPanel->GetActiveDlg())//当前窗口激活
+			if (TRUE == m_bActiveFlag)
 			{
-				//CPen BoradrPen;
-				//BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
-				//CPen* pOldPen = dc.SelectObject(&BoradrPen);
-				//CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));
-				//CBrush *pOldBrush = dc.SelectObject(pBrush);  
-				//dc.Rectangle(&rc);
-				//dc.SelectObject(pOldPen);
-				//dc.SelectObject(pOldBrush);
-				//BoradrPen.DeleteObject();
 				CPen BoradrPen;
 				BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
@@ -191,15 +187,6 @@ void ChartFigureDlg::OnPaint()
 				BoradrPen.DeleteObject();
 			}else
 			{
-				//CPen BoradrPen;
-				//BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
-				//CPen* pOldPen = dc.SelectObject(&BoradrPen);
-				//CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));
-				//CBrush *pOldBrush = dc.SelectObject(pBrush);
-				//dc.Rectangle(&rc);
-				//dc.SelectObject(pOldPen);
-				//dc.SelectObject(pOldBrush);
-				//BoradrPen.DeleteObject();
 				CPen BoradrPen;
 				BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
@@ -294,16 +281,11 @@ void ChartFigureDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 		pContextMenu->TrackPopupMenu(TPM_LEFTALIGN|TPM_RIGHTBUTTON,point.x,point.y,this); 
 	}
 #endif
-
-
-
 	CBCGPContextMenuManager* pContexMenuManager = theApp.GetContextMenuManager();
 	if (nullptr != pContexMenuManager)
 	{
 		pContexMenuManager->ShowPopupMenu(IDR_MENU_CHART,point.x,point.y,pWnd,TRUE);
-	}
-
-	
+	}	
 }
 
 
@@ -407,4 +389,30 @@ BOOL ChartFigureDlg::PreTranslateMessage(MSG* pMsg)
 		}
 	}
 	return CBaseDialog::PreTranslateMessage(pMsg);
+}
+
+
+void ChartFigureDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO: Add your message handler code here and/or call default
+	if (TIMER_CHART_EVENT == nIDEvent)
+	{
+		updateData(NULL);
+	}
+	CBaseDialog::OnTimer(nIDEvent);
+}
+
+LRESULT ChartFigureDlg::NotifyActive( WPARAM wp,LPARAM lp )
+{
+	int nActiveFlag = (int)wp;
+
+	if (nActiveFlag)
+	{
+		m_bActiveFlag = TRUE;
+	}
+	else
+	{
+		m_bActiveFlag = FALSE;
+	}
+	return 0L;
 }
