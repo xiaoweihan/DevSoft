@@ -241,12 +241,12 @@ bool CSensorConfig::LoadSensorList( rapidjson::Document& Parser )
 					RangeInfo.strRangeName =  Utility::ConverUTF8ToASCII(strRangeName);
 
 					// 校准值
-					if (!rangeIter->HasMember("Calibrationvalue") || !(*rangeIter)["Calibrationvalue"].IsInt())
+					if (!rangeIter->HasMember("Calibrationvalue") || !(*rangeIter)["Calibrationvalue"].IsString())
 					{
 						continue;
 					}
 
-					RangeInfo.nCalibrationvalue =  (*rangeIter)["Calibrationvalue"].GetInt();
+					RangeInfo.strCalibrationvalue =  (*rangeIter)["Calibrationvalue"].IsString();
 
 					// 默认值
 					if (!rangeIter->HasMember("Defaultvalue") || !(*rangeIter)["Defaultvalue"].IsInt())
