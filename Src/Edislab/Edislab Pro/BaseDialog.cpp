@@ -14,8 +14,7 @@ Histroy:
 #include "Global.h"
 IMPLEMENT_DYNAMIC(CBaseDialog,CBCGPDialog)
 CBaseDialog::CBaseDialog( UINT nIDTemplate, CWnd* pParentWnd,BOOL bEnableLayout):
-CBCGPDialog(nIDTemplate,pParentWnd),
-m_bActive(false)
+CBCGPDialog(nIDTemplate,pParentWnd)
 {
 	EnableLayout(bEnableLayout);
 }
@@ -36,43 +35,8 @@ BOOL CBaseDialog::OnInitDialog()
 	// 异常: OCX 属性页应返回 FALSE
 }
 BEGIN_MESSAGE_MAP(CBaseDialog, CBCGPDialog)
-	ON_WM_PAINT()
 	ON_WM_SIZE()
-	ON_WM_LBUTTONDOWN()
 END_MESSAGE_MAP()
-
-
-void CBaseDialog::OnPaint()
-{
-	CPaintDC dc(this); // device context for painting
-	CRect rc;
-	GetClientRect(&rc);
-	
-	if (m_bActive)
-	{
-		CPen BoradrPen;
-		BoradrPen.CreatePen(PS_SOLID,4,ActiveColor);
-		CPen* pOldPen = dc.SelectObject(&BoradrPen);
-		CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));  
-		CBrush *pOldBrush = dc.SelectObject(pBrush);  
-		dc.Rectangle(&rc);
-		dc.SelectObject(pOldPen);
-		dc.SelectObject(pOldBrush);
-		BoradrPen.DeleteObject();
-	}
-	else
-	{	
-		CPen BoradrPen;
-		BoradrPen.CreatePen(PS_SOLID,2,UnActiveColor);
-		CPen* pOldPen = dc.SelectObject(&BoradrPen);
-		CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));  
-		CBrush *pOldBrush = dc.SelectObject(pBrush);  
-		dc.Rectangle(&rc);
-		dc.SelectObject(pOldPen);
-		dc.SelectObject(pOldBrush);
-		BoradrPen.DeleteObject();
-	}
-}
 
 BOOL CBaseDialog::PreTranslateMessage(MSG* pMsg)
 {
@@ -85,22 +49,6 @@ BOOL CBaseDialog::PreTranslateMessage(MSG* pMsg)
 			return TRUE;
 		}
 	}
-#if 0
-	if (WM_LBUTTONDOWN == pMsg->message||WM_RBUTTONDOWN==pMsg->message)
-	{
-		CWnd* parent = GetParent();
-		if(parent)
-		{
-			parent = parent->GetParent();
-			CDlgTabPanel* pTabPanel = dynamic_cast<CDlgTabPanel*>(parent);
-			if(pTabPanel)
-			{
-				pTabPanel->SetActiveDlg(this);
-			}
-		}
-	}
-#endif
-
 	return CBCGPDialog::PreTranslateMessage(pMsg);
 }
 
@@ -112,11 +60,4 @@ void CBaseDialog::OnSize(UINT nType, int cx, int cy)
 	Invalidate(TRUE);
 }
 
-
-void CBaseDialog::OnLButtonDown(UINT nFlags, CPoint point)
-{
-	// TODO: 在此添加消息处理程序代码和/或调用默认值
-
-	CBCGPDialog::OnLButtonDown(nFlags, point);
-}
 
