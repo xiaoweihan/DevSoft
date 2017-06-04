@@ -63,7 +63,8 @@ IMPLEMENT_DYNAMIC(CDlgGridContainer, CBCGPDialog)
 
 CDlgGridContainer::CDlgGridContainer(CWnd* pParent /*=NULL*/)
 	: CBCGPDialog(CDlgGridContainer::IDD, pParent),
-     m_bLoop(false)
+     m_bLoop(false),
+	 m_bActiveFlag(FALSE)
 {
 }
 
@@ -84,6 +85,7 @@ BEGIN_MESSAGE_MAP(CDlgGridContainer, CBCGPDialog)
 	ON_WM_PAINT()
 	ON_MESSAGE(WM_NOTIFY_RBUTTON_DOWN,&CDlgGridContainer::NotifyGridClickRButton)
 	ON_COMMAND(ID_MENU_GRID_OPTION, &CDlgGridContainer::OnMenuGridOption)
+	ON_MESSAGE(WM_SET_DLG_ACTIVE,&CDlgGridContainer::NotifyActive)
 END_MESSAGE_MAP()
 
 
@@ -288,7 +290,8 @@ void CDlgGridContainer::OnPaint()
 		{
 			CRect rc;
 			GetClientRect(rc);
-			if(this == pTabPanel->GetActiveDlg())//当前窗口激活
+			//if(this == pTabPanel->GetActiveDlg())//当前窗口激活
+			if (TRUE == m_bActiveFlag)
 			{
 				CPen BoradrPen;
 				BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
@@ -355,5 +358,20 @@ void CDlgGridContainer::YieldDataProc( void )
 void CDlgGridContainer::OnMenuGridOption()
 {
 	// TODO: 在此添加命令处理程序代码
-	Utility::AfxBCGPMessageBox(_T("OK!"));
+	//Utility::AfxBCGPMessageBox(_T("OK!"));
+}
+
+LRESULT CDlgGridContainer::NotifyActive( WPARAM wp,LPARAM lp )
+{
+	int nActiveFlag = (int)wp;
+
+	if (nActiveFlag)
+	{
+		m_bActiveFlag = TRUE;
+	}
+	else
+	{
+		m_bActiveFlag = FALSE;
+	}
+	return 0L;
 }

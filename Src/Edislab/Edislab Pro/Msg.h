@@ -20,8 +20,11 @@ enum MESSAGE
 	//监测到了新设备
 	WM_NOTIFY_DETECT_DEVICE,
 
-	//通知GridContainer点击了邮件
-	WM_NOTIFY_RBUTTON_DOWN
+	//通知GridContainer点击了右键
+	WM_NOTIFY_RBUTTON_DOWN,
+
+	//设置对话框是否激活
+	WM_SET_DLG_ACTIVE
 	
 };
 

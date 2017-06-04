@@ -48,4 +48,13 @@ public:
 	afx_msg void OnChartZoomOut();
 	afx_msg void OnChartShowAll();
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
+
+	//begin add by xiaowei.han
+
+	afx_msg LRESULT NotifyActive(WPARAM wp,LPARAM lp);
+
+private:
+	BOOL m_bActiveFlag;
+	//end add by xiaowei.han
 };

@@ -13,9 +13,11 @@
 // GaugeDlg dialog
 #pragma warning(disable:4267)
 IMPLEMENT_DYNAMIC(GaugeDlg, CBaseDialog)
-
+#define TIMER_GAUGE_EVENT 1000012
+#define TIMER_GAUGE 300
 GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)
-	: CBaseDialog(GaugeDlg::IDD, pParent)
+	: CBaseDialog(GaugeDlg::IDD, pParent),
+	m_bActiveFlag(FALSE)
 {
 	enableWarning = false;
 	minRange = 0;
@@ -67,6 +69,8 @@ BEGIN_MESSAGE_MAP(GaugeDlg, CBaseDialog)
 	ON_COMMAND(ID_GAUGE_CORRECT, &GaugeDlg::OnGaugeCorrect)
 	ON_UPDATE_COMMAND_UI(ID_GAUGE_CORRECT, &GaugeDlg::OnUpdateGaugeCorrect)
 	ON_WM_PAINT()
+	ON_WM_TIMER()
+	ON_MESSAGE(WM_SET_DLG_ACTIVE,&GaugeDlg::NotifyActive)
 END_MESSAGE_MAP()
 
 void GaugeDlg::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
@@ -87,6 +91,7 @@ BOOL GaugeDlg::OnInitDialog()
 	m_wndGauge.GetGauge()->SetValue(0);
 	updateData(NULL);
 	Invalidate(TRUE);
+	SetTimer(TIMER_GAUGE_EVENT, TIMER_GAUGE, NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
 	// EXCEPTION: OCX Property Pages should return FALSE
 }
@@ -363,7 +368,7 @@ void GaugeDlg::OnPaint()
 	OnUpdateGauge();
 	//描绘边框
 	CWnd* parent = GetParent();
-	if(parent)
+	if(nullptr != parent)
 	{
 		parent = parent->GetParent();
 		CDlgTabPanel* pTabPanel = dynamic_cast<CDlgTabPanel*>(parent);
@@ -371,21 +376,9 @@ void GaugeDlg::OnPaint()
 		{
 			CRect rc;
 			GetClientRect(rc);
-			//CRgn rgn;
-			//rgn.CreateRectRgnIndirect(rc);
-			//dc.SelectClipRgn(&rgn);
-			if(this == pTabPanel->GetActiveDlg())//当前窗口激活
+			//if(this == pTabPanel->GetActiveDlg())//当前窗口激活
+			if (TRUE == m_bActiveFlag)
 			{
-				//CPen BoradrPen;
-				//BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
-				//CPen* pOldPen = dc.SelectObject(&BoradrPen);
-				//CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));
-				//CBrush *pOldBrush = dc.SelectObject(pBrush);  
-				//dc.Rectangle(&rc);
-				//dc.SelectObject(pOldPen);
-				//dc.SelectObject(pOldBrush);
-				//BoradrPen.DeleteObject();
-
 				CPen BoradrPen;
 				BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
@@ -407,15 +400,6 @@ void GaugeDlg::OnPaint()
 			}
 			else
 			{
-				//CPen BoradrPen;
-				//BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
-				//CPen* pOldPen = dc.SelectObject(&BoradrPen);
-				//CBrush *pBrush = CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH));
-				//CBrush *pOldBrush = dc.SelectObject(pBrush);
-				//dc.Rectangle(&rc);
-				//dc.SelectObject(pOldPen);
-				//dc.SelectObject(pOldBrush);
-				//BoradrPen.DeleteObject();
 				CPen BoradrPen;
 				BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
@@ -448,9 +432,13 @@ void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
 		{
 			if(dataColumnID==allData[i].vecColData[c].nColumnID)
 			{
-				m_strTitle = allData[i].vecColData[c].strColumnName;
-				m_strUnit = allData[i].vecColData[c].strColumnUnit;
-				OnUpdateGauge();
+				if (m_strTitle != allData[i].vecColData[c].strColumnName
+					|| m_strUnit != allData[i].vecColData[c].strColumnUnit)
+				{
+					m_strTitle = allData[i].vecColData[c].strColumnName;
+					m_strUnit = allData[i].vecColData[c].strColumnUnit;
+					OnUpdateGauge();
+				}
 				if(allData[i].vecColData[c].data.size()>0)
 				{
 					for(UINT v=allData[i].vecColData[c].data.size()-1; v>=0; --v)
@@ -459,7 +447,10 @@ void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
 						{
 							continue;
 						}
-						setValue(_ttof(allData[i].vecColData[c].data[v]));
+						if (getValue() != _ttof(allData[i].vecColData[c].data[v]))
+						{
+							setValue(_ttof(allData[i].vecColData[c].data[v]));
+						}
 						break;
 					}
 				}
@@ -467,7 +458,7 @@ void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
 			}
 		}
 	}
-	Invalidate(TRUE);
+	//Invalidate(TRUE);
 }
 
 BOOL GaugeDlg::PreTranslateMessage(MSG* pMsg)
@@ -512,3 +503,30 @@ BOOL GaugeDlg::PreTranslateMessage(MSG* pMsg)
 	return CBaseDialog::PreTranslateMessage(pMsg);
 }
 
+
+void GaugeDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO: Add your message handler code here and/or call default
+	//更新数据
+	if (TIMER_GAUGE_EVENT == nIDEvent)
+	{
+		updateData(NULL);
+	}
+	CBaseDialog::OnTimer(nIDEvent);
+}
+
+LRESULT GaugeDlg::NotifyActive( WPARAM wp,LPARAM lp )
+{
+
+	int nActiveFlag = (int)wp;
+
+	if (nActiveFlag)
+	{
+		m_bActiveFlag = TRUE;
+	}
+	else
+	{
+		m_bActiveFlag = FALSE;
+	}
+	return 0L;
+}

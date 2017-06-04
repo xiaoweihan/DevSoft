@@ -11,6 +11,7 @@
 #include "ChartFigureDlg.h"
 #include "GaugeDlg.h"
 #include "CustomGrid.h"
+#include "Msg.h"
 // CDlgTabPanel 对话框
 
 IMPLEMENT_DYNAMIC(CDlgTabPanel, CBCGPDialog)
@@ -238,14 +239,24 @@ void CDlgTabPanel::DelWnd( void )
 void CDlgTabPanel::SetActive( int nType,CWnd* pActiveWnd )
 {
 	CWnd* pOldActiveWnd = m_pActiveDlg;
+
+	//如果当前为同一个窗口
+	if (pOldActiveWnd == pActiveWnd)
+	{
+		return;
+	}
 	m_nActiveWndType = nType;
 	m_pActiveDlg = pActiveWnd;
+	//刷新当前活动窗口
 	if (m_pActiveDlg)
 	{
+		m_pActiveDlg->SendMessage(WM_SET_DLG_ACTIVE,1,0);
 		m_pActiveDlg->Invalidate(TRUE);
 	}
+	//刷新之前的活动窗口
 	if (nullptr != pOldActiveWnd)
 	{
+		pOldActiveWnd->SendMessage(WM_SET_DLG_ACTIVE,0,0);
 		pOldActiveWnd->Invalidate(TRUE);
 	}
 	

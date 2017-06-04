@@ -1,15 +1,12 @@
 {
-  "ComConfig": [
-    {
-      "SensorName": "大气压",
-      "PortName": 1,
-      "Pairty": 0,
-      "StopBits": 0,
-      "DataBits": 8,
-      "BaudRate": 9600,
-      "UseFlowControl": false
-    }
-  ],
+	"ComConfig": {
+		"PortName": "COM3",
+		"Pairty": 0,
+		"StopBits": 0,
+		"DataBits": 8,
+		"BaudRate": 115200,
+		"UseFlowControl": false
+	},
   "SensorConfig": [
     {
       "SensorID": 1,

@@ -329,7 +329,7 @@ void CDlgSensorChoose::OnCbnSelchangeCmbRange()
 		int nIndex = (int)m_CmbRange.GetItemData(nCurSel);
 		// 修改当前选择的量程信息
 		sensor.nCurRangeIndex = nIndex;
-		if (nIndex < sensor.SensorRangeInfoArray.size())
+		if (nIndex < (int)sensor.SensorRangeInfoArray.size())
 		{
 			// 修改分辨率信息
 			CString str (sensor.SensorRangeInfoArray[nIndex].strRangeName.c_str());
