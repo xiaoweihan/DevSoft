@@ -19,13 +19,8 @@ public:
 
 	virtual BOOL OnInitDialog();
 	DECLARE_MESSAGE_MAP()
-	afx_msg void OnPaint();
-
-private:
-	bool m_bActive;
 public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
-	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 };
 

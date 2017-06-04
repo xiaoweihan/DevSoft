@@ -17,6 +17,7 @@
 #include "Msg.h"
 #include "Global.h"
 #include "Utility.h"
+#include "DlgGridOpt.h"
 const int TIMER_ID = 1;
 const int TIMER_GAP = 1000;
 // CDlgGridContainer 对话框
@@ -357,8 +358,13 @@ void CDlgGridContainer::YieldDataProc( void )
 
 void CDlgGridContainer::OnMenuGridOption()
 {
-	// TODO: 在此添加命令处理程序代码
-	//Utility::AfxBCGPMessageBox(_T("OK!"));
+	//弹出选项对话框
+	CDlgGridOpt Dlg(this);
+
+	if (IDOK == Dlg.DoModal())
+	{
+
+	}
 }
 
 LRESULT CDlgGridContainer::NotifyActive( WPARAM wp,LPARAM lp )

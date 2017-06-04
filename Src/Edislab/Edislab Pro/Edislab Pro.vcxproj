@@ -242,6 +242,7 @@
     <ClInclude Include="DlgDeviceSet.h" />
     <ClInclude Include="DlgDiagramPanel.h" />
     <ClInclude Include="DlgGridContainer.h" />
+    <ClInclude Include="DlgGridOpt.h" />
     <ClInclude Include="DlgGridPanel.h" />
     <ClInclude Include="DlgPageNameConfig.h" />
     <ClInclude Include="DlgSensorChoose.h" />
@@ -301,6 +302,7 @@
     <ClCompile Include="DlgDeviceSet.cpp" />
     <ClCompile Include="DlgDiagramPanel.cpp" />
     <ClCompile Include="DlgGridContainer.cpp" />
+    <ClCompile Include="DlgGridOpt.cpp" />
     <ClCompile Include="DlgGridPanel.cpp" />
     <ClCompile Include="DlgPageNameConfig.cpp" />
     <ClCompile Include="DlgSensorChoose.cpp" />
