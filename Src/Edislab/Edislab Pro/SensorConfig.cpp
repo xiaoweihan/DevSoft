@@ -435,8 +435,15 @@ SENSOR_CONFIG_ELEMENT CSensorConfig::GetSensorInfo(int nSensorID)
 	return SENSOR_CONFIG_ELEMENT();
 }
 
+const SENSOR_RECORD_INFO& CSensorConfig::GetSensorRecordInfo()
+{
+	return m_SensorRecordInfo;
+}
 
-
+void CSensorConfig::SetSensorRecordInfo(SENSOR_RECORD_INFO& _recordInfo)
+{
+	m_SensorRecordInfo = _recordInfo;
+}
 
 
 

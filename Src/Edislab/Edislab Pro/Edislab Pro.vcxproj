@@ -195,6 +195,7 @@
   <ItemGroup>
     <None Include="GlobalDataManager.h" />
     <None Include="ReadMe.txt" />
+    <None Include="res\bitmap1.bmp" />
     <None Include="res\Edislab Pro.ico" />
     <None Include="res\Edislab ProDoc.ico" />
     <None Include="res\EdislabPro.rc2" />
@@ -211,6 +212,7 @@
     <None Include="res\RibbonStartLarge.bmp" />
     <None Include="res\RibbonStartSmall.bmp" />
     <None Include="res\Ribbon_Logo.bmp" />
+    <None Include="res\SensorImageList.bmp" />
     <None Include="res\Toolbar.bmp" />
     <None Include="res\Toolbar256.bmp" />
     <None Include="UserImages.bmp" />

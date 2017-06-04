@@ -446,6 +446,72 @@ void CDlgAcquirationPara::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScroll
 void CDlgAcquirationPara::OnBnClickedBtnOk()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	SENSOR_RECORD_INFO RecordInfo;
+	// 采样方式
+	RecordInfo.enumRecordType = FIXED_FREQUENCY_RC_TYPE;
+	// 是否限定时间
+	if (m_checkLimitTime.GetSafeHwnd())
+	{
+         if ( BST_CHECKED == m_checkLimitTime.GetCheck())
+         {
+			 RecordInfo.bLimitTime = true;
+         }
+		 else
+		 {
+			  RecordInfo.bLimitTime = false;
+		 }
+	}
+
+	// 是否在零时采样
+	if (m_checkSampleAtStart.GetSafeHwnd())
+	{
+		if (BST_CHECKED == m_checkSampleAtStart.GetCheck())
+		{
+			RecordInfo.bSampleAtStart = true;
+		}
+		else
+		{
+            RecordInfo.bSampleAtStart = false;
+		}
+	}
+
+	// 采样频率以及采样多少点取均值
+	std::map<int, float>::iterator iter = m_mapFrequency.end();
+	if (m_barFrequency.GetSafeHwnd())
+	{
+		iter = m_mapFrequency.find(m_barFrequency.GetScrollPos());
+		if(m_mapFrequency.end() != iter)
+		{
+			RecordInfo.fFrequency = iter->second;
+
+
+			// 是否限定多采样 
+			if (m_checkMultiSample.GetSafeHwnd())
+			{
+				if (BST_CHECKED == m_checkMultiSample.GetCheck())
+				{
+					RecordInfo.bMultiSample = true;
+					RecordInfo.nAverageNums = GetAverageSampleNum(iter->second);
+				}
+				else
+				{
+					RecordInfo.bMultiSample = false;
+				}
+			}
+		}
+	}
+
+	if (m_barLimitTime.GetSafeHwnd())
+	{
+		iter = m_mapLimitTime.find(m_barLimitTime.GetScrollPos());
+		if (m_mapLimitTime.end() != iter)
+		{
+			RecordInfo.fLimitTime = iter->second;
+		}
+	}
+
+	CSensorConfig::CreateInstance().SetSensorRecordInfo(RecordInfo);
+
 	OnOK();
 }
 
