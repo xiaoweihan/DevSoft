@@ -9,7 +9,7 @@
 #include <boost/foreach.hpp>
 #include <boost/bind.hpp>
 #include "Log.h"
-#include "GridDisplayColumnInfo.h"
+#include "GridColumnGroupManager.h"
 #include "SensorIDGenerator.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
@@ -97,33 +97,15 @@ BOOL CDlgGridContainer::OnInitDialog()
 {
 	CBCGPDialog::OnInitDialog();
 	EnableVisualManagerStyle(TRUE,TRUE);
-	//if (!m_pYieldDataThread)
-	//{
-	//	m_bLoop = true;
-
-	//	m_pYieldDataThread = boost::make_shared<boost::thread>(boost::bind(&CDlgGridContainer::YieldDataProc,this));
-	//}
 	if (NULL == m_DisplayGrid.GetSafeHwnd())
 	{
-		std::vector<HEADRER_INFO> HeaderInfoArray;
-		std::vector<GRID_DISPLAY_INFO> GridDisplayInfoArray;
+		std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
 		//获取要显示的列信息
-		CGridDisplayColumnInfo::CreateInstance().GetGridDisplayInfo(GridDisplayInfoArray);
+		CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
 		//显示信息为空则返回
-		if (!GridDisplayInfoArray.empty())
+		if (!ColumnGroupArray.empty())
 		{
-			HEADRER_INFO TempHeaderInfo;
-			BOOST_FOREACH(auto& V,GridDisplayInfoArray)
-			{
-				TempHeaderInfo.strHeadName = V.strHeadName;
-				BOOST_FOREACH(auto& ColumnElement,V.ContainColumnIndexArray)
-				{
-					TempHeaderInfo.ContainColumnIndexArray.push_back(ColumnElement.strColumnName);
-				}
-				HeaderInfoArray.push_back(TempHeaderInfo);
-				TempHeaderInfo.Reset();
-			}
-			m_DisplayGrid.SetHeaderInfoArray(HeaderInfoArray);
+			m_DisplayGrid.SetHeaderInfoArray(ColumnGroupArray);
 			m_DisplayGrid.SetDisplayVirtualRows(600);
 			m_DisplayGrid.SetCallBack(GridCallback);
 			m_DisplayGrid.Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);

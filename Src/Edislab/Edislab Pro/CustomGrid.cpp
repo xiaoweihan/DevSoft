@@ -118,7 +118,7 @@ END_MESSAGE_MAP()
 *作者:xiaowei.han
 *日期:2017/05/13 15:56:55
 *******************************************************************/
-void CCustomGrid::SetHeaderInfoArray(const std::vector<HEADRER_INFO>& HeaderInfoArray)
+void CCustomGrid::SetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray)
 {
 	if (HeaderInfoArray.empty())
 	{
@@ -136,16 +136,16 @@ void CCustomGrid::SetHeaderInfoArray(const std::vector<HEADRER_INFO>& HeaderInfo
 *作者:xiaowei.han
 *日期:2017/05/13 15:57:53
 *******************************************************************/
-void CCustomGrid::AddHeaderInfo(const HEADRER_INFO& HeaderInfo)
+void CCustomGrid::AddHeaderInfo(const COLUMN_GROUP_INFO& HeaderInfo)
 {
 	//参数合法性判断
-	if (HeaderInfo.ContainColumnIndexArray.empty() || NULL == GetSafeHwnd())
+	if (HeaderInfo.ColumnArray.empty() || NULL == GetSafeHwnd())
 	{
 		return;
 	}
-	auto Pred = [&HeaderInfo](const HEADRER_INFO& Info)->bool
+	auto Pred = [&HeaderInfo](const COLUMN_GROUP_INFO& Info)->bool
 	{
-		if (HeaderInfo.strHeadName == Info.strHeadName)
+		if (HeaderInfo.strGroupName == Info.strGroupName)
 		{
 			return true;
 		}
@@ -168,27 +168,6 @@ void CCustomGrid::AddHeaderInfo(const HEADRER_INFO& HeaderInfo)
 	CreateHeaderInfo();
 	CreateColumnInfo();
 	AdjustLayout();
-#if 0
-	//获取前面列的个数
-	int nTotalColumnCounts = m_ColumnsEx.GetColumnCount();
-	//需要合并的列信息
-	CArray<int, int> MergeColumnsArray;
-	MergeColumnsArray.RemoveAll();
-	int nColumnIdex = nTotalColumnCounts;
-	BOOST_FOREACH(auto& ColumnName,HeaderInfo.ContainColumnIndexArray)
-	{
-
-		m_ColumnsEx.InsertColumn(nColumnIdex,ColumnName,DEFAULT_COLUMN_WIDTH);
-		m_ColumnsEx.SetColumnWidthAutoSize(nColumnIdex,TRUE);
-		MergeColumnsArray.Add(nColumnIdex);
-		++nColumnIdex;
-	}
-	CArray<int, int> MergeLinesArray;
-	MergeLinesArray.RemoveAll();
-	MergeLinesArray.Add (0);
-	m_ColumnsEx.AddHeaderItem (&MergeColumnsArray,&MergeLinesArray,-1,HeaderInfo.strHeadName,HDF_CENTER);
-	AdjustLayout();
-#endif
 }
 
 /*******************************************************************
@@ -212,9 +191,9 @@ void CCustomGrid::RemoveHeaderInfo(const CString& strHeaderName)
 		return;
 	}
 	//用于查找的lamda表达式
-	auto Pred = [&strHeaderName](const HEADRER_INFO& Info)->bool
+	auto Pred = [&strHeaderName](const COLUMN_GROUP_INFO& Info)->bool
 	{
-		if (strHeaderName == Info.strHeadName)
+		if (strHeaderName == Info.strGroupName)
 		{
 			return true;
 		}
@@ -255,12 +234,12 @@ void CCustomGrid::RemoveColumn(const CString& strColumnName)
 		return;
 	}
 	//查找某列的名字是否等于要删除的
-	auto Pred = [&strColumnName](const HEADRER_INFO& Info)->bool
+	auto Pred = [&strColumnName](const COLUMN_GROUP_INFO& Info)->bool
 	{
 		bool bResult = false;
-		for (int i = 0; i < (int)Info.ContainColumnIndexArray.size(); ++i)
+		for (int i = 0; i < (int)Info.ColumnArray.size(); ++i)
 		{
-			if (Info.ContainColumnIndexArray[i] == strColumnName)
+			if (Info.ColumnArray[i].strColumnName == strColumnName)
 			{
 				bResult = true;
 				break;
@@ -277,12 +256,23 @@ void CCustomGrid::RemoveColumn(const CString& strColumnName)
 		return;
 	}
 
-	//找到的话
-	auto FindIter = std::find(Iter->ContainColumnIndexArray.begin(),Iter->ContainColumnIndexArray.end(),strColumnName);
 
-	if (FindIter != Iter->ContainColumnIndexArray.end())
+	auto ColumnPred = [&strColumnName](const COLUMN_INFO& ColumnElement)->bool
 	{
-		Iter->ContainColumnIndexArray.erase(FindIter);
+		if (ColumnElement.strColumnName == strColumnName)
+		{
+			return true;
+		}
+		return false;
+	};
+
+
+	//找到的话
+	auto FindIter = std::find_if(Iter->ColumnArray.begin(),Iter->ColumnArray.end(),ColumnPred);
+
+	if (FindIter != Iter->ColumnArray.end())
+	{
+		Iter->ColumnArray.erase(FindIter);
 	}
 	//首先删除所有的列
 	RemoveAll();
@@ -309,9 +299,9 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 		return;
 	}
 	//查找某列的名字是否等于要删除的
-	auto HeaderPred = [&strHeaderName](const HEADRER_INFO& Info)->bool
+	auto HeaderPred = [&strHeaderName](const COLUMN_GROUP_INFO& Info)->bool
 	{
-		if (Info.strHeadName == strHeaderName)
+		if (Info.strGroupName == strHeaderName)
 		{
 			return true;
 		}
@@ -324,29 +314,32 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 	}
 
 
-	auto ColumnPred = [&strColumnName](const CString& strName)->bool
+	auto ColumnPred = [&strColumnName](const COLUMN_INFO& ColumnElement)->bool
 	{
-		CString strAddColumnName = strName;
+		CString strAddColumnName = ColumnElement.strColumnName;
 		std::string strTempColumnName = Utility::WideChar2MultiByte(strAddColumnName.GetBuffer(0));
-		if (strName == strColumnName || CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strTempColumnName) < 0)
+		if (ColumnElement.strColumnName == strColumnName || CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strTempColumnName) < 0)
 		{
 			return true;
 		}
 		return false;
 	};
 
-	auto ColumnIter = std::find_if(HeaderIter->ContainColumnIndexArray.begin(),HeaderIter->ContainColumnIndexArray.end(),ColumnPred);
+	auto ColumnIter = std::find_if(HeaderIter->ColumnArray.begin(),HeaderIter->ColumnArray.end(),ColumnPred);
 	//不存在
-	if (ColumnIter == HeaderIter->ContainColumnIndexArray.end())
+	if (ColumnIter == HeaderIter->ColumnArray.end())
 	{
-		HeaderIter->ContainColumnIndexArray.push_back(strColumnName);
+		COLUMN_INFO TempColumnInfo;
+		TempColumnInfo.strColumnName = strColumnName;
+		HeaderIter->ColumnArray.push_back(TempColumnInfo);
 	}
 	//存在
 	else
 	{
-		if (*ColumnIter != strColumnName)
+		//为了防止找到X Y之类的
+		if (ColumnIter->strColumnName != strColumnName)
 		{
-			*ColumnIter = strColumnName;
+			ColumnIter->strColumnName = strColumnName;
 		}
 	}
 
@@ -378,9 +371,9 @@ bool CCustomGrid::IsHeaderNameExist(const CString& strHeaderName)
 		return false;
 	}
 	//查找行头信息
-	auto HeaderPred = [&strHeaderName](const HEADRER_INFO& Info)->bool
+	auto HeaderPred = [&strHeaderName](const COLUMN_GROUP_INFO& Info)->bool
 	{
-		if (Info.strHeadName == strHeaderName)
+		if (Info.strGroupName == strHeaderName)
 		{
 			return true;
 		}
@@ -411,9 +404,9 @@ bool CCustomGrid::IsColumnExistInFixedHeader(const CString& strHeaderName,const 
 	}
 
 	//查找某列的名字是否等于要删除的
-	auto HeaderPred = [&strHeaderName](const HEADRER_INFO& Info)->bool
+	auto HeaderPred = [&strHeaderName](const COLUMN_GROUP_INFO& Info)->bool
 	{
-		if (Info.strHeadName == strHeaderName)
+		if (Info.strGroupName == strHeaderName)
 		{
 			return true;
 		}
@@ -425,18 +418,18 @@ bool CCustomGrid::IsColumnExistInFixedHeader(const CString& strHeaderName,const 
 		return false;
 	}
 
-	auto ColumnPred = [&strColumnName](const CString& strName)->bool
+	auto ColumnPred = [&strColumnName](const COLUMN_INFO& ColumnElement)->bool
 	{
-		if (strName == strColumnName)
+		if (ColumnElement.strColumnName == strColumnName)
 		{
 			return true;
 		}
 		return false;
 	};
 
-	auto ColumnIter = std::find_if(HeaderIter->ContainColumnIndexArray.begin(),HeaderIter->ContainColumnIndexArray.end(),ColumnPred);
+	auto ColumnIter = std::find_if(HeaderIter->ColumnArray.begin(),HeaderIter->ColumnArray.end(),ColumnPred);
 	//不存在
-	if (ColumnIter == HeaderIter->ContainColumnIndexArray.end())
+	if (ColumnIter == HeaderIter->ColumnArray.end())
 	{
 		return false;
 	}
@@ -452,13 +445,26 @@ bool CCustomGrid::IsColumnExistInFixedHeader(const CString& strHeaderName,const 
 *作者:xiaowei.han
 *日期:2017/05/13 16:03:08
 *******************************************************************/
-void CCustomGrid::GetHeaderInfo(std::vector<HEADRER_INFO>& HeaderInfoArray)
+void CCustomGrid::GetHeaderInfo(std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray)
 {
 	HeaderInfoArray.clear();
 
 	HeaderInfoArray.assign(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end());
 }
 
+
+void CCustomGrid::GetColumnGroupDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray)
+{
+	DisplayArray.clear();
+}
+
+void CCustomGrid::SetColumnGroupDisplayInfo(const std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray)
+{
+	if (DisplayArray.empty())
+	{
+		return;
+	}
+}
 
 void CCustomGrid::CreateColumnInfo(void)
 {
@@ -470,9 +476,9 @@ void CCustomGrid::CreateColumnInfo(void)
 	int nColumnIdex = 0;
 	BOOST_FOREACH(auto& Element,m_HeaderInfoArray)
 	{	
-		BOOST_FOREACH(auto& ColumnName,Element.ContainColumnIndexArray)
+		BOOST_FOREACH(auto& ColumnElement,Element.ColumnArray)
 		{
-			m_ColumnsEx.InsertColumn(nColumnIdex,ColumnName,20);
+			m_ColumnsEx.InsertColumn(nColumnIdex,ColumnElement.strColumnName,20);
 			m_ColumnsEx.SetColumnWidthAutoSize(nColumnIdex,TRUE);
 			++nColumnIdex;
 		}
@@ -494,16 +500,16 @@ void CCustomGrid::CreateHeaderInfo(void)
 	BOOST_FOREACH(auto& Element,m_HeaderInfoArray)
 	{
 		//保证多表头的列不为空
-		if (!Element.ContainColumnIndexArray.empty())
+		if (!Element.ColumnArray.empty())
 		{
 			MergeColumnsArray.RemoveAll();
-			BOOST_FOREACH(auto& ColumnName,Element.ContainColumnIndexArray)
+			BOOST_FOREACH(auto& ColumnName,Element.ColumnArray)
 			{
 				MergeColumnsArray.Add(nColumnIdex++);
 			}
 			MergeLinesArray.RemoveAll();
 			MergeLinesArray.Add (0);
-			m_ColumnsEx.AddHeaderItem (&MergeColumnsArray,&MergeLinesArray,-1,Element.strHeadName,HDF_CENTER);
+			m_ColumnsEx.AddHeaderItem (&MergeColumnsArray,&MergeLinesArray,-1,Element.strGroupName,HDF_CENTER);
 		}
 	}
 }

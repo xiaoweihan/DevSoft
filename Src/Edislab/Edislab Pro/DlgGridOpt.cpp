@@ -13,7 +13,7 @@ IMPLEMENT_DYNAMIC(CDlgGridOpt, CBaseDialog)
 CDlgGridOpt::CDlgGridOpt(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(CDlgGridOpt::IDD, pParent)
 {
-
+	//m_GridDisplayArray.clear();
 }
 
 CDlgGridOpt::~CDlgGridOpt()
@@ -57,7 +57,10 @@ BOOL CDlgGridOpt::OnInitDialog()
 *******************************************************************/
 void CDlgGridOpt::InitDisplay(void)
 {
-
+	if (NULL == m_GridDisplayItemTree.GetSafeHwnd())
+	{
+		return;
+	}
 }
 
 
@@ -73,3 +76,15 @@ void CDlgGridOpt::OnBnClickedBtnCancel()
 	// TODO: 在此添加控件通知处理程序代码
 	OnCancel();
 }
+
+//void CDlgGridOpt::SetDisplayInfo(const std::vector<GRID_DISPLAY_COLUMN_INFO>& GridDisplayArray)
+//{
+//	m_GridDisplayArray = GridDisplayArray;
+//}
+//
+//void CDlgGridOpt::GetDisplayInfo(std::vector<GRID_DISPLAY_COLUMN_INFO>& GridDisplayArray)
+//{
+//	GridDisplayArray.clear();
+//
+//	GridDisplayArray = m_GridDisplayArray;
+//}

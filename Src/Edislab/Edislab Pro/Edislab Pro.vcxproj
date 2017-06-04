@@ -257,10 +257,10 @@
     <ClInclude Include="GaugeDlg.h" />
     <ClInclude Include="GaugeManager.h" />
     <ClInclude Include="Global.h" />
+    <ClInclude Include="GridColumnGroupManager.h" />
     <ClInclude Include="GridCtrlBase.h" />
     <ClInclude Include="GridDataManager.h" />
     <ClInclude Include="GridDefine.h" />
-    <ClInclude Include="GridDisplayColumnInfo.h" />
     <ClInclude Include="Lock.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Macro.h" />
@@ -317,9 +317,9 @@
     <ClCompile Include="GaugeManager.cpp" />
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="GlobalDataManager.cpp" />
+    <ClCompile Include="GridColumnGroupManager.cpp" />
     <ClCompile Include="GridCtrlBase.cpp" />
     <ClCompile Include="GridDataManager.cpp" />
-    <ClCompile Include="GridDisplayColumnInfo.cpp" />
     <ClCompile Include="Lock.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MainFrm.cpp" />

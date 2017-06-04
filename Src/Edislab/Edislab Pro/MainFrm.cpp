@@ -13,7 +13,7 @@
 #include "SerialPortService.h"
 #include "Global.h"
 #include "SensorConfig.h"
-#include "GridDisplayColumnInfo.h"
+#include "GridColumnGroupManager.h"
 #include "SensorIDGenerator.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -1996,14 +1996,13 @@ LRESULT CMainFrame::NotifyDeviceOnOrOff( WPARAM wp,LPARAM lp )
 			return 0L;
 		}
 		COLUMN_INFO AddColumnInfo;
-		AddColumnInfo.nSensorID = nSensorID;
 		AddColumnInfo.strColumnName = CString(strDeviceName.c_str());
-		CGridDisplayColumnInfo::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
+		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
 	}
 	//设备下线
 	else
 	{
-		CGridDisplayColumnInfo::CreateInstance().RemoveColumnInfo(_T("当前"),CString(strDeviceName.c_str()));
+		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"),CString(strDeviceName.c_str()));
 	}
 	//获取设备名称
 	CEdislabProView* pView = dynamic_cast<CEdislabProView*>(GetActiveView());

@@ -1,8 +1,5 @@
 #pragma once
-
 #include "BaseDialog.h"
-// CDlgGridOpt 对话框
-
 class CDlgGridOpt : public CBaseDialog
 {
 	DECLARE_DYNAMIC(CDlgGridOpt)
@@ -29,4 +26,11 @@ private:
 public:
 	afx_msg void OnBnClickedBtnApply();
 	afx_msg void OnBnClickedBtnCancel();
+
+	//设置显示选项
+	//void SetDisplayInfo(const std::vector<GRID_DISPLAY_COLUMN_INFO>& GridDisplayArray);
+	//获取显示选项
+	//void GetDisplayInfo(std::vector<GRID_DISPLAY_COLUMN_INFO>& GridDisplayArray);
+private:
+	//std::vector<GRID_DISPLAY_COLUMN_INFO> m_GridDisplayArray;
 };

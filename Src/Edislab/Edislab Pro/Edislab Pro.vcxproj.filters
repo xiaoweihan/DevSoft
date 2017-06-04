@@ -288,9 +288,6 @@
     <ClInclude Include="CustomGrid.h">
       <Filter>UIExtend</Filter>
     </ClInclude>
-    <ClInclude Include="GridDisplayColumnInfo.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="SensorData.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -304,6 +301,9 @@
       <Filter>Com</Filter>
     </ClInclude>
     <ClInclude Include="DlgGridOpt.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="GridColumnGroupManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -446,9 +446,6 @@
     <ClCompile Include="CustomGrid.cpp">
       <Filter>UIExtend</Filter>
     </ClCompile>
-    <ClCompile Include="GridDisplayColumnInfo.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="SensorData.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -462,6 +459,9 @@
       <Filter>Com</Filter>
     </ClCompile>
     <ClCompile Include="DlgGridOpt.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GridColumnGroupManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
