@@ -9,7 +9,7 @@
 #ifndef GRID_GROUP_H
 #define GRID_GROUP_H
 #include <vector>
-//列的信息
+//Grid中的列的信息
 typedef struct _column_info
 {
 	CString strColumnName;
@@ -23,7 +23,7 @@ typedef struct _column_info
 	}
 }COLUMN_INFO,* LP_COLUMN_INFO;
 
-//列的分组信息
+//Grid控件中列的分组信息
 typedef struct _column_group_info
 {
 	//分组的名称

@@ -1,5 +1,6 @@
 #pragma once
 #include "BaseDialog.h"
+#include "GridGroupType.h"
 class CDlgGridOpt : public CBaseDialog
 {
 	DECLARE_DYNAMIC(CDlgGridOpt)
@@ -18,7 +19,7 @@ protected:
 public:
 	virtual BOOL OnInitDialog();
 private:
-	CBCGPTreeCtrl m_GridDisplayItemTree;
+	CBCGPTreeCtrlEx m_GridDisplayItemTree;
 
 private:
 	//初始化显示
@@ -28,9 +29,9 @@ public:
 	afx_msg void OnBnClickedBtnCancel();
 
 	//设置显示选项
-	//void SetDisplayInfo(const std::vector<GRID_DISPLAY_COLUMN_INFO>& GridDisplayArray);
+	void SetDisplayInfo(const std::vector<SHOW_COLUMN_GROUP_INFO>& GridDisplayArray);
 	//获取显示选项
-	//void GetDisplayInfo(std::vector<GRID_DISPLAY_COLUMN_INFO>& GridDisplayArray);
+	void GetDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>& GridDisplayArray);
 private:
-	//std::vector<GRID_DISPLAY_COLUMN_INFO> m_GridDisplayArray;
+	std::vector<SHOW_COLUMN_GROUP_INFO> m_GridDisplayArray;
 };

@@ -455,7 +455,45 @@ void CCustomGrid::GetHeaderInfo(std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray)
 
 void CCustomGrid::GetColumnGroupDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray)
 {
+	if (NULL == GetSafeHwnd())
+	{
+		return;
+	}
 	DisplayArray.clear();
+
+	SHOW_COLUMN_GROUP_INFO TempColumnGroupInfo;
+	SHOW_COLUMN_INFO TempColumnInfo;
+	//获取所有的分组信息
+	BOOST_FOREACH(auto& GroupElement,m_HeaderInfoArray)
+	{
+		TempColumnGroupInfo.Reset();
+		//分组名称
+		TempColumnGroupInfo.strGroupName = GroupElement.strGroupName;
+		BOOST_FOREACH(auto& ColumnElement,GroupElement.ColumnArray)
+		{
+			TempColumnInfo.Reset();
+			TempColumnInfo.strColumnName = ColumnElement.strColumnName;
+			//遍历所有的行
+			for (int i = 0; i < GetColumnCount(); ++i)
+			{
+				//查看和改行名字一样的行
+				if (GetColumnName(i) == ColumnElement.strColumnName)
+				{
+					if (GetColumnVisible(i) == TRUE)
+					{
+						TempColumnInfo.bShow = true;
+					}
+					else
+					{
+						TempColumnInfo.bShow = false;
+					}
+					break;
+				}
+			}
+			TempColumnGroupInfo.ColumnArray.push_back(TempColumnInfo);
+		}
+		DisplayArray.push_back(TempColumnGroupInfo);
+	}
 }
 
 void CCustomGrid::SetColumnGroupDisplayInfo(const std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray)

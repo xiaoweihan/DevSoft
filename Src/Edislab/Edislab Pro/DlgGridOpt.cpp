@@ -13,7 +13,7 @@ IMPLEMENT_DYNAMIC(CDlgGridOpt, CBaseDialog)
 CDlgGridOpt::CDlgGridOpt(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(CDlgGridOpt::IDD, pParent)
 {
-	//m_GridDisplayArray.clear();
+	m_GridDisplayArray.clear();
 }
 
 CDlgGridOpt::~CDlgGridOpt()
@@ -77,14 +77,14 @@ void CDlgGridOpt::OnBnClickedBtnCancel()
 	OnCancel();
 }
 
-//void CDlgGridOpt::SetDisplayInfo(const std::vector<GRID_DISPLAY_COLUMN_INFO>& GridDisplayArray)
-//{
-//	m_GridDisplayArray = GridDisplayArray;
-//}
-//
-//void CDlgGridOpt::GetDisplayInfo(std::vector<GRID_DISPLAY_COLUMN_INFO>& GridDisplayArray)
-//{
-//	GridDisplayArray.clear();
-//
-//	GridDisplayArray = m_GridDisplayArray;
-//}
+void CDlgGridOpt::SetDisplayInfo(const std::vector<SHOW_COLUMN_GROUP_INFO>& GridDisplayArray)
+{
+	m_GridDisplayArray = GridDisplayArray;
+}
+
+void CDlgGridOpt::GetDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>& GridDisplayArray)
+{
+	GridDisplayArray.clear();
+
+	GridDisplayArray = m_GridDisplayArray;
+}

@@ -340,11 +340,21 @@ void CDlgGridContainer::YieldDataProc( void )
 
 void CDlgGridContainer::OnMenuGridOption()
 {
+
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+
+	//获取分组的显示信息
+	std::vector<SHOW_COLUMN_GROUP_INFO> ShowColumnArray;
+	m_DisplayGrid.GetColumnGroupDisplayInfo(ShowColumnArray);
 	//弹出选项对话框
 	CDlgGridOpt Dlg(this);
-
+	Dlg.SetDisplayInfo(ShowColumnArray);
 	if (IDOK == Dlg.DoModal())
 	{
+		//获取显示信息
 
 	}
 }
