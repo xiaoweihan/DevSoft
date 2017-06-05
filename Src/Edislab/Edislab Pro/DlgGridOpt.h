@@ -20,7 +20,7 @@ public:
 	virtual BOOL OnInitDialog();
 private:
 	CBCGPTreeCtrlEx m_GridDisplayItemTree;
-
+	CStatic m_DisplayItemTreeLocation;
 private:
 	//≥ı ºªØœ‘ æ
 	void InitDisplay(void);
@@ -34,4 +34,9 @@ public:
 	void GetDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>& GridDisplayArray);
 private:
 	std::vector<SHOW_COLUMN_GROUP_INFO> m_GridDisplayArray;
+public:
+	afx_msg void OnSize(UINT nType, int cx, int cy);
+
+	afx_msg LRESULT OnHeaderCheckClick(WPARAM wp, LPARAM lp);
+	afx_msg LRESULT OnCheckClick(WPARAM wp, LPARAM lp);
 };
