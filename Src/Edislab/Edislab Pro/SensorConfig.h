@@ -34,12 +34,22 @@ public:
 
 	const void GetSensorList(std::vector<SENSOR_CONFIG_ELEMENT> &vecSensorArry, SENSOR_TYPE enumType);
 
+	// 获取传感器分类信息
 	const std::vector<SENSOR_TYPE_INFO>& GetSensorTypeInfo()
 	{
 		return m_SensorTypeInfo;
 	}
 
+	// 根据传感器ID返回传感器信息
 	SENSOR_CONFIG_ELEMENT GetSensorInfo(int nSensorID);
+	
+	// 获取传感器采样配置信息
+	const SENSOR_RECORD_INFO& GetSensorRecordInfo();
+
+
+	void SetSensorRecordInfo(SENSOR_RECORD_INFO& _recordInfo);
+
+
 private:
 	//加载传感器列表信息
 	bool LoadSensorList(rapidjson::Document& Parser);
@@ -52,6 +62,9 @@ private:
 	//保存传感器的COM通信配置
 	//std::vector<SENSOR_COM_CONFIG_ELEMENT> m_SensorComConfigArray;
 	SENSOR_COM_CONFIG_ELEMENT m_SensorComConfig;
+
+	// 保存传感器采集设置信息
+	SENSOR_RECORD_INFO m_SensorRecordInfo;
 
 	//
 	std::vector<SENSOR_TYPE_INFO> m_SensorTypeInfo;

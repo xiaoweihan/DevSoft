@@ -88,12 +88,18 @@ void CDlgSensorChoose::InitCtrls()
 	if (m_ListChoosedSensor.GetSafeHwnd())
 	{
 		m_ListChoosedSensor.EnableItemDescription(TRUE, 1);
+		m_ListChoosedSensor.SetImageList(IDB_SENSOR_ICON_LIST, 48);
 	}
 
 	if (m_CheckAutoChoose.GetSafeHwnd())
 	{
 		m_CheckAutoChoose.SetCheck(TRUE);
 		OnBnClickedCheckAutoRecognize();
+	}
+
+	if (m_ListSensor.GetSafeHwnd())
+	{
+		m_ListSensor.SetImageList(IDB_SENSOR_ICON_LIST, 48);
 	}
 
 }
@@ -139,13 +145,13 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	int nIndex = m_ListSensor.GetCurSel();
-	nIndex = m_ListSensor.GetItemData(nIndex);
+	nIndex = (int)m_ListSensor.GetItemData(nIndex);
 	std::map<int, SENSOR_CONFIG_ELEMENT>::iterator iter = m_mapCurrentSensor.find(nIndex);
 	if (m_mapCurrentSensor.cend() != iter)
 	{
 		CString str;
         // 拼凑添加项的头
-		int nNum = m_setChooseSensorID.count(iter->second.nSensorID);
+		int nNum = (int)m_setChooseSensorID.count(iter->second.nSensorID);
 		if (nNum == 0)
 		{
 			str.Format(_T("数据列：%s(%s)"), CString(iter->second.strSensorSymbol.c_str()), CString(iter->second.strSensorName.c_str()));
@@ -168,6 +174,8 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 			m_ListChoosedSensor.SetItemDescription(nIndex, str);
 			// 将sensor ID作为item Data
 			m_ListChoosedSensor.SetItemData(nIndex, iter->second.nSensorID);
+
+			m_ListChoosedSensor.SetItemImage(nIndex, iter->second.nSensorID);
 		}
 	}
 }
@@ -179,7 +187,7 @@ void CDlgSensorChoose::OnBnClickedBtnDelete()
 	int nIndex = m_ListChoosedSensor.GetCurSel();
 	if (-1 != nIndex)
 	{
-		nIndex = m_ListChoosedSensor.GetItemData(nIndex);
+		nIndex = (int)m_ListChoosedSensor.GetItemData(nIndex);
 		if (m_setChooseSensorID.lower_bound(nIndex) != m_setChooseSensorID.end())
 		{
 			m_setChooseSensorID.erase(m_setChooseSensorID.lower_bound(nIndex));
@@ -231,6 +239,7 @@ void CDlgSensorChoose::RefreshSensorList()
 	m_mapCurrentSensor.clear();
 
 	m_ListSensor.EnableItemDescription(TRUE, 1);
+	m_ListSensor.SetImageList(IDB_SENSOR_ICON_LIST, 48);
 	std::vector<SENSOR_CONFIG_ELEMENT> vecSensorList;
 	int nSensorType = m_CmbSensorType.GetCurSel();
 	if (-1 == nSensorType)
@@ -238,7 +247,7 @@ void CDlgSensorChoose::RefreshSensorList()
 		return;
 	}
 
-	nSensorType = m_CmbSensorType.GetItemData(nSensorType);
+	nSensorType = (int)m_CmbSensorType.GetItemData(nSensorType);
 	SENSOR_TYPE type;
 	if (1 == nSensorType)
 	{
@@ -265,6 +274,7 @@ void CDlgSensorChoose::RefreshSensorList()
 		str = sensor.strSensorModelName.c_str();
 		m_ListSensor.SetItemDescription(nIndex, str);
 		m_ListSensor.SetItemData(nIndex, sensor.nSensorID);
+		m_ListSensor.SetItemImage(nIndex, sensor.nSensorID);
 		m_mapCurrentSensor[sensor.nSensorID] = sensor;
 	}
 }
@@ -274,7 +284,7 @@ void CDlgSensorChoose::RefreshRange()
 	int nIndex = m_ListChoosedSensor.GetCurSel();
 	if ( -1 != nIndex)
 	{
-		nIndex = m_ListChoosedSensor.GetItemData(nIndex);
+		nIndex = (int)m_ListChoosedSensor.GetItemData(nIndex);
 		const SENSOR_CONFIG_ELEMENT &sensor = CSensorConfig::CreateInstance().GetSensorInfo(nIndex);
 		if (-1 != sensor.nSensorID)
 		{
@@ -322,7 +332,7 @@ void CDlgSensorChoose::OnCbnSelchangeCmbRange()
 	// TODO: 在此添加控件通知处理程序代码
 	int nCurSel = m_ListChoosedSensor.GetCurSel();
 
-	SENSOR_CONFIG_ELEMENT &sensor = CSensorConfig::CreateInstance().GetSensorInfo(m_ListChoosedSensor.GetItemData(nCurSel));
+	SENSOR_CONFIG_ELEMENT &sensor = CSensorConfig::CreateInstance().GetSensorInfo((int)m_ListChoosedSensor.GetItemData(nCurSel));
 	if (-1 != sensor.nSensorID)
 	{
 		nCurSel = m_CmbRange.GetCurSel();

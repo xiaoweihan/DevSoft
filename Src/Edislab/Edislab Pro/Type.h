@@ -253,4 +253,49 @@ typedef void (*pCommandEntry)(CEdislabProView* pView);
 //更新函数指针定义
 typedef void (*pUpdateCommandEntry)(CEdislabProView* pView,CCmdUI* pCmdUI);
 
+enum RECORD_TYPE{
+	FIXED_FREQUENCY_RC_TYPE,
+	PHOTO_GATE_RC_TYPE,
+	TRIGER_RC_TYPE,
+	SPECIALIZED_RC_TYPE,
+	MANUAL_RC_TYPE
+};
+
+typedef struct _sensor_record_info
+{
+	// 实验数据记录模式
+	RECORD_TYPE enumRecordType;
+	
+	// 采样频率
+	float fFrequency;
+
+	// 是否限定时间
+	bool bLimitTime;
+
+	// 限定的时间
+	float fLimitTime;
+
+	// 是否在0时采样
+	bool bSampleAtStart;
+
+	// 是否多采样
+	bool bMultiSample;
+
+	// 多少点求均值
+	int nAverageNums;
+
+	_sensor_record_info()
+	{
+        enumRecordType = FIXED_FREQUENCY_RC_TYPE;
+		fFrequency = 0.0f;
+		bLimitTime = false;
+		fLimitTime = 0.0f;
+		bSampleAtStart = false;
+		bMultiSample = false;
+		nAverageNums = 1;
+	}
+
+}SENSOR_RECORD_INFO, *LPSENSOR_RECORD_INFO;
+
+
 #endif

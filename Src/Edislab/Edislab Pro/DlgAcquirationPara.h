@@ -1,6 +1,8 @@
 #pragma once
 #include "BaseDialog.h"
 #include <map>
+#include "Type.h"
+#include "SensorConfig.h"
 
 // CDlgAcquirationPara ¶Ô»°¿ò
 
