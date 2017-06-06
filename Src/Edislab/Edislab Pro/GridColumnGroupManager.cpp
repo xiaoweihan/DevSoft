@@ -66,6 +66,17 @@ void CGridColumnGroupManager::InitGridDisplayInfo()
 	TempInfo.ColumnArray.push_back(TempColumnInfo);	
 	
 	m_HeaderInfoArray.push_back(TempInfo);
+
+	TempInfo.Reset();
+	TempInfo.strGroupName = _T("ÀúÊ·");
+	TempColumnInfo.Reset();
+	TempColumnInfo.strColumnName = _T("X");
+	TempInfo.ColumnArray.push_back(TempColumnInfo);
+	TempColumnInfo.Reset();
+	TempColumnInfo.strColumnName = _T("Y");
+	TempInfo.ColumnArray.push_back(TempColumnInfo);	
+
+	m_HeaderInfoArray.push_back(TempInfo);
 }
 
 /*******************************************************************

@@ -121,6 +121,45 @@ void CDlgGridOpt::InitDisplay(void)
 void CDlgGridOpt::OnBnClickedBtnApply()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	if (NULL == m_GridDisplayItemTree.GetSafeHwnd())
+	{
+		return;
+	}
+	m_GridDisplayArray.clear();
+	SHOW_COLUMN_GROUP_INFO TempGroupInfo;
+	SHOW_COLUMN_INFO TempColumnInfo;
+	HTREEITEM hRoot = m_GridDisplayItemTree.GetRootItem();
+	while (hRoot)
+	{
+		TempGroupInfo.Reset();
+		TempGroupInfo.strGroupName = m_GridDisplayItemTree.GetItemText(hRoot);
+		//有子节点
+		if (m_GridDisplayItemTree.ItemHasChildren(hRoot))
+		{
+			HTREEITEM hChildItem = m_GridDisplayItemTree.GetChildItem(hRoot);
+			while (hChildItem)
+			{
+				TempColumnInfo.Reset();
+				TempColumnInfo.strColumnName = m_GridDisplayItemTree.GetItemText(hChildItem);
+
+				if (TRUE == m_GridDisplayItemTree.GetCheck(hChildItem))
+				{
+					TempColumnInfo.bShow = true;
+				}
+				else
+				{
+					TempColumnInfo.bShow = false;
+				}
+				hChildItem = m_GridDisplayItemTree.GetNextSiblingItem(hChildItem);
+
+				TempGroupInfo.ColumnArray.push_back(TempColumnInfo);
+			}
+		}
+		//获取兄弟节点
+		hRoot = m_GridDisplayItemTree.GetNextSiblingItem(hRoot);
+
+		m_GridDisplayArray.push_back(TempGroupInfo);
+	}
 	OnOK();
 }
 
