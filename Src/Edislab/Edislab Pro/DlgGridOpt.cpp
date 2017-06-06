@@ -128,37 +128,43 @@ void CDlgGridOpt::OnBnClickedBtnApply()
 	m_GridDisplayArray.clear();
 	SHOW_COLUMN_GROUP_INFO TempGroupInfo;
 	SHOW_COLUMN_INFO TempColumnInfo;
-	HTREEITEM hRoot = m_GridDisplayItemTree.GetRootItem();
-	while (hRoot)
+	HTREEITEM hItem = m_GridDisplayItemTree.GetRootItem();
+	while (hItem)
 	{
-		TempGroupInfo.Reset();
-		TempGroupInfo.strGroupName = m_GridDisplayItemTree.GetItemText(hRoot);
+		
 		//有子节点
-		if (m_GridDisplayItemTree.ItemHasChildren(hRoot))
+		if (m_GridDisplayItemTree.ItemHasChildren(hItem))
 		{
-			HTREEITEM hChildItem = m_GridDisplayItemTree.GetChildItem(hRoot);
+			TempGroupInfo.Reset();
+			TempGroupInfo.strGroupName = m_GridDisplayItemTree.GetItemText(hItem);
+			//获取子节点
+			HTREEITEM hChildItem = m_GridDisplayItemTree.GetChildItem(hItem);
 			while (hChildItem)
 			{
-				TempColumnInfo.Reset();
-				TempColumnInfo.strColumnName = m_GridDisplayItemTree.GetItemText(hChildItem);
+				//判断子节点
+				if (m_GridDisplayItemTree.ItemHasChildren(hChildItem) == FALSE &&
+					m_GridDisplayItemTree.GetParentItem(hChildItem) == hItem)
+				{
 
-				if (TRUE == m_GridDisplayItemTree.GetCheck(hChildItem))
-				{
-					TempColumnInfo.bShow = true;
-				}
-				else
-				{
-					TempColumnInfo.bShow = false;
+					TempColumnInfo.Reset();
+					TempColumnInfo.strColumnName = m_GridDisplayItemTree.GetItemText(hChildItem);
+
+					if (TRUE == m_GridDisplayItemTree.GetCheck(hChildItem))
+					{
+						TempColumnInfo.bShow = true;
+					}
+					else
+					{
+						TempColumnInfo.bShow = false;
+					}
+					TempGroupInfo.ColumnArray.push_back(TempColumnInfo);
 				}
 				hChildItem = m_GridDisplayItemTree.GetNextSiblingItem(hChildItem);
-
-				TempGroupInfo.ColumnArray.push_back(TempColumnInfo);
 			}
+			m_GridDisplayArray.push_back(TempGroupInfo);
 		}
 		//获取兄弟节点
-		hRoot = m_GridDisplayItemTree.GetNextSiblingItem(hRoot);
-
-		m_GridDisplayArray.push_back(TempGroupInfo);
+		hItem = m_GridDisplayItemTree.GetNextSiblingItem(hItem);
 	}
 	OnOK();
 }

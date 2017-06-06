@@ -452,7 +452,15 @@ void CCustomGrid::GetHeaderInfo(std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray)
 	HeaderInfoArray.assign(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end());
 }
 
-
+/*******************************************************************
+*函数名称:GetColumnGroupDisplayInfo
+*功能描述:获取显示信息
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/06 21:54:58
+*******************************************************************/
 void CCustomGrid::GetColumnGroupDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray)
 {
 	if (NULL == GetSafeHwnd())
@@ -496,12 +504,65 @@ void CCustomGrid::GetColumnGroupDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>&
 	}
 }
 
+/*******************************************************************
+*函数名称:SetColumnGroupDisplayInfo
+*功能描述:设置显示信息
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/06 21:54:58
+*******************************************************************/
 void CCustomGrid::SetColumnGroupDisplayInfo(const std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray)
 {
-	if (DisplayArray.empty())
+	if (NULL == GetSafeHwnd() || DisplayArray.empty())
 	{
 		return;
 	}
+
+	//查找某个列是否显示，默认是显示
+	auto FindDisplay = [&DisplayArray](const CString& strColumn)->bool
+	{
+		if (DisplayArray.empty() || strColumn.IsEmpty())
+		{
+			return true;
+		}
+
+		BOOST_FOREACH(auto& Element,DisplayArray)
+		{
+			BOOST_FOREACH(auto& ColumnElement,Element.ColumnArray)
+			{
+
+				if (ColumnElement.strColumnName == strColumn)
+				{
+					return ColumnElement.bShow;
+				}
+
+			}
+		}
+		return true;
+	};
+
+
+	CString strColumnName;
+	bool bShow = true;
+	//遍历所有的行
+	for (int i = 0; i < GetColumnCount(); ++i)
+	{
+		strColumnName = GetColumnName(i);
+		//查找对应的列是否显示
+		bShow = FindDisplay(strColumnName);
+
+		if (bShow)
+		{
+			SetColumnVisible(i,TRUE);
+		}
+		else
+		{
+			SetColumnVisible(i,FALSE);
+		}
+	}
+	AdjustLayout();
 }
 
 void CCustomGrid::CreateColumnInfo(void)

@@ -48,4 +48,10 @@ public:
 private:
 	BOOL m_bActiveFlag;
 	//end add by xiaowei.han
+public:
+	afx_msg void OnMenuGridCopy();
+	afx_msg void OnMenuGridPaste();
+	afx_msg void OnMenuGridDelCell();
+	afx_msg void OnMenuGridFirstRow();
+	afx_msg void OnMenuGridLastRow();
 };

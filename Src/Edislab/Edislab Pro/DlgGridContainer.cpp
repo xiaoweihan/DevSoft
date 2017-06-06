@@ -87,6 +87,11 @@ BEGIN_MESSAGE_MAP(CDlgGridContainer, CBCGPDialog)
 	ON_MESSAGE(WM_NOTIFY_RBUTTON_DOWN,&CDlgGridContainer::NotifyGridClickRButton)
 	ON_COMMAND(ID_MENU_GRID_OPTION, &CDlgGridContainer::OnMenuGridOption)
 	ON_MESSAGE(WM_SET_DLG_ACTIVE,&CDlgGridContainer::NotifyActive)
+	ON_COMMAND(ID_MENU_GRID_COPY, &CDlgGridContainer::OnMenuGridCopy)
+	ON_COMMAND(ID_MENU_GRID_PASTE, &CDlgGridContainer::OnMenuGridPaste)
+	ON_COMMAND(ID_MENU_GRID_DEL_CELL, &CDlgGridContainer::OnMenuGridDelCell)
+	ON_COMMAND(ID_MENU_GRID_FIRST_ROW, &CDlgGridContainer::OnMenuGridFirstRow)
+	ON_COMMAND(ID_MENU_GRID_LAST_ROW, &CDlgGridContainer::OnMenuGridLastRow)
 END_MESSAGE_MAP()
 
 
@@ -355,7 +360,12 @@ void CDlgGridContainer::OnMenuGridOption()
 	if (IDOK == Dlg.DoModal())
 	{
 		//获取显示信息
+		ShowColumnArray.clear();
+		//获取配置
+		Dlg.GetDisplayInfo(ShowColumnArray);
 
+		//设置显示
+		m_DisplayGrid.SetColumnGroupDisplayInfo(ShowColumnArray);
 	}
 }
 
@@ -372,4 +382,79 @@ LRESULT CDlgGridContainer::NotifyActive( WPARAM wp,LPARAM lp )
 		m_bActiveFlag = FALSE;
 	}
 	return 0L;
+}
+
+
+void CDlgGridContainer::OnMenuGridCopy()
+{
+	// TODO: 在此添加命令处理程序代码
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+
+	m_DisplayGrid.Copy();
+}
+
+
+void CDlgGridContainer::OnMenuGridPaste()
+{
+	// TODO: 在此添加命令处理程序代码
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+
+	m_DisplayGrid.Paste();
+}
+
+
+void CDlgGridContainer::OnMenuGridDelCell()
+{
+	// TODO: 在此添加命令处理程序代码
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+
+	m_DisplayGrid.Clear(FALSE);
+}
+
+
+void CDlgGridContainer::OnMenuGridFirstRow()
+{
+	// TODO: 在此添加命令处理程序代码
+	if (NULL != m_DisplayGrid.GetSafeHwnd())
+	{
+		int nTotalRow = m_DisplayGrid.GetTotalRowCount();
+		if (nTotalRow > 0)
+		{
+			CBCGPGridRow *pFirstRow = m_DisplayGrid.GetRow(0);
+			if (nullptr != pFirstRow)
+			{
+				m_DisplayGrid.EnsureVisible(pFirstRow);
+				m_DisplayGrid.SetCurSel(pFirstRow);
+			}
+		}
+	}
+}
+
+
+void CDlgGridContainer::OnMenuGridLastRow()
+{
+	// TODO: 在此添加命令处理程序代码
+	if (NULL != m_DisplayGrid.GetSafeHwnd())
+	{
+		int nTotalRow = m_DisplayGrid.GetTotalRowCount();
+		if (nTotalRow > 0)
+		{
+			CBCGPGridRow *pLastRow = m_DisplayGrid.GetRow(nTotalRow - 1);
+
+			if (nullptr != pLastRow)
+			{
+				m_DisplayGrid.EnsureVisible(pLastRow);
+				m_DisplayGrid.SetCurSel(pLastRow);
+			}
+		}
+	}
 }

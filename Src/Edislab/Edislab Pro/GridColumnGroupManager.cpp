@@ -67,16 +67,16 @@ void CGridColumnGroupManager::InitGridDisplayInfo()
 	
 	m_HeaderInfoArray.push_back(TempInfo);
 
-	TempInfo.Reset();
-	TempInfo.strGroupName = _T("历史");
-	TempColumnInfo.Reset();
-	TempColumnInfo.strColumnName = _T("X");
-	TempInfo.ColumnArray.push_back(TempColumnInfo);
-	TempColumnInfo.Reset();
-	TempColumnInfo.strColumnName = _T("Y");
-	TempInfo.ColumnArray.push_back(TempColumnInfo);	
+	//TempInfo.Reset();
+	//TempInfo.strGroupName = _T("历史");
+	//TempColumnInfo.Reset();
+	//TempColumnInfo.strColumnName = _T("X");
+	//TempInfo.ColumnArray.push_back(TempColumnInfo);
+	//TempColumnInfo.Reset();
+	//TempColumnInfo.strColumnName = _T("Y");
+	//TempInfo.ColumnArray.push_back(TempColumnInfo);	
 
-	m_HeaderInfoArray.push_back(TempInfo);
+	//m_HeaderInfoArray.push_back(TempInfo);
 }
 
 /*******************************************************************
