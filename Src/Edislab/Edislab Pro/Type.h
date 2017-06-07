@@ -287,7 +287,7 @@ typedef struct _sensor_record_info
 	_sensor_record_info()
 	{
         enumRecordType = FIXED_FREQUENCY_RC_TYPE;
-		fFrequency = 0.0f;
+		fFrequency = 1.0f;
 		bLimitTime = false;
 		fLimitTime = 0.0f;
 		bSampleAtStart = false;

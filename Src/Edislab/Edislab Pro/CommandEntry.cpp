@@ -702,7 +702,22 @@ void HandleAcquirePara(CEdislabProView* pView)
 	}
 
 	CDlgAcquirationPara dlgSelectPara;
-	dlgSelectPara.DoModal();
+
+	//begin modify by xiaowei.han 2017_6_7
+	if (IDOK == dlgSelectPara.DoModal())
+	{
+		//获取采样频率
+		const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
+		//计算出周期(单位:ms)
+		int nPeriod = (int)(1.0f / (SampleInfo.fFrequency)) * 1000;
+		std::vector<std::string> SensorNameArray;
+		CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray);
+		BOOST_FOREACH(auto& V,SensorNameArray)
+		{
+			CSerialPortService::CreateInstance().SetSensorFrequence(V,nPeriod);
+		}
+	}
+	//end modify by xiaowei.han 2017_6_7
 }
 
 void UpdateHandleAcquirePara( CEdislabProView* pView,CCmdUI* pCmdUI )

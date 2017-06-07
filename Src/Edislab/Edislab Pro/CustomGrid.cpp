@@ -48,9 +48,8 @@ int CCustomGrid::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	{
 		return -1;
 	}
-	//EnableMarkSortedColumn(TRUE,TRUE);
-	EnableHeader(TRUE, BCGP_GRID_HEADER_HIDE_ITEMS | BCGP_GRID_HEADER_SELECT);
-	EnableRowHeader (TRUE, BCGP_GRID_HEADER_MOVE_ITEMS | BCGP_GRID_HEADER_SELECT);
+	EnableMarkSortedColumn(TRUE,FALSE);
+	EnableHeader(TRUE, BCGP_GRID_HEADER_SELECT | BCGP_GRID_HEADER_MOVE_ITEMS);
 	SetClearInplaceEditOnEnter(FALSE);
 	EnableInvertSelOnCtrl();
 	SetScrollBarsStyle(CBCGPScrollBar::BCGP_SBSTYLE_VISUAL_MANAGER);
