@@ -139,8 +139,14 @@ BOOL CDlgGridContainer::OnInitDialog()
 			TempGroupInfo.ColumnArray.push_back(TempColumnInfo);
 			ColumnGroupArray.push_back(TempGroupInfo);
 		}
+
+		const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
+
+		//…Ë÷√µ„ ˝
+		int nTotalRows = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
 		m_DisplayGrid.SetHeaderInfoArray(ColumnGroupArray);
-		m_DisplayGrid.SetDisplayVirtualRows(60);
+		nTotalRows = (std::max)(nTotalRows,60);
+		m_DisplayGrid.SetDisplayVirtualRows(nTotalRows);
 		m_DisplayGrid.SetCallBack(GridCallback);
 		m_DisplayGrid.Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
 	}
@@ -285,6 +291,17 @@ void CDlgGridContainer::NotifyDetectSensor(const std::string& strDeviceName,int 
 		//m_DisplayGrid.RemoveColumn(CString(strDeviceName.c_str()));
 	}
 #endif
+}
+
+void CDlgGridContainer::NotifyGridChangeRows(int nRows)
+{
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+	m_DisplayGrid.SetVirtualRows((std::max)(nRows,60));
+
+	m_DisplayGrid.AdjustLayout();
 }
 
 LRESULT CDlgGridContainer::NotifyGridClickRButton(WPARAM wp,LPARAM lp)

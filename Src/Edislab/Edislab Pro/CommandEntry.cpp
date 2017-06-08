@@ -716,6 +716,16 @@ void HandleAcquirePara(CEdislabProView* pView)
 		{
 			CSerialPortService::CreateInstance().SetSensorFrequence(V,nPeriod);
 		}
+
+
+		if (SampleInfo.bLimitTime)
+		{
+			int nRow = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
+			pView->NotifyGridChangeRows(nRow);
+		}
+
+
+
 	}
 	//end modify by xiaowei.han 2017_6_7
 }

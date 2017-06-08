@@ -30,6 +30,8 @@ public:
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnDestroy();
 	void NotifyDetectSensor(const std::string& strDeviceName,int nOnFlag);
+	//通知行数改变
+	void NotifyGridChangeRows(int nRows);
 	afx_msg LRESULT NotifyGridClickRButton(WPARAM wp,LPARAM lp);
 private:
 	void RefreshGrid(void);

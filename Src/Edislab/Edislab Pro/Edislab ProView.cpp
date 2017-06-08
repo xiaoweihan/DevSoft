@@ -538,3 +538,22 @@ void CEdislabProView::NotifyDetectDevice( const std::string& strDeviceName,int n
 		}
 	}
 }
+
+void CEdislabProView::NotifyGridChangeRows(int nRows)
+{
+	if (NULL == m_TabWnd.GetSafeHwnd())
+	{
+		return;
+	}
+	int nTabWndNum = m_TabWnd.GetTabsNum();
+	CDlgTabPanel* pPanel = nullptr;
+	for (int i = 0; i < nTabWndNum; ++i)
+	{
+		pPanel = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetTabWnd(i));
+
+		if (nullptr != pPanel)
+		{
+			pPanel->NotifyGridChangeRows(nRows);
+		}
+	}
+}

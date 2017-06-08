@@ -195,6 +195,15 @@ void CDlgTabPanel::NotifyDectectSensor( const std::string& strDeviceName,int nOn
 	}
 }
 
+void CDlgTabPanel::NotifyGridChangeRows(int nRows)
+{
+	CDlgGridPanel* panle = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
+	if(nullptr != panle)
+	{
+		panle->NotifyGridChangeRows(nRows);
+	}
+}
+
 void CDlgTabPanel::DelWnd( void )
 {
 	switch (m_nActiveWndType)

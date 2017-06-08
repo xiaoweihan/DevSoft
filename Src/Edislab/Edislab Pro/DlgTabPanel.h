@@ -55,6 +55,8 @@ public:
 	void AddGauge();
 	//通知发现新传感器
 	void NotifyDectectSensor(const std::string& strDeviceName,int nOnFlag);
+	//通知行数改变
+	void NotifyGridChangeRows(int nRows);
 #if 0
 	//删除窗格
 	void DelWnd(CWnd* dlg);
