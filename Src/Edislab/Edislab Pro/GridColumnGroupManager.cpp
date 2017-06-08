@@ -9,7 +9,6 @@
 #include "GridColumnGroupManager.h"
 #include <algorithm>
 #include <boost/foreach.hpp>
-#include "SensorIDGenerator.h"
 #include "Utility.h"
 CGridColumnGroupManager& CGridColumnGroupManager::CreateInstance()
 {
@@ -55,6 +54,7 @@ CGridColumnGroupManager::~CGridColumnGroupManager(void)
 void CGridColumnGroupManager::InitGridDisplayInfo()
 {
 
+#if 0
 	//初始化显示
 	COLUMN_GROUP_INFO TempInfo;
 	TempInfo.strGroupName = _T("当前");
@@ -66,17 +66,7 @@ void CGridColumnGroupManager::InitGridDisplayInfo()
 	TempInfo.ColumnArray.push_back(TempColumnInfo);	
 	
 	m_HeaderInfoArray.push_back(TempInfo);
-
-	//TempInfo.Reset();
-	//TempInfo.strGroupName = _T("历史");
-	//TempColumnInfo.Reset();
-	//TempColumnInfo.strColumnName = _T("X");
-	//TempInfo.ColumnArray.push_back(TempColumnInfo);
-	//TempColumnInfo.Reset();
-	//TempColumnInfo.strColumnName = _T("Y");
-	//TempInfo.ColumnArray.push_back(TempColumnInfo);	
-
-	//m_HeaderInfoArray.push_back(TempInfo);
+#endif
 }
 
 /*******************************************************************
@@ -171,6 +161,23 @@ bool CGridColumnGroupManager::IsColumnExistInFixedHeader(const CString& strHeade
 *******************************************************************/
 void CGridColumnGroupManager::AddDisplayColumnInfo( const COLUMN_GROUP_INFO& GridColumnInfo )
 {
+	//查找行头信息
+	auto HeaderPred = [&GridColumnInfo](const COLUMN_GROUP_INFO& Info)->bool
+	{
+		if (Info.strGroupName == GridColumnInfo.strGroupName)
+		{
+			return true;
+		}
+		return false;
+	};
+
+	auto HeaderIter = std::find_if(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end(),HeaderPred);
+	//如果存在
+	if (HeaderIter != m_HeaderInfoArray.end())
+	{
+		return;
+	}
+
 	m_HeaderInfoArray.push_back(GridColumnInfo);
 }
 
@@ -195,13 +202,11 @@ void CGridColumnGroupManager::AddDisplayColumnInfo( const CString& strHeaderName
 		return false;
 	};
 
+	//寻找列名称的lamda表达式
 	auto ColumnPred = [&AddColumnInfo](const COLUMN_INFO& ColumnInfo)->bool
 	{
-		//获取列的名字
-		CString strColumnName = ColumnInfo.strColumnName;
-		std::string strTempColumnName = Utility::WideChar2MultiByte(strColumnName.GetBuffer(0));
-		//如果名称对应的传感器ID小于0
-		if (CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strTempColumnName) < 0 || ColumnInfo.strColumnName == AddColumnInfo.strColumnName)
+		//列名称相同
+		if (ColumnInfo.strColumnName == AddColumnInfo.strColumnName)
 		{
 			return true;
 		}
@@ -219,19 +224,20 @@ void CGridColumnGroupManager::AddDisplayColumnInfo( const CString& strHeaderName
 		//存在
 		if (ColumnIter != HeaderIter->ColumnArray.end())
 		{
-			//获取列的名字
-			CString strColumnName = ColumnIter->strColumnName;
-			std::string strTempColumnName = Utility::WideChar2MultiByte(strColumnName.GetBuffer(0));
-			//判断名称对应的ID是否小于0
-			if (CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strTempColumnName) < 0)
-			{
-				ColumnIter->strColumnName = AddColumnInfo.strColumnName;
-			}
+			return;
 		}
 		else
 		{
 			HeaderIter->ColumnArray.push_back(AddColumnInfo);
 		}
+	}
+	//没有则添加一个
+	else
+	{
+		COLUMN_GROUP_INFO NewGroupInfo;
+		NewGroupInfo.strGroupName = strHeaderName;
+		NewGroupInfo.ColumnArray.push_back(AddColumnInfo);
+		m_HeaderInfoArray.push_back(NewGroupInfo);
 	}
 }
 

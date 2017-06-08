@@ -48,6 +48,9 @@ public:
 	//设置行头信息(在创建Grid之前调用)
 	void SetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray);
 
+	//动态设置grid的行头信息
+	void DynamicSetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray);
+
 	//添加行头信息
 	void AddHeaderInfo(const COLUMN_GROUP_INFO& HeaderInfo);
 

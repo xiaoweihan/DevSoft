@@ -39,7 +39,7 @@ int CSensorIDGenerator::QuerySensorTypeIDByName( const std::string& strSensorNam
 	return nSensorID;
 }
 
-int CSensorIDGenerator::AddSensor( const std::string& strSensorName )
+int CSensorIDGenerator::AddSensor( const std::string& strSensorName)
 {
 	if (strSensorName.empty())
 	{
@@ -118,6 +118,6 @@ bool CSensorIDGenerator::IsSensorExist(const std::string& strSensorName)
 	return bResult;
 }
 
-int CSensorIDGenerator::s_nTypeIndex = 0;
+int CSensorIDGenerator::s_nTypeIndex = 1;
 
 CSensorIDGenerator CSensorIDGenerator::s_Instance;

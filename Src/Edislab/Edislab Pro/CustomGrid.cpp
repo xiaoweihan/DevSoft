@@ -124,6 +124,27 @@ void CCustomGrid::SetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>& Heade
 		return;
 	}
 	m_HeaderInfoArray.assign(HeaderInfoArray.begin(),HeaderInfoArray.end());
+
+
+}
+
+void CCustomGrid::DynamicSetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray)
+{
+	if (HeaderInfoArray.empty())
+	{
+		return;
+	}
+	m_HeaderInfoArray.assign(HeaderInfoArray.begin(),HeaderInfoArray.end());
+
+	//首先删除所有的列
+	RemoveAll();
+	//删除所有列信息
+	m_ColumnsEx.RemoveAllHeaderItems();
+	m_ColumnsEx.DeleteAllColumns();
+	//重新设置列
+	CreateHeaderInfo();
+	CreateColumnInfo();
+	AdjustLayout();
 }
 
 /*******************************************************************

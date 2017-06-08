@@ -303,7 +303,7 @@ int CSerialPortService::HandlerData(BYTE* pData, int nDataLength)
 						//拷贝数据
 						if (fValue > 0)
 						{
-							NECESSARY_LOG("the device [%s] data is [%.2f].",szSensorName,fValue);
+							DEBUG_LOG("the device [%s] data is [%.2f].",szSensorName,fValue);
 							//根据传感器名称获取ID
 							int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(szSensorName);
 							if (nSensorID >= 0)

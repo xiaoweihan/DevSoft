@@ -1996,6 +1996,9 @@ LRESULT CMainFrame::NotifyDeviceOnOrOff( WPARAM wp,LPARAM lp )
 			return 0L;
 		}
 		COLUMN_INFO AddColumnInfo;
+		AddColumnInfo.strColumnName = _T("t(s)时间");
+		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
+		AddColumnInfo.Reset();
 		AddColumnInfo.strColumnName = CString(strDeviceName.c_str());
 		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
 	}

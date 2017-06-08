@@ -240,7 +240,6 @@ typedef struct _sensor_type_info_element
 {
 	std::string strSensorName;
 	int nSensorID;
-
 	_sensor_type_info_element(void)
 	{
 		strSensorName = "";
