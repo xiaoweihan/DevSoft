@@ -38,7 +38,25 @@ int CSensorIDGenerator::QuerySensorTypeIDByName( const std::string& strSensorNam
 
 	return nSensorID;
 }
+//begin ldh 0610
+std::string CSensorIDGenerator::QueryrNameBySensorID(int id)
+{
+	std::string name = "";
+	using namespace boost;
+	lock_guard<mutex> Lock(m_Lock);
+	BOOST_FOREACH(auto& Element,m_SensorTypeArray)
+	{
+		//如果存在则返回ID
+		if (Element.nSensorID == id)
+		{
+			name = Element.strSensorName;
+			break;
+		}
+	}
 
+	return name;
+}
+//end ldh 0610
 int CSensorIDGenerator::AddSensor( const std::string& strSensorName)
 {
 	if (strSensorName.empty())

@@ -105,6 +105,12 @@ public:
 
 	//通知grid刷新行
 	void NotifyGridChangeRows(int nRows);
+
+	//通知相应的控件开始刷新
+	void NotifyControlsStartRefresh();
+
+	//通知相应的控件停止刷新
+	void NotifyControlsStopRefresh();
 };
 
 #ifndef _DEBUG  // Edislab ProView.cpp 中的调试版本

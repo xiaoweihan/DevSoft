@@ -6,6 +6,11 @@
 #include "DlgChartSet.h"
 #include "afxdialogex.h"
 #include "GlobalDataManager.h"
+#include "GridColumnGroupManager.h"
+#include "SensorIDGenerator.h"
+#include "SensorData.h"
+#include "SensorDataManager.h"
+#include "Utility.h"
 #pragma warning(push)
 #pragma warning(disable:4018)
 #pragma warning(disable:4244)
@@ -55,14 +60,29 @@ BOOL DlgChartSet::OnInitDialog()
 	//添加数据列名称及ID
 	std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
 	//X轴
-	for(int i=0; i<allData.size(); ++i)
+	//begin ldh 0610
+	//for(int i=0; i<allData.size(); ++i)
+	//{
+	//	for(int c=0; c<allData[i].vecColData.size(); ++c)
+	//	{
+	//		int index = m_combX.AddString(allData[i].vecColData[c].strColumnName);
+	//		m_combX.SetItemData(index, allData[i].vecColData[c].nColumnID);
+	//	}
+	//}
+	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
+	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
+	for(int i=0; i<ColumnGroupArray.size(); ++i)
 	{
-		for(int c=0; c<allData[i].vecColData.size(); ++c)
+		for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
 		{
-			int index = m_combX.AddString(allData[i].vecColData[c].strColumnName);
-			m_combX.SetItemData(index, allData[i].vecColData[c].nColumnID);
+			CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
+			int index = m_combX.AddString(name);
+			std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
+			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
+			m_combX.SetItemData(index, nSensorID);
 		}
 	}
+	//end ldh 0610
 	m_combX.SetCurSel(0);
 	for(int i=0; i<m_combX.GetCount(); ++i)
 	{
@@ -76,7 +96,8 @@ BOOL DlgChartSet::OnInitDialog()
 	//m_treeY.SetImageList(NULL, TVSIL_NORMAL);
 	m_treeY.ModifyStyle( TVS_CHECKBOXES, 0 );
 	m_treeY.ModifyStyle( 0, TVS_CHECKBOXES );
-	for(int i=0; i<allData.size(); ++i)
+	//begin ldh 0610
+	/*for(int i=0; i<allData.size(); ++i)
 	{
 		HTREEITEM hGroup;
 		hGroup = m_treeY.InsertItem(allData[i].strGroupName);
@@ -91,7 +112,27 @@ BOOL DlgChartSet::OnInitDialog()
 			}
 		}
 		m_treeY.Expand(hGroup, TVE_EXPAND);
+	}*/
+	for(int i=0; i<ColumnGroupArray.size(); ++i)
+	{
+		HTREEITEM hGroup;
+		hGroup = m_treeY.InsertItem(ColumnGroupArray[i].strGroupName);
+		m_treeY.SetItemData(hGroup, 0);
+		for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
+		{
+			CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
+			std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
+			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
+			HTREEITEM hCol = m_treeY.InsertItem(name, hGroup);
+			m_treeY.SetItemData(hCol, nSensorID);
+			if(m_setShowID.find(nSensorID)!=m_setShowID.end())
+			{
+				m_treeY.SetCheck(hCol, TRUE);//选择
+			}
+		}
+		m_treeY.Expand(hGroup, TVE_EXPAND);
 	}
+	//end ldh 0610
 	HTREEITEM hGroup = m_treeY.GetRootItem();
 	while(hGroup)
 	{

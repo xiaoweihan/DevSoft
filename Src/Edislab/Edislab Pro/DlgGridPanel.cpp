@@ -191,3 +191,25 @@ void CDlgGridPanel::NotifyGridChangeRows(int nRows)
 		}
 	}
 }
+
+void CDlgGridPanel::NotifyControlsStartRefresh()
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyControlsStartRefresh();
+		}
+	}
+}
+
+void CDlgGridPanel::NotifyControlsStopRefresh()
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyControlsStopRefresh();
+		}
+	}
+}

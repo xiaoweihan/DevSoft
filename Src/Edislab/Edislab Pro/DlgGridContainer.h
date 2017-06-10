@@ -32,6 +32,10 @@ public:
 	void NotifyDetectSensor(const std::string& strDeviceName,int nOnFlag);
 	//通知行数改变
 	void NotifyGridChangeRows(int nRows);
+	//通知相应的控件开始刷新
+	void NotifyControlsStartRefresh();
+	//通知相应的控件停止刷新
+	void NotifyControlsStopRefresh();
 	afx_msg LRESULT NotifyGridClickRButton(WPARAM wp,LPARAM lp);
 private:
 	void RefreshGrid(void);

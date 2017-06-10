@@ -144,6 +144,7 @@ void CCustomGrid::DynamicSetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>
 	//重新设置列
 	CreateHeaderInfo();
 	CreateColumnInfo();
+	m_CachedItems.CleanUpCache();
 	AdjustLayout();
 }
 

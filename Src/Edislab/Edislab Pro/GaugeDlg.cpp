@@ -10,6 +10,11 @@
 #include "Global.h"
 #include "DlgTabPanel.h"
 #include "Msg.h"
+#include "GridColumnGroupManager.h"
+#include "SensorIDGenerator.h"
+#include "SensorData.h"
+#include "SensorDataManager.h"
+#include "Utility.h"
 // GaugeDlg dialog
 #pragma warning(disable:4267)
 IMPLEMENT_DYNAMIC(GaugeDlg, CBaseDialog)
@@ -24,21 +29,27 @@ GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)
 	maxRange = 100;
 	maxWarningValue = DBL_MAX;//0X7FFFFFFF;
 	minWarningValue = -DBL_MAX;//-9999999999;
+	//获取当前需要显示的分组信息
+	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
 	//显示数据列的ID号
 	dataColumnID = -1;
-	std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
-	for(UINT i=0; i<allData.size(); ++i)
+	//ldh begin 0610 
+	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
+	for(int i=0; i<ColumnGroupArray.size(); ++i)
 	{
-		for(UINT c=0; c<allData[i].vecColData.size(); ++c)
+		for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
 		{
-			dataColumnID = allData[i].vecColData[c].nColumnID;
-			break;
+			CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
+			std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
+			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
+			dataColumnID = nSensorID;
 		}
 		if(dataColumnID!=-1)
 		{
 			break;
 		}
 	}
+	//ldh end 0610 
 }
 
 GaugeDlg::~GaugeDlg()
@@ -425,7 +436,8 @@ void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
 {
 	//更新当前值
 	//添加数据列名称及ID
-	std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
+	//begin ldh 0610
+	/*std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
 	for(UINT i=0; i<allData.size(); ++i)
 	{
 		for(UINT c=0; c<allData[i].vecColData.size(); ++c)
@@ -457,7 +469,35 @@ void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
 				break;
 			}
 		}
+	}*/
+	std::string name = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(dataColumnID);
+	CString cName;
+	cName.Format(_T("%s"), name.c_str());
+	if (m_strTitle != cName
+		/*|| m_strUnit != allData[i].vecColData[c].strColumnUnit*/)
+	{
+		m_strTitle = cName;
+		//m_strUnit = allData[i].vecColData[c].strColumnUnit;
+		OnUpdateGauge();
 	}
+	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(dataColumnID);
+	if (nullptr != pData)
+	{
+		std::vector<float> cData;
+		pData->GetSensorData(cData);
+		if(cData.size()>0)
+		{
+			for(UINT v=cData.size()-1; v>=0; --v)
+			{
+				if (getValue() != cData[v])
+				{
+					setValue(cData[v]);
+				}
+				break;
+			}
+		}	
+	}
+	//end ldh 0610
 	//Invalidate(TRUE);
 }
 

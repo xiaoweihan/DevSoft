@@ -6,6 +6,11 @@
 #include "DlgDeviceSet.h"
 #include "afxdialogex.h"
 #include "GlobalDataManager.h"
+#include "GridColumnGroupManager.h"
+#include "SensorIDGenerator.h"
+#include "SensorData.h"
+#include "SensorDataManager.h"
+#include "Utility.h"
 #pragma warning(push)
 #pragma warning(disable:4800)
 #pragma warning(disable:4018)
@@ -106,16 +111,32 @@ BOOL DlgDeviceSet::OnInitDialog()
 	m_combWarningTYpe.SetItemData(index, 1);
 	m_combWarningTYpe.SetCurSel(m_nWarningType);
 
+	
 	//添加数据列名称及ID
-	std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
-	for(int i=0; i<allData.size(); ++i)
+	//ldh begin 0610 
+	//std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
+	//for(int i=0; i<allData.size(); ++i)
+	//{
+	//	for(int c=0; c<allData[i].vecColData.size(); ++c)
+	//	{
+	//		int index = m_combDataID.AddString(allData[i].vecColData[c].strColumnName);
+	//		m_combDataID.SetItemData(index, allData[i].vecColData[c].nColumnID);
+	//	}
+	//}
+	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
+	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
+	for(int i=0; i<ColumnGroupArray.size(); ++i)
 	{
-		for(int c=0; c<allData[i].vecColData.size(); ++c)
+		for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
 		{
-			int index = m_combDataID.AddString(allData[i].vecColData[c].strColumnName);
-			m_combDataID.SetItemData(index, allData[i].vecColData[c].nColumnID);
+			CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
+			int index = m_combDataID.AddString(name);
+			std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
+			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
+			m_combDataID.SetItemData(index, nSensorID);
 		}
 	}
+	//ldh end 0610 
 	m_combDataID.SetCurSel(0);
 	for(int i=0; i<m_combDataID.GetCount(); ++i)
 	{

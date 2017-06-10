@@ -26,6 +26,12 @@ public:
 
 	//通知行数改变
 	void NotifyGridChangeRows(int nRows);
+
+	//通知相应的控件开始刷新
+	void NotifyControlsStartRefresh();
+
+	//通知相应的控件停止刷新
+	void NotifyControlsStopRefresh();
 private:
 	//布局器
 	CWidgetLayout m_WidgetLayout;

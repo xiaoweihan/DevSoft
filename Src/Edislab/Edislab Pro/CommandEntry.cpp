@@ -553,7 +553,7 @@ void UpdateHandleDelElement( CEdislabProView* pView,CCmdUI* pCmdUI )
 //开始采集
 void HandleStart(CEdislabProView* pView)
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
@@ -562,6 +562,8 @@ void HandleStart(CEdislabProView* pView)
 	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray);
 	if (s_bStartCapture)
 	{
+		//通知所有需要停止刷新的控件停止刷新
+		pView->NotifyControlsStopRefresh();
 		BOOST_FOREACH(auto& V,SensorNameArray)
 		{
 			CSerialPortService::CreateInstance().StopSensorCollect(V);
@@ -569,6 +571,8 @@ void HandleStart(CEdislabProView* pView)
 	}
 	else
 	{
+		//通知所有需要开始刷新的控件开始刷新
+		pView->NotifyControlsStartRefresh();
 		BOOST_FOREACH(auto& V,SensorNameArray)
 		{
 			CSerialPortService::CreateInstance().StartSensorCollect(V);

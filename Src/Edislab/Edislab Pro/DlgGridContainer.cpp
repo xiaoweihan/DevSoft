@@ -150,7 +150,7 @@ BOOL CDlgGridContainer::OnInitDialog()
 		m_DisplayGrid.SetCallBack(GridCallback);
 		m_DisplayGrid.Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
 	}
-	SetTimer(TIMER_ID,TIMER_GAP,NULL);
+	//SetTimer(TIMER_ID,TIMER_GAP,NULL);
 	return TRUE;
 	// 异常: OCX 属性页应返回 FALSE
 }
@@ -302,6 +302,24 @@ void CDlgGridContainer::NotifyGridChangeRows(int nRows)
 	m_DisplayGrid.SetVirtualRows((std::max)(nRows,60));
 
 	m_DisplayGrid.AdjustLayout();
+}
+
+void CDlgGridContainer::NotifyControlsStartRefresh()
+{
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+	SetTimer(TIMER_ID,TIMER_GAP,NULL);
+}
+
+void CDlgGridContainer::NotifyControlsStopRefresh()
+{
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+	KillTimer(TIMER_ID);
 }
 
 LRESULT CDlgGridContainer::NotifyGridClickRButton(WPARAM wp,LPARAM lp)

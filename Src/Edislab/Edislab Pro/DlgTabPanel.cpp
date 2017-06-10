@@ -204,6 +204,25 @@ void CDlgTabPanel::NotifyGridChangeRows(int nRows)
 	}
 }
 
+void CDlgTabPanel::NotifyControlsStartRefresh()
+{
+	//通知Grid开始刷新
+	CDlgGridPanel* panle = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
+	if(nullptr != panle)
+	{
+		panle->NotifyControlsStartRefresh();
+	}
+}
+
+void CDlgTabPanel::NotifyControlsStopRefresh()
+{
+	CDlgGridPanel* panle = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
+	if(nullptr != panle)
+	{
+		panle->NotifyControlsStopRefresh();
+	}
+}
+
 void CDlgTabPanel::DelWnd( void )
 {
 	switch (m_nActiveWndType)

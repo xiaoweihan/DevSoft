@@ -11,6 +11,7 @@ public:
 
 	//根据设备名称查询设备编号
 	int QuerySensorTypeIDByName(const std::string& strSensorName);
+	std::string QueryrNameBySensorID(int id);
 
 	//增加设备
 	int AddSensor(const std::string& strSensorName);
