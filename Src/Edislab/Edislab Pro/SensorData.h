@@ -35,6 +35,9 @@ public:
 
 	//根据索引获取数据
 	bool GetSensorData(int nIndex,float& fValue);
+
+	//清空所有数据
+	void ClearSensorData();
 private:
 	//用于同步的锁
 	boost::mutex m_DataLock;

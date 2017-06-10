@@ -1,10 +1,7 @@
 #pragma once
 
-
 // DlgChartSet dialog
 #include "ChartXY.h"
-#include "afxwin.h"
-#include "afxcmn.h"
 class DlgChartSet : public CDialog
 {
 	DECLARE_DYNAMIC(DlgChartSet)

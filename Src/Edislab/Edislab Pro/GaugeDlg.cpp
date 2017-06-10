@@ -19,7 +19,7 @@
 #pragma warning(disable:4267)
 IMPLEMENT_DYNAMIC(GaugeDlg, CBaseDialog)
 #define TIMER_GAUGE_EVENT 1000012
-#define TIMER_GAUGE 300
+#define TIMER_GAUGE 1000
 GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(GaugeDlg::IDD, pParent),
 	m_bActiveFlag(FALSE)
@@ -29,36 +29,10 @@ GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)
 	maxRange = 100;
 	maxWarningValue = DBL_MAX;//0X7FFFFFFF;
 	minWarningValue = -DBL_MAX;//-9999999999;
-	//获取当前需要显示的分组信息
-	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
-	//显示数据列的ID号
-	dataColumnID = -1;
-	//ldh begin 0610 
-	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
-	for(int i=0; i<ColumnGroupArray.size(); ++i)
-	{
-		for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
-		{
-			CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
-			std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
-			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
-			dataColumnID = nSensorID;
-		}
-		if(dataColumnID!=-1)
-		{
-			break;
-		}
-	}
-	//ldh end 0610 
 }
 
 GaugeDlg::~GaugeDlg()
 {
-	//if(m_pNumeric)
-	//{
-	//	delete m_pNumeric;
-	//	m_pNumeric = NULL;
-	//}
 }
 
 void GaugeDlg::DoDataExchange(CDataExchange* pDX)
@@ -87,18 +61,13 @@ END_MESSAGE_MAP()
 void GaugeDlg::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
 {
 	CBaseDialog::OnActivate(nState, pWndOther, bMinimized);
-
-	// TODO: 在此处添加消息处理程序代码
-	TRACE("[GaugeDlg] OnActivate!\r\n");
 }
 
 BOOL GaugeDlg::OnInitDialog()
 {
 	CBaseDialog::OnInitDialog();
-
-	// TODO:  Add extra initialization here
 	srand((unsigned)time(NULL));
-
+	m_wndGauge.GetGauge()->SetRange(0.0,200.0);
 	m_wndGauge.GetGauge()->SetValue(0);
 	updateData(NULL);
 	Invalidate(TRUE);
@@ -145,7 +114,7 @@ void GaugeDlg::OnUpdateGauge()
 		
 		pGauge->AddColoredRange(minRange, minRange+(maxRange-minRange)/3, brGreen, brFrame, nScale, width1, width2);
 		pGauge->AddColoredRange(minRange+(maxRange-minRange)/3, minRange+(maxRange-minRange)*2/3, brYellow, brFrame, nScale, width2);
-		pGauge->AddColoredRange( minRange+(maxRange-minRange)*2/3, maxRange, brRed, brFrame, nScale, width2, width1);
+		pGauge->AddColoredRange(minRange+(maxRange-minRange)*2/3, maxRange, brRed, brFrame, nScale, width2, width1);
 	}
 
 	pGauge->SetTextLabelFormat(_T("")/*_T("%.0f")*/);
@@ -264,39 +233,11 @@ int GaugeDlg::readData()
 
 void GaugeDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 {
-#if 0
-	// TODO: Add your message handler code here
-	CMenu   menu;   //定义下面要用到的cmenu对象
-	menu.LoadMenu(IDR_MENU_GAUGE); //装载自定义的右键菜单 
-	CMenu   *pContextMenu=menu.GetSubMenu(0); //获取第一个弹出菜单，所以第一个菜单必须有子菜单 
-	if(pContextMenu)
-	{
-		//CPoint point1;//定义一个用于确定光标位置的位置  
-		//GetCursorPos(&point1);//获取当前光标的位置，以便使得菜单可以跟随光标  
-		int res = pContextMenu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON /*| TPM_RETURNCMD | TPM_NONOTIFY*/,point.x,point.y,this);
-		//switch(res)
-		//{
-		//case ID_GAUGE_SET:
-		//	OnGaugeSet();
-		//	break;
-		//case ID_GAUGE_DELETE:
-		//	OnGaugeDelete();
-		//	break;
-		//case ID_GAUGE_ZERO:
-		//	OnGaugeZero();
-		//	break;
-		//case ID_GAUGE_CORRECT:
-		//	OnGaugeCorrect();
-		//	break;
-		//}
-	}
-#endif
 	CBCGPContextMenuManager* pContexMenuManager = theApp.GetContextMenuManager();
 	if (nullptr != pContexMenuManager)
 	{
-		pContexMenuManager->ShowPopupMenu(IDR_MENU_GAUGE,point.x,point.y,pWnd,TRUE);
-	}
-	
+		pContexMenuManager->ShowPopupMenu(IDR_MENU_GAUGE,point.x,point.y,this,TRUE);
+	}	
 }
 
 
@@ -312,7 +253,7 @@ void GaugeDlg::OnGaugeSet()
 		dlgSet.setWarningType(maxWarningValue<DBL_MAX?0:1);
 		dlgSet.setWarningValue(maxWarningValue<DBL_MAX?maxWarningValue:minWarningValue);
 	}
-	if(IDOK==dlgSet.DoModal())
+	if(IDOK == dlgSet.DoModal())
 	{
 		//获取值
 		dataColumnID = dlgSet.getDataColumnID();
@@ -329,7 +270,8 @@ void GaugeDlg::OnGaugeSet()
 				minWarningValue = dlgSet.getWarningValue();
 				maxWarningValue = DBL_MAX;
 			}
-		}else
+		}
+		else
 		{
 			minWarningValue = -DBL_MAX;
 			maxWarningValue = DBL_MAX;
@@ -435,49 +377,10 @@ void GaugeDlg::OnPaint()
 void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
 {
 	//更新当前值
-	//添加数据列名称及ID
-	//begin ldh 0610
-	/*std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
-	for(UINT i=0; i<allData.size(); ++i)
+	std::string strSensorName = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(dataColumnID);
+	if (m_strTitle != CString(strSensorName.c_str()))
 	{
-		for(UINT c=0; c<allData[i].vecColData.size(); ++c)
-		{
-			if(dataColumnID==allData[i].vecColData[c].nColumnID)
-			{
-				if (m_strTitle != allData[i].vecColData[c].strColumnName
-					|| m_strUnit != allData[i].vecColData[c].strColumnUnit)
-				{
-					m_strTitle = allData[i].vecColData[c].strColumnName;
-					m_strUnit = allData[i].vecColData[c].strColumnUnit;
-					OnUpdateGauge();
-				}
-				if(allData[i].vecColData[c].data.size()>0)
-				{
-					for(UINT v=allData[i].vecColData[c].data.size()-1; v>=0; --v)
-					{
-						if(allData[i].vecColData[c].data[v].IsEmpty())
-						{
-							continue;
-						}
-						if (getValue() != _ttof(allData[i].vecColData[c].data[v]))
-						{
-							setValue(_ttof(allData[i].vecColData[c].data[v]));
-						}
-						break;
-					}
-				}
-				break;
-			}
-		}
-	}*/
-	std::string name = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(dataColumnID);
-	CString cName;
-	cName.Format(_T("%s"), name.c_str());
-	if (m_strTitle != cName
-		/*|| m_strUnit != allData[i].vecColData[c].strColumnUnit*/)
-	{
-		m_strTitle = cName;
-		//m_strUnit = allData[i].vecColData[c].strColumnUnit;
+		m_strTitle = CString(strSensorName.c_str());
 		OnUpdateGauge();
 	}
 	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(dataColumnID);
@@ -485,9 +388,9 @@ void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
 	{
 		std::vector<float> cData;
 		pData->GetSensorData(cData);
-		if(cData.size()>0)
+		if(!cData.empty())
 		{
-			for(UINT v=cData.size()-1; v>=0; --v)
+			for(UINT v = cData.size() - 1; v >= 0; --v)
 			{
 				if (getValue() != cData[v])
 				{

@@ -253,6 +253,15 @@ void CDlgGridContainer::OnDestroy()
 	KillTimer(TIMER_ID);
 }
 
+/*******************************************************************
+*函数名称:NotifyDetectSensor
+*功能描述:通知Grid控件有传感器上线
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:43:55
+*******************************************************************/
 void CDlgGridContainer::NotifyDetectSensor(const std::string& strDeviceName,int nOnFlag)
 {
 	if (m_DisplayGrid.GetSafeHwnd() == NULL || strDeviceName.empty())
@@ -293,6 +302,15 @@ void CDlgGridContainer::NotifyDetectSensor(const std::string& strDeviceName,int 
 #endif
 }
 
+/*******************************************************************
+*函数名称:NotifyGridChangeRows
+*功能描述:通知Grid控件行数改变
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:42:23
+*******************************************************************/
 void CDlgGridContainer::NotifyGridChangeRows(int nRows)
 {
 	if (NULL == m_DisplayGrid.GetSafeHwnd())
@@ -304,6 +322,15 @@ void CDlgGridContainer::NotifyGridChangeRows(int nRows)
 	m_DisplayGrid.AdjustLayout();
 }
 
+/*******************************************************************
+*函数名称:NotifyControlsStartRefresh
+*功能描述:通知Grid控件开始刷新
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:42:23
+*******************************************************************/
 void CDlgGridContainer::NotifyControlsStartRefresh()
 {
 	if (NULL == m_DisplayGrid.GetSafeHwnd())
@@ -313,6 +340,15 @@ void CDlgGridContainer::NotifyControlsStartRefresh()
 	SetTimer(TIMER_ID,TIMER_GAP,NULL);
 }
 
+/*******************************************************************
+*函数名称:NotifyControlsStopRefresh
+*功能描述:通知Grid停止刷新
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:42:23
+*******************************************************************/
 void CDlgGridContainer::NotifyControlsStopRefresh()
 {
 	if (NULL == m_DisplayGrid.GetSafeHwnd())
@@ -322,6 +358,15 @@ void CDlgGridContainer::NotifyControlsStopRefresh()
 	KillTimer(TIMER_ID);
 }
 
+/*******************************************************************
+*函数名称:NotifyGridClickRButton
+*功能描述:响应Grid点击了右键
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:42:23
+*******************************************************************/
 LRESULT CDlgGridContainer::NotifyGridClickRButton(WPARAM wp,LPARAM lp)
 {
 	CPoint pt;

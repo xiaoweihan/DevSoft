@@ -69,20 +69,28 @@ BOOL DlgChartSet::OnInitDialog()
 	//		m_combX.SetItemData(index, allData[i].vecColData[c].nColumnID);
 	//	}
 	//}
-	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
-	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
-	for(int i=0; i<ColumnGroupArray.size(); ++i)
-	{
-		for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
-		{
-			CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
-			int index = m_combX.AddString(name);
-			std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
-			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
-			m_combX.SetItemData(index, nSensorID);
-		}
-	}
+	//std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
+	//CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
+	//for(int i=0; i<ColumnGroupArray.size(); ++i)
+	//{
+	//	for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
+	//	{
+	//		CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
+	//		int index = m_combX.AddString(name);
+	//		std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
+	//		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
+	//		m_combX.SetItemData(index, nSensorID);
+	//	}
+	//}
 	//end ldh 0610
+	std::vector<std::string> SensorNameArray;
+	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray);
+	for(int i = 0; i < (int)SensorNameArray.size(); ++i)
+	{
+		int index = m_combX.AddString(CString(SensorNameArray[i].c_str()));
+		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
+		m_combX.SetItemData(index, nSensorID);
+	}
 	m_combX.SetCurSel(0);
 	for(int i=0; i<m_combX.GetCount(); ++i)
 	{
@@ -96,29 +104,14 @@ BOOL DlgChartSet::OnInitDialog()
 	//m_treeY.SetImageList(NULL, TVSIL_NORMAL);
 	m_treeY.ModifyStyle( TVS_CHECKBOXES, 0 );
 	m_treeY.ModifyStyle( 0, TVS_CHECKBOXES );
-	//begin ldh 0610
-	/*for(int i=0; i<allData.size(); ++i)
-	{
-		HTREEITEM hGroup;
-		hGroup = m_treeY.InsertItem(allData[i].strGroupName);
-		m_treeY.SetItemData(hGroup, allData[i].nGroupID);
-		for(int c=0; c<allData[i].vecColData.size(); ++c)
-		{
-			HTREEITEM hCol = m_treeY.InsertItem(allData[i].vecColData[c].strColumnName, hGroup);
-			m_treeY.SetItemData(hCol, allData[i].vecColData[c].nColumnID);
-			if(m_setShowID.find(allData[i].vecColData[c].nColumnID)!=m_setShowID.end())
-			{
-				m_treeY.SetCheck(hCol, TRUE);//选择
-			}
-		}
-		m_treeY.Expand(hGroup, TVE_EXPAND);
-	}*/
-	for(int i=0; i<ColumnGroupArray.size(); ++i)
+	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
+	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
+	for(int i = 0; i < (int)ColumnGroupArray.size(); ++i)
 	{
 		HTREEITEM hGroup;
 		hGroup = m_treeY.InsertItem(ColumnGroupArray[i].strGroupName);
 		m_treeY.SetItemData(hGroup, 0);
-		for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
+		for(int g=0; g < ColumnGroupArray[i].ColumnArray.size(); ++g)
 		{
 			CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
 			std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
@@ -203,7 +196,7 @@ void DlgChartSet::OnBnClickedOk()
 	int index = m_combX.GetCurSel();
 	if(index>=0)
 	{
-		nID = m_combX.GetItemData(index);
+		nID = m_combX.GetItemData(index); 
 	}
 	m_nXID = nID;
 	//实验时

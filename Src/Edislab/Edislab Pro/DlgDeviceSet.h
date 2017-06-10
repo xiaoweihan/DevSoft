@@ -1,11 +1,9 @@
 #pragma once
 #include "DoubleEdit.h"
-#include "afxwin.h"
-
 
 // DlgDeviceSet dialog
-
-class DlgDeviceSet : public CDialog
+#include "BaseDialog.h"
+class DlgDeviceSet : public CBaseDialog
 {
 	DECLARE_DYNAMIC(DlgDeviceSet)
 
@@ -40,7 +38,7 @@ public:
 	BOOL m_bWarning;
 	int m_nWarningType;
 	int m_nDataID;
-	CComboBox m_combWarningTYpe;
-	CComboBox m_combDataID;
+	CBCGPComboBox m_combWarningTYpe;
+	CBCGPComboBox m_combDataID;
 	afx_msg void OnBnClickedOk();
 };

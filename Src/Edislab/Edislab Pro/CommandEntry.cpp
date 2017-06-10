@@ -22,6 +22,8 @@
 #include "Log.h"
 #include "SensorIDGenerator.h"
 #include "SerialPortService.h"
+#include "SensorData.h"
+#include "SensorDataManager.h"
 //最大页面数
 const int MAX_PAGE_NUM = 4;
 //表格的最大个数
@@ -559,7 +561,7 @@ void HandleStart(CEdislabProView* pView)
 	}
 
 	std::vector<std::string> SensorNameArray;
-	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray);
+	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray,false);
 	if (s_bStartCapture)
 	{
 		//通知所有需要停止刷新的控件停止刷新
@@ -714,22 +716,29 @@ void HandleAcquirePara(CEdislabProView* pView)
 		const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
 		//计算出周期(单位:ms)
 		int nPeriod = (int)(1.0f / (SampleInfo.fFrequency)) * 1000;
+		//设置传感器时间数据改变
+		CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(CSensorIDGenerator::CreateInstance().GetSpecialSensorID());
+		if (nullptr != pData)
+		{
+			pData->ClearSensorData();
+			int nSize = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
+			float fPeriod = 1.0f / (SampleInfo.fFrequency);
+			for (int i = 0; i < nSize; ++i)
+			{
+				pData->AddSensorData(i * fPeriod);
+			}
+		}
 		std::vector<std::string> SensorNameArray;
-		CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray);
+		CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray,false);
 		BOOST_FOREACH(auto& V,SensorNameArray)
 		{
 			CSerialPortService::CreateInstance().SetSensorFrequence(V,nPeriod);
 		}
-
-
 		if (SampleInfo.bLimitTime)
 		{
 			int nRow = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
 			pView->NotifyGridChangeRows(nRow);
 		}
-
-
-
 	}
 	//end modify by xiaowei.han 2017_6_7
 }
