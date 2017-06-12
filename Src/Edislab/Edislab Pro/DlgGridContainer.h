@@ -60,4 +60,5 @@ public:
 	afx_msg void OnMenuGridDelCell();
 	afx_msg void OnMenuGridFirstRow();
 	afx_msg void OnMenuGridLastRow();
+	afx_msg void OnMenuGridAddColumn();
 };

@@ -1,10 +1,9 @@
 #include "StdAfx.h"
 #include "Edislab Pro.h"
 #include "Edislab ProView.h"
+#include "CommandEntry.h"
 #include <boost/foreach.hpp>
 #include <boost/thread.hpp>
-#include "CommandEntry.h"
-#include "boost/crc.hpp"
 #include "Msg.h"
 #include "DlgAddPage.h"
 #include "DlgTabPanel.h"

@@ -111,6 +111,7 @@ BEGIN_MESSAGE_MAP(CDlgGridContainer, CBCGPDialog)
 	ON_COMMAND(ID_MENU_GRID_DEL_CELL, &CDlgGridContainer::OnMenuGridDelCell)
 	ON_COMMAND(ID_MENU_GRID_FIRST_ROW, &CDlgGridContainer::OnMenuGridFirstRow)
 	ON_COMMAND(ID_MENU_GRID_LAST_ROW, &CDlgGridContainer::OnMenuGridLastRow)
+	ON_COMMAND(ID_MENU_GRID_ADD_COLUMN, &CDlgGridContainer::OnMenuGridAddColumn)
 END_MESSAGE_MAP()
 
 
@@ -581,4 +582,10 @@ void CDlgGridContainer::OnMenuGridLastRow()
 			}
 		}
 	}
+}
+
+
+void CDlgGridContainer::OnMenuGridAddColumn()
+{
+	// TODO: 在此添加命令处理程序代码
 }

@@ -2,7 +2,8 @@
 
 // DlgChartSet dialog
 #include "ChartXY.h"
-class DlgChartSet : public CDialog
+#include "BaseDialog.h"
+class DlgChartSet : public CBaseDialog
 {
 	DECLARE_DYNAMIC(DlgChartSet)
 
@@ -24,10 +25,10 @@ protected:
 	DECLARE_MESSAGE_MAP()
 public:
 	virtual BOOL OnInitDialog();
-	CComboBox m_combX;
+	CBCGPComboBox m_combX;
 	CBCGPTreeCtrl m_treeY;
-	CComboBox m_combMoveStyle;
-	CComboBox m_combChartType;
-	CComboBox m_combLineStyle;
+	CBCGPComboBox m_combMoveStyle;
+	CBCGPComboBox m_combChartType;
+	CBCGPComboBox m_combLineStyle;
 	afx_msg void OnBnClickedOk();
 };
