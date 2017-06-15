@@ -16,6 +16,7 @@
 #include "CParagraphFormat.h"
 #include "DlgAcquirationPara.h"
 #include "DlgSensorChoose.h"
+#include "DlgDataSetting.h"
 #include "Global.h"
 #include "SensorConfig.h"
 #include "Log.h"
@@ -112,6 +113,9 @@ void HandleGridSaveAsExcel(CEdislabProView* pView);
 void HandleGridPrint(CEdislabProView* pView);
 //打印预览
 void HandleGridPrintPreview(CEdislabProView* pView);
+
+//数据配置
+void HandleDataSetting(CEdislabProView* pView);
 
 CCommandEntry& CCommandEntry::CreateInstance( void )
 {
@@ -217,6 +221,9 @@ void CCommandEntry::InitCommandEntry( void )
 
 	m_CommandEntryMap[ID_PRINT] = HandleGridPrint;
 	m_CommandEntryMap[ID_PRINT_PREVIEW] = HandleGridPrintPreview;
+
+	//数据配置
+	m_CommandEntryMap[ID_CONFIG_DATA] = HandleDataSetting;
 }
 
 /*****************************************************************************
@@ -517,11 +524,7 @@ void HandleDelElement(CEdislabProView* pView)
 	{
 		return;
 	}
-	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
-	if(nullptr != pTabPanel)
-	{
-		pTabPanel->DelWnd();
-	}
+	pView->DeleteElement();
 }
 
 void UpdateHandleAddTable( CEdislabProView* pView,CCmdUI* pCmdUI )
@@ -1093,5 +1096,19 @@ void HandleGridPrintPreview(CEdislabProView* pView)
 		{
 			pActiveWnd->PostMessage(WM_NOTIFY_GRID_PRINT_PREVIEW,0,0);
 		}
+	}
+}
+
+void HandleDataSetting( CEdislabProView* pView )
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+
+	CDlgDataSetting Dlg;
+	if (IDOK == Dlg.DoModal())
+	{
+
 	}
 }

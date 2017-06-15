@@ -111,6 +111,9 @@ public:
 
 	//通知相应的控件停止刷新
 	void NotifyControlsStopRefresh();
+
+	//删除元素
+	void DeleteElement();
 };
 
 #ifndef _DEBUG  // Edislab ProView.cpp 中的调试版本

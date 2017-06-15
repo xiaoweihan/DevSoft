@@ -18,15 +18,15 @@
 // GaugeDlg dialog
 #pragma warning(disable:4267)
 IMPLEMENT_DYNAMIC(GaugeDlg, CBaseDialog)
-#define TIMER_GAUGE_EVENT 1000012
-#define TIMER_GAUGE 1000
+#define TIMER_GAUGE_EVENT (1000012)
+#define TIMER_GAUGE (1000)
 GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(GaugeDlg::IDD, pParent),
 	m_bActiveFlag(FALSE)
 {
 	enableWarning = false;
-	minRange = 0;
-	maxRange = 100;
+	minRange = 0.0;
+	maxRange = 200.0;
 	maxWarningValue = DBL_MAX;//0X7FFFFFFF;
 	minWarningValue = -DBL_MAX;//-9999999999;
 }
@@ -66,9 +66,8 @@ void GaugeDlg::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
 BOOL GaugeDlg::OnInitDialog()
 {
 	CBaseDialog::OnInitDialog();
-	srand((unsigned)time(NULL));
-	m_wndGauge.GetGauge()->SetRange(0.0,200.0);
-	m_wndGauge.GetGauge()->SetValue(0);
+	m_wndGauge.GetGauge()->SetRange(minRange,maxRange);
+	m_wndGauge.GetGauge()->SetValue(0.0);
 	updateData(NULL);
 	Invalidate(TRUE);
 	SetTimer(TIMER_GAUGE_EVENT, TIMER_GAUGE, NULL);
@@ -112,9 +111,9 @@ void GaugeDlg::OnUpdateGauge()
 				CBCGPBrush(CBCGPColor(CBCGPColor::BurlyWood))));
 		}
 		
-		pGauge->AddColoredRange(minRange, minRange+(maxRange-minRange)/3, brGreen, brFrame, nScale, width1, width2);
-		pGauge->AddColoredRange(minRange+(maxRange-minRange)/3, minRange+(maxRange-minRange)*2/3, brYellow, brFrame, nScale, width2);
-		pGauge->AddColoredRange(minRange+(maxRange-minRange)*2/3, maxRange, brRed, brFrame, nScale, width2, width1);
+		pGauge->AddColoredRange(minRange, minRange + (maxRange - minRange) / 3, brGreen, brFrame, nScale, width1, width2);
+		pGauge->AddColoredRange(minRange + (maxRange - minRange) / 3, minRange + (maxRange-minRange) * 2 / 3, brYellow, brFrame, nScale, width2);
+		pGauge->AddColoredRange(minRange + (maxRange - minRange) * 2 / 3, maxRange, brRed, brFrame, nScale, width2, width1);
 	}
 
 	pGauge->SetTextLabelFormat(_T("")/*_T("%.0f")*/);

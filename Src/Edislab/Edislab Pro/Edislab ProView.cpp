@@ -595,3 +595,12 @@ void CEdislabProView::NotifyControlsStopRefresh()
 		}
 	}
 }
+
+void CEdislabProView::DeleteElement()
+{
+	CDlgTabPanel* pTabPanel = GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		pTabPanel->DelWnd();
+	}
+}

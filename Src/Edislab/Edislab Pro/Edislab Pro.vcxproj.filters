@@ -312,6 +312,9 @@
     <ClInclude Include="GridColumnGroupManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="DlgDataSetting.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -468,6 +471,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="GridColumnGroupManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgDataSetting.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

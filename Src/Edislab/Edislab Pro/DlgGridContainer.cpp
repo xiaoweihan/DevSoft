@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "Edislab Pro.h"
+#include "Edislab ProView.h"
 #include "DlgGridContainer.h"
 #include <boost/random.hpp>
 #include <boost/random/uniform_real_distribution.hpp>
@@ -753,6 +754,12 @@ void CDlgGridContainer::OnMenuGridClearData()
 void CDlgGridContainer::OnMenuGridDelElement()
 {
 	// TODO: 在此添加命令处理程序代码
+
+	CEdislabProView* pView = CEdislabProView::GetCurrentView();
+	if (nullptr != pView)
+	{
+		pView->DeleteElement();
+	}
 }
 
 
