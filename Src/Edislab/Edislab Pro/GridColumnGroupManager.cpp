@@ -53,8 +53,7 @@ CGridColumnGroupManager::~CGridColumnGroupManager(void)
 *******************************************************************/
 void CGridColumnGroupManager::InitGridDisplayInfo()
 {
-
-#if 0
+#if 1
 	//初始化显示
 	COLUMN_GROUP_INFO TempInfo;
 	TempInfo.strGroupName = _T("当前");

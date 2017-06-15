@@ -61,14 +61,6 @@ BOOL ChartFigureDlg::OnInitDialog()
 	CDC* pDC = GetDC();
 	m_charxy = new ChartXY(pDC->m_hDC);
 
-	//ChartXYData* line = new ChartXYData();
-	//std::vector<CMeDPoint> linePts;
-	//linePts.push_back(CMeDPoint(0, 1));
-	//linePts.push_back(CMeDPoint(2, 1));
-	//linePts.push_back(CMeDPoint(3, 10));
-	//linePts.push_back(CMeDPoint(4, 7));
-	//line->setXYData(linePts);
-	//m_charxy->addChartData(line);
 	CRect rect;
 	GetClientRect(rect);
 	CSize size(rect.Width(), rect.Height());

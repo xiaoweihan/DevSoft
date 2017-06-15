@@ -155,22 +155,7 @@ BOOL CDlgGridContainer::OnInitDialog()
 		std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
 		//获取要显示的列信息
 		CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
-		//显示信息为空则返回
-		if (ColumnGroupArray.empty())
-		{
-			COLUMN_GROUP_INFO TempGroupInfo;
-			TempGroupInfo.strGroupName = _T("当前");
-			COLUMN_INFO TempColumnInfo;
-			TempColumnInfo.strColumnName = _T("X");
-			TempGroupInfo.ColumnArray.push_back(TempColumnInfo);
-			TempColumnInfo.Reset();
-			TempColumnInfo.strColumnName = _T("Y");
-			TempGroupInfo.ColumnArray.push_back(TempColumnInfo);
-			ColumnGroupArray.push_back(TempGroupInfo);
-		}
-
 		const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
-
 		//设置点数
 		int nTotalRows = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
 		m_DisplayGrid.SetHeaderInfoArray(ColumnGroupArray);
@@ -299,18 +284,6 @@ void CDlgGridContainer::NotifyDetectSensor(const std::string& strDeviceName,int 
 	//获取当前需要显示的分组信息
 	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
 	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
-	if (ColumnGroupArray.empty())
-	{
-		COLUMN_GROUP_INFO TempGroupInfo;
-		TempGroupInfo.strGroupName = _T("当前");
-		COLUMN_INFO TempColumnInfo;
-		TempColumnInfo.strColumnName = _T("X");
-		TempGroupInfo.ColumnArray.push_back(TempColumnInfo);
-		TempColumnInfo.Reset();
-		TempColumnInfo.strColumnName = _T("Y");
-		TempGroupInfo.ColumnArray.push_back(TempColumnInfo);
-		ColumnGroupArray.push_back(TempGroupInfo);
-	}
 	m_DisplayGrid.DynamicSetHeaderInfoArray(ColumnGroupArray);
 
 #if 0
