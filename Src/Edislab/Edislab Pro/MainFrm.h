@@ -230,6 +230,9 @@ private:
 	//设备上线的回调
 	afx_msg LRESULT NotifyDeviceOnOrOff(WPARAM wp,LPARAM lp);
 
+	//通知Grid分组显示改变
+	afx_msg LRESULT NotifyGridGroupInfoChange(WPARAM wp,LPARAM lp);
+
 };
 
 

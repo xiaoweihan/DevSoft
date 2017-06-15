@@ -413,6 +413,15 @@ void CDlgTabPanel::PrepareDisplayElement( void )
 }
 
 
+void CDlgTabPanel::NotifyGridGroupInfoChange()
+{
+	CDlgGridPanel* panle = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
+	if(nullptr != panle)
+	{
+		panle->NotifyGridGroupInfoChange();
+	}
+}
+
 void CDlgTabPanel::OnPaint()
 {
 	CPaintDC dc(this); // device context for painting

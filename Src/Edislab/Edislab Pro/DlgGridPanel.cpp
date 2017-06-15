@@ -213,3 +213,14 @@ void CDlgGridPanel::NotifyControlsStopRefresh()
 		}
 	}
 }
+
+void CDlgGridPanel::NotifyGridGroupInfoChange()
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyGridGroupInfoChange();
+		}
+	}
+}

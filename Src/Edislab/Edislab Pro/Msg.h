@@ -17,6 +17,9 @@ enum MESSAGE
 	//通知主框架点击了什么
 	WM_NOTIFY_ACTIVE_WND_TYPE,
 
+	//通知Grid的分组信息改变
+	WM_NOTIFY_GRID_GROUP_INFO_CHANGE,
+
 	//监测到了新设备
 	WM_NOTIFY_DETECT_DEVICE,
 

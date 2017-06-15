@@ -415,7 +415,7 @@ CEdislabProView* CEdislabProView::GetCurrentView( void )
 
 	CMainFrame* pWnd = (CMainFrame*)AfxGetMainWnd();
 
-	if (NULL == pWnd)
+	if (nullptr == pWnd)
 	{
 		return NULL;
 	}
@@ -602,5 +602,24 @@ void CEdislabProView::DeleteElement()
 	if(nullptr != pTabPanel)
 	{
 		pTabPanel->DelWnd();
+	}
+}
+
+void CEdislabProView::NotifyGridGroupInfoChange()
+{
+	if (NULL == m_TabWnd.GetSafeHwnd())
+	{
+		return;
+	}
+	int nTabWndNum = m_TabWnd.GetTabsNum();
+	CDlgTabPanel* pPanel = nullptr;
+	for (int i = 0; i < nTabWndNum; ++i)
+	{
+		pPanel = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetTabWnd(i));
+
+		if (nullptr != pPanel)
+		{
+			pPanel->NotifyGridGroupInfoChange();
+		}
 	}
 }

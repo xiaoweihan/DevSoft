@@ -32,6 +32,9 @@ public:
 
 	//通知相应的控件停止刷新
 	void NotifyControlsStopRefresh();
+
+	//通知Grid的分组信息改变
+	void NotifyGridGroupInfoChange();
 private:
 	//布局器
 	CWidgetLayout m_WidgetLayout;

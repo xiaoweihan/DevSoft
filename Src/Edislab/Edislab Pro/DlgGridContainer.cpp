@@ -359,6 +359,18 @@ void CDlgGridContainer::NotifyControlsStopRefresh()
 	KillTimer(TIMER_ID);
 }
 
+void CDlgGridContainer::NotifyGridGroupInfoChange()
+{
+	if (m_DisplayGrid.GetSafeHwnd() == NULL)
+	{
+		return;
+	}
+	//获取当前需要显示的分组信息
+	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
+	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
+	m_DisplayGrid.DynamicSetHeaderInfoArray(ColumnGroupArray);
+}
+
 /*******************************************************************
 *函数名称:NotifyGridClickRButton
 *功能描述:响应Grid点击了右键

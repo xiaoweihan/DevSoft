@@ -36,6 +36,8 @@ public:
 	void NotifyControlsStartRefresh();
 	//通知相应的控件停止刷新
 	void NotifyControlsStopRefresh();
+	//通知Grid的分组信息改变
+	void NotifyGridGroupInfoChange();
 	afx_msg LRESULT NotifyGridClickRButton(WPARAM wp,LPARAM lp);
 private:
 	void RefreshGrid(void);

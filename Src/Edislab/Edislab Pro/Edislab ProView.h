@@ -114,6 +114,9 @@ public:
 
 	//删除元素
 	void DeleteElement();
+
+	//通知Grid的分组信息改变
+	void NotifyGridGroupInfoChange();
 };
 
 #ifndef _DEBUG  // Edislab ProView.cpp 中的调试版本

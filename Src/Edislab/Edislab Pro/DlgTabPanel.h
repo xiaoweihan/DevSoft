@@ -66,6 +66,8 @@ public:
 	void DelWnd(void);
 	//准备显示元素
 	void PrepareDisplayElement(void);
+	//通知Grid的分组信息改变
+	void NotifyGridGroupInfoChange();
 protected:
 	//创建面板
 	void CreatePanel(void);
