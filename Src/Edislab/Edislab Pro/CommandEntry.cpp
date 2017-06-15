@@ -83,6 +83,35 @@ void HandleAcquirePara(CEdislabProView* pView);
 //更新删除元素
 void UpdateHandleAcquirePara(CEdislabProView* pView,CCmdUI* pCmdUI);
 
+//表格对应的Ribbon菜单
+//选项菜单
+void HandleGridOption(CEdislabProView* pView);
+//复制菜单
+void HandleGridCopy(CEdislabProView* pView);
+//粘贴菜单
+void HandleGridPaste(CEdislabProView* pView);
+//第一行菜单
+void HandleGridFirstRow(CEdislabProView* pView);
+//最后一行菜单
+void HandleGridLastRow(CEdislabProView* pView);
+//插入行
+void HandleGridInsertRow(CEdislabProView* pView);
+//删除格子
+void HandleGridDelCell(CEdislabProView* pView);
+//增加数据列
+void HandleGridAddDataColumn(CEdislabProView* pView);
+//生成数据
+void HandleGridYieldData(CEdislabProView* pView);
+//运算
+void HandleGridCalculate(CEdislabProView* pView);
+//清除格子数据
+void HandleGridClearCellData(CEdislabProView* pView);
+//存储为Excel
+void HandleGridSaveAsExcel(CEdislabProView* pView);
+//打印
+void HandleGridPrint(CEdislabProView* pView);
+//打印预览
+void HandleGridPrintPreview(CEdislabProView* pView);
 
 CCommandEntry& CCommandEntry::CreateInstance( void )
 {
@@ -113,7 +142,7 @@ CCommandEntry::~CCommandEntry(void)
 pCommandEntry CCommandEntry::GetCommandEntryByCommanID( unsigned int nCommandID )
 {
 
-	std::map<unsigned int,pCommandEntry>::iterator Iter = m_CommandEntryMap.find(nCommandID);
+	auto Iter = m_CommandEntryMap.find(nCommandID);
 
 	if (Iter == m_CommandEntryMap.end())
 	{
@@ -133,7 +162,7 @@ pCommandEntry CCommandEntry::GetCommandEntryByCommanID( unsigned int nCommandID 
 *****************************************************************************/
 pUpdateCommandEntry CCommandEntry::GetUpdateCommandEntryByCommanID( unsigned int nCommandID )
 {
-	std::map<unsigned int,pUpdateCommandEntry>::iterator Iter = m_UpdateCommandEntryMap.find(nCommandID);
+	auto Iter = m_UpdateCommandEntryMap.find(nCommandID);
 
 	if (Iter == m_UpdateCommandEntryMap.end())
 	{
@@ -169,6 +198,25 @@ void CCommandEntry::InitCommandEntry( void )
 
 	m_CommandEntryMap[ID_SELECT_SENSOR] = HandleChooseDevice;
 	m_CommandEntryMap[ID_COLLECT_PARAM] = HandleAcquirePara;
+
+	//选项
+	m_CommandEntryMap[ID_OPTION] = HandleGridOption;
+	m_CommandEntryMap[ID_COPY] = HandleGridCopy;
+	m_CommandEntryMap[ID_PASTE] = HandleGridPaste;
+	m_CommandEntryMap[ID_FIRST_ROW] = HandleGridFirstRow;
+	m_CommandEntryMap[ID_LAST_ROW] = HandleGridLastRow;
+	m_CommandEntryMap[ID_INSERT_ROW] = HandleGridInsertRow;
+	m_CommandEntryMap[ID_DEL_CELL] = HandleGridDelCell;
+	m_CommandEntryMap[ID_ADD_DATA_COLUMN] = HandleGridAddDataColumn;
+
+	m_CommandEntryMap[ID_YIELD_DATA] = HandleGridYieldData;
+	m_CommandEntryMap[ID_CALCULATE] = HandleGridCalculate;
+
+	m_CommandEntryMap[ID_CLEAR_CHILD_DATA] = HandleGridClearCellData;
+	m_CommandEntryMap[ID_SAVE_EXCEL] = HandleGridSaveAsExcel;
+
+	m_CommandEntryMap[ID_PRINT] = HandleGridPrint;
+	m_CommandEntryMap[ID_PRINT_PREVIEW] = HandleGridPrintPreview;
 }
 
 /*****************************************************************************
@@ -231,30 +279,26 @@ void CCommandEntry::UnInitUpdateCommandEntry( void )
 *****************************************************************************/
 void HandleAddPage( CEdislabProView* pView )
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
 
 	CDlgAddPage AddDlg;
-
 	if (IDOK == AddDlg.DoModal())
 	{
-
 		//获取添加的动作
 		ADD_PAGE_ELEMENT AddPageElement = AddDlg.GetAddPageElement();
 		if (NEW_PAGE_COPY == AddPageElement.eumOpt)
 		{
 			CDlgTabPanel* pPanel = pView->GetCurrentPage();
-
-			if (NULL != pPanel)
+			if (nullptr != pPanel)
 			{
 				AddPageElement.nGridNum = pPanel->GetGridNum();
 				AddPageElement.nDiagramNum = pPanel->GetDiagramNum();
 				AddPageElement.nDeviceNum = pPanel->GetDeviceNum();
 			}
 		}		
-
 		if (pView->AddNewTabWnd(AddPageElement.strPageName,AddPageElement.nGridNum,AddPageElement.nDiagramNum,AddPageElement.nDeviceNum))
 		{
 			//设置最后一个Tab为活动的Tab
@@ -273,7 +317,7 @@ void HandleAddPage( CEdislabProView* pView )
 *****************************************************************************/
 void UpdateHandleAddPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 {
-	if (NULL == pView || NULL == pCmdUI)
+	if (nullptr == pView || nullptr == pCmdUI)
 	{
 		return;
 	}
@@ -300,7 +344,7 @@ void UpdateHandleAddPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 *****************************************************************************/
 void HandleDelPage( CEdislabProView* pView )
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
@@ -322,7 +366,7 @@ void HandleDelPage( CEdislabProView* pView )
 *****************************************************************************/
 void UpdateHandleDelPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 {
-	if (NULL == pView || NULL == pCmdUI)
+	if (nullptr == pView || nullptr == pCmdUI)
 	{
 		return;
 	}
@@ -349,7 +393,7 @@ void UpdateHandleDelPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 *****************************************************************************/
 void HandlePageName( CEdislabProView* pView )
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
@@ -377,14 +421,14 @@ void HandlePageName( CEdislabProView* pView )
 *****************************************************************************/
 void UpdateHandlePageName( CEdislabProView* pView,CCmdUI* pCmdUI )
 {
-	if (NULL == pView || NULL == pCmdUI)
+	if (nullptr == pView || nullptr == pCmdUI)
 	{
 		return;
 	}
 
 	CDlgTabPanel* pWnd = pView->GetCurrentPage();
 
-	if (NULL == pWnd)
+	if (nullptr == pWnd)
 	{
 		pCmdUI->Enable(FALSE);
 	}
@@ -404,7 +448,7 @@ void UpdateHandlePageName( CEdislabProView* pView,CCmdUI* pCmdUI )
 *****************************************************************************/
 void HandleJumpPage( CEdislabProView* pView )
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
@@ -419,7 +463,7 @@ void HandleJumpPage( CEdislabProView* pView )
 *****************************************************************************/
 void UpdateHandleJumpPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 {
-	if (NULL == pView || NULL == pCmdUI)
+	if (nullptr == pView || nullptr == pCmdUI)
 	{
 		return;
 	}
@@ -438,7 +482,7 @@ void UpdateHandleJumpPage( CEdislabProView* pView,CCmdUI* pCmdUI )
 //添加表格
 void HandleAddTable(CEdislabProView* pView)
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
@@ -448,7 +492,7 @@ void HandleAddTable(CEdislabProView* pView)
 //添加图
 void HandleAddImage(CEdislabProView* pView)
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
@@ -459,7 +503,7 @@ void HandleAddImage(CEdislabProView* pView)
 //添加仪表
 void HandleAddDevice(CEdislabProView* pView)
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
@@ -469,23 +513,20 @@ void HandleAddDevice(CEdislabProView* pView)
 //删除元素
 void HandleDelElement(CEdislabProView* pView)
 {
-	if (NULL == pView)
+	if (nullptr == pView)
 	{
 		return;
 	}
-	if(pView)
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
 	{
-		CDlgTabPanel* tabPanel = pView->GetCurrentPage();
-		if(tabPanel)
-		{
-			tabPanel->DelWnd();
-		}
+		pTabPanel->DelWnd();
 	}
 }
 
 void UpdateHandleAddTable( CEdislabProView* pView,CCmdUI* pCmdUI )
 {
-	if (NULL == pView || NULL == pCmdUI)
+	if (nullptr == pView || nullptr == pCmdUI)
 	{
 		return;
 	}
@@ -502,7 +543,7 @@ void UpdateHandleAddTable( CEdislabProView* pView,CCmdUI* pCmdUI )
 
 void UpdateHandleAddImage( CEdislabProView* pView,CCmdUI* pCmdUI )
 {
-	if (NULL == pView || NULL == pCmdUI)
+	if (nullptr == pView || nullptr == pCmdUI)
 	{
 		return;
 	}
@@ -519,7 +560,7 @@ void UpdateHandleAddImage( CEdislabProView* pView,CCmdUI* pCmdUI )
 
 void UpdateHandleAddDevice( CEdislabProView* pView,CCmdUI* pCmdUI )
 {
-	if (NULL == pView || NULL == pCmdUI)
+	if (nullptr == pView || nullptr == pCmdUI)
 	{
 		return;
 	}
@@ -536,7 +577,7 @@ void UpdateHandleAddDevice( CEdislabProView* pView,CCmdUI* pCmdUI )
 
 void UpdateHandleDelElement( CEdislabProView* pView,CCmdUI* pCmdUI )
 {
-	if (NULL == pView || NULL == pCmdUI)
+	if (nullptr == pView || nullptr == pCmdUI)
 	{
 		return;
 	}
@@ -773,4 +814,284 @@ void UpdateHandleAutoSelect(CEdislabProView* pView,CCmdUI* pCmdUI)
 	pCmdUI->SetCheck(g_bAutoSelect);
 }
 
+//选项菜单
+void HandleGridOption(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
 
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_OPTION,0,0);
+		}
+	}
+}
+
+//复制菜单
+void HandleGridCopy(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_COPY,0,0);
+		}
+	}
+}
+
+//粘贴菜单
+void HandleGridPaste(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_PASTE,0,0);
+		}
+	}
+}
+
+//第一行菜单
+void HandleGridFirstRow(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_FIRST_ROW,0,0);
+		}
+	}
+}
+
+//最后一行菜单
+void HandleGridLastRow(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_LAST_ROW,0,0);
+		}
+	}
+}
+
+//插入行
+void HandleGridInsertRow(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_INSERT_ROW,0,0);
+		}
+	}
+}
+
+//删除格子
+void HandleGridDelCell(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_DEL_CELL,0,0);
+		}
+	}
+}
+
+//增加数据列
+void HandleGridAddDataColumn(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_ADD_DATA_COLUMN,0,0);
+		}
+	}
+}
+
+//生成数据
+void HandleGridYieldData(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_YIELD_DATA,0,0);
+		}
+	}
+}
+
+//运算
+void HandleGridCalculate(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_CALCULATE,0,0);
+		}
+	}
+}
+
+//清除格子数据
+void HandleGridClearCellData(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_CLEAR_CELL_DATA,0,0);
+		}
+	}
+}
+
+//存储为Excel
+void HandleGridSaveAsExcel(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_SAVE_AS_EXCEL,0,0);
+		}
+	}
+}
+
+//打印
+void HandleGridPrint(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_PRINT,0,0);
+		}
+	}
+}
+
+//打印预览
+void HandleGridPrintPreview(CEdislabProView* pView)
+{
+	if (nullptr == pView)
+	{
+		return;
+	}
+	//获取当前Tab页
+	CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		//获取TabPanel中的活动窗口
+		CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+		if (nullptr != pActiveWnd)
+		{
+			pActiveWnd->PostMessage(WM_NOTIFY_GRID_PRINT_PREVIEW,0,0);
+		}
+	}
+}

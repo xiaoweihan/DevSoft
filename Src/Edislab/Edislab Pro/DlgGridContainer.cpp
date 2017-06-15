@@ -112,6 +112,33 @@ BEGIN_MESSAGE_MAP(CDlgGridContainer, CBCGPDialog)
 	ON_COMMAND(ID_MENU_GRID_FIRST_ROW, &CDlgGridContainer::OnMenuGridFirstRow)
 	ON_COMMAND(ID_MENU_GRID_LAST_ROW, &CDlgGridContainer::OnMenuGridLastRow)
 	ON_COMMAND(ID_MENU_GRID_ADD_COLUMN, &CDlgGridContainer::OnMenuGridAddColumn)
+	ON_MESSAGE(WM_NOTIFY_GRID_OPTION,&CDlgGridContainer::NotifyGridOption)
+	ON_MESSAGE(WM_NOTIFY_GRID_COPY,&CDlgGridContainer::NotifyGridCopy)
+	ON_MESSAGE(WM_NOTIFY_GRID_PASTE,&CDlgGridContainer::NotifyGridPaste)
+	ON_MESSAGE(WM_NOTIFY_GRID_FIRST_ROW,&CDlgGridContainer::NotifyGridFirstRow)
+	ON_MESSAGE(WM_NOTIFY_GRID_LAST_ROW,&CDlgGridContainer::NotifyGridLastRow)
+	ON_MESSAGE(WM_NOTIFY_GRID_INSERT_ROW,&CDlgGridContainer::NotifyGridInsertRow)
+	ON_MESSAGE(WM_NOTIFY_GRID_DEL_CELL,&CDlgGridContainer::NotifyGridDelCell)
+	ON_MESSAGE(WM_NOTIFY_GRID_ADD_DATA_COLUMN,&CDlgGridContainer::NotifyGridAddDataColumn)
+	ON_MESSAGE(WM_NOTIFY_GRID_YIELD_DATA,&CDlgGridContainer::NotifyGridYieldData)
+	ON_MESSAGE(WM_NOTIFY_GRID_CALCULATE,&CDlgGridContainer::NotifyGridCalculate)
+	ON_MESSAGE(WM_NOTIFY_GRID_CLEAR_CELL_DATA,&CDlgGridContainer::NotifyGridClearCellData)
+	ON_MESSAGE(WM_NOTIFY_GRID_SAVE_AS_EXCEL,&CDlgGridContainer::NotifyGridSaveAsExcel)
+	ON_MESSAGE(WM_NOTIFY_GRID_PRINT,&CDlgGridContainer::NotifyGridPrint)
+	ON_MESSAGE(WM_NOTIFY_GRID_PRINT_PREVIEW,&CDlgGridContainer::NotifyGridPrintPreview)
+	ON_COMMAND(ID_MENU_GRID_INSERT_ROW, &CDlgGridContainer::OnMenuGridInsertRow)
+	ON_COMMAND(ID_MENU_GRID_MOVE_FORWARD_COLUMN, &CDlgGridContainer::OnMenuGridMoveForwardColumn)
+	ON_COMMAND(ID_MENU_GRID_MOVE_BACK_COLUMN, &CDlgGridContainer::OnMenuGridMoveBackColumn)
+	ON_COMMAND(ID_MENU_GRID_YIELD_DATA, &CDlgGridContainer::OnMenuGridYieldData)
+	ON_COMMAND(ID_MENU_GRID_SUM, &CDlgGridContainer::OnMenuGridSum)
+	ON_COMMAND(ID_MENU_GRID_AVG, &CDlgGridContainer::OnMenuGridAvg)
+	ON_COMMAND(ID_MENU_GRID_MAX, &CDlgGridContainer::OnMenuGridMax)
+	ON_COMMAND(ID_MENU_GRID_MIN, &CDlgGridContainer::OnMenuGridMin)
+	ON_COMMAND(ID_MENU_GRID_CLEAR_DATA, &CDlgGridContainer::OnMenuGridClearData)
+	ON_COMMAND(ID_MENU_GRID_DEL_ELEMENT, &CDlgGridContainer::OnMenuGridDelElement)
+	ON_COMMAND(ID_MENU_GRID_SAVE_AS_EXCEL, &CDlgGridContainer::OnMenuGridSaveAsExcel)
+	ON_COMMAND(ID_MENU_GRID_PRINT_VIEW, &CDlgGridContainer::OnMenuGridPrintView)
+	ON_COMMAND(ID_MENU_GRID_PRINT, &CDlgGridContainer::OnMenuGridPrint)
 END_MESSAGE_MAP()
 
 
@@ -201,12 +228,11 @@ BOOL CDlgGridContainer::PreTranslateMessage(MSG* pMsg)
 	default:
 		break;
 	}
-
 	//向主窗口发送消息告诉主窗口当前活动页
 	if (WM_LBUTTONDOWN == pMsg->message|| WM_RBUTTONDOWN == pMsg->message)
 	{
 		CWnd* pWnd = AfxGetMainWnd();
-		if (NULL != pWnd)
+		if (nullptr != pWnd)
 		{
 			pWnd->PostMessage(WM_NOTIFY_ACTIVE_WND_TYPE,0,0);
 		}
@@ -586,6 +612,163 @@ void CDlgGridContainer::OnMenuGridLastRow()
 
 
 void CDlgGridContainer::OnMenuGridAddColumn()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+LRESULT CDlgGridContainer::NotifyGridOption( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridOption();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridCopy( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridCopy();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridPaste( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridPaste();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridFirstRow( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridFirstRow();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridLastRow( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridLastRow();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridInsertRow( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridInsertRow();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridDelCell( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridDelCell();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridAddDataColumn( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridAddColumn();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridYieldData( WPARAM wp,LPARAM lp )
+{
+	OnMenuGridYieldData();
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridCalculate( WPARAM wp,LPARAM lp )
+{
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridClearCellData( WPARAM wp,LPARAM lp )
+{
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridSaveAsExcel( WPARAM wp,LPARAM lp )
+{
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridPrint( WPARAM wp,LPARAM lp )
+{
+	return 0L;
+}
+
+LRESULT CDlgGridContainer::NotifyGridPrintPreview( WPARAM wp,LPARAM lp )
+{
+	return 0L;
+}
+
+
+void CDlgGridContainer::OnMenuGridInsertRow()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridMoveForwardColumn()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridMoveBackColumn()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridYieldData()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridSum()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridAvg()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridMax()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridMin()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridClearData()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridDelElement()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridSaveAsExcel()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridPrintView()
+{
+	// TODO: 在此添加命令处理程序代码
+}
+
+
+void CDlgGridContainer::OnMenuGridPrint()
 {
 	// TODO: 在此添加命令处理程序代码
 }

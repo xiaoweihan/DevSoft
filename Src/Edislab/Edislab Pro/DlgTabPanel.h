@@ -29,23 +29,21 @@ public:
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 
 public:
+	//设置页名称
 	void SetPageName(const CString& strPageName);
-
+	//获取页名称
 	CString GetPageName(void) const;
-
 	//获取Grid数量
 	int GetGridNum(void) const;
-
+	//设置Grid数量
 	void SetGridNum(int nGridNum);
-
 	//获取Device数量
 	int GetDeviceNum(void) const;
-
+	//设置Device数量
 	void SetDeviceNum(int nDeviceNum);
-
 	//获取Diagram数量
 	int GetDiagramNum(void) const;
-
+	//设置Diagram数量
 	void SetDiagramNum(int DiagramNum);
 	//添加表格
 	void AddGrid();
@@ -61,12 +59,9 @@ public:
 	void NotifyControlsStartRefresh();
 	//通知相应的控件停止刷新
 	void NotifyControlsStopRefresh();
-#if 0
-	//删除窗格
-	void DelWnd(CWnd* dlg);
-	void SetActiveDlg(CWnd* dlg);	
-#endif
+	//获取当前活动的窗口
 	CWnd* GetActiveDlg();
+	//设置当前活动窗口
 	void SetActive(int nType,CWnd* pActiveWnd);
 	void DelWnd(void);
 	//准备显示元素
@@ -74,13 +69,10 @@ public:
 protected:
 	//创建面板
 	void CreatePanel(void);
-
 	//销毁面板
 	void DestroyPanel(void);
-
 	//调整面板位置
 	void AdjustPanelLayout(int nWidth,int nHeight);
-
 private:
 	//面板
 	CBaseDialog* m_pPanel[PANEL_NUM];
@@ -100,6 +92,7 @@ private:
 	//Diagram的数量
 	int m_nDiagramNum;
 
+	//当前活动窗口
 	CWnd* m_pActiveDlg;
 
 	//活动窗口的类型

@@ -61,4 +61,33 @@ public:
 	afx_msg void OnMenuGridFirstRow();
 	afx_msg void OnMenuGridLastRow();
 	afx_msg void OnMenuGridAddColumn();
+
+
+	afx_msg LRESULT NotifyGridOption(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridCopy(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridPaste(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridFirstRow(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridLastRow(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridInsertRow(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridDelCell(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridAddDataColumn(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridYieldData(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridCalculate(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridClearCellData(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridSaveAsExcel(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridPrint(WPARAM wp,LPARAM lp);
+	afx_msg LRESULT NotifyGridPrintPreview(WPARAM wp,LPARAM lp);
+	afx_msg void OnMenuGridInsertRow();
+	afx_msg void OnMenuGridMoveForwardColumn();
+	afx_msg void OnMenuGridMoveBackColumn();
+	afx_msg void OnMenuGridYieldData();
+	afx_msg void OnMenuGridSum();
+	afx_msg void OnMenuGridAvg();
+	afx_msg void OnMenuGridMax();
+	afx_msg void OnMenuGridMin();
+	afx_msg void OnMenuGridClearData();
+	afx_msg void OnMenuGridDelElement();
+	afx_msg void OnMenuGridSaveAsExcel();
+	afx_msg void OnMenuGridPrintView();
+	afx_msg void OnMenuGridPrint();
 };
