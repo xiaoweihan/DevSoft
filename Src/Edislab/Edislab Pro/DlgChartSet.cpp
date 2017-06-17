@@ -2,19 +2,23 @@
 //
 
 #include "stdafx.h"
-#include "resource.h"
+#include "Edislab Pro.h"
 #include "DlgChartSet.h"
-#include "afxdialogex.h"
 #include "GlobalDataManager.h"
+#include "GridColumnGroupManager.h"
+#include "SensorIDGenerator.h"
+#include "SensorData.h"
+#include "SensorDataManager.h"
+#include "Utility.h"
 #pragma warning(push)
 #pragma warning(disable:4018)
 #pragma warning(disable:4244)
 // DlgChartSet dialog
 
-IMPLEMENT_DYNAMIC(DlgChartSet, CDialog)
+IMPLEMENT_DYNAMIC(DlgChartSet, CBaseDialog)
 
 DlgChartSet::DlgChartSet(CWnd* pParent /*=NULL*/)
-	: CDialog(DlgChartSet::IDD, pParent)
+	: CBaseDialog(DlgChartSet::IDD, pParent)
 {
 	m_nXID = -1;
 	m_eChartType = E_CHART_LINE;
@@ -30,7 +34,7 @@ DlgChartSet::~DlgChartSet()
 
 void DlgChartSet::DoDataExchange(CDataExchange* pDX)
 {
-	CDialog::DoDataExchange(pDX);
+	CBaseDialog::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_COMBO_XAXIS, m_combX);
 	DDX_Control(pDX, IDC_TREE_YAXIS, m_treeY);
 	DDX_Control(pDX, IDC_COMBO_LAB, m_combMoveStyle);
@@ -39,7 +43,7 @@ void DlgChartSet::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(DlgChartSet, CDialog)
+BEGIN_MESSAGE_MAP(DlgChartSet, CBaseDialog)
 	ON_BN_CLICKED(IDOK, &DlgChartSet::OnBnClickedOk)
 END_MESSAGE_MAP()
 
@@ -49,19 +53,15 @@ END_MESSAGE_MAP()
 
 BOOL DlgChartSet::OnInitDialog()
 {
-	CDialog::OnInitDialog();
+	CBaseDialog::OnInitDialog();
 
-	// TODO:  Add extra initialization here
-	//添加数据列名称及ID
-	std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
-	//X轴
-	for(int i=0; i<allData.size(); ++i)
+	std::vector<std::string> SensorNameArray;
+	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray);
+	for(int i = 0; i < (int)SensorNameArray.size(); ++i)
 	{
-		for(int c=0; c<allData[i].vecColData.size(); ++c)
-		{
-			int index = m_combX.AddString(allData[i].vecColData[c].strColumnName);
-			m_combX.SetItemData(index, allData[i].vecColData[c].nColumnID);
-		}
+		int index = m_combX.AddString(CString(SensorNameArray[i].c_str()));
+		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
+		m_combX.SetItemData(index, nSensorID);
 	}
 	m_combX.SetCurSel(0);
 	for(int i=0; i<m_combX.GetCount(); ++i)
@@ -76,22 +76,28 @@ BOOL DlgChartSet::OnInitDialog()
 	//m_treeY.SetImageList(NULL, TVSIL_NORMAL);
 	m_treeY.ModifyStyle( TVS_CHECKBOXES, 0 );
 	m_treeY.ModifyStyle( 0, TVS_CHECKBOXES );
-	for(int i=0; i<allData.size(); ++i)
+	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
+	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
+	for(int i = 0; i < (int)ColumnGroupArray.size(); ++i)
 	{
 		HTREEITEM hGroup;
-		hGroup = m_treeY.InsertItem(allData[i].strGroupName);
-		m_treeY.SetItemData(hGroup, allData[i].nGroupID);
-		for(int c=0; c<allData[i].vecColData.size(); ++c)
+		hGroup = m_treeY.InsertItem(ColumnGroupArray[i].strGroupName);
+		m_treeY.SetItemData(hGroup, 0);
+		for(int g=0; g < ColumnGroupArray[i].ColumnArray.size(); ++g)
 		{
-			HTREEITEM hCol = m_treeY.InsertItem(allData[i].vecColData[c].strColumnName, hGroup);
-			m_treeY.SetItemData(hCol, allData[i].vecColData[c].nColumnID);
-			if(m_setShowID.find(allData[i].vecColData[c].nColumnID)!=m_setShowID.end())
+			CString name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
+			std::string strColumnName = Utility::WideChar2MultiByte(name.GetBuffer(0));
+			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
+			HTREEITEM hCol = m_treeY.InsertItem(name, hGroup);
+			m_treeY.SetItemData(hCol, nSensorID);
+			if(m_setShowID.find(nSensorID)!=m_setShowID.end())
 			{
 				m_treeY.SetCheck(hCol, TRUE);//选择
 			}
 		}
 		m_treeY.Expand(hGroup, TVE_EXPAND);
 	}
+	//end ldh 0610
 	HTREEITEM hGroup = m_treeY.GetRootItem();
 	while(hGroup)
 	{
@@ -162,7 +168,7 @@ void DlgChartSet::OnBnClickedOk()
 	int index = m_combX.GetCurSel();
 	if(index>=0)
 	{
-		nID = m_combX.GetItemData(index);
+		nID = m_combX.GetItemData(index); 
 	}
 	m_nXID = nID;
 	//实验时
@@ -202,6 +208,6 @@ void DlgChartSet::OnBnClickedOk()
 		}
 		hGroup = m_treeY.GetNextSiblingItem(hGroup);
 	}
-	CDialog::OnOK();
+	CBaseDialog::OnOK();
 }
 #pragma warning(pop)

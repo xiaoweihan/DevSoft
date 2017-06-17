@@ -7,30 +7,7 @@
 **********************************************************/
 #ifndef CUSTOM_GRID_H
 #define CUSTOM_GRID_H
-#include <vector>
-#include <vector>
-//定义列的属性
-typedef struct _header_info
-{
-	//列的名称
-	CString strHeadName;
-
-	//包含列的索引
-	std::vector<CString> ContainColumnIndexArray;
-
-	_header_info()
-	{
-		strHeadName = _T("");
-		ContainColumnIndexArray.clear();
-	}
-	void Reset(void)
-	{
-		strHeadName = _T("");
-		ContainColumnIndexArray.clear();
-	}
-
-}HEADRER_INFO,* LP_HEADRER_INFO;
-
+#include "GridGroupType.h"
 class CCustomGrid : public CBCGPGridCtrl
 {
 public:
@@ -69,10 +46,13 @@ public:
 
 public:
 	//设置行头信息(在创建Grid之前调用)
-	void SetHeaderInfoArray(const std::vector<HEADRER_INFO>& HeaderInfoArray);
+	void SetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray);
+
+	//动态设置grid的行头信息
+	void DynamicSetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray);
 
 	//添加行头信息
-	void AddHeaderInfo(const HEADRER_INFO& HeaderInfo);
+	void AddHeaderInfo(const COLUMN_GROUP_INFO& HeaderInfo);
 
 	//删除行头信息
 	void RemoveHeaderInfo(const CString& strHeaderName);
@@ -90,7 +70,7 @@ public:
 	bool IsColumnExistInFixedHeader(const CString& strHeaderName,const CString& strColumnName);
 
 	//获取表头信息
-	void GetHeaderInfo(std::vector<HEADRER_INFO>& HeaderInfoArray);
+	void GetHeaderInfo(std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray);
 
 	//设置回调函数
 	void SetCallBack(BCGPGRID_CALLBACK pCallBack)
@@ -114,13 +94,19 @@ public:
 		}
 		AdjustLayout();
 	}
+
+	//获取列分组的显示信息
+	void GetColumnGroupDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray);
+	//设置分组的显示信息
+	void SetColumnGroupDisplayInfo(const std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray);
+
 private:
 	//创建列信息
 	void CreateHeaderInfo(void);
 	//创建列信息
 	void CreateColumnInfo(void);
 protected:
-	std::vector<HEADRER_INFO> m_HeaderInfoArray;
+	std::vector<COLUMN_GROUP_INFO> m_HeaderInfoArray;
 	BCGPGRID_CALLBACK m_pCallBack;
 	int m_nDisplayVitrualRows;
 public:

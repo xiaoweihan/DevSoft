@@ -103,7 +103,20 @@ public:
 	//通知刷新所有Tab页中的grid信息
 	void NotifyDetectDevice(const std::string& strDeviceName,int nOnFlag);
 
+	//通知grid刷新行
+	void NotifyGridChangeRows(int nRows);
 
+	//通知相应的控件开始刷新
+	void NotifyControlsStartRefresh();
+
+	//通知相应的控件停止刷新
+	void NotifyControlsStopRefresh();
+
+	//删除元素
+	void DeleteElement();
+
+	//通知Grid的分组信息改变
+	void NotifyGridGroupInfoChange();
 };
 
 #ifndef _DEBUG  // Edislab ProView.cpp 中的调试版本

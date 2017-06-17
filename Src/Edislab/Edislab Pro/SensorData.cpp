@@ -71,3 +71,11 @@ bool CSensorData::GetSensorData(int nIndex,float& fValue)
 	fValue = m_SensorDataList[nIndex];
 	return true;
 }
+
+void CSensorData::ClearSensorData()
+{
+	using namespace boost;
+	lock_guard<mutex> Lock(m_DataLock);
+
+	m_SensorDataList.clear();
+}

@@ -240,6 +240,7 @@
     <ClInclude Include="DlgAcquirationPara.h" />
     <ClInclude Include="DlgAddPage.h" />
     <ClInclude Include="DlgChartSet.h" />
+    <ClInclude Include="DlgDataSetting.h" />
     <ClInclude Include="DlgDevicePanel.h" />
     <ClInclude Include="DlgDeviceSet.h" />
     <ClInclude Include="DlgDiagramPanel.h" />
@@ -259,10 +260,10 @@
     <ClInclude Include="GaugeDlg.h" />
     <ClInclude Include="GaugeManager.h" />
     <ClInclude Include="Global.h" />
+    <ClInclude Include="GridColumnGroupManager.h" />
     <ClInclude Include="GridCtrlBase.h" />
     <ClInclude Include="GridDataManager.h" />
     <ClInclude Include="GridDefine.h" />
-    <ClInclude Include="GridDisplayColumnInfo.h" />
     <ClInclude Include="Lock.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Macro.h" />
@@ -300,6 +301,7 @@
     <ClCompile Include="DlgAcquirationPara.cpp" />
     <ClCompile Include="DlgAddPage.cpp" />
     <ClCompile Include="DlgChartSet.cpp" />
+    <ClCompile Include="DlgDataSetting.cpp" />
     <ClCompile Include="DlgDevicePanel.cpp" />
     <ClCompile Include="DlgDeviceSet.cpp" />
     <ClCompile Include="DlgDiagramPanel.cpp" />
@@ -319,9 +321,9 @@
     <ClCompile Include="GaugeManager.cpp" />
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="GlobalDataManager.cpp" />
+    <ClCompile Include="GridColumnGroupManager.cpp" />
     <ClCompile Include="GridCtrlBase.cpp" />
     <ClCompile Include="GridDataManager.cpp" />
-    <ClCompile Include="GridDisplayColumnInfo.cpp" />
     <ClCompile Include="Lock.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MainFrm.cpp" />

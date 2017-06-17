@@ -17,6 +17,9 @@ enum MESSAGE
 	//通知主框架点击了什么
 	WM_NOTIFY_ACTIVE_WND_TYPE,
 
+	//通知Grid的分组信息改变
+	WM_NOTIFY_GRID_GROUP_INFO_CHANGE,
+
 	//监测到了新设备
 	WM_NOTIFY_DETECT_DEVICE,
 
@@ -24,7 +27,50 @@ enum MESSAGE
 	WM_NOTIFY_RBUTTON_DOWN,
 
 	//设置对话框是否激活
-	WM_SET_DLG_ACTIVE
+	WM_SET_DLG_ACTIVE,
+
+	//响应Grid的选项消息
+	WM_NOTIFY_GRID_OPTION,
+
+	//响应Grid的复制消息
+	WM_NOTIFY_GRID_COPY,
+
+	//响应Grid的粘贴消息
+	WM_NOTIFY_GRID_PASTE,
+
+	//响应Grid第一行的菜单消息
+	WM_NOTIFY_GRID_FIRST_ROW,
+
+	//响应Grid最后一行的菜单消息
+	WM_NOTIFY_GRID_LAST_ROW,
+
+	//响应Grid的插入行消息
+	WM_NOTIFY_GRID_INSERT_ROW,
+
+	//响应Grid的删除格子消息
+	WM_NOTIFY_GRID_DEL_CELL,
+
+	//响应Grid的增加数据列消息
+	WM_NOTIFY_GRID_ADD_DATA_COLUMN,
+
+	//响应Grid的生成数据消息
+	WM_NOTIFY_GRID_YIELD_DATA,
+
+	//响应Grid的运算消息
+	WM_NOTIFY_GRID_CALCULATE,
+
+	//响应Grid清除格子数据消息
+	WM_NOTIFY_GRID_CLEAR_CELL_DATA,
+
+	//响应Grid存储为Excel数据消息
+	WM_NOTIFY_GRID_SAVE_AS_EXCEL,
+
+	//响应Grid的打印消息
+	WM_NOTIFY_GRID_PRINT,
+
+	//响应Grid的打印预览消息
+	WM_NOTIFY_GRID_PRINT_PREVIEW
+
 	
 };
 
@@ -149,7 +195,7 @@ enum COMMAND
 	//运算
 	ID_CALCULATE,
 
-	//清除自数据
+	//清除子数据
 	ID_CLEAR_CHILD_DATA,
 
 	//存储为Excel

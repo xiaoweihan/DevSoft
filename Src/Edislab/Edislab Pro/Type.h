@@ -240,7 +240,6 @@ typedef struct _sensor_type_info_element
 {
 	std::string strSensorName;
 	int nSensorID;
-
 	_sensor_type_info_element(void)
 	{
 		strSensorName = "";
@@ -287,9 +286,9 @@ typedef struct _sensor_record_info
 	_sensor_record_info()
 	{
         enumRecordType = FIXED_FREQUENCY_RC_TYPE;
-		fFrequency = 0.0f;
+		fFrequency = 1.0f;
 		bLimitTime = false;
-		fLimitTime = 0.0f;
+		fLimitTime = 60.0f;
 		bSampleAtStart = false;
 		bMultiSample = false;
 		nAverageNums = 1;

@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#include "Edislab Pro.h"
 #include "GaugeDlg.h"
 #include "GaugeManager.h"
 #include "GlobalDataManager.h"

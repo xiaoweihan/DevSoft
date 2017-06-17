@@ -13,7 +13,7 @@
 #include "SerialPortService.h"
 #include "Global.h"
 #include "SensorConfig.h"
-#include "GridDisplayColumnInfo.h"
+#include "GridColumnGroupManager.h"
 #include "SensorIDGenerator.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -86,6 +86,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CBCGPFrameWnd)
 	ON_COMMAND(ID_MENU_CHINESE, &CMainFrame::OnMenuChinese)
 	ON_UPDATE_COMMAND_UI(ID_MENU_CHINESE, &CMainFrame::OnUpdateMenuChinese)
 	ON_COMMAND(ID_DISPLAY_CURRENT_TIME,&CMainFrame::EnableStatusBar)
+	ON_MESSAGE(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,&CMainFrame::NotifyGridGroupInfoChange)
 	ON_WM_SIZE()
 	ON_WM_TIMER()
 	ON_WM_CLOSE()
@@ -1996,20 +1997,33 @@ LRESULT CMainFrame::NotifyDeviceOnOrOff( WPARAM wp,LPARAM lp )
 			return 0L;
 		}
 		COLUMN_INFO AddColumnInfo;
-		AddColumnInfo.nSensorID = nSensorID;
+		AddColumnInfo.strColumnName = _T("t(s)时间");
+		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
+		AddColumnInfo.Reset();
 		AddColumnInfo.strColumnName = CString(strDeviceName.c_str());
-		CGridDisplayColumnInfo::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
+		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
 	}
 	//设备下线
 	else
 	{
-		CGridDisplayColumnInfo::CreateInstance().RemoveColumnInfo(_T("当前"),CString(strDeviceName.c_str()));
+		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"),CString(strDeviceName.c_str()));
 	}
 	//获取设备名称
-	CEdislabProView* pView = dynamic_cast<CEdislabProView*>(GetActiveView());
+	CEdislabProView* pView = CEdislabProView::GetCurrentView();
 	if (nullptr != pView)
 	{
 		pView->NotifyDetectDevice(strDeviceName,nOnFlag);
+	}
+	return 0L;
+}
+
+LRESULT CMainFrame::NotifyGridGroupInfoChange( WPARAM wp,LPARAM lp )
+{
+	//获取设备名称
+	CEdislabProView* pView = CEdislabProView::GetCurrentView();
+	if (nullptr != pView)
+	{
+		pView->NotifyGridGroupInfoChange();
 	}
 	return 0L;
 }

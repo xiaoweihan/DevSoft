@@ -15,6 +15,9 @@
 #include "ComImple.h"
 #include "Log.h"
 #include "SensorConfig.h"
+#include "SensorDataManager.h"
+#include "SensorData.h"
+#include "SensorIDGenerator.h"
 using std::string;
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -216,6 +219,21 @@ void CEdislabProApp::Init( void )
 	if (!CSensorConfig::CreateInstance().LoadSensorConfig())
 	{
 		ERROR_LOG("LoadSensorConfig failed!");
+	}
+	//在数据添加类中添加数据
+	int nSpecialSensorID = CSensorIDGenerator::CreateInstance().GetSpecialSensorID();
+	CSensorDataManager::CreateInstance().AddSensorData(nSpecialSensorID);
+	CSensorData*pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSpecialSensorID);
+	if (nullptr != pData)
+	{
+		//获取采样信息
+		const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
+		int nSize = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
+		float fPeriod = 1.0f / (SampleInfo.fFrequency);
+		for (int i = 0; i < nSize; ++i)
+		{
+			pData->AddSensorData(i * fPeriod);
+		}
 	}
 }
 

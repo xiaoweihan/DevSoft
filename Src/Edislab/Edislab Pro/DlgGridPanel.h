@@ -23,6 +23,18 @@ public:
 
 	//通知发现新的传感器
 	void NotifyDetectSensor(const std::string& strDeviceName,int nOnFlag);
+
+	//通知行数改变
+	void NotifyGridChangeRows(int nRows);
+
+	//通知相应的控件开始刷新
+	void NotifyControlsStartRefresh();
+
+	//通知相应的控件停止刷新
+	void NotifyControlsStopRefresh();
+
+	//通知Grid的分组信息改变
+	void NotifyGridGroupInfoChange();
 private:
 	//布局器
 	CWidgetLayout m_WidgetLayout;

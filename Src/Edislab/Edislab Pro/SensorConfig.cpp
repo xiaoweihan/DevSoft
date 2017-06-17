@@ -12,27 +12,16 @@ Histroy:
 #include <boost/filesystem.hpp>
 #include <boost/foreach.hpp>
 #include <boost/smart_ptr.hpp>
-#include <rapidjson/istreamwrapper.h>
-#include <fstream>
+#include <boost/scope_exit.hpp>
+#include <rapidjson/document.h>
+#include <rapidjson/filereadstream.h>
+#include <rapidjson/encodedstream.h>
+#include <cstdio>
 #include "Log.h"
 #include "Utility.h"
 #include "SensorIDGenerator.h"
 #include "SensorDataManager.h"
 #include "SerialPortService.h"
-//定制的删除器
-static void DeleteFunction(std::ifstream* pReader)
-{
-	if (nullptr != pReader)
-	{
-		if (pReader->is_open())
-		{
-			pReader->close();
-		}
-
-		delete pReader;
-		pReader = nullptr;
-	}
-}
 
 CSensorConfig::CSensorConfig(void)
 {
@@ -72,6 +61,7 @@ CSensorConfig& CSensorConfig::CreateInstance( void )
 *****************************************************************************/
 bool CSensorConfig::LoadSensorConfig( void )
 {
+	using namespace rapidjson;
 	// 添加传感器分类信息
 	SENSOR_TYPE_INFO typeInfo;
 	typeInfo.enumType = SENSOR_PHYSICS;
@@ -101,17 +91,55 @@ bool CSensorConfig::LoadSensorConfig( void )
 			return false;
 		}
 		//开始进行json文件解析
-		boost::shared_ptr<std::ifstream> pConfigReader(new std::ifstream(strConfigPath), DeleteFunction);
+		FILE* fp = fopen(strConfigPath.c_str(),"rb");
 
-		if (!pConfigReader)
+		if (nullptr == fp)
 		{
 			ERROR_LOG("open [%s] file failed.", strConfigPath.c_str());
 			return false;
 		}
+		BOOST_SCOPE_EXIT(&fp)
+		{
+			if (nullptr != fp)
+			{
+				fclose(fp);
+				fp = nullptr;
+			}
 
-		rapidjson::IStreamWrapper JsonReader(*pConfigReader);
-		rapidjson::Document Parser;
-		Parser.ParseStream(JsonReader);
+		}BOOST_SCOPE_EXIT_END
+		//获取文件的长度
+		fseek(fp,0,SEEK_END);
+		int nFileLength = (int)ftell(fp);
+		if (nFileLength < 0)
+		{
+			ERROR_LOG("get [%s] file length failed.", strConfigPath.c_str());
+			return false;
+		}
+		//申请内存
+		char* pBuffer =  new char[nFileLength];
+		if (nullptr == pBuffer)
+		{
+			ERROR_LOG("Allocate memory failed.");
+			return false;
+		}
+		BOOST_SCOPE_EXIT(&pBuffer)
+		{
+			if (nullptr != pBuffer)
+			{
+				delete []pBuffer;
+			}
+		}BOOST_SCOPE_EXIT_END
+		ZeroMemory(pBuffer,nFileLength);
+		fseek(fp,0,SEEK_SET);
+		FileReadStream bis(fp,pBuffer,nFileLength);
+		AutoUTFInputStream<unsigned, FileReadStream> eis(bis);
+		Document Parser;      
+		Parser.ParseStream<0, AutoUTF<unsigned> >(eis);
+		if (Parser.HasParseError())  
+		{  
+			ERROR_LOG("Parse json file [%s] failed,the error [%d].", strConfigPath.c_str(),Parser.GetParseError());
+			return false;
+		}  
 
 		//加载传感器列表
 		if (!LoadSensorList(Parser))
@@ -133,6 +161,15 @@ bool CSensorConfig::LoadSensorConfig( void )
 	return true;
 }
 
+/*******************************************************************
+*函数名称:LoadSensorList
+*功能描述:加载传感器列表
+*输入参数:
+*输出参数:
+*返回值:true:succeed false:failed
+*作者:xiaowei.han
+*日期:2017/06/10 8:39:02
+*******************************************************************/
 bool CSensorConfig::LoadSensorList( rapidjson::Document& Parser )
 {
 	// 解析传感器配置
@@ -347,6 +384,15 @@ bool CSensorConfig::LoadSensorList( rapidjson::Document& Parser )
 	return true;
 }
 
+/*******************************************************************
+*函数名称:LoadSensorComList
+*功能描述:加载传感器COM通信配置
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:39:02
+*******************************************************************/
 bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 {
 
@@ -411,7 +457,16 @@ bool CSensorConfig::LoadSensorComList( rapidjson::Document& Parser )
 	return true;
 }
 
-const void CSensorConfig::GetSensorList(std::vector<SENSOR_CONFIG_ELEMENT> &vecSensorArry, SENSOR_TYPE enumType)
+/*******************************************************************
+*函数名称:GetSensorList
+*功能描述:获取传感器信息
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:39:02
+*******************************************************************/
+void CSensorConfig::GetSensorList(std::vector<SENSOR_CONFIG_ELEMENT> &vecSensorArry, SENSOR_TYPE enumType)
 {
       BOOST_FOREACH(auto &sensor, m_SensorConfigArray)
 	  {
@@ -422,6 +477,15 @@ const void CSensorConfig::GetSensorList(std::vector<SENSOR_CONFIG_ELEMENT> &vecS
 	  }
 }
 
+/*******************************************************************
+*函数名称:GetSensorInfo
+*功能描述:根据传感器ID获取传感器信息
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:39:02
+*******************************************************************/
 SENSOR_CONFIG_ELEMENT CSensorConfig::GetSensorInfo(int nSensorID)
 {
 	BOOST_FOREACH(auto &sensor, m_SensorConfigArray)
@@ -435,11 +499,29 @@ SENSOR_CONFIG_ELEMENT CSensorConfig::GetSensorInfo(int nSensorID)
 	return SENSOR_CONFIG_ELEMENT();
 }
 
+/*******************************************************************
+*函数名称:GetSensorRecordInfo
+*功能描述:获取传感器采样信息
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:39:02
+*******************************************************************/
 const SENSOR_RECORD_INFO& CSensorConfig::GetSensorRecordInfo()
 {
 	return m_SensorRecordInfo;
 }
 
+/*******************************************************************
+*函数名称:SetSensorRecordInfo
+*功能描述:设置传感器采样信息
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:39:02
+*******************************************************************/
 void CSensorConfig::SetSensorRecordInfo(SENSOR_RECORD_INFO& _recordInfo)
 {
 	m_SensorRecordInfo = _recordInfo;

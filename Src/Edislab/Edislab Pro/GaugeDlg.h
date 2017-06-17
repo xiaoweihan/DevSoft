@@ -1,9 +1,5 @@
 #pragma once
-#include "resource.h"
 #include "BaseDialog.h"
-#include "bcgpcirculargaugeimpl.h"
-// GaugeDlg dialog
-
 class GaugeDlg : public CBaseDialog
 {
 	DECLARE_DYNAMIC(GaugeDlg)

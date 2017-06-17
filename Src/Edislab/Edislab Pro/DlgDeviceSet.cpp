@@ -4,18 +4,22 @@
 #include "stdafx.h"
 #include "resource.h"
 #include "DlgDeviceSet.h"
-#include "afxdialogex.h"
 #include "GlobalDataManager.h"
+#include "GridColumnGroupManager.h"
+#include "SensorIDGenerator.h"
+#include "SensorData.h"
+#include "SensorDataManager.h"
+#include "Utility.h"
 #pragma warning(push)
 #pragma warning(disable:4800)
 #pragma warning(disable:4018)
 #pragma warning(disable:4244)
 // DlgDeviceSet dialog
 
-IMPLEMENT_DYNAMIC(DlgDeviceSet, CDialog)
+IMPLEMENT_DYNAMIC(DlgDeviceSet, CBaseDialog)
 
 DlgDeviceSet::DlgDeviceSet(CWnd* pParent /*=NULL*/)
-	: CDialog(DlgDeviceSet::IDD, pParent)
+	: CBaseDialog(DlgDeviceSet::IDD, pParent)
 	, m_warningValue(0)
 	, m_bWarning(FALSE)
 {
@@ -30,7 +34,7 @@ DlgDeviceSet::~DlgDeviceSet()
 
 void DlgDeviceSet::DoDataExchange(CDataExchange* pDX)
 {
-	CDialog::DoDataExchange(pDX);
+	CBaseDialog::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_EDIT_WARN_VALUE, m_edtValue);
 	DDX_Text(pDX, IDC_EDIT_WARN_VALUE, m_warningValue);
 	DDX_Check(pDX, IDC_CHECK_WARNING, m_bWarning);
@@ -39,7 +43,7 @@ void DlgDeviceSet::DoDataExchange(CDataExchange* pDX)
 }
 
 
-BEGIN_MESSAGE_MAP(DlgDeviceSet, CDialog)
+BEGIN_MESSAGE_MAP(DlgDeviceSet, CBaseDialog)
 //	ON_NOTIFY(BCN_HOTITEMCHANGE, IDC_CHECK_WARNING, &DlgDeviceSet::OnBnHotItemChangeCheckWarning)
 	ON_BN_CLICKED(IDC_CHECK_WARNING, &DlgDeviceSet::OnBnClickedCheckWarning)
 	ON_BN_CLICKED(IDOK, &DlgDeviceSet::OnBnClickedOk)
@@ -84,19 +88,9 @@ void DlgDeviceSet::setWarningValue(double val)
 	m_warningValue = val;
 }
 
-//void DlgDeviceSet::OnBnHotItemChangeCheckWarning(NMHDR *pNMHDR, LRESULT *pResult)
-//{
-//	// This feature requires Internet Explorer 6 or greater.
-//	// The symbol _WIN32_IE must be >= 0x0600.
-//	LPNMBCHOTITEM pHotItem = reinterpret_cast<LPNMBCHOTITEM>(pNMHDR);
-//	// TODO: Add your control notification handler code here
-//	*pResult = 0;
-//}
-
-
 BOOL DlgDeviceSet::OnInitDialog()
 {
-	CDialog::OnInitDialog();
+	CBaseDialog::OnInitDialog();
 	UpdateData(false);
 	m_combWarningTYpe.EnableWindow(m_bWarning);
 	m_edtValue.EnableWindow(m_bWarning);
@@ -105,21 +99,20 @@ BOOL DlgDeviceSet::OnInitDialog()
 	index = m_combWarningTYpe.AddString(_T("降到"));
 	m_combWarningTYpe.SetItemData(index, 1);
 	m_combWarningTYpe.SetCurSel(m_nWarningType);
-
-	//添加数据列名称及ID
-	std::vector<GROUPDATA> allData = CGlobalDataManager::CreateInstance().getAllData();
-	for(int i=0; i<allData.size(); ++i)
+	std::vector<std::string> SensorNameArray;
+	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray,false);
+	for(int i = 0; i < (int)SensorNameArray.size(); ++i)
 	{
-		for(int c=0; c<allData[i].vecColData.size(); ++c)
-		{
-			int index = m_combDataID.AddString(allData[i].vecColData[c].strColumnName);
-			m_combDataID.SetItemData(index, allData[i].vecColData[c].nColumnID);
-		}
+		int index = m_combDataID.AddString(CString(SensorNameArray[i].c_str()));
+		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
+		m_combDataID.SetItemData(index, nSensorID);
 	}
+
+
 	m_combDataID.SetCurSel(0);
-	for(int i=0; i<m_combDataID.GetCount(); ++i)
+	for(int i = 0; i < m_combDataID.GetCount(); ++i)
 	{
-		if(m_nDataID==m_combDataID.GetItemData(i))
+		if(m_nDataID == m_combDataID.GetItemData(i))
 		{
 			m_combDataID.SetCurSel(i);
 			break;
@@ -156,6 +149,6 @@ void DlgDeviceSet::OnBnClickedOk()
 	index = m_combWarningTYpe.GetCurSel();
 	m_nWarningType = m_combWarningTYpe.GetItemData(index);
 	//
-	CDialog::OnOK();
+	CBaseDialog::OnOK();
 }
 #pragma warning(pop)

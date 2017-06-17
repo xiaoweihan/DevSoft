@@ -415,7 +415,7 @@ CEdislabProView* CEdislabProView::GetCurrentView( void )
 
 	CMainFrame* pWnd = (CMainFrame*)AfxGetMainWnd();
 
-	if (NULL == pWnd)
+	if (nullptr == pWnd)
 	{
 		return NULL;
 	}
@@ -535,6 +535,91 @@ void CEdislabProView::NotifyDetectDevice( const std::string& strDeviceName,int n
 		if (nullptr != pPanel)
 		{
 			pPanel->NotifyDectectSensor(strDeviceName,nOnFlag);
+		}
+	}
+}
+
+void CEdislabProView::NotifyGridChangeRows(int nRows)
+{
+	if (NULL == m_TabWnd.GetSafeHwnd())
+	{
+		return;
+	}
+	int nTabWndNum = m_TabWnd.GetTabsNum();
+	CDlgTabPanel* pPanel = nullptr;
+	for (int i = 0; i < nTabWndNum; ++i)
+	{
+		pPanel = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetTabWnd(i));
+
+		if (nullptr != pPanel)
+		{
+			pPanel->NotifyGridChangeRows(nRows);
+		}
+	}
+}
+
+void CEdislabProView::NotifyControlsStartRefresh()
+{
+	if (NULL == m_TabWnd.GetSafeHwnd())
+	{
+		return;
+	}
+	int nTabWndNum = m_TabWnd.GetTabsNum();
+	CDlgTabPanel* pPanel = nullptr;
+	for (int i = 0; i < nTabWndNum; ++i)
+	{
+		pPanel = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetTabWnd(i));
+
+		if (nullptr != pPanel)
+		{
+			pPanel->NotifyControlsStartRefresh();
+		}
+	}
+}
+
+void CEdislabProView::NotifyControlsStopRefresh()
+{
+	if (NULL == m_TabWnd.GetSafeHwnd())
+	{
+		return;
+	}
+	int nTabWndNum = m_TabWnd.GetTabsNum();
+	CDlgTabPanel* pPanel = nullptr;
+	for (int i = 0; i < nTabWndNum; ++i)
+	{
+		pPanel = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetTabWnd(i));
+
+		if (nullptr != pPanel)
+		{
+			pPanel->NotifyControlsStopRefresh();
+		}
+	}
+}
+
+void CEdislabProView::DeleteElement()
+{
+	CDlgTabPanel* pTabPanel = GetCurrentPage();
+	if(nullptr != pTabPanel)
+	{
+		pTabPanel->DelWnd();
+	}
+}
+
+void CEdislabProView::NotifyGridGroupInfoChange()
+{
+	if (NULL == m_TabWnd.GetSafeHwnd())
+	{
+		return;
+	}
+	int nTabWndNum = m_TabWnd.GetTabsNum();
+	CDlgTabPanel* pPanel = nullptr;
+	for (int i = 0; i < nTabWndNum; ++i)
+	{
+		pPanel = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetTabWnd(i));
+
+		if (nullptr != pPanel)
+		{
+			pPanel->NotifyGridGroupInfoChange();
 		}
 	}
 }

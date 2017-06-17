@@ -180,3 +180,47 @@ void CDlgGridPanel::NotifyDetectSensor( const std::string& strDeviceName,int nOn
 		}
 	}
 }
+
+void CDlgGridPanel::NotifyGridChangeRows(int nRows)
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyGridChangeRows(nRows);
+		}
+	}
+}
+
+void CDlgGridPanel::NotifyControlsStartRefresh()
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyControlsStartRefresh();
+		}
+	}
+}
+
+void CDlgGridPanel::NotifyControlsStopRefresh()
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyControlsStopRefresh();
+		}
+	}
+}
+
+void CDlgGridPanel::NotifyGridGroupInfoChange()
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyGridGroupInfoChange();
+		}
+	}
+}

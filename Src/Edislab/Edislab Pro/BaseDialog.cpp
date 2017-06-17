@@ -9,9 +9,6 @@ Histroy:
 *******************************************************************************/
 #include "stdafx.h"
 #include "BaseDialog.h"
-#include "resource.h"
-#include "DlgTabPanel.h"
-#include "Global.h"
 IMPLEMENT_DYNAMIC(CBaseDialog,CBCGPDialog)
 CBaseDialog::CBaseDialog( UINT nIDTemplate, CWnd* pParentWnd,BOOL bEnableLayout):
 CBCGPDialog(nIDTemplate,pParentWnd)

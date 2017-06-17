@@ -4,7 +4,6 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "ChartFigureDlg.h"
-#include "afxdialogex.h"
 #include "DlgChartSet.h"
 #include "GlobalDataManager.h"
 #include "DlgTabPanel.h"
@@ -62,14 +61,6 @@ BOOL ChartFigureDlg::OnInitDialog()
 	CDC* pDC = GetDC();
 	m_charxy = new ChartXY(pDC->m_hDC);
 
-	//ChartXYData* line = new ChartXYData();
-	//std::vector<CMeDPoint> linePts;
-	//linePts.push_back(CMeDPoint(0, 1));
-	//linePts.push_back(CMeDPoint(2, 1));
-	//linePts.push_back(CMeDPoint(3, 10));
-	//linePts.push_back(CMeDPoint(4, 7));
-	//line->setXYData(linePts);
-	//m_charxy->addChartData(line);
 	CRect rect;
 	GetClientRect(rect);
 	CSize size(rect.Width(), rect.Height());
@@ -269,18 +260,6 @@ int ChartFigureDlg::readData()
 
 void ChartFigureDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 {
-#if 0
-	// TODO: Add your message handler code here
-	CMenu   menu;   //定义下面要用到的cmenu对象
-	menu.LoadMenu(IDR_MENU_CHART); //装载自定义的右键菜单 
-	CMenu   *pContextMenu=menu.GetSubMenu(0); //获取第一个弹出菜单，所以第一个菜单必须有子菜单 
-	if(pContextMenu)
-	{
-		//CPoint point1;//定义一个用于确定光标位置的位置  
-		//GetCursorPos(&point1);//获取当前光标的位置，以便使得菜单可以跟随光标  
-		pContextMenu->TrackPopupMenu(TPM_LEFTALIGN|TPM_RIGHTBUTTON,point.x,point.y,this); 
-	}
-#endif
 	CBCGPContextMenuManager* pContexMenuManager = theApp.GetContextMenuManager();
 	if (nullptr != pContexMenuManager)
 	{
