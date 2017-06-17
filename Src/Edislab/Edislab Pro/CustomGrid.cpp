@@ -15,9 +15,12 @@
 #include "Msg.h"
 //默认增加列的宽度
 const int DEFAULT_COLUMN_WIDTH = 20;
+//默认的初始行数
+const int DEFAULT_ROW_NUM = 60;
 IMPLEMENT_DYNCREATE(CCustomGrid, CBCGPGridCtrl)
-CCustomGrid::CCustomGrid():m_nDisplayVitrualRows(60),
-m_pCallBack(nullptr)
+CCustomGrid::CCustomGrid():
+m_pCallBack(nullptr),
+m_nDisplayRows(DEFAULT_ROW_NUM)
 {
 	m_HeaderInfoArray.clear();
 }
@@ -60,15 +63,18 @@ int CCustomGrid::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	SetEditFirstClick(FALSE);
 	SetWholeRowSel(TRUE);
 	m_ColumnsEx.EnableAutoSize(TRUE);
+	CreateHeaderInfo();
+	CreateColumnInfo();
 
 	if (nullptr != m_pCallBack)
 	{
 		EnableVirtualMode(m_pCallBack,(LPARAM)this);
-		SetVirtualRows(m_nDisplayVitrualRows);
+		SetVirtualRows(m_nDisplayRows);
 	}
-
-	CreateHeaderInfo();
-	CreateColumnInfo();
+	else
+	{
+		CreateRowInfo();
+	}
 	AdjustLayout();
 	return 0;
 }
@@ -144,7 +150,16 @@ void CCustomGrid::DynamicSetHeaderInfoArray(const std::vector<COLUMN_GROUP_INFO>
 	//重新设置列
 	CreateHeaderInfo();
 	CreateColumnInfo();
-	m_CachedItems.CleanUpCache();
+
+	if (TRUE == IsVirtualMode())
+	{
+		m_CachedItems.CleanUpCache();
+	}
+	else
+	{
+		CreateRowInfo();
+	}
+	
 	AdjustLayout();
 }
 
@@ -188,6 +203,16 @@ void CCustomGrid::AddHeaderInfo(const COLUMN_GROUP_INFO& HeaderInfo)
 	//重新设置列
 	CreateHeaderInfo();
 	CreateColumnInfo();
+
+	if (TRUE == IsVirtualMode())
+	{
+		m_CachedItems.CleanUpCache();
+	}
+	else
+	{
+		CreateRowInfo();
+	}
+
 	AdjustLayout();
 }
 
@@ -236,6 +261,16 @@ void CCustomGrid::RemoveHeaderInfo(const CString& strHeaderName)
 	//重新设置列
 	CreateHeaderInfo();
 	CreateColumnInfo();
+
+	if (TRUE == IsVirtualMode())
+	{
+		m_CachedItems.CleanUpCache();
+	}
+	else
+	{
+		CreateRowInfo();
+	}
+
 	AdjustLayout();
 }
 
@@ -301,6 +336,16 @@ void CCustomGrid::RemoveColumn(const CString& strColumnName)
 	m_ColumnsEx.DeleteAllColumns();
 	CreateHeaderInfo();
 	CreateColumnInfo();
+
+	if (TRUE == IsVirtualMode())
+	{
+		m_CachedItems.CleanUpCache();
+	}
+	else
+	{
+		CreateRowInfo();
+	}
+
 	AdjustLayout();
 }
 
@@ -372,6 +417,15 @@ void CCustomGrid::AddColumnInfo(const CString& strHeaderName,const CString& strC
 	//重新设置列
 	CreateHeaderInfo();
 	CreateColumnInfo();
+
+	if (TRUE == IsVirtualMode())
+	{
+		m_CachedItems.CleanUpCache();
+	}
+	else
+	{
+		CreateRowInfo();
+	}
 
 	AdjustLayout();
 }
@@ -471,6 +525,66 @@ void CCustomGrid::GetHeaderInfo(std::vector<COLUMN_GROUP_INFO>& HeaderInfoArray)
 	HeaderInfoArray.clear();
 
 	HeaderInfoArray.assign(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end());
+}
+
+/*******************************************************************
+*函数名称:SetDisplayRow
+*功能描述:设置显示列
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/17 22:55:33
+*******************************************************************/
+void CCustomGrid::SetDisplayRow(int nRow)
+{
+	int nTotalRowNum = GetRowCount();
+
+	if (TRUE == IsVirtualMode())
+	{
+		if (nRow > nTotalRowNum)
+		{
+			SetVirtualRows(nRow);
+		}
+	}
+	else
+	{
+		if (nRow > nTotalRowNum)
+		{
+			for (int i = 0; i < (nRow - nTotalRowNum); ++i)
+			{
+				CBCGPGridRow* pRow = CreateRow(GetColumnCount());
+				if (nullptr != pRow)
+				{
+					AddRow(pRow,FALSE);
+				}
+			}
+		}
+
+	}
+
+	m_nDisplayRows = (std::max)(m_nDisplayRows,nRow);
+
+	AdjustLayout();
+}
+
+/*******************************************************************
+*函数名称:刷新Grid
+*功能描述:
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/17 22:44:48
+*******************************************************************/
+void CCustomGrid::Refresh(void)
+{
+	//清空缓存
+	if (TRUE == IsVirtualMode())
+	{
+		m_CachedItems.CleanUpCache();
+	}
+	AdjustLayout();
 }
 
 /*******************************************************************
@@ -586,6 +700,90 @@ void CCustomGrid::SetColumnGroupDisplayInfo(const std::vector<SHOW_COLUMN_GROUP_
 	AdjustLayout();
 }
 
+/*******************************************************************
+*函数名称:SetColumnData
+*功能描述:设置列数据
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/17 22:19:28
+*******************************************************************/
+void CCustomGrid::SetColumnData(int nRowIndex,int nColumnIndex,float fData)
+{
+	//不支持
+	if (TRUE == IsVirtualMode())
+	{
+		return;
+	}
+
+	if (NULL == GetSafeHwnd())
+	{
+		return;
+	}
+	int nTotalRowNum = GetTotalRowCount();
+	//参数合法性判断
+	if (nRowIndex < 0 && nRowIndex >= nTotalRowNum)
+	{
+		return;
+	}
+	int nTotalColumnNum = GetColumnCount();
+	//列数不相等
+	if (nColumnIndex < 0 || nColumnIndex >= nTotalColumnNum)
+	{
+		return;
+	}
+
+	//获取指定的行指针
+	CBCGPGridRow* pRow = GetRow(nRowIndex);
+	if (nullptr != pRow)
+	{
+		CBCGPGridItem* pItem = pRow->GetItem(nColumnIndex);
+		if (nullptr != pItem)
+		{
+			pItem->SetValue(fData,FALSE);
+		}
+	}
+}
+
+/*******************************************************************
+*函数名称:InsertRow
+*功能描述:插入一行
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/17 23:14:05
+*******************************************************************/
+void CCustomGrid::InsertRow(int nRow,bool bBefore /*= true*/)
+{
+	CBCGPGridRow* pInsertRow = CreateRow(GetColumnCount());
+	if (nullptr == pInsertRow)
+	{
+		return;
+	}
+	if (bBefore)
+	{
+		InsertRowBefore(nRow,pInsertRow,FALSE);
+	}
+	else
+	{
+		InsertRowAfter(nRow,pInsertRow,FALSE);
+	}
+
+	m_nDisplayRows += 1;
+	AdjustLayout();
+}
+
+bool CCustomGrid::IsVirtualGrid(void)
+{
+	if (TRUE == IsVirtualMode())
+	{
+		return true;
+	}
+	return false;
+}
+
 void CCustomGrid::CreateColumnInfo(void)
 {
 
@@ -604,6 +802,18 @@ void CCustomGrid::CreateColumnInfo(void)
 		}
 	}
 
+}
+
+void CCustomGrid::CreateRowInfo(void)
+{
+	for (int i = 0; i < m_nDisplayRows; ++i)
+	{
+		CBCGPGridRow* pRow = CreateRow(GetColumnCount());
+		if (nullptr != pRow)
+		{
+			AddRow(pRow,FALSE);
+		}
+	}
 }
 
 void CCustomGrid::CreateHeaderInfo(void)

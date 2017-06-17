@@ -24,6 +24,7 @@ const int TIMER_ID = 1;
 const int TIMER_GAP = 1000;
 // CDlgGridContainer 对话框
 #pragma warning(disable:4244)
+
 static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)
 {
 	if (nullptr != pdi)
@@ -37,28 +38,26 @@ static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)
 			int nCol = pdi->item.nCol;
 			if (nCol >= 0 && nRow >= 0)
 			{
-				if (0 == nCol)
+				CString strTempColumnName = pGridCtrl->GetColumnName(nCol);
+				std::string strColumnName;
+#ifdef _UNICODE
+				strColumnName = Utility::WideChar2MultiByte(strTempColumnName.GetBuffer(0));
+#else
+				strColumnName = strTempColumnName.GetBuffer(0);
+#endif
+				//根据传感器名称获取传感器ID
+				int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
+				if (CSensorIDGenerator::CreateInstance().IsSpecialSensorID(nSensorID))
 				{
-					CString strTempColumnName = pGridCtrl->GetColumnName(nCol);
-					//名称相等才显示
-					if (strTempColumnName == _T("t(s)时间"))
-					{
-						//采样周期获取
-						const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
-						double fPeriod = 1.0 / (SampleInfo.fFrequency);
-						CString strContent;
-						strContent.Format(_T("%.6f"),fPeriod * nRow);
-						
-						pdi->item.varValue = strContent;
-					}
+					//采样周期获取
+					const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
+					double fPeriod = 1.0 / (SampleInfo.fFrequency);
+					CString strContent;
+					strContent.Format(_T("%.6f"),fPeriod * nRow);
+					pdi->item.varValue = strContent;
 				}
 				else
 				{
-					//获取列名称
-					CString strTempColumnName = pGridCtrl->GetColumnName(nCol);
-					std::string strColumnName = Utility::WideChar2MultiByte(strTempColumnName.GetBuffer(0));
-
-					int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
 					if (nSensorID >= 0)
 					{
 						//根据传感器ID获取传感器数据
@@ -72,8 +71,8 @@ static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)
 							}		
 						}
 					}
+				}
 
-				}	
 			}
 		}
 	}
@@ -159,9 +158,8 @@ BOOL CDlgGridContainer::OnInitDialog()
 		//设置点数
 		int nTotalRows = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
 		m_DisplayGrid.SetHeaderInfoArray(ColumnGroupArray);
-		nTotalRows = (std::max)(nTotalRows,60);
-		m_DisplayGrid.SetDisplayVirtualRows(nTotalRows);
-		m_DisplayGrid.SetCallBack(GridCallback);
+		m_DisplayGrid.SetCallBack(nullptr/*GridCallback*/);
+		m_DisplayGrid.SetInitDisplayRow(nTotalRows);
 		m_DisplayGrid.Create(WS_VISIBLE | WS_CHILD,CRect(0,0,0,0),this,CCustomGrid::s_GridID++);
 	}
 	//SetTimer(TIMER_ID,TIMER_GAP,NULL);
@@ -318,9 +316,7 @@ void CDlgGridContainer::NotifyGridChangeRows(int nRows)
 	{
 		return;
 	}
-	m_DisplayGrid.SetVirtualRows((std::max)(nRows,60));
-
-	m_DisplayGrid.AdjustLayout();
+	m_DisplayGrid.SetDisplayRow(nRows);
 }
 
 /*******************************************************************
@@ -398,6 +394,13 @@ void CDlgGridContainer::RefreshGrid(void)
 	if (NULL == m_DisplayGrid.GetSafeHwnd())
 	{
 		return;
+	}
+
+	//非虚表模式进行数据填充
+	if (!m_DisplayGrid.IsVirtualGrid())
+	{
+		//获取数据
+		StuffGridData();
 	}
 	m_DisplayGrid.Refresh();
 }
@@ -663,21 +666,25 @@ LRESULT CDlgGridContainer::NotifyGridCalculate( WPARAM wp,LPARAM lp )
 
 LRESULT CDlgGridContainer::NotifyGridClearCellData( WPARAM wp,LPARAM lp )
 {
+	OnMenuGridClearData();
 	return 0L;
 }
 
 LRESULT CDlgGridContainer::NotifyGridSaveAsExcel( WPARAM wp,LPARAM lp )
 {
+	OnMenuGridSaveAsExcel();
 	return 0L;
 }
 
 LRESULT CDlgGridContainer::NotifyGridPrint( WPARAM wp,LPARAM lp )
 {
+	OnMenuGridPrint();
 	return 0L;
 }
 
 LRESULT CDlgGridContainer::NotifyGridPrintPreview( WPARAM wp,LPARAM lp )
 {
+	OnMenuGridPrintView();
 	return 0L;
 }
 
@@ -685,6 +692,18 @@ LRESULT CDlgGridContainer::NotifyGridPrintPreview( WPARAM wp,LPARAM lp )
 void CDlgGridContainer::OnMenuGridInsertRow()
 {
 	// TODO: 在此添加命令处理程序代码
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+
+	CBCGPGridItemID SelectID = m_DisplayGrid.GetCurSelItemID();
+
+	//确定是有效的行索引
+	if (SelectID.m_nRow >= 0)
+	{
+		m_DisplayGrid.InsertRow(SelectID.m_nRow);
+	}
 }
 
 
@@ -733,6 +752,12 @@ void CDlgGridContainer::OnMenuGridMin()
 void CDlgGridContainer::OnMenuGridClearData()
 {
 	// TODO: 在此添加命令处理程序代码
+	if (NULL == m_DisplayGrid.GetSafeHwnd())
+	{
+		return;
+	}
+
+	m_DisplayGrid.Clear(FALSE);
 }
 
 
@@ -763,4 +788,62 @@ void CDlgGridContainer::OnMenuGridPrintView()
 void CDlgGridContainer::OnMenuGridPrint()
 {
 	// TODO: 在此添加命令处理程序代码
+}
+
+void CDlgGridContainer::StuffGridData(void)
+{
+	//获取总的行数
+	int nTotalRow = m_DisplayGrid.GetRowCount();
+	if (nTotalRow <= 0)
+	{
+		return;
+	}
+	int nTotalColumn = m_DisplayGrid.GetColumnCount();
+	if (nTotalColumn < 0)
+	{
+		return;
+	}
+	std::string strColumnName;
+	std::vector<double> SensorDataArray;
+	SensorDataArray.resize(nTotalColumn,0.0);
+	for (int i = 0; i < nTotalRow; ++i)
+	{		
+		for (int j = 0; j < nTotalColumn; ++j)
+		{
+#ifdef _UNICODE
+			strColumnName = Utility::WideChar2MultiByte(m_DisplayGrid.GetColumnName(j).GetBuffer(0));
+#else
+			strColumnName = m_DisplayGrid.GetColumnName(j).GetBuffer(0);
+#endif
+			//根据传感器名称获取传感器ID
+			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
+			if (CSensorIDGenerator::CreateInstance().IsSpecialSensorID(nSensorID))
+			{
+				//采样周期获取
+				const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
+				double fPeriod = 1.0 / (SampleInfo.fFrequency);
+				m_DisplayGrid.SetColumnData(i,j,fPeriod * i);
+				//CString strContent;
+				//strContent.Format(_T("%.6f"),fPeriod * i);
+			}
+			else
+			{
+				if (nSensorID >= 0)
+				{
+					//根据传感器ID获取传感器数据
+					CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
+					if (nullptr != pData)
+					{
+						float fValue = 0.0f;
+						if (pData->GetSensorData(i,fValue))
+						{
+							m_DisplayGrid.SetColumnData(i,j,fValue);
+						}		
+					}
+				}
+			}
+
+		}
+	}
+
 }
