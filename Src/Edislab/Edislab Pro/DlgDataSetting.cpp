@@ -9,6 +9,7 @@
 #include "GridColumnGroupManager.h"
 #include "Utility.h"
 #include "Msg.h"
+#include "DlgDataGroupProperty.h"
 //树的ID
 static int s_nTreeID = 10001;
 
@@ -62,6 +63,7 @@ BEGIN_MESSAGE_MAP(CDlgDataSetting, CBaseDialog)
 	ON_BN_CLICKED(IDC_BTN_DEL, &CDlgDataSetting::OnBnClickedBtnDel)
 	ON_BN_CLICKED(IDC_BTN_ADD_DATA_GROUP, &CDlgDataSetting::OnBnClickedBtnAddDataGroup)
 	ON_BN_CLICKED(IDC_BTN_ADD_DATA_COLUMN, &CDlgDataSetting::OnBnClickedBtnAddDataColumn)
+	ON_BN_CLICKED(IDC_BTN_OPT, &CDlgDataSetting::OnBnClickedBtnOpt)
 END_MESSAGE_MAP()
 
 
@@ -306,4 +308,41 @@ int CDlgDataSetting::GetTotalRootNum( void )
 	}
 
 	return nNum;
+}
+
+
+void CDlgDataSetting::OnBnClickedBtnOpt()
+{
+	// TODO: 在此添加控件通知处理程序代码
+
+	if (NULL == m_Tree.GetSafeHwnd())
+	{
+		return;
+	}
+	HTREEITEM hSelectItem = m_Tree.GetSelectedItem();
+
+	if (NULL == hSelectItem)
+	{
+		return;
+	}
+
+	//判断是否是组节点
+	if (TRUE == m_Tree.ItemHasChildren(hSelectItem))
+	{
+		CString strGroupName = m_Tree.GetItemText(hSelectItem);
+
+		CDlgDataGroupProperty Dlg(strGroupName);
+
+		if (IDOK == Dlg.DoModal())
+		{
+			strGroupName = Dlg.GetGroupName();
+
+			m_Tree.SetItemText(hSelectItem,strGroupName);
+
+			m_Tree.AdjustLayout();
+
+			//通知Grid组名修改
+		}
+	}
+
 }

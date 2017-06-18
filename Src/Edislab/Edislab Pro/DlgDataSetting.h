@@ -47,4 +47,6 @@ public:
 
 private:
 	std::vector<DEFAULT_GROUP_NAME> m_strDefaultGroupNameArray;
+public:
+	afx_msg void OnBnClickedBtnOpt();
 };
