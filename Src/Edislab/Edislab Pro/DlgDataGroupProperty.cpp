@@ -5,7 +5,7 @@
 #include "Edislab Pro.h"
 #include "DlgDataGroupProperty.h"
 #include "Utility.h"
-
+#include "GridColumnGroupManager.h"
 // CDlgDataGroupProperty 对话框
 
 IMPLEMENT_DYNAMIC(CDlgDataGroupProperty, CBaseDialog)
@@ -82,8 +82,12 @@ void CDlgDataGroupProperty::OnBnClickedBtnOk()
 			return;
 		}
 
+		if (CGridColumnGroupManager::CreateInstance().IsHeaderNameExist(strGroupName))
+		{
+			Utility::AfxBCGPMessageBox(_T("该数据组已经存在,请输入另外一个名字!"),MB_OK | MB_ICONERROR);
+			return;
+		}
 		m_strGroupName = strGroupName;
-
 		OnOK();
 	}
 

@@ -336,4 +336,27 @@ void CGridColumnGroupManager::RemoveHeader( const CString& strHeaderName )
 	}
 }
 
+void CGridColumnGroupManager::ModifyHeaderInfo(const CString& strOldName,const CString& strNewName)
+{
+	if (strOldName.IsEmpty() || strNewName.IsEmpty())
+	{
+		return;
+	}
+
+	//查找行头信息
+	auto HeaderPred = [&strOldName](const COLUMN_GROUP_INFO& Info)->bool
+	{
+		if (Info.strGroupName == strOldName)
+		{
+			return true;
+		}
+		return false;
+	};
+	auto HeaderIter = std::find_if(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end(),HeaderPred);
+	if (HeaderIter != m_HeaderInfoArray.end())
+	{
+		HeaderIter->strGroupName = strNewName;
+	}
+}
+
 CGridColumnGroupManager CGridColumnGroupManager::s_obj;

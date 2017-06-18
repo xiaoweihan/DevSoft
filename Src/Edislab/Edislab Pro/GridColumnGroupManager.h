@@ -32,6 +32,9 @@ public:
 	
 	//移除某一表头
 	void RemoveHeader(const CString& strHeaderName);
+
+	//修改组名
+	void ModifyHeaderInfo(const CString& strOldName,const CString& strNewName);
 protected:
 	CGridColumnGroupManager(void);
 	~CGridColumnGroupManager(void);

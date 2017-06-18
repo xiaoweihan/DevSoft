@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include "BaseDialog.h"
-
+#include "CustomTreeCtrl.h"
 typedef struct _default_group_name
 {
 	CString strName;
@@ -35,7 +35,7 @@ private:
 	void InitDisplay(void);
 
 private:
-	CBCGPTreeCtrlEx m_Tree;
+	CCustomTreeCtrl m_Tree;
 	CStatic m_TreeRect;
 public:
 	afx_msg void OnBnClickedBtnQuit();
@@ -49,4 +49,7 @@ private:
 	std::vector<DEFAULT_GROUP_NAME> m_strDefaultGroupNameArray;
 public:
 	afx_msg void OnBnClickedBtnOpt();
+	afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
+
+	afx_msg LRESULT NotifyTreeDBClick(WPARAM wp,LPARAM lp);
 };
