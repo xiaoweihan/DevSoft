@@ -82,6 +82,13 @@ void CDlgDataGroupProperty::OnBnClickedBtnOk()
 			return;
 		}
 
+		//如果尚未做某种改变
+		if (strGroupName == m_strGroupName)
+		{
+			OnOK();
+			return;
+		}
+
 		if (CGridColumnGroupManager::CreateInstance().IsHeaderNameExist(strGroupName))
 		{
 			Utility::AfxBCGPMessageBox(_T("该数据组已经存在,请输入另外一个名字!"),MB_OK | MB_ICONERROR);
@@ -103,4 +110,20 @@ void CDlgDataGroupProperty::OnBnClickedBtnCancel()
 CString CDlgDataGroupProperty::GetGroupName(void)
 {
 	return m_strGroupName;
+}
+
+
+BOOL CDlgDataGroupProperty::PreTranslateMessage(MSG* pMsg)
+{
+	// TODO: 在此添加专用代码和/或调用基类
+
+	if (WM_KEYDOWN == pMsg->message)
+	{
+		if (VK_RETURN == pMsg->wParam)
+		{
+			OnBnClickedBtnOk();
+			return TRUE;
+		}
+	}
+	return CBaseDialog::PreTranslateMessage(pMsg);
 }

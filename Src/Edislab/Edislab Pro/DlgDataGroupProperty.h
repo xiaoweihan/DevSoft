@@ -30,4 +30,5 @@ public:
 	afx_msg void OnBnClickedBtnCancel();
 
 	CString GetGroupName(void);
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 };
