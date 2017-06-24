@@ -9,6 +9,7 @@
 #include "GridColumnGroupManager.h"
 #include "Utility.h"
 #include "Msg.h"
+#include "DlgDataGroupProperty.h"
 //树的ID
 static int s_nTreeID = 10001;
 
@@ -24,6 +25,10 @@ CDlgDataSetting::CDlgDataSetting(CWnd* pParent /*=NULL*/)
 	m_strDefaultGroupNameArray.clear();
 
 	DEFAULT_GROUP_NAME TempGroupName;
+
+	TempGroupName.strName = _T("历史组");
+	m_strDefaultGroupNameArray.push_back(TempGroupName);
+
 	TempGroupName.strName = _T("历史组_1");
 	m_strDefaultGroupNameArray.push_back(TempGroupName);
 
@@ -42,8 +47,7 @@ CDlgDataSetting::CDlgDataSetting(CWnd* pParent /*=NULL*/)
 	TempGroupName.strName = _T("历史组_6");
 	m_strDefaultGroupNameArray.push_back(TempGroupName);
 
-	TempGroupName.strName = _T("历史组_7");
-	m_strDefaultGroupNameArray.push_back(TempGroupName);
+
 }
 
 CDlgDataSetting::~CDlgDataSetting()
@@ -62,6 +66,9 @@ BEGIN_MESSAGE_MAP(CDlgDataSetting, CBaseDialog)
 	ON_BN_CLICKED(IDC_BTN_DEL, &CDlgDataSetting::OnBnClickedBtnDel)
 	ON_BN_CLICKED(IDC_BTN_ADD_DATA_GROUP, &CDlgDataSetting::OnBnClickedBtnAddDataGroup)
 	ON_BN_CLICKED(IDC_BTN_ADD_DATA_COLUMN, &CDlgDataSetting::OnBnClickedBtnAddDataColumn)
+	ON_BN_CLICKED(IDC_BTN_OPT, &CDlgDataSetting::OnBnClickedBtnOpt)
+	ON_WM_LBUTTONDBLCLK()
+	ON_MESSAGE(WM_NOTIFY_TREE_CTRL_DBCLICK,&CDlgDataSetting::NotifyTreeDBClick)
 END_MESSAGE_MAP()
 
 
@@ -306,4 +313,101 @@ int CDlgDataSetting::GetTotalRootNum( void )
 	}
 
 	return nNum;
+}
+
+
+void CDlgDataSetting::OnBnClickedBtnOpt()
+{
+	// TODO: 在此添加控件通知处理程序代码
+
+	if (NULL == m_Tree.GetSafeHwnd())
+	{
+		return;
+	}
+	HTREEITEM hSelectItem = m_Tree.GetSelectedItem();
+
+	if (NULL == hSelectItem)
+	{
+		return;
+	}
+
+	//判断是否是组节点
+	if (TRUE == m_Tree.ItemHasChildren(hSelectItem))
+	{
+		CString strOldGroupName = m_Tree.GetItemText(hSelectItem);
+
+		CDlgDataGroupProperty Dlg(strOldGroupName);
+
+		if (IDOK == Dlg.DoModal())
+		{
+			CString strNewGroupName = Dlg.GetGroupName();
+
+			m_Tree.SetItemText(hSelectItem,strNewGroupName);
+
+			m_Tree.AdjustLayout();
+
+			//通知Grid组名修改
+			CGridColumnGroupManager::CreateInstance().ModifyHeaderInfo(strOldGroupName,strNewGroupName);
+
+			//通知Grid刷新
+			CWnd* pWnd = AfxGetMainWnd();
+			if (nullptr != pWnd)
+			{
+				pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
+			}
+		}
+	}
+
+}
+
+
+void CDlgDataSetting::OnLButtonDblClk(UINT nFlags, CPoint point)
+{
+	// TODO: 在此添加消息处理程序代码和/或调用默认值
+
+	CBaseDialog::OnLButtonDblClk(nFlags, point);
+}
+
+LRESULT CDlgDataSetting::NotifyTreeDBClick(WPARAM wp,LPARAM lp)
+{
+
+	HTREEITEM hItem = (HTREEITEM)wp;
+
+
+	if (NULL != hItem)
+	{
+
+		if (TRUE == m_Tree.ItemHasChildren(hItem))
+		{
+			CString strOldGroupName = m_Tree.GetItemText(hItem);
+
+			CDlgDataGroupProperty Dlg(strOldGroupName);
+
+			if (IDOK == Dlg.DoModal())
+			{
+				CString strNewGroupName = Dlg.GetGroupName();
+
+				m_Tree.SetItemText(hItem,strNewGroupName);
+
+				m_Tree.AdjustLayout();
+
+				//通知Grid组名修改
+				CGridColumnGroupManager::CreateInstance().ModifyHeaderInfo(strOldGroupName,strNewGroupName);
+
+				//通知Grid刷新
+				CWnd* pWnd = AfxGetMainWnd();
+				if (nullptr != pWnd)
+				{
+					pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
+				}
+			}
+		}
+		else
+		{
+			//弹出其他对话框
+		}
+	}
+
+
+	return 0L;
 }

@@ -77,38 +77,37 @@ public:
 	{
 		m_pCallBack = pCallBack;
 	}
-
-	//设置虚行数
-	void SetDisplayVirtualRows(int nVirtualRows)
+	//设置初始显示的行数
+	void SetInitDisplayRow(int nRows)
 	{
-		m_nDisplayVitrualRows = nVirtualRows;
+		m_nDisplayRows = nRows;
 	}
 
-	//刷新虚表显示
-	void Refresh(void)
-	{
-		//清空缓存
-		if (TRUE == IsVirtualMode())
-		{
-			m_CachedItems.CleanUpCache();
-		}
-		AdjustLayout();
-	}
-
+	//设置行数
+	void SetDisplayRow(int nRow);
+	//刷新Grid显示
+	void Refresh(void);
 	//获取列分组的显示信息
 	void GetColumnGroupDisplayInfo(std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray);
 	//设置分组的显示信息
 	void SetColumnGroupDisplayInfo(const std::vector<SHOW_COLUMN_GROUP_INFO>& DisplayArray);
-
+	//设置数据(用于非虚表模式下)
+	void SetColumnData(int nRowIndex,int nColumnIndex,float fData);
+	//插入一行
+	void InsertRow(int nRow,bool bBefore = true);
+	//是否是虚表模式
+	bool IsVirtualGrid(void);
 private:
 	//创建列信息
 	void CreateHeaderInfo(void);
 	//创建列信息
 	void CreateColumnInfo(void);
+	//创建所有行信息
+	void CreateRowInfo(void);
 protected:
 	std::vector<COLUMN_GROUP_INFO> m_HeaderInfoArray;
 	BCGPGRID_CALLBACK m_pCallBack;
-	int m_nDisplayVitrualRows;
+	int m_nDisplayRows;
 public:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);

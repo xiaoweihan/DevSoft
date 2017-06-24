@@ -6,7 +6,7 @@
 完成日期:2013-07-29
 **************************************************************************************************************************************************/
 #include "stdafx.h"
-#include "log.h"
+#include "Log.h"
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
 #ifdef _WIN32
@@ -19,7 +19,11 @@
 #define  BUFFER_MAX_SIZE          (1024 * 10)
 
 //日志文件的最大容量
-#define  LOG_MAX_SIZE                 (100 * 1024 * 1024)
+#define  LOG_MAX_SIZE             (100 * 1024 * 1024)
+
+#ifndef _WIN32
+#define MAX_PATH                  (260)
+#endif
 
 //用于同步的类
 static boost::mutex s_Lock;

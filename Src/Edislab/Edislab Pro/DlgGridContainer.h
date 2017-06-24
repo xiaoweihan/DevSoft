@@ -92,4 +92,9 @@ public:
 	afx_msg void OnMenuGridSaveAsExcel();
 	afx_msg void OnMenuGridPrintView();
 	afx_msg void OnMenuGridPrint();
+
+
+private:
+	//Ìî³äÊý¾Ý
+	void StuffGridData(void);
 };

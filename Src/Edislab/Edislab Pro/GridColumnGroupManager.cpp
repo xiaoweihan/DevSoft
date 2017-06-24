@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <boost/foreach.hpp>
 #include "Utility.h"
+#include "SensorIDGenerator.h"
 CGridColumnGroupManager& CGridColumnGroupManager::CreateInstance()
 {
 	return s_obj;
@@ -204,8 +205,16 @@ void CGridColumnGroupManager::AddDisplayColumnInfo( const CString& strHeaderName
 	//寻找列名称的lamda表达式
 	auto ColumnPred = [&AddColumnInfo](const COLUMN_INFO& ColumnInfo)->bool
 	{
+		std::string strConvertColumnName;
+		CString strTempColumnName = ColumnInfo.strColumnName;
+#ifdef _UNICODE
+		strConvertColumnName = Utility::WideChar2MultiByte(strTempColumnName.GetBuffer(0));
+#else
+		strConvertColumnName = strTempColumnName.GetBuffer(0);
+#endif
 		//列名称相同
-		if (ColumnInfo.strColumnName == AddColumnInfo.strColumnName)
+		if (ColumnInfo.strColumnName == AddColumnInfo.strColumnName ||
+			CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strConvertColumnName) < 0)
 		{
 			return true;
 		}
@@ -223,7 +232,11 @@ void CGridColumnGroupManager::AddDisplayColumnInfo( const CString& strHeaderName
 		//存在
 		if (ColumnIter != HeaderIter->ColumnArray.end())
 		{
-			return;
+			//为了防止找到X Y之类的
+			if (ColumnIter->strColumnName != AddColumnInfo.strColumnName)
+			{
+				ColumnIter->strColumnName = AddColumnInfo.strColumnName;
+			}
 		}
 		else
 		{
@@ -320,6 +333,29 @@ void CGridColumnGroupManager::RemoveHeader( const CString& strHeaderName )
 	if (HeaderIter != m_HeaderInfoArray.end())
 	{
 		m_HeaderInfoArray.erase(HeaderIter);
+	}
+}
+
+void CGridColumnGroupManager::ModifyHeaderInfo(const CString& strOldName,const CString& strNewName)
+{
+	if (strOldName.IsEmpty() || strNewName.IsEmpty())
+	{
+		return;
+	}
+
+	//查找行头信息
+	auto HeaderPred = [&strOldName](const COLUMN_GROUP_INFO& Info)->bool
+	{
+		if (Info.strGroupName == strOldName)
+		{
+			return true;
+		}
+		return false;
+	};
+	auto HeaderIter = std::find_if(m_HeaderInfoArray.begin(),m_HeaderInfoArray.end(),HeaderPred);
+	if (HeaderIter != m_HeaderInfoArray.end())
+	{
+		HeaderIter->strGroupName = strNewName;
 	}
 }
 
