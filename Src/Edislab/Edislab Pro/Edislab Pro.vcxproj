@@ -239,6 +239,7 @@
     <ClInclude Include="CustomTreeCtrl.h" />
     <ClInclude Include="DataDefine.h" />
     <ClInclude Include="DlgAcquirationPara.h" />
+    <ClInclude Include="DlgAddColumn.h" />
     <ClInclude Include="DlgAddPage.h" />
     <ClInclude Include="DlgChartSet.h" />
     <ClInclude Include="DlgDataGroupProperty.h" />
@@ -302,6 +303,7 @@
     <ClCompile Include="CustomGrid.cpp" />
     <ClCompile Include="CustomTreeCtrl.cpp" />
     <ClCompile Include="DlgAcquirationPara.cpp" />
+    <ClCompile Include="DlgAddColumn.cpp" />
     <ClCompile Include="DlgAddPage.cpp" />
     <ClCompile Include="DlgChartSet.cpp" />
     <ClCompile Include="DlgDataGroupProperty.cpp" />

@@ -27,12 +27,5 @@ void CConcreteTabWnd::OnSize(UINT nType, int cx, int cy)
 void CConcreteTabWnd::OnLButtonDown(UINT nFlags, CPoint point)
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
-
-	//CWnd* pWnd = AfxGetMainWnd();
-
-	//if (NULL != pWnd)
-	//{
-	//	pWnd->PostMessage(WM_NOTIFY_ACTIVE_WND_TYPE,2,0);
-	//}
 	CBaseTabWnd::OnLButtonDown(nFlags, point);
 }
