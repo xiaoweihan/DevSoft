@@ -37,6 +37,29 @@ BOOL CDlgAddColumn::OnInitDialog()
 
 	// TODO:  在此添加额外的初始化
 
+	InitDisplay();
+
 	return TRUE;  // return TRUE unless you set the focus to a control
 	// 异常: OCX 属性页应返回 FALSE
+}
+
+void CDlgAddColumn::InitDisplay( void )
+{
+	CWnd* pWnd = GetDlgItem(IDC_TAB_POS);
+	if (nullptr != pWnd && NULL != pWnd->GetSafeHwnd())
+	{
+		pWnd->ShowWindow(SW_HIDE);
+		//获取位置
+		CRect rc;
+		pWnd->GetWindowRect(&rc);
+		ScreenToClient(&rc);
+		if (NULL == m_TabWnd)
+		{
+			if (FALSE == m_TabWnd.Create(CBCGPTabWnd::STYLE_3D,rc,this,CBaseTabWnd::s_nTabBaseID++
+				,CBCGPBaseTabWnd::LOCATION_TOP))
+			{
+				return;
+			}
+		}
+	}
 }

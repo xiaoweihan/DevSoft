@@ -3,6 +3,7 @@
 
 // CDlgAddColumn ¶Ô»°¿ò
 #include "BaseDialog.h"
+#include "ConcreteTabWnd.h"
 class CDlgAddColumn : public CBaseDialog
 {
 	DECLARE_DYNAMIC(CDlgAddColumn)
@@ -20,4 +21,12 @@ protected:
 	DECLARE_MESSAGE_MAP()
 public:
 	virtual BOOL OnInitDialog();
+
+
+private:
+	void InitDisplay(void);
+
+private:
+	//Tab¿Õ¼ä
+	CConcreteTabWnd m_TabWnd;
 };
