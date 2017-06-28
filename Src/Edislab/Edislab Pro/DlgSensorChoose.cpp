@@ -120,6 +120,7 @@ void CDlgSensorChoose::OnBnClickedCheckAutoRecognize()
 		m_BtnDel.EnableWindow(true);
 		m_BtnDelAll.EnableWindow(true);
 		m_BtnChooseCon.EnableWindow(true);
+	    CSerialPortService::CreateInstance().StopSerialPortService();
 	}
 
 	// 添加传感器识别部分代码
@@ -151,32 +152,61 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 	{
 		CString str;
         // 拼凑添加项的头
+		// 传感器只能添加一个 2017.06.28
 		int nNum = (int)m_setChooseSensorID.count(iter->second.nSensorID);
 		if (nNum == 0)
 		{
-			str.Format(_T("数据列：%s(%s)"), CString(iter->second.strSensorSymbol.c_str()), CString(iter->second.strSensorName.c_str()));
-		}
-		else
-		{
-            str.Format(_T("数据列：%s_%d(%s)"), CString(iter->second.strSensorSymbol.c_str()), nNum, CString(iter->second.strSensorName.c_str()));
-		}
-		
-		// 拼凑添加项描述文字
-		m_setChooseSensorID.insert(iter->second.nSensorID);
-		if (iter->second.SensorRangeInfoArray.size() > 0)
-		{
-			nIndex = m_ListChoosedSensor.AddString(str);
-			str = iter->second.SensorRangeInfoArray[0].strRangeName.c_str();
-			int nCharPos = str.Find('(');
-			str = str.Left(nCharPos);
-			str = _T("量程：") + str;
-			
-			m_ListChoosedSensor.SetItemDescription(nIndex, str);
-			// 将sensor ID作为item Data
-			m_ListChoosedSensor.SetItemData(nIndex, iter->second.nSensorID);
 
-			m_ListChoosedSensor.SetItemImage(nIndex, iter->second.nSensorID);
+			if (-1 == CSensorIDGenerator::CreateInstance().AddSensor(iter->second.strSensorName))
+			{
+				return;
+			}
+
+			str.Format(_T("数据列：%s(%s)"), CString(iter->second.strSensorSymbol.c_str()), CString(iter->second.strSensorName.c_str()));
+		
+			// 拼凑添加项描述文字
+			m_setChooseSensorID.insert(iter->second.nSensorID);
+			if (iter->second.SensorRangeInfoArray.size() > 0)
+			{
+				nIndex = m_ListChoosedSensor.AddString(str);
+				str = iter->second.SensorRangeInfoArray[0].strRangeName.c_str();
+				int nCharPos = str.Find('(');
+				str = str.Left(nCharPos);
+				str = _T("量程：") + str;
+
+				m_ListChoosedSensor.SetItemDescription(nIndex, str);
+				// 将sensor ID作为item Data
+				m_ListChoosedSensor.SetItemData(nIndex, iter->second.nSensorID);
+
+				m_ListChoosedSensor.SetItemImage(nIndex, iter->second.nSensorID);
+			}
+
+			// 添加列表显示列
+			COLUMN_INFO AddColumnInfo;
+			AddColumnInfo.strColumnName.Format(_T("%s(%s)"), CString(iter->second.strSensorSymbol.c_str()), CString(iter->second.strSensorName.c_str()));
+			CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"), AddColumnInfo);
+			//通知Grid刷新
+			CWnd* pWnd = AfxGetMainWnd();
+			if (nullptr != pWnd)
+			{
+				pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
+			}
+
+			// 删除已有的传感器，防止重新添加
+			nIndex = m_ListSensor.GetCurSel();
+			m_ListSensor.DeleteString(nIndex); 
+			auto iter = m_mapCurrentSensor.find(nIndex);
+			if (m_mapCurrentSensor.end() != iter)
+			{
+				m_mapCurrentSensor.erase(iter);
+			}
 		}
+// 		else
+// 		{
+//             str.Format(_T("数据列：%s_%d(%s)"), CString(iter->second.strSensorSymbol.c_str()), nNum, CString(iter->second.strSensorName.c_str()));
+// 		}
+		
+
 	}
 }
 
@@ -194,6 +224,16 @@ void CDlgSensorChoose::OnBnClickedBtnDelete()
 		}
 		
 		m_ListChoosedSensor.DeleteString(m_ListChoosedSensor.GetCurSel());
+
+		// 为右侧待选传感器恢复删除的传感器
+		SENSOR_CONFIG_ELEMENT element = CSensorConfig::CreateInstance().GetSensorInfo(nIndex);
+		CString str(element.strSensorName.c_str());
+		int nIndex = m_ListSensor.AddString(str);
+		str = element.strSensorModelName.c_str();
+		m_ListSensor.SetItemDescription(nIndex, str);
+		m_ListSensor.SetItemData(nIndex, element.nSensorID);
+		m_ListSensor.SetItemImage(nIndex, element.nSensorID);
+		m_mapCurrentSensor[element.nSensorID] = element;
 	}
 }
 
@@ -217,6 +257,8 @@ void CDlgSensorChoose::OnBnClickedBtnChooseConnected()
 void CDlgSensorChoose::OnBnClickedBtnOk()
 {
 	// TODO: 在此添加控件通知处理程序代码
+
+	CSerialPortService::CreateInstance().StartSerialPortService();
 }
 
 void CDlgSensorChoose::OnCbnSelchangeCmbSensorType()
