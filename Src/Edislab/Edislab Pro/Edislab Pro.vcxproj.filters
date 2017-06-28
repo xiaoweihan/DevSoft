@@ -324,6 +324,12 @@
     <ClInclude Include="DlgAddColumn.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="DlgColumnDisplay.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgColumnCommon.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -492,6 +498,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="DlgAddColumn.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgColumnDisplay.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgColumnCommon.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
