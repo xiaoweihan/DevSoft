@@ -239,8 +239,11 @@
     <ClInclude Include="CustomTreeCtrl.h" />
     <ClInclude Include="DataDefine.h" />
     <ClInclude Include="DlgAcquirationPara.h" />
+    <ClInclude Include="DlgAddColumn.h" />
     <ClInclude Include="DlgAddPage.h" />
     <ClInclude Include="DlgChartSet.h" />
+    <ClInclude Include="DlgColumnCommon.h" />
+    <ClInclude Include="DlgColumnDisplay.h" />
     <ClInclude Include="DlgDataGroupProperty.h" />
     <ClInclude Include="DlgDataSetting.h" />
     <ClInclude Include="DlgDevicePanel.h" />
@@ -302,8 +305,11 @@
     <ClCompile Include="CustomGrid.cpp" />
     <ClCompile Include="CustomTreeCtrl.cpp" />
     <ClCompile Include="DlgAcquirationPara.cpp" />
+    <ClCompile Include="DlgAddColumn.cpp" />
     <ClCompile Include="DlgAddPage.cpp" />
     <ClCompile Include="DlgChartSet.cpp" />
+    <ClCompile Include="DlgColumnCommon.cpp" />
+    <ClCompile Include="DlgColumnDisplay.cpp" />
     <ClCompile Include="DlgDataGroupProperty.cpp" />
     <ClCompile Include="DlgDataSetting.cpp" />
     <ClCompile Include="DlgDevicePanel.cpp" />

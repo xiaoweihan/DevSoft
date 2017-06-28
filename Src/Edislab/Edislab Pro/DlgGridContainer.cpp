@@ -20,6 +20,7 @@
 #include "Global.h"
 #include "Utility.h"
 #include "DlgGridOpt.h"
+#include "DlgAddColumn.h"
 const int TIMER_ID = 1;
 const int TIMER_GAP = 1000;
 // CDlgGridContainer 对话框
@@ -603,6 +604,12 @@ void CDlgGridContainer::OnMenuGridLastRow()
 void CDlgGridContainer::OnMenuGridAddColumn()
 {
 	// TODO: 在此添加命令处理程序代码
+	CDlgAddColumn Dlg;
+
+	if (IDOK == Dlg.DoModal())
+	{
+
+	}
 }
 
 LRESULT CDlgGridContainer::NotifyGridOption( WPARAM wp,LPARAM lp )
