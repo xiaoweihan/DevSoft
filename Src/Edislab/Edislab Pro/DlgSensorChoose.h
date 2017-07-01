@@ -2,6 +2,10 @@
 #include "BaseDialog.h"
 #include "Type.h"
 #include "SensorConfig.h"
+#include "SensorIDGenerator.h"
+#include "GridColumnGroupManager.h"
+#include "SerialPortService.h"
+#include "Msg.h"
 #include <set>
 
 // CDlgSensorChoose ¶Ô»°¿ò
