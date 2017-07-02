@@ -364,10 +364,14 @@ void CDlgSensorChoose::RefreshSensorList()
 	BOOST_FOREACH(auto &sensor, vecSensorList)
 	{
 		// 已经添加的传感器禁止再次显示
-		if (CSensorIDGenerator::CreateInstance().IsSensorExist(sensor.strSensorName))
+		std::string strSensorUnit = sensor.SensorRangeInfoArray[0].strUnitName;
+
+		std::string strSensorName = sensor.strSensorName + std::string("[") + strSensorUnit + std::string("]");
+		if (CSensorIDGenerator::CreateInstance().IsSensorExist(strSensorName))
 		{
 			continue;
 		}
+
 
 		CString str(sensor.strSensorName.c_str());
 		int nIndex = m_ListSensor.AddString(str);
@@ -473,6 +477,13 @@ void CDlgSensorChoose::RefreshChoosedSensorList()
 
 	BOOST_FOREACH(auto &strSenorName , vecStrSensorList)
 	{
+		int nIndexof = strSenorName.find_first_of('[');
+		if (-1 == nIndexof)
+		{
+			continue;
+		}
+
+		strSenorName = strSenorName.substr(0, nIndexof);
 		SENSOR_CONFIG_ELEMENT element = CSensorConfig::CreateInstance().GetSensorInfo(strSenorName);
 		if (-1 == element.nSensorID)
 		{
@@ -510,11 +521,6 @@ void CDlgSensorChoose::RefreshChoosedSensorList()
 
 				m_ListChoosedSensor.SetItemImage(nIndex, element.nSensorID);
 			}
-
-			// 添加列表显示列
-			COLUMN_INFO AddColumnInfo;
-			AddColumnInfo.strColumnName.Format(_T("%s(%s)"), CString(element.strSensorSymbol.c_str()), CString(element.strSensorName.c_str()));
-			CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"), AddColumnInfo);
 
 			// 删除已有的传感器，防止重新添加
 			nIndex = m_ListSensor.GetCurSel();
