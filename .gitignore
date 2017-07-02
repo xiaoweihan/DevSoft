@@ -8,3 +8,5 @@ ipch/
 *.pdb
 *.suo
 boost/
+*log
+*.opensdf

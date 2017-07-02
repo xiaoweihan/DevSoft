@@ -500,6 +500,29 @@ SENSOR_CONFIG_ELEMENT CSensorConfig::GetSensorInfo(int nSensorID)
 }
 
 /*******************************************************************
+*函数名称:GetSensorInfo
+*功能描述:根据传感器名称获取传感器信息
+*输入参数:
+*输出参数:
+*返回值:
+*作者:xiaowei.han
+*日期:2017/06/10 8:39:02
+*******************************************************************/
+SENSOR_CONFIG_ELEMENT CSensorConfig::GetSensorInfo(std::string strSensorName)
+{
+	BOOST_FOREACH(auto &sensor, m_SensorConfigArray)
+	{
+		if (strSensorName == sensor.strSensorName)
+		{
+			return sensor;
+		}
+	}
+
+	return SENSOR_CONFIG_ELEMENT();
+}
+
+
+/*******************************************************************
 *函数名称:GetSensorRecordInfo
 *功能描述:获取传感器采样信息
 *输入参数:
