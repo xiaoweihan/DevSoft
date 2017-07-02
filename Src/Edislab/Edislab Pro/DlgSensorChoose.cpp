@@ -528,7 +528,7 @@ void CDlgSensorChoose::RefreshChoosedSensorList()
 
 	BOOST_FOREACH(auto &strSenorName , vecStrSensorList)
 	{
-		int nIndexof = strSenorName.find_first_of('[');
+		auto nIndexof = strSenorName.find_first_of('[');
 		if (-1 == nIndexof)
 		{
 			continue;
