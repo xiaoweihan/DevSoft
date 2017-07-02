@@ -272,10 +272,12 @@ void CDlgSensorChoose::OnBnClickedBtnDelete()
 		m_mapCurrentSensor[element.nSensorID] = element;
 
 		// 删除传感器信息
-		CSensorIDGenerator::CreateInstance().DelSensor(element.strSensorName);
+		std::string strSensorUnit = element.SensorRangeInfoArray[0].strUnitName;
+
+		std::string strSensorName = element.strSensorName + std::string("[") + strSensorUnit + std::string("]");
+		CSensorIDGenerator::CreateInstance().DelSensor(strSensorName);
 		// 删除表格数据列
-		CString strColumnName;
-        strColumnName.Format(_T("%s(%s)"), CString(element.strSensorSymbol.c_str()), CString(element.strSensorName.c_str()));
+		CString strColumnName(strSensorName.c_str());
 		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"), strColumnName);
 		//通知Grid刷新
 		CWnd* pWnd = AfxGetMainWnd();
@@ -290,6 +292,55 @@ void CDlgSensorChoose::OnBnClickedBtnDelete()
 void CDlgSensorChoose::OnBnClickedBtnDeleteAll()
 {
 	// TODO: 在此添加控件通知处理程序代码
+
+	int nNum = m_ListChoosedSensor.GetCount();
+
+	for (int i = 0; i<nNum; i++)
+	{
+		int nIndex = (int)m_ListChoosedSensor.GetItemData(i);
+		if (-1 == nIndex)
+		{
+			continue;
+		}
+
+		if (m_setChooseSensorID.lower_bound(nIndex) != m_setChooseSensorID.end())
+		{
+			m_setChooseSensorID.erase(m_setChooseSensorID.lower_bound(nIndex));
+		}
+
+		m_ListChoosedSensor.DeleteString(m_ListChoosedSensor.GetCurSel());
+		// 为右侧待选传感器恢复删除的传感器
+		SENSOR_CONFIG_ELEMENT element = CSensorConfig::CreateInstance().GetSensorInfo(nIndex);
+		CString str(element.strSensorName.c_str());
+		nIndex = m_ListSensor.AddString(str);
+		str = element.strSensorModelName.c_str();
+		m_ListSensor.SetItemDescription(nIndex, str);
+		m_ListSensor.SetItemData(nIndex, element.nSensorID);
+		m_ListSensor.SetItemImage(nIndex, element.nSensorID);
+		m_mapCurrentSensor[element.nSensorID] = element;
+
+		// 删除传感器信息
+		std::string strSensorUnit = element.SensorRangeInfoArray[0].strUnitName;
+
+		std::string strSensorName = element.strSensorName + std::string("[") + strSensorUnit + std::string("]");
+		CSensorIDGenerator::CreateInstance().DelSensor(strSensorName);
+		// 删除表格数据列
+		CString strColumnName(strSensorName.c_str());
+		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"), strColumnName);
+	}
+
+
+
+	//通知Grid刷新
+	CWnd* pWnd = AfxGetMainWnd();
+	if (nullptr != pWnd)
+	{
+		pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
+	}
+
+
+
+
 
 	m_mapChooseSensor.clear();
 	m_ListChoosedSensor.CleanUp();
