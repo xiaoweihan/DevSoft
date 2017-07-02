@@ -604,12 +604,15 @@ void CDlgGridContainer::OnMenuGridLastRow()
 void CDlgGridContainer::OnMenuGridAddColumn()
 {
 	// TODO: 在此添加命令处理程序代码
+
+#if 0
 	CDlgAddColumn Dlg;
 
 	if (IDOK == Dlg.DoModal())
 	{
 
 	}
+#endif
 }
 
 LRESULT CDlgGridContainer::NotifyGridOption( WPARAM wp,LPARAM lp )

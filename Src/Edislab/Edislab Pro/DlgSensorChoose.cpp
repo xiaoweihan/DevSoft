@@ -58,11 +58,20 @@ void CDlgSensorChoose::InitCtrls()
 	{
 		if (g_bAutoSelect)
 		{
-			m_BtnChooseCon.SetCheck(BST_CHECKED);
+			m_CheckAutoChoose.SetCheck(BST_CHECKED);
+
+			m_BtnAdd.EnableWindow(FALSE);
+			m_BtnDel.EnableWindow(FALSE);
+			m_BtnDelAll.EnableWindow(FALSE);
+			m_BtnChooseCon.EnableWindow(FALSE);
 		}
 		else
 		{
-			m_BtnChooseCon.SetCheck(BST_CHECKED);
+			m_CheckAutoChoose.SetCheck(BST_UNCHECKED);
+			m_BtnAdd.EnableWindow(TRUE);
+			m_BtnDel.EnableWindow(TRUE);
+			m_BtnDelAll.EnableWindow(TRUE);
+			m_BtnChooseCon.EnableWindow(TRUE);
 		}
 		
 	}
@@ -91,11 +100,13 @@ void CDlgSensorChoose::InitCtrls()
 		m_ListChoosedSensor.SetImageList(IDB_SENSOR_ICON_LIST, 48);
 	}
 
+#if 0
 	if (m_CheckAutoChoose.GetSafeHwnd())
 	{
 		m_CheckAutoChoose.SetCheck(TRUE);
 		OnBnClickedCheckAutoRecognize();
 	}
+#endif
 
 	if (m_ListSensor.GetSafeHwnd())
 	{
@@ -108,26 +119,34 @@ void CDlgSensorChoose::InitCtrls()
 
 void CDlgSensorChoose::OnBnClickedCheckAutoRecognize()
 {
+	if (NULL == m_CheckAutoChoose.GetSafeHwnd())
+	{
+		return;
+	}
 	// TODO: 在此添加控件通知处理程序代码
 	if(BST_CHECKED == m_CheckAutoChoose.GetCheck())
 	{
-		m_BtnAdd.EnableWindow(false);
-		m_BtnDel.EnableWindow(false);
-		m_BtnDelAll.EnableWindow(false);
-		m_BtnChooseCon.EnableWindow(false);
+		m_BtnAdd.EnableWindow(FALSE);
+		m_BtnDel.EnableWindow(FALSE);
+		m_BtnDelAll.EnableWindow(FALSE);
+		m_BtnChooseCon.EnableWindow(FALSE);
+		//begin add by xiaowei.han
+		g_bAutoSelect = true;
+		//end add by xiaowei.han
 	}
 	else
 	{
-		m_BtnAdd.EnableWindow(true);
-		m_BtnDel.EnableWindow(true);
-		m_BtnDelAll.EnableWindow(true);
-		m_BtnChooseCon.EnableWindow(true);
+		m_BtnAdd.EnableWindow(TRUE);
+		m_BtnDel.EnableWindow(TRUE);
+		m_BtnDelAll.EnableWindow(TRUE);
+		m_BtnChooseCon.EnableWindow(TRUE);
 	    CSerialPortService::CreateInstance().StopSerialPortService();
+		//begin add by xiaowei.han
+		g_bAutoSelect = false;
+		//end add by xiaowei.han
 	}
 
 	// 添加传感器识别部分代码
-
-
 }
 
 
@@ -147,19 +166,32 @@ BOOL CDlgSensorChoose::OnInitDialog()
 void CDlgSensorChoose::OnBnClickedBtnAdd()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	if (NULL == m_ListSensor.GetSafeHwnd())
+	{
+		return;
+	}
+
 	int nIndex = m_ListSensor.GetCurSel();
 	nIndex = (int)m_ListSensor.GetItemData(nIndex);
 	std::map<int, SENSOR_CONFIG_ELEMENT>::iterator iter = m_mapCurrentSensor.find(nIndex);
 	if (m_mapCurrentSensor.cend() != iter)
 	{
+
+		if (iter->second.SensorRangeInfoArray.empty())
+		{
+			return;
+		}
 		CString str;
         // 拼凑添加项的头
 		// 传感器只能添加一个 2017.06.28
 		int nNum = (int)m_setChooseSensorID.count(iter->second.nSensorID);
 		if (nNum == 0)
 		{
+			std::string strSensorUnit = iter->second.SensorRangeInfoArray[0].strUnitName;
 
-			if (-1 == CSensorIDGenerator::CreateInstance().AddSensor(iter->second.strSensorName))
+			std::string strSensorName = iter->second.strSensorName + std::string("[") + strSensorUnit + std::string("]");
+
+			if (-1 == CSensorIDGenerator::CreateInstance().AddSensor(strSensorName))
 			{
 				return;
 			}
@@ -185,7 +217,15 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 
 			// 添加列表显示列
 			COLUMN_INFO AddColumnInfo;
-			AddColumnInfo.strColumnName.Format(_T("%s(%s)"), CString(iter->second.strSensorSymbol.c_str()), CString(iter->second.strSensorName.c_str()));
+			//如果尚未添加时间列
+			AddColumnInfo.strColumnName = _T("t(s)时间");
+			CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
+			//begin modify by xiaowei.han 2017-7-1
+			//AddColumnInfo.strColumnName.Format(_T("%s[%s]"), CString(iter->second.strSensorSymbol.c_str()), CString(iter->second.strSensorName.c_str()));
+
+			AddColumnInfo.Reset();
+			AddColumnInfo.strColumnName.Format(_T("%s"), CString(strSensorName.c_str()));
+
 			CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"), AddColumnInfo);
 			//通知Grid刷新
 			CWnd* pWnd = AfxGetMainWnd();
@@ -193,7 +233,7 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 			{
 				pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
 			}
-
+			//end modify by xiaowei.han 2017-7-1
 			// 删除已有的传感器，防止重新添加
 			nIndex = m_ListSensor.GetCurSel();
 			m_ListSensor.DeleteString(nIndex); 
@@ -203,12 +243,6 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 				m_mapCurrentSensor.erase(iter);
 			}
 		}
-// 		else
-// 		{
-//             str.Format(_T("数据列：%s_%d(%s)"), CString(iter->second.strSensorSymbol.c_str()), nNum, CString(iter->second.strSensorName.c_str()));
-// 		}
-		
-
 	}
 }
 
@@ -272,8 +306,9 @@ void CDlgSensorChoose::OnBnClickedBtnChooseConnected()
 void CDlgSensorChoose::OnBnClickedBtnOk()
 {
 	// TODO: 在此添加控件通知处理程序代码
-
 	CSerialPortService::CreateInstance().StartSerialPortService();
+
+	OnOK();
 }
 
 void CDlgSensorChoose::OnCbnSelchangeCmbSensorType()
