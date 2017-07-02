@@ -102,6 +102,8 @@ void CDlgSensorChoose::InitCtrls()
 		m_ListSensor.SetImageList(IDB_SENSOR_ICON_LIST, 48);
 	}
 
+	RefreshChoosedSensorList();
+
 }
 
 void CDlgSensorChoose::OnBnClickedCheckAutoRecognize()
@@ -234,6 +236,19 @@ void CDlgSensorChoose::OnBnClickedBtnDelete()
 		m_ListSensor.SetItemData(nIndex, element.nSensorID);
 		m_ListSensor.SetItemImage(nIndex, element.nSensorID);
 		m_mapCurrentSensor[element.nSensorID] = element;
+
+		// 删除传感器信息
+		CSensorIDGenerator::CreateInstance().DelSensor(element.strSensorName);
+		// 删除表格数据列
+		CString strColumnName;
+        strColumnName.Format(_T("%s(%s)"), CString(element.strSensorSymbol.c_str()), CString(element.strSensorName.c_str()));
+		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"), strColumnName);
+		//通知Grid刷新
+		CWnd* pWnd = AfxGetMainWnd();
+		if (nullptr != pWnd)
+		{
+			pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
+		}
 	}
 }
 
@@ -264,7 +279,7 @@ void CDlgSensorChoose::OnBnClickedBtnOk()
 void CDlgSensorChoose::OnCbnSelchangeCmbSensorType()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	RefreshSensorList();
+	RefreshSensorList(); 
 }
 
 
@@ -309,8 +324,16 @@ void CDlgSensorChoose::RefreshSensorList()
 	}
 
 	CSensorConfig::CreateInstance().GetSensorList(vecSensorList, type);
+
+	
 	BOOST_FOREACH(auto &sensor, vecSensorList)
 	{
+		// 已经添加的传感器禁止再次显示
+		if (CSensorIDGenerator::CreateInstance().IsSensorExist(sensor.strSensorName))
+		{
+			continue;
+		}
+
 		CString str(sensor.strSensorName.c_str());
 		int nIndex = m_ListSensor.AddString(str);
 		str = sensor.strSensorModelName.c_str();
@@ -405,4 +428,74 @@ void CDlgSensorChoose::OnCbnSelchangeCmbRange()
 
 	m_StaticResolutionRatio.SetWindowText(_T(""));
 	m_CmbRange.EnableWindow(FALSE);
+}
+
+
+void CDlgSensorChoose::RefreshChoosedSensorList()
+{
+	std::vector<std::string> vecStrSensorList;
+	CSensorIDGenerator::CreateInstance().GetAllSensorName(vecStrSensorList);
+
+	BOOST_FOREACH(auto &strSenorName , vecStrSensorList)
+	{
+		SENSOR_CONFIG_ELEMENT element = CSensorConfig::CreateInstance().GetSensorInfo(strSenorName);
+		if (-1 == element.nSensorID)
+		{
+			continue;
+		}
+
+		CString str;
+		// 拼凑添加项的头
+		// 传感器只能添加一个 2017.06.28
+		int nNum = (int)m_setChooseSensorID.count(element.nSensorID);
+		if (nNum == 0)
+		{
+
+			if (-1 == CSensorIDGenerator::CreateInstance().AddSensor(element.strSensorName))
+			{
+				return;
+			}
+
+			str.Format(_T("数据列：%s(%s)"), CString(element.strSensorSymbol.c_str()), CString(element.strSensorName.c_str()));
+
+			// 拼凑添加项描述文字
+			m_setChooseSensorID.insert(element.nSensorID);
+			int nIndex = 0;
+			if (element.SensorRangeInfoArray.size() > 0)
+			{
+				nIndex = m_ListChoosedSensor.AddString(str);
+				str = element.SensorRangeInfoArray[0].strRangeName.c_str();
+				int nCharPos = str.Find('(');
+				str = str.Left(nCharPos);
+				str = _T("量程：") + str;
+
+				m_ListChoosedSensor.SetItemDescription(nIndex, str);
+				// 将sensor ID作为item Data
+				m_ListChoosedSensor.SetItemData(nIndex, element.nSensorID);
+
+				m_ListChoosedSensor.SetItemImage(nIndex, element.nSensorID);
+			}
+
+			// 添加列表显示列
+			COLUMN_INFO AddColumnInfo;
+			AddColumnInfo.strColumnName.Format(_T("%s(%s)"), CString(element.strSensorSymbol.c_str()), CString(element.strSensorName.c_str()));
+			CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"), AddColumnInfo);
+
+			// 删除已有的传感器，防止重新添加
+			nIndex = m_ListSensor.GetCurSel();
+			m_ListSensor.DeleteString(nIndex); 
+			auto iter = m_mapCurrentSensor.find(nIndex);
+			if (m_mapCurrentSensor.end() != iter)
+			{
+				m_mapCurrentSensor.erase(iter);
+			}
+		}
+	};
+
+	//通知Grid刷新
+	CWnd* pWnd = AfxGetMainWnd();
+	if (nullptr != pWnd)
+	{
+		pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
+	}
 }

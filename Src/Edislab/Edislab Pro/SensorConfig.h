@@ -42,6 +42,9 @@ public:
 
 	//根据传感器ID返回传感器信息
 	SENSOR_CONFIG_ELEMENT GetSensorInfo(int nSensorID);
+
+	// 根据传感器名称返回传感器信息
+	SENSOR_CONFIG_ELEMENT GetSensorInfo(std::string strSensorName);
 	
 	//获取传感器采样配置信息
 	const SENSOR_RECORD_INFO& GetSensorRecordInfo();
