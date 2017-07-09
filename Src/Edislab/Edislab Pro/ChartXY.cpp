@@ -59,9 +59,13 @@ ChartXY::ChartXY(HDC hDC)
 	, m_maxY(100)
 	, m_eChartType(E_CHART_LINE)
 	, m_eMouseArea(E_AREA_NULL)
-	, m_eMoveStyle(E_Y_SCROLL)
+	, m_eMoveStyle(E_X_SCROLL)
 	, m_eLineStyle(E_LINE_LINE)
+	, m_eOpeMode(E_OPE_DRAG)
 	, m_bMouseLBtn(false)
+	, m_bCheckVal(false)
+	, m_bQieLine(false)
+	, m_bStatistics(false)
 {
 	m_pDC = CDC::FromHandle(m_hDC);
 	m_pMemDC = NULL;
@@ -162,7 +166,7 @@ void ChartXY::paintEvent()
 		break;
 	}
 	DeleteObject(hMemBitmap);
-	BitBlt(m_hDC, 0, 0, m_size.cx, m_size.cy, m_pMemDC->m_hDC, 0, 0, SRCCOPY);
+	BitBlt(m_hDC, rc.left, rc.top, rc.Width(), rc.Height(), m_pMemDC->m_hDC, rc.left, rc.top, SRCCOPY);
 	//ReleaseDC(pMemDC);
 	m_pMemDC->DeleteDC();
 	delete m_pMemDC;
@@ -241,6 +245,7 @@ void ChartXY::mouseMoveEvent(CMeDPoint msPos)
 	case E_CHART_STRIP_ADD:
 	case E_CHART_AREA:
 		{
+			bool bPaint = false;
 			if(!m_bMouseLBtn)
 			{
 				if(m_recXAxes.PtInRect(m_oldMsPt))
@@ -259,7 +264,7 @@ void ChartXY::mouseMoveEvent(CMeDPoint msPos)
 					//setCursor(QCursor(Qt::OpenHandCursor));
 				}
 			}
-			if(m_bMouseLBtn)
+			if(m_bMouseLBtn&&E_OPE_DRAG==m_eOpeMode)
 			{
 				CMeDPoint xyOld = screen2xy(m_oldMsPt);
 				switch(m_eMouseArea)
@@ -320,6 +325,140 @@ void ChartXY::mouseMoveEvent(CMeDPoint msPos)
 					}
 					break;
 				}
+				bPaint = true;
+			}
+			//
+			m_vecQieLine.clear();
+			m_vecValQL.clear();
+			if (m_bQieLine || m_bCheckVal)
+			{
+				bPaint = true;
+				CMeDPoint mCPt = screen2xy(msPos);
+				std::vector<ChartXYData>& chartData = m_vecLineData;
+				int curIndex = 1;
+				m_dCkLineX = -99999999;
+				for (int i = 0; i < chartData.size(); ++i)
+				{
+					ChartXYData* pData = &(chartData[i]);
+					if (pData)
+					{
+						int id = pData->getID();
+						if (getVisible(id))
+						{
+							for (int v = 0; v < pData->getData().size(); ++v)
+							{
+								if (v == pData->getData().size())
+								{
+									curIndex = max(curIndex, v + 1);
+									m_dCkLineX = pData->getData()[v].x;
+									break;
+								}
+								if (mCPt.x > pData->getData()[v].x && mCPt.x < pData->getData()[v + 1].x)
+								{
+									if ((mCPt.x - pData->getData()[v].x) > (pData->getData()[v + 1].x - mCPt.x))
+									{
+										curIndex = max(curIndex, v + 2);
+										m_dCkLineX = pData->getData()[v + 1].x;
+									}
+									else
+									{
+										curIndex = max(curIndex, v + 1);
+										m_dCkLineX = pData->getData()[v].x;
+									}
+								}
+							}
+						}
+					}
+				}
+				//序号
+				char strNo[32];
+				sprintf(strNo, "序号:%d", curIndex);
+				m_vecValQL.push_back(strNo);
+				for (int i = 0; i < chartData.size(); ++i)
+				{
+					ChartXYData* pData = &(chartData[i]);
+					if (pData)
+					{
+						int id = pData->getID();
+						string strRow;
+
+						if (getVisible(id))
+						{
+							std::string name = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(id);
+							strRow = name + ":";
+							char str[256];
+							int size = static_cast<int>(pData->getData().size());
+							int index = curIndex - 1;
+							if (curIndex > size)
+							{
+								index = size - 1;
+							}
+							if (index >= 0)
+							{
+								if (m_bCheckVal)
+								{
+									sprintf(str, " %f  ", pData->getData()[index].y);
+									strRow += str;
+								}
+								//斜率
+								if (m_bQieLine&&pData->getData().size() > 1)
+								{
+									double rate = 0;
+									CMeDPoint pDelta, p1, p2;
+									CMeDPoint pCur = pData->getData()[index];
+									if (index == 0)
+									{
+										p1 = pData->getData()[index];
+										p2 = pData->getData()[1];
+										pDelta = pData->getData()[1] - pData->getData()[index];
+									}
+									else if (index == pData->getData().size() - 1)
+									{
+										p1 = pData->getData()[index-1];
+										p2 = pData->getData()[index];
+										pDelta = pData->getData()[index] - pData->getData()[index - 1];
+									}
+									else
+									{
+										p1 = pData->getData()[index - 1];
+										p2 = pData->getData()[index+1];
+										pDelta = pData->getData()[index + 1] - pData->getData()[index - 1];
+									}
+									if (pDelta.x != 0)
+									{
+										rate = pDelta.y / pDelta.x*1000;
+									}
+									else
+									{
+										rate = 9999999999;
+									}
+									sprintf(str, "斜率 %f", rate);
+									strRow += str;
+									p1 = xy2screen(p1);
+									p2 = xy2screen(p2);
+									pCur = xy2screen(pCur);
+									double len = sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2));
+									CMeDPoint sp, ep;
+									sp.x = (p1.x - p2.x) / len * 50+ pCur.x;
+									sp.y = (p1.y - p2.y) / len * 50 + pCur.x;
+									ep.x = -(p1.x - p2.x) / len * 50 + pCur.x;
+									ep.y = -(p1.y - p2.y) / len * 50 + pCur.x;
+									sp = screen2xy(sp);
+									ep = screen2xy(ep);
+									CMeLine ln;
+									ln.vecPts.push_back(sp);
+									ln.vecPts.push_back(ep);
+								}
+							}
+							m_vecValQL.push_back(strRow);
+						}
+
+					}
+				}
+			}
+			
+			if (bPaint)
+			{
 				paintEvent();
 			}
 		}
@@ -438,8 +577,8 @@ void ChartXY::showAll()
 				{
 					m_minX = min(lineData[v].x, m_minX);
 					m_minY = min(lineData[v].y, m_minY);
-					m_maxX = max(lineData[v].x, m_minX);
-					m_maxY = max(lineData[v].y, m_minY);
+					m_maxX = max(lineData[v].x, m_maxX);
+					m_maxY = max(lineData[v].y, m_maxY);
 				}
 			}
 		}
@@ -855,8 +994,9 @@ void ChartXY::drawAxesXY()
 }
 void ChartXY::drawLine()
 {
+	calcXYRange();
 	drawAxesXY();
-	if(!m_chartMgr)
+	if (!m_chartMgr)
 	{
 		//return;
 	}
@@ -869,28 +1009,145 @@ void ChartXY::drawLine()
 	rgn.CreateRectRgn(m_recView.left, m_recView.top, m_recView.right, m_recView.bottom);
 	m_pMemDC->SelectClipRgn(&rgn);
 	std::vector<ChartXYData>& chartData = m_vecLineData;
-	for(int i=0; i<chartData.size(); ++i)
+	for (int i = 0; i < chartData.size(); ++i)
 	{
 		ChartXYData* pData = &(chartData[i]);
-		if(pData)
+		if (pData)
 		{
 			int id = pData->getID();
-			if(getVisible(id))
+			if (getVisible(id))
 			{
 				CMeColor color = pData->getColor();
 				CPen penLine;
-				COLORREF col = RGB(color.getRed()*255, color.getGreen()*255, color.getBlue()*2255);
+				COLORREF col = RGB(color.getRed() * 255, color.getGreen() * 255, color.getBlue() * 2255);
 				penLine.CreatePen(PS_SOLID, lineWidth, col);
 				m_pMemDC->SelectObject(&penLine);
 				const vector<CMeDPoint>& lineData = pData->getData();
-				for(int v = 1; v<lineData.size(); ++v)
+				for (int v = 1; v < lineData.size(); ++v)
 				{
-					CMeDPoint pt1 = xy2screen(lineData[v-1]);
+					CMeDPoint pt1 = xy2screen(lineData[v - 1]);
 					CMeDPoint pt2 = xy2screen(lineData[v]);
-					m_pMemDC->MoveTo(pt1);
-					m_pMemDC->LineTo(pt2);
+					switch (m_eLineStyle)
+					{
+					case E_LINE_DOT:
+						if (v == 1)
+						{
+							m_pMemDC->Ellipse(pt1.x - 1, pt1.y - 1, pt1.x + 1, pt1.y + 1);
+						}
+						m_pMemDC->Ellipse(pt2.x - 1, pt2.y - 1, pt2.x + 1, pt2.y + 1);
+						break;
+					case E_LINE_LINE:
+						m_pMemDC->MoveTo(pt1);
+						m_pMemDC->LineTo(pt2);
+						break;
+					case E_LINE_DOT_LINE:
+						m_pMemDC->MoveTo(pt1);
+						m_pMemDC->LineTo(pt2);
+						if (v == 1)
+						{
+							m_pMemDC->Ellipse(pt1.x - 1, pt1.y - 1, pt1.x + 1, pt1.y + 1);
+						}
+						m_pMemDC->Ellipse(pt2.x - 1, pt2.y - 1, pt2.x + 1, pt2.y + 1);
+						break;
+					default:
+						break;
+					}
+
 				}
 			}
+		}
+	}
+	//切线和检查
+	CPen penLine;
+	COLORREF col = RGB(0, 0, 0);
+	penLine.CreatePen(PS_SOLID, 2, col);
+	m_pMemDC->SelectObject(&penLine);
+	for (int i = 0; i < m_vecQieLine.size(); ++i)
+	{
+
+		CMeLine ln = m_vecQieLine[i];
+		if (ln.vecPts.size() > 1)
+		{
+			for (int v = 0; v < ln.vecPts.size(); ++v)
+			{
+				CMeDPoint pt = xy2screen(ln.vecPts[v]);
+				if (0 == v)
+				{
+					m_pMemDC->MoveTo(pt);
+				}
+				else
+				{
+					m_pMemDC->LineTo(pt);
+				}
+			}
+		}
+	}
+	CFont font;
+	font.CreatePointFont(90, _T("Arial"));
+	CFont* oldFont = m_pMemDC->SelectObject(&font);
+	CSize chSize = m_pMemDC->GetTextExtent(_T("8"));
+	int hei = static_cast<int>((chSize.cy + 2)*m_vecValQL.size());
+	CRect rcQ(m_size.cx - 255 - 3, 5, m_size.cx - 5, hei + 5);
+	m_pMemDC->FillSolidRect(rcQ, RGB(255, 255, 255));
+	for (int i = 0; i < m_vecValQL.size(); ++i)
+	{
+		CString str;
+		str.Format(_T("%s"), m_vecValQL[i]);
+		m_pMemDC->TextOut(rcQ.left, rcQ.top + (chSize.cy + 2)*i, str);
+	}
+	//统计
+	if (m_bStatistics)
+	{
+		vector<string> vecStr;
+		for (int i = 0; i < chartData.size(); ++i)
+		{
+			ChartXYData* pData = &(chartData[i]);
+			if (pData)
+			{
+				int id = pData->getID();
+				string strRow;
+				if (getVisible(id)&&pData->getData().size())
+				{
+					std::string name = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(id);
+					vecStr.push_back("");
+					vecStr.push_back(name);
+					char str[256];
+					double minV(999999999), maxV(-9999999999), total(0);
+					int indexMin(0), indexMax(0);
+					int cnt = 0;
+					for each(CMeDPoint pt in pData->getData())
+					{
+						++cnt;
+						total += pt.y;
+						if (minV > pt.y)
+						{
+							minV = pt.y;
+							indexMin = cnt;
+						}
+						if (maxV < pt.y)
+						{
+							maxV = pt.y;
+							indexMax = cnt;
+						}
+					}
+					double avg = total / pData->getData().size();
+					sprintf(str, "最小:%f 序号:%d", minV, indexMin);
+					vecStr.push_back(str);
+					sprintf(str, "最大:%f 序号:%d", maxV, indexMax);
+					vecStr.push_back(str);
+					sprintf(str, "共%d点，平均:%f", pData->getData().size(), avg);
+					vecStr.push_back(str);
+				}
+			}
+		}
+		int hei = static_cast<int>((chSize.cy + 2)*vecStr.size());
+		CRect rcS(m_size.cx - 255 - 3, rcQ.bottom, m_size.cx - 5, hei + rcQ.bottom);
+		m_pMemDC->FillSolidRect(rcS, RGB(255, 255, 255));
+		for (int i = 0; i < vecStr.size(); ++i)
+		{
+			CString str;
+			str.Format(_T("%s"), vecStr[i]);
+			m_pMemDC->TextOut(rcS.left, rcS.top + (chSize.cy + 2)*i, str);
 		}
 	}
 	m_pMemDC->SelectObject(oldPen);
@@ -1038,5 +1295,67 @@ void ChartXY::updateData(CGlobalDataManager* dbMgr)
 	//end modify by xiaowei.han
 	refreshData();
 	paintEvent();
+}
+void ChartXY::calcXYRange()
+{
+	switch (m_eMoveStyle)
+	{
+	case E_X_HANDLE:
+		break;
+	case E_X_SCROLL:
+	{
+		double xRange = m_maxX - m_minX;
+		std::vector<ChartXYData>& chartData = m_vecLineData;//m_chartMgr->getChartData();
+		double minX(DBL_MAX), maxX(-DBL_MAX);
+		for (int i = 0; i < chartData.size(); ++i)
+		{
+			ChartXYData* pData = &chartData[i];
+			if (pData)
+			{
+				int id = pData->getID();
+				if (getVisible(id))
+				{
+					const vector<CMeDPoint>& lineData = pData->getData();
+					for (int v = 0; v < lineData.size(); ++v)
+					{
+						minX = min(lineData[v].x, minX);
+						maxX = max(lineData[v].x, maxX);
+					}
+				}
+			}
+		}
+		if (maxX > m_maxX)
+		{
+			m_maxX = maxX;
+			minX = m_maxX - xRange;
+		}
+	}
+	break;
+	case E_X_SHOWALL:
+	{
+		std::vector<ChartXYData>& chartData = m_vecLineData;//m_chartMgr->getChartData();
+		for (int i = 0; i < chartData.size(); ++i)
+		{
+			ChartXYData* pData = &chartData[i];
+			if (pData)
+			{
+				int id = pData->getID();
+				if (getVisible(id))
+				{
+					const vector<CMeDPoint>& lineData = pData->getData();
+					for (int v = 0; v < lineData.size(); ++v)
+					{
+						m_minX = min(lineData[v].x, m_minX);
+						m_minY = min(lineData[v].y, m_minY);
+						m_maxX = max(lineData[v].x, m_minX);
+						m_maxY = max(lineData[v].y, m_minY);
+					}
+				}
+			}
+		}
+	}
+	break;
+	}
+	
 }
 #pragma warning(pop)

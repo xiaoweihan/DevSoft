@@ -25,6 +25,7 @@ public:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnSizing(UINT fwSide, LPRECT pRect);
 
+	void NextColumn();
 	void setRange(double min, double max);
 	void getRange(double& min, double& max);
 	void setWarningValue(double min, double max);

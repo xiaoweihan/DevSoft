@@ -881,7 +881,7 @@ void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageI
 	if (NULL != pOptionPanel)
 	{
 #ifdef HAVE_PICTURE
-		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OPTION, _T("选项"), m_RibbonDevicePageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDevicePageSmallBitmap.ExtractIcon(nBaseImageIndex));
+		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_DEVICE_OPTION, _T("选项"), m_RibbonDevicePageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDevicePageSmallBitmap.ExtractIcon(nBaseImageIndex));
 		++nBaseImageIndex;
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OPTION, _T("选项"),1,1);
@@ -903,7 +903,7 @@ void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageI
 		{
 			pBtn->SetToolTipText(_T("数值风格"));
 			pBtn->SetAlwaysLargeImage ();
-			pOptionPanel->Add(pBtn);
+			//pOptionPanel->Add(pBtn);
 		}
 
 #ifdef HAVE_PICTURE
@@ -916,7 +916,7 @@ void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageI
 		{
 			pBtn->SetToolTipText(_T("表盘风格"));
 			pBtn->SetAlwaysLargeImage ();
-			pOptionPanel->Add(pBtn);
+			//pOptionPanel->Add(pBtn);
 		}
 
 
@@ -1262,7 +1262,7 @@ void CMainFrame::AddDiagramOptionPanel( CBCGPRibbonCategory* pCategory,int& nBas
 	if (NULL != pDiagramOptionPanel)
 	{
 #ifdef HAVE_PICTURE
-		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OPTION, _T("选项"), m_RibbonDiagramPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDiagramPageSmallBitmap.ExtractIcon(nBaseImageIndex));
+		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_CHART_OPTION, _T("选项"), m_RibbonDiagramPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDiagramPageSmallBitmap.ExtractIcon(nBaseImageIndex));
 		++nBaseImageIndex;
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OPTION, _T("选项"),0,0);

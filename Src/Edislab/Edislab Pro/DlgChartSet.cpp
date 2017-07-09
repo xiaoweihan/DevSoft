@@ -23,7 +23,7 @@ DlgChartSet::DlgChartSet(CWnd* pParent /*=NULL*/)
 	m_nXID = -1;
 	m_eChartType = E_CHART_LINE;
 	m_eLineStyle = E_LINE_LINE;
-	m_eMoveStyle = E_Y_SCROLL;
+	m_eMoveStyle = E_X_HANDLE;
 	m_treeY.m_bVisualManagerStyle = TRUE;
 
 }
@@ -115,11 +115,11 @@ BOOL DlgChartSet::OnInitDialog()
 	}
 	//实验时
 	int index = m_combMoveStyle.AddString(_T("横轴翻页"));
-	m_combMoveStyle.SetItemData(index, E_Y_SCROLL);
+	m_combMoveStyle.SetItemData(index, E_X_SCROLL);
 	index = m_combMoveStyle.AddString(_T("横轴全显"));
-	m_combMoveStyle.SetItemData(index, E_Y_SHOWALL);
+	m_combMoveStyle.SetItemData(index, E_X_SHOWALL);
 	index = m_combMoveStyle.AddString(_T("手动"));
-	m_combMoveStyle.SetItemData(index, E_Y_HANDLE);
+	m_combMoveStyle.SetItemData(index, E_X_HANDLE);
 	for(int i=0; i<m_combMoveStyle.GetCount(); ++i)
 	{
 		if(m_eMoveStyle==static_cast<int>(m_combMoveStyle.GetItemData(i)))
@@ -173,7 +173,7 @@ void DlgChartSet::OnBnClickedOk()
 	m_nXID = nID;
 	//实验时
 	index = m_combMoveStyle.GetCurSel();
-	m_eMoveStyle = E_Y_SCROLL;
+	m_eMoveStyle = E_X_SCROLL;
 	if(index>=0)
 	{
 		m_eMoveStyle = MoveStyle(static_cast<int>(m_combMoveStyle.GetItemData(index)));

@@ -110,3 +110,7 @@ struct CMeDPoint
 	double x;
 	double y;
 };
+struct CMeLine
+{
+	std::vector<CMeDPoint> vecPts;
+};

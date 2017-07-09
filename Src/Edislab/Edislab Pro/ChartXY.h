@@ -50,9 +50,13 @@ enum LineStyle{
 	E_LINE_DOT_LINE,
 };
 enum MoveStyle{
-	E_Y_SCROLL,
-	E_Y_SHOWALL,
-	E_Y_HANDLE,
+	E_X_SCROLL,
+	E_X_SHOWALL,
+	E_X_HANDLE,
+};
+enum OperateMode {
+	E_OPE_DRAG,
+	E_OPE_SELECT,
 };
 class ChartXY
 {
@@ -130,12 +134,47 @@ public:
 	void setMoveStyle(MoveStyle e) { m_eMoveStyle = e; }
 	ChartType getChartType() { return m_eChartType; }
 	void setChartType(ChartType e) { m_eChartType = e; }
-
+	void setOperateMode(OperateMode e) {
+		m_eOpeMode = e;
+	}
+	OperateMode getOperateMode() {
+		return m_eOpeMode;
+	}
+	void setCheckVal(bool v) {
+		m_bCheckVal = v;
+	}
+	bool getCheckVal() {
+		return m_bCheckVal;
+	}
+	void setQieXian(bool v)
+	{
+		m_bQieLine = v;
+	}
+	bool getQieXian()
+	{
+		return m_bQieLine;
+	}
+	void setStatistics(bool v)
+	{
+		m_bStatistics = v;
+	}
+	bool getStatistics()
+	{
+		return m_bStatistics;
+	}
+	void calcXYRange();
 private:
 	ChartType m_eChartType;
 	MoveStyle m_eMoveStyle;
 	LineStyle m_eLineStyle;
+	OperateMode m_eOpeMode;
 	CRect m_recView;
+	bool m_bCheckVal;
+	bool m_bQieLine;
+	double m_dCkLineX;
+	std::vector<std::string> m_vecValQL;
+	std::vector<CMeLine> m_vecQieLine;
+	bool m_bStatistics;
 	//·¶Î§
 	double m_minX;
 	double m_maxX;

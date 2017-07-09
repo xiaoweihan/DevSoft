@@ -24,6 +24,8 @@
 #include "SerialPortService.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
+#include "ChartFigureDlg.h"
+#include "GaugeDlg.h"
 //最大页面数
 const int MAX_PAGE_NUM = 4;
 //表格的最大个数
@@ -116,6 +118,38 @@ void HandleGridPrintPreview(CEdislabProView* pView);
 
 //数据配置
 void HandleDataSetting(CEdislabProView* pView);
+
+//图表
+
+void HandleChartOption(CEdislabProView* pView);
+void HandleChartOperateDrag(CEdislabProView* pView);
+void UpdateChartOperateDrag(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartOperateSelect(CEdislabProView* pView);
+void UpdateChartOperateSelect(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartScreenScrollAuto(CEdislabProView* pView);
+void UpdateChartScreenScrollAuto(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartScreenZoomAuto(CEdislabProView* pView);
+void UpdateChartScreenZoomAuto(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartScreenHand(CEdislabProView* pView);
+void UpdateChartScreenHand(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartLineL(CEdislabProView* pView);
+void UpdateChartLineL(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartLineD(CEdislabProView* pView);
+void UpdateChartLineD(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartLineLD(CEdislabProView* pView);
+void UpdateChartLineLD(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartShowAll(CEdislabProView* pView);
+void HandleChartZoomOut(CEdislabProView* pView);
+void HandleChartZoomIn(CEdislabProView* pView);
+void HandleChartCheck(CEdislabProView* pView);
+void UpdateChartCheck(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartQieXian(CEdislabProView* pView);
+void UpdateChartQieXian(CEdislabProView* pView, CCmdUI* pCmdUI);
+void HandleChartStatistics(CEdislabProView* pView);
+void UpdateChartStatistics(CEdislabProView* pView, CCmdUI* pCmdUI);
+//device
+void HandleDeviceOption(CEdislabProView* pView);
+void HandleDeviceNextColumn(CEdislabProView* pView);
 
 CCommandEntry& CCommandEntry::CreateInstance( void )
 {
@@ -224,6 +258,27 @@ void CCommandEntry::InitCommandEntry( void )
 
 	//数据配置
 	m_CommandEntryMap[ID_CONFIG_DATA] = HandleDataSetting;
+
+	//chart
+	m_CommandEntryMap[ID_CHART_OPTION] = HandleChartOption;
+	m_CommandEntryMap[ID_DRAG_MODE] = HandleChartOperateDrag;
+	m_CommandEntryMap[ID_SELECT_MODE] = HandleChartOperateSelect;
+	m_CommandEntryMap[ID_AUTO_SCROLL] = HandleChartScreenScrollAuto;
+	m_CommandEntryMap[ID_AUTO_ZOOM] = HandleChartScreenZoomAuto;
+	m_CommandEntryMap[ID_NO_SCROLL] = HandleChartScreenHand;
+	m_CommandEntryMap[ID_LINE] = HandleChartLineL;
+	m_CommandEntryMap[ID_POINT] = HandleChartLineD;
+	m_CommandEntryMap[ID_POINT_TO_LINE] = HandleChartLineLD;
+	m_CommandEntryMap[ID_100_PERCENT] = HandleChartShowAll;
+	m_CommandEntryMap[ID_ZOOM_OUT] = HandleChartZoomOut;
+	m_CommandEntryMap[ID_ZOOM_IN] = HandleChartZoomIn;
+	m_CommandEntryMap[ID_VIEW] = HandleChartCheck;
+	m_CommandEntryMap[ID_TANGENT] = HandleChartQieXian;
+	m_CommandEntryMap[ID_STATISTICS] = HandleChartStatistics;
+
+	//DEVICE
+	m_CommandEntryMap[ID_DEVICE_OPTION]		= HandleDeviceOption;
+	m_CommandEntryMap[ID_NEXT_DATA_COLUMN]	= HandleDeviceNextColumn;
 }
 
 /*****************************************************************************
@@ -251,6 +306,19 @@ void CCommandEntry::InitUpdateCommandEntry( void )
 	//m_UpdateCommandEntryMap[ID_START] = UpdateHandleStart;
 	m_UpdateCommandEntryMap[ID_MANUAL_SELECT] = UpdateHandleManualSelect;
 	m_UpdateCommandEntryMap[ID_AUTO_SELECT] = UpdateHandleAutoSelect;
+
+	m_UpdateCommandEntryMap[ID_DRAG_MODE] = UpdateChartOperateDrag;
+	m_UpdateCommandEntryMap[ID_SELECT_MODE] = UpdateChartOperateSelect;
+	m_UpdateCommandEntryMap[ID_AUTO_SCROLL] = UpdateChartScreenScrollAuto;
+	m_UpdateCommandEntryMap[ID_AUTO_ZOOM] = UpdateChartScreenZoomAuto;
+	m_UpdateCommandEntryMap[ID_NO_SCROLL] = UpdateChartScreenHand;
+	m_UpdateCommandEntryMap[ID_LINE] = UpdateChartLineL;
+	m_UpdateCommandEntryMap[ID_POINT] = UpdateChartLineD;
+	m_UpdateCommandEntryMap[ID_POINT_TO_LINE] = UpdateChartLineLD;
+	m_UpdateCommandEntryMap[ID_VIEW] = UpdateChartCheck;
+	m_UpdateCommandEntryMap[ID_TANGENT] = UpdateChartQieXian;
+	m_UpdateCommandEntryMap[ID_STATISTICS] = UpdateChartStatistics;
+
 }
 
 /*****************************************************************************
@@ -1110,5 +1178,613 @@ void HandleDataSetting( CEdislabProView* pView )
 	if (IDOK == Dlg.DoModal())
 	{
 
+	}
+}
+
+void HandleChartOption(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->ChartSet();
+				}
+			}
+		}
+	}
+}
+
+void HandleChartOperateDrag(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setOperateMode(E_OPE_DRAG);
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartOperateDrag(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = (dlg->m_charxy->getOperateMode() == E_OPE_DRAG);
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartOperateSelect(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setOperateMode(E_OPE_SELECT);
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartOperateSelect(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = (dlg->m_charxy->getOperateMode() == E_OPE_SELECT);
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartScreenScrollAuto(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setMoveStyle(E_X_SCROLL);
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartScreenScrollAuto(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = (dlg->m_charxy->getMoveStyle() == E_X_SCROLL);
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartScreenZoomAuto(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setMoveStyle(E_X_SHOWALL);
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartScreenZoomAuto(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = (dlg->m_charxy->getMoveStyle() == E_X_SHOWALL);
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartScreenHand(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setMoveStyle(E_X_HANDLE);
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartScreenHand(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = (dlg->m_charxy->getMoveStyle() == E_X_HANDLE);
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartLineL(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setLineStyle(E_LINE_LINE);
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartLineL(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = (dlg->m_charxy->getLineStyle() == E_LINE_LINE);
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartLineD(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setLineStyle(E_LINE_DOT);
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartLineD(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = (dlg->m_charxy->getLineStyle() == E_LINE_DOT);
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartLineLD(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setLineStyle(E_LINE_DOT_LINE);
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartLineLD(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = (dlg->m_charxy->getLineStyle() == E_LINE_DOT_LINE);
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartShowAll(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->showAll();
+				}
+			}
+		}
+	}
+}
+
+void HandleChartZoomOut(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->ZoomOut(CMeDPoint(0, 0));
+				}
+			}
+		}
+	}
+}
+
+void HandleChartZoomIn(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->zoomIn(CMeDPoint(0, 0));
+				}
+			}
+		}
+	}
+}
+
+void HandleChartCheck(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setCheckVal(!dlg->m_charxy->getCheckVal());
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartCheck(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = dlg->m_charxy->getCheckVal();
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartQieXian(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setQieXian(!dlg->m_charxy->getQieXian());
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartQieXian(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = dlg->m_charxy->getQieXian();
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+
+void HandleChartStatistics(CEdislabProView * pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->m_charxy->setStatistics(!dlg->m_charxy->getStatistics());
+				}
+			}
+		}
+	}
+}
+
+void UpdateChartStatistics(CEdislabProView * pView, CCmdUI * pCmdUI)
+{
+	bool bCheck = false;
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				ChartFigureDlg* dlg = dynamic_cast<ChartFigureDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					bCheck = dlg->m_charxy->getStatistics();
+				}
+			}
+		}
+	}
+	pCmdUI->SetCheck(bCheck);
+}
+void HandleDeviceOption(CEdislabProView* pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				GaugeDlg* dlg = dynamic_cast<GaugeDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->OnGaugeSet();
+				}
+			}
+		}
+	}
+}
+void HandleDeviceNextColumn(CEdislabProView* pView)
+{
+	if (pView)
+	{
+		CDlgTabPanel* pTabPanel = pView->GetCurrentPage();
+		if (nullptr != pTabPanel)
+		{
+			//获取TabPanel中的活动窗口
+			CWnd* pActiveWnd = pTabPanel->GetActiveDlg();
+			if (nullptr != pActiveWnd)
+			{
+				GaugeDlg* dlg = dynamic_cast<GaugeDlg*>(pActiveWnd);
+				if (dlg)
+				{
+					dlg->NextColumn();
+				}
+			}
+		}
 	}
 }

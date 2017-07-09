@@ -20,7 +20,7 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV Ö§³Ö
 public:
 	ChartXY* m_charxy;
-
+	CPoint m_ptContext;
 	void setChartMgr(ChartManager* mgr);
 	const ChartManager* getChartMgr();
 
@@ -30,6 +30,8 @@ public:
 	int readData();
 
 	void updateData(class CGlobalDataManager* dbMgr) const;
+
+	void ChartSet();
 public:
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);

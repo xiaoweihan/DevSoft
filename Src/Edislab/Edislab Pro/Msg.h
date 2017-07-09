@@ -162,6 +162,7 @@ enum COMMAND
 	//选项
 	ID_OPTION,
 
+	ID_DEVICE_OPTION,
 	//数值风格
 	ID_NUM_STYLE,
 
@@ -210,6 +211,7 @@ enum COMMAND
 	//打印预览
 	ID_PRINT_PREVIEW,
 
+	ID_CHART_OPTION,
 	//拖动模式
 	ID_DRAG_MODE,
 

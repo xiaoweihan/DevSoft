@@ -24,6 +24,7 @@ GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(GaugeDlg::IDD, pParent),
 	m_bActiveFlag(FALSE)
 {
+	dataColumnID = -1;
 	enableWarning = false;
 	minRange = 0.0;
 	maxRange = 200.0;
@@ -279,7 +280,37 @@ void GaugeDlg::OnGaugeSet()
 		updateData(NULL);
 	}
 }
-
+void GaugeDlg::NextColumn()
+{
+	std::vector<std::string> SensorNameArray;
+	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray, false);
+	bool bIs = false;
+	bool bFind = false;
+	for (int i = 0; i < (int)SensorNameArray.size(); ++i)
+	{
+		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
+		if (dataColumnID == nSensorID)
+		{
+			bIs = true;
+		}
+		if (bIs)
+		{
+			dataColumnID = nSensorID;
+			bFind = true;
+			break;
+		}
+	}
+	if (!bFind)
+	{
+		for (int i = 0; i < (int)SensorNameArray.size(); ++i)
+		{
+			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
+			dataColumnID = nSensorID;
+			break;
+		}
+	}
+	updateData(NULL);
+}
 
 void GaugeDlg::OnGaugeDelete()
 {
@@ -452,6 +483,10 @@ void GaugeDlg::OnTimer(UINT_PTR nIDEvent)
 	//更新数据
 	if (TIMER_GAUGE_EVENT == nIDEvent)
 	{
+		if (dataColumnID < 0)
+		{
+			NextColumn();
+		}
 		updateData(NULL);
 	}
 	CBaseDialog::OnTimer(nIDEvent);

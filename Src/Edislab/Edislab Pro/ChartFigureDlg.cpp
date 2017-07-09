@@ -244,6 +244,10 @@ void ChartFigureDlg::updateData(CGlobalDataManager* dbMgr) const
 		return m_charxy->updateData(dbMgr);
 	}
 }
+void ChartFigureDlg::ChartSet()
+{
+	OnChartSet();
+}
 //±£´æÊý¾Ý
 int ChartFigureDlg::saveData()const
 {
@@ -265,6 +269,8 @@ void ChartFigureDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 	{
 		pContexMenuManager->ShowPopupMenu(IDR_MENU_CHART,point.x,point.y,pWnd,TRUE);
 	}	
+	ScreenToClient(&point);
+	m_ptContext = point;
 }
 
 
@@ -316,19 +322,29 @@ void ChartFigureDlg::OnChartDel()
 
 void ChartFigureDlg::OnChartZoomIn()
 {
-	// TODO: Add your command handler code here
+	if (m_charxy)
+	{
+		m_charxy->zoomIn(m_ptContext);
+	}
 }
 
 
 void ChartFigureDlg::OnChartZoomOut()
 {
-	// TODO: Add your command handler code here
+	if (m_charxy)
+	{
+		m_charxy->ZoomOut(m_ptContext);
+	}
 }
 
 
 void ChartFigureDlg::OnChartShowAll()
 {
 	// TODO: Add your command handler code here
+	if (m_charxy)
+	{
+		m_charxy->showAll();
+	}
 }
 
 
