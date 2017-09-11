@@ -330,6 +330,12 @@
     <ClInclude Include="DlgColumnCommon.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="SensorManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SensorTypeTable.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Edislab Pro.cpp">
@@ -504,6 +510,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="DlgColumnCommon.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SensorTypeTable.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

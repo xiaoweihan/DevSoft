@@ -6,6 +6,7 @@
 #include <boost/thread/lock_guard.hpp>
 #include <boost/thread/shared_lock_guard.hpp>
 #include <boost/function.hpp>
+#include <algorithm>
 #include "Macro.h"
 class CSplitBar;
 class CEdislabProView;
@@ -238,13 +239,47 @@ typedef boost::lock_guard<boost::mutex> WriteLock;
 //传感器类型
 typedef struct _sensor_type_info_element
 {
+#ifndef NEW_VERSION
+	//传感器名称
 	std::string strSensorName;
+	//传感器编号唯一提前预置好
 	int nSensorID;
 	_sensor_type_info_element(void)
 	{
 		strSensorName = "";
 		nSensorID = -1;
 	}
+
+	bool operator== (const _sensor_type_info_element& CpValue) const
+	{
+
+		return (std::equal_to<int>()(nSensorID,CpValue.nSensorID))
+	}
+#else
+	//传感器名称
+	std::string strSensorName;
+	//传感器编号唯一提前预置好
+	int nSensorID;
+	//传感器的串行号防止多个传感器
+	int nSensorSerialID;
+	_sensor_type_info_element(void)
+	{
+		strSensorName = "";
+		nSensorID = -1;
+		nSensorSerialID = 0;
+	}
+	_sensor_type_info_element(const std::string& strSensorName,int nSensorID,int nSensorSerialID)
+	{
+		this->strSensorName = strSensorName;
+		this->nSensorSerialID = nSensorSerialID;
+		this->nSensorID = nSensorID;
+	}
+
+	bool operator== (const _sensor_type_info_element& CpValue) const
+	{
+		return ((std::equal_to<int>()(nSensorID,CpValue.nSensorID)) && (std::equal_to<int>()(nSensorSerialID,CpValue.nSensorSerialID)));
+	}
+#endif
 }SENSOR_TYPE_INFO_ELEMENT,* LP_SENSOR_TYPE_INFO_ELEMENT;
 
 //函数指针定义
@@ -252,7 +287,8 @@ typedef void (*pCommandEntry)(CEdislabProView* pView);
 //更新函数指针定义
 typedef void (*pUpdateCommandEntry)(CEdislabProView* pView,CCmdUI* pCmdUI);
 
-enum RECORD_TYPE{
+enum RECORD_TYPE
+{
 	FIXED_FREQUENCY_RC_TYPE,
 	PHOTO_GATE_RC_TYPE,
 	TRIGER_RC_TYPE,
