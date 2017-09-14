@@ -51,17 +51,17 @@ public:
 	void StopSerialPortService(void);
 
 	//开始采集命令
-	void StartSensorCollect(const std::string& strSensorName);
+	//void StartSensorCollect(const std::string& strSensorName);
 
 	void StartSensorCollect(int nSensorTypeID,int nSensorSeqID);
 
 	//停止采集
-	void StopSensorCollect(const std::string& strSensorName);
+	//void StopSensorCollect(const std::string& strSensorName);
 
 	void StopSensorCollect(int nSensorTypeID,int nSensorSeqID);
 
 	//设置上报周期
-	void SetSensorFrequence(const std::string& strSensorName,int nMillSecond);
+	//void SetSensorFrequence(const std::string& strSensorName,int nMillSecond);
 
 	void SetSensorFrequence(int nSensorTypeID,int nSensorSeqID,int nMillSecond);
 private:

@@ -16,12 +16,15 @@ Version:1.0
 #include <iterator>
 #include "SensorTypeTable.h"
 const std::string DEFAULT_TIME_NAME = "t(s)时间";
+const int SPECIAL_SENSOR_TYPE_ID = 10000;
 CSensorManager::CSensorManager(void)
 {
 	m_SensorInfoArray.clear();
-	//提前预置办
+	//提前预置
 	SENSOR_TYPE_INFO_ELEMENT SensorElement;
 	SensorElement.strSensorName = DEFAULT_TIME_NAME;
+	SensorElement.nSensorID = SPECIAL_SENSOR_TYPE_ID;
+	SensorElement.nSensorSerialID = 0;
 	m_SensorInfoArray.push_back(SensorElement);
 
 }
@@ -192,7 +195,7 @@ Author:xiaowei.han
 *********************************************************/
 SENSOR_TYPE_KEY CSensorManager::GetSpecialSensorID(void)
 {
-	return SENSOR_TYPE_KEY();
+	return SENSOR_TYPE_KEY(SPECIAL_SENSOR_TYPE_ID,0);
 }
 
 /*********************************************************
@@ -205,7 +208,7 @@ Author:xiaowei.han
 *********************************************************/
 bool CSensorManager::IsSpecialSensorID(const SENSOR_TYPE_KEY& SensorKeyID)
 {
-	if (SensorKeyID.nSensorID < 0 && SensorKeyID.nSensorSerialID < 0)
+	if (SensorKeyID.nSensorID == SPECIAL_SENSOR_TYPE_ID)
 	{
 		return true;
 	}

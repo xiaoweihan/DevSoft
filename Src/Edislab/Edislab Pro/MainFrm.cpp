@@ -7,7 +7,7 @@
 #include "MainFrm.h"
 #include "Edislab ProView.h"
 #include <string>
-#include <boost/format.hpp>
+#include <boost/checked_delete.hpp>
 #include "Msg.h"
 #include "Utility.h"
 #include "SerialPortService.h"
@@ -16,7 +16,6 @@
 #include "GridColumnGroupManager.h"
 #include "SensorIDGenerator.h"
 #include "Type.h"
-#include "SensorTypeTable.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -1976,48 +1975,35 @@ void CMainFrame::ShowRibbonCatagory( CBCGPRibbonCategory* pCatagory,bool bShow /
 
 LRESULT CMainFrame::NotifyDeviceOnOrOff( WPARAM wp,LPARAM lp )
 {
-	LP_SENSOR_TYPE_KEY pSensorInfo = (LP_SENSOR_TYPE_KEY)wp;
+	LP_SENSOR_TYPE_INFO_ELEMENT pSensorInfo = (LP_SENSOR_TYPE_INFO_ELEMENT)wp;
 	int nOnFlag = (int)lp;
 	if (nullptr == pSensorInfo)
 	{
 		return 0L;
 	}
-	SENSOR_TYPE_KEY KeyElement(pSensorInfo->nSensorID,pSensorInfo->nSensorSerialID);
+	SENSOR_TYPE_INFO_ELEMENT KeyElement(pSensorInfo->strSensorName,pSensorInfo->nSensorID,pSensorInfo->nSensorSerialID);
 	//释放内存
-	delete pSensorInfo;
-	pSensorInfo = nullptr;
-
-	//根据设备ID获取设备名称
-	std::string strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(KeyElement.nSensorID);
-	
-	//组装设备名称
-	boost::format FT("%1%_%2%");
-
-	if (KeyElement.nSensorSerialID > 0)
-	{
-		FT % strSensorName % KeyElement.nSensorSerialID;
-		strSensorName = FT.str();
-	}
+	boost::checked_delete(pSensorInfo);
 	//设备上线
 	if (nOnFlag)
-	{
+	{	
 		COLUMN_INFO AddColumnInfo;
 		AddColumnInfo.strColumnName = _T("t(s)时间");
 		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
 		AddColumnInfo.Reset();
-		AddColumnInfo.strColumnName = CString(strSensorName.c_str());
+		AddColumnInfo.strColumnName = CString(KeyElement.strSensorName.c_str());
 		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
 	}
 	//设备下线
 	else
 	{
-		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"),CString(strSensorName.c_str()));
+		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"),CString(KeyElement.strSensorName.c_str()));
 	}
 	//获取设备名称
 	CEdislabProView* pView = CEdislabProView::GetCurrentView();
 	if (nullptr != pView)
 	{
-		pView->NotifyDetectDevice(strSensorName,nOnFlag);
+		pView->NotifyDetectDevice(KeyElement.strSensorName,nOnFlag);
 	}
 	return 0L;
 }

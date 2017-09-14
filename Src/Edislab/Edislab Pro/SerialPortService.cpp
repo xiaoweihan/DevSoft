@@ -5,12 +5,14 @@
 #include <boost/thread.hpp>
 #include <boost/date_time/posix_time/ptime.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/format.hpp>
 #include "Log.h"
 #include "SensorManager.h"
 #include "SensorDataManager.h"
 #include "SensorData.h"
 #include "Utility.h"
 #include "Msg.h"
+#include "SensorTypeTable.h"
 //接收缓冲区的大小(1MB)
 const int MAX_BUFFER_SIZE = (1 << 20);
 //发送指令的缓冲区大小
@@ -87,7 +89,7 @@ void CSerialPortService::StopSerialPortService(void)
 	
 }
 
-
+#if 0
 void CSerialPortService::StartSensorCollect( const std::string& strSensorName )
 {
 	if (strSensorName.empty())
@@ -112,6 +114,7 @@ void CSerialPortService::StartSensorCollect( const std::string& strSensorName )
 
 	AsyncWriteData(pData,nTotalLength);
 }
+#endif
 
 void CSerialPortService::StartSensorCollect(int nSensorTypeID,int nSensorSeqID)
 {
@@ -129,6 +132,7 @@ void CSerialPortService::StartSensorCollect(int nSensorTypeID,int nSensorSeqID)
 	AsyncWriteData(pData,COMMAND_BUFFER_SIZE);
 }
 
+#if 0
 void CSerialPortService::StopSensorCollect( const std::string& strSensorName )
 {
 	if (strSensorName.empty())
@@ -152,6 +156,7 @@ void CSerialPortService::StopSensorCollect( const std::string& strSensorName )
 	
 	AsyncWriteData(pData,nTotalLength);
 }
+#endif
 
 void CSerialPortService::StopSensorCollect(int nSensorTypeID,int nSensorSeqID)
 {
@@ -169,6 +174,7 @@ void CSerialPortService::StopSensorCollect(int nSensorTypeID,int nSensorSeqID)
 	AsyncWriteData(pData,COMMAND_BUFFER_SIZE);
 }
 
+#if 0
 void CSerialPortService::SetSensorFrequence( const std::string& strSensorName,int nMillSecond )
 {
 	if (strSensorName.empty())
@@ -196,6 +202,7 @@ void CSerialPortService::SetSensorFrequence( const std::string& strSensorName,in
 
 	AsyncWriteData(pSendBuffer,nMsgLength);
 }
+#endif
 
 void CSerialPortService::SetSensorFrequence(int nSensorTypeID,int nSensorSeqID,int nMillSecond)
 {
@@ -278,14 +285,26 @@ int CSerialPortService::HandlerData(BYTE* pData, int nDataLength)
 
 				if (nSensorSeqID >= 0 && nSensorTypeID >= 0)
 				{
-					LP_SENSOR_TYPE_KEY pSensorInfo = new SENSOR_TYPE_KEY(nSensorTypeID,nSensorSeqID);
+					//根据设备ID获取设备名称
+					std::string strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(nSensorTypeID);
+
+					//组装设备名称
+					boost::format FT("%1%_%2%");
+
+					if (nSensorSeqID > 0)
+					{
+						FT % strSensorName % nSensorSeqID;
+						strSensorName = FT.str();
+					}
+
+					LP_SENSOR_TYPE_INFO_ELEMENT pSensorInfo = new SENSOR_TYPE_INFO_ELEMENT(strSensorName,nSensorTypeID,nSensorSeqID);
 		
 					//上线
 					if (0x01 == pData[nIndex + 6])
 					{
-						DEBUG_LOG("detect the device online,the SensorType[%d],the SensorSeq[%d].",nSensorTypeID,nSensorSeqID);
+						DEBUG_LOG("detect the device online,the SensorType[%d],the SensorSeq[%d].",nSensorTypeID,nSensorSeqID);	
 						//添加传感器
-						CSensorManager::CreateInstance().RegisterSensor(nSensorTypeID,nSensorSeqID);
+						CSensorManager::CreateInstance().RegisterSensor(*pSensorInfo);
 						//添加对应SensorID的数据
 						CSensorDataManager::CreateInstance().AddSensorData(SENSOR_TYPE_KEY(nSensorTypeID,nSensorSeqID));
 						//通知主窗口

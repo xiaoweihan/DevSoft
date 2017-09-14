@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <boost/foreach.hpp>
 #include "Utility.h"
-#include "SensorIDGenerator.h"
+#include "SensorManager.h"
 CGridColumnGroupManager& CGridColumnGroupManager::CreateInstance()
 {
 	return s_obj;
@@ -212,9 +212,11 @@ void CGridColumnGroupManager::AddDisplayColumnInfo( const CString& strHeaderName
 #else
 		strConvertColumnName = strTempColumnName.GetBuffer(0);
 #endif
+
+		SENSOR_TYPE_KEY KeyID;
+		CSensorManager::CreateInstance().QuerySensorIDByName(strConvertColumnName,KeyID);
 		//列名称相同
-		if (ColumnInfo.strColumnName == AddColumnInfo.strColumnName ||
-			CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strConvertColumnName) < 0)
+		if (ColumnInfo.strColumnName == AddColumnInfo.strColumnName || KeyID.nSensorID < 0)
 		{
 			return true;
 		}

@@ -9,7 +9,7 @@
 	},
   "SensorConfig": [
     {
-      "SensorID": 1,
+      "SensorID": 0,
       "AddtoSensorlist": true,
       "SensorName": "静力",
       "TypeName": "1-普通",
@@ -48,7 +48,7 @@
       "Timelength": 15
     },
     {
-      "SensorID": 2,
+      "SensorID": 4,
       "AddtoSensorlist": true,
       "SensorName": "光电门",
       "TypeName": "4-光电门",
@@ -87,7 +87,7 @@
       "Timelength": 20
     },
     {
-      "SensorID": 3,
+      "SensorID": 16,
       "AddtoSensorlist": true,
       "SensorName": "单体位移",
       "TypeName": "2-位移",
@@ -115,7 +115,7 @@
       "Timelength": 20
     },
     {
-      "SensorID": 4,
+      "SensorID": 17,
       "AddtoSensorlist": true,
       "SensorName": "加速度",
       "TypeName": "1-普通",
@@ -176,7 +176,7 @@
       "Timelength": 15
     },
     {
-      "SensorID": 5,
+      "SensorID": 1,
       "AddtoSensorlist": true,
       "SensorName": "微力",
       "TypeName": "1-普通",
@@ -215,7 +215,7 @@
       "Timelength": 15
     },
     {
-      "SensorID": 6,
+      "SensorID": 10,
       "AddtoSensorlist": true,
       "SensorName": "普通温度",
       "TypeName": "1-普通",
@@ -243,7 +243,7 @@
       "Timelength": 180
     },
     {
-      "SensorID": 7,
+      "SensorID": 18,
       "AddtoSensorlist": true,
       "SensorName": "高温",
       "TypeName": "1-普通",
@@ -271,7 +271,7 @@
       "Timelength": 20
     },
     {
-      "SensorID": 8,
+      "SensorID": 12,
       "AddtoSensorlist": true,
       "SensorName": "压强",
       "TypeName": "1-普通",
@@ -299,7 +299,7 @@
       "Timelength": 960
     },
     {
-      "SensorID": 9,
+      "SensorID": 5,
       "AddtoSensorlist": true,
       "SensorName": "声振动",
       "TypeName": "1-普通",
@@ -338,7 +338,7 @@
       "Timelength": 5
     },
     {
-      "SensorID": 10,
+      "SensorID": 15,
       "AddtoSensorlist": true,
       "SensorName": "光强分布",
       "TypeName": "6-专用实验",
@@ -366,7 +366,7 @@
       "Timelength": 10
     },
     {
-      "SensorID": 11,
+      "SensorID": 15,
       "AddtoSensorlist": true,
       "SensorName": "光照度",
       "TypeName": "1-普通",
@@ -405,7 +405,7 @@
       "Timelength": 10
     },
     {
-      "SensorID": 12,
+      "SensorID": 43,
       "AddtoSensorlist": true,
       "SensorName": "电流",
       "TypeName": "1-普通",
@@ -444,7 +444,7 @@
       "Timelength": 20
     },
     {
-      "SensorID": 13,
+      "SensorID": 44,
       "AddtoSensorlist": true,
       "SensorName": "电压",
       "TypeName": "1-普通",
@@ -483,7 +483,7 @@
       "Timelength": 15
     },
     {
-      "SensorID": 14,
+      "SensorID": 11,
       "AddtoSensorlist": true,
       "SensorName": "磁感应强度",
       "TypeName": "1-普通",

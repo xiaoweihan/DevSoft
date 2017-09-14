@@ -672,24 +672,24 @@ void HandleStart(CEdislabProView* pView)
 		return;
 	}
 
-	std::vector<std::string> SensorNameArray;
-	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray,false);
+	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
+	CSensorManager::CreateInstance().GetSensorList(SensorArray);
 	if (s_bStartCapture)
 	{
 		//通知所有需要停止刷新的控件停止刷新
 		pView->NotifyControlsStopRefresh();
-		BOOST_FOREACH(auto& V,SensorNameArray)
+		BOOST_FOREACH(auto& V,SensorArray)
 		{
-			CSerialPortService::CreateInstance().StopSensorCollect(V);
+			CSerialPortService::CreateInstance().StopSensorCollect(V.nSensorID,V.nSensorSerialID);
 		}
 	}
 	else
 	{
 		//通知所有需要开始刷新的控件开始刷新
 		pView->NotifyControlsStartRefresh();
-		BOOST_FOREACH(auto& V,SensorNameArray)
+		BOOST_FOREACH(auto& V,SensorArray)
 		{
-			CSerialPortService::CreateInstance().StartSensorCollect(V);
+			CSerialPortService::CreateInstance().StartSensorCollect(V.nSensorID,V.nSensorSerialID);
 		}
 	}
 	s_bStartCapture = !s_bStartCapture;

@@ -275,7 +275,6 @@
     <ClInclude Include="SensorConfig.h" />
     <ClInclude Include="SensorData.h" />
     <ClInclude Include="SensorDataManager.h" />
-    <ClInclude Include="SensorIDGenerator.h" />
     <ClInclude Include="SensorManager.h" />
     <ClInclude Include="SensorTypeTable.h" />
     <ClInclude Include="SerialPortService.h" />
@@ -335,7 +334,6 @@
     <ClCompile Include="SensorConfig.cpp" />
     <ClCompile Include="SensorData.cpp" />
     <ClCompile Include="SensorDataManager.cpp" />
-    <ClCompile Include="SensorIDGenerator.cpp" />
     <ClCompile Include="SensorManager.cpp" />
     <ClCompile Include="SensorTypeTable.cpp" />
     <ClCompile Include="SerialPortService.cpp" />
