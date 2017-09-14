@@ -554,12 +554,6 @@ void CDlgSensorChoose::RefreshChoosedSensorList()
 		int nNum = (int)m_setChooseSensorID.count(element.nSensorID);
 		if (nNum == 0)
 		{
-
-			/*if (-1 == CSensorIDGenerator::CreateInstance().AddSensor(element.strSensorName))
-			{
-				return;
-			}*/
-
 			CSensorManager::CreateInstance().RegisterSensor(element.nSensorID,0);
 			str.Format(_T("Êý¾ÝÁÐ£º%s(%s)"), CString(element.strSensorSymbol.c_str()), CString(element.strSensorName.c_str()));
 

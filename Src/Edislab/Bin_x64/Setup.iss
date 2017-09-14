@@ -6,7 +6,7 @@
 #define AppName  "Edislab Pro"
 #define AppVerName "Edislab Pro v1.0"
 #define AppDefaultGroupName "Edislab"
-#define AppPublisher "Edislab教育"#define DefaultOutputDir "C:\Users\Administrator\Desktop"
+#define AppPublisher "Edislab教育"#define DefaultOutputDir "D:\"
 ;#define DefaultAppCopyright "Copyright(C)2014-2015 Incxxx,Inc"
 #define MutexName "05F14B9D-5AF2-4521-8B3A-37CC74AA2F22"
 #define AppVerSion "1.0.0.0"
