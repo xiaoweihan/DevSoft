@@ -2,32 +2,32 @@
 #include "Edislab Pro.h"
 #include "GaugeDlg.h"
 #include "GaugeManager.h"
-#include "GlobalDataManager.h"
+//#include "GlobalDataManager.h"
 using namespace std;
 GaugeManager::GaugeManager(void)
 {
-	CGlobalDataManager::CreateInstance().Attach(this);
+	//CGlobalDataManager::CreateInstance().Attach(this);
 }
 
 
 GaugeManager::~GaugeManager(void)
 {
-	CGlobalDataManager::CreateInstance().Detach(this);
+	//CGlobalDataManager::CreateInstance().Detach(this);
 }
 //更新数据，数据变化时调用,更新表盘
 void GaugeManager::Update(CObservable* pObs, void* pArg)
 {
-	CGlobalDataManager* dbMgr = dynamic_cast<CGlobalDataManager*>(pObs);
-	if(NULL==dbMgr)//不是数据类
-	{
-		return;
-	}
+	//CGlobalDataManager* dbMgr = dynamic_cast<CGlobalDataManager*>(pObs);
+	//if(NULL==dbMgr)//不是数据类
+	//{
+	//	return;
+	//}
 	//更新单表记录的数据
 	for(UINT i= 0; i<m_vecGaugeDlg.size(); ++i)
 	{
 		if(m_vecGaugeDlg[i])
 		{
-			m_vecGaugeDlg[i]->updateData(dbMgr);
+			m_vecGaugeDlg[i]->updateData();
 		}
 	}
 }

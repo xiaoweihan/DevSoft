@@ -12,12 +12,9 @@
 /**************************************************************************************************************************************************/
 #ifdef _WIN32
 #include <stdio.h>
-#include <Windows.h>
-#include <map>
 #include <string>
 #include <stdarg.h>
 #include <time.h>
-#include <io.h>
 using std::string;
 //包含Linux操作串口的头文件
 #else

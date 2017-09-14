@@ -5,9 +5,9 @@
 #include <boost/foreach.hpp>
 #include "Global.h"
 #include "ChartManager.h"
-#include "GlobalDataManager.h"
 #include "GridColumnGroupManager.h"
-#include "SensorIDGenerator.h"
+//#include "SensorIDGenerator.h"
+#include "SensorManager.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
 #include "Utility.h"
@@ -16,9 +16,9 @@
 #pragma warning(disable:4244)
 #pragma warning(disable:4258)
 using namespace std;
-#define VIEW_X_EDGE 20
-#define VIEW_Y_EDGE 20
-#define AXES_WIDTH 10
+#define VIEW_X_EDGE (20)
+#define VIEW_Y_EDGE (20)
+#define AXES_WIDTH  (10)
 
 ChartXYData::ChartXYData()
 {
@@ -42,6 +42,8 @@ CMeColor ChartXYData::getColor()
 {
 	return mColor;
 }
+
+#if 0
 void ChartXYData::setID(int id)
 {
 	ID = id;
@@ -50,6 +52,7 @@ int ChartXYData::getID()
 {
 	return ID;
 }
+#endif
 
 ChartXY::ChartXY(HDC hDC)
 	: m_hDC(hDC)
@@ -70,35 +73,33 @@ ChartXY::ChartXY(HDC hDC)
 	m_pDC = CDC::FromHandle(m_hDC);
 	m_pMemDC = NULL;
 	m_chartMgr = NULL;
-	m_nXID = -1;
-	m_dbMgr = &(CGlobalDataManager::CreateInstance());
-	if(!m_dbMgr)
-	{
-		return;
-	}
-	m_allData = m_dbMgr->getAllData();
-	map<int, bool> oldVisible = m_mapVisible;
-	m_mapVisible.clear();
 	//begin ldh 0610
 	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
 	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
-	for(int i=0; i<ColumnGroupArray.size(); ++i)
+	for(int i = 0; i < ColumnGroupArray.size(); ++i)
 	{
-		for(int g=0; g<ColumnGroupArray[i].ColumnArray.size(); ++g)
+		for(int g = 0; g < ColumnGroupArray[i].ColumnArray.size(); ++g)
 		{
-			CString Name = ColumnGroupArray[i].ColumnArray[g].strColumnName;
-			std::string name = Utility::WideChar2MultiByte(Name.GetBuffer(0));
-			int id = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(name);
-			if(m_nXID==-1)
+			CString strTempName = ColumnGroupArray[i].ColumnArray[g].strColumnName;
+			std::string strSensorName = Utility::WideChar2MultiByte(strTempName.GetBuffer(0));
+			SENSOR_TYPE_KEY KeyID;
+			if (CSensorManager::CreateInstance().QuerySensorIDByName(strSensorName,KeyID))
 			{
-				m_nXID = id;
+
+				if (m_nXID.nSensorID < 0 && m_nXID.nSensorSerialID < 0)
+				{
+					m_nXID = KeyID;
+				}
+
+				if (m_nXID.nSensorID != KeyID.nSensorID || m_nXID.nSensorSerialID != KeyID.nSensorSerialID)
+				{
+					m_mapVisible[KeyID] = true;
+				}
 			}
-			if(id!=m_nXID)
-			{
-				m_mapVisible[id] = true;
-			}
+			
 		}
-		if(m_mapVisible.size()>0)
+
+		if (!m_mapVisible.empty())
 		{
 			break;
 		}
@@ -109,13 +110,15 @@ ChartXY::ChartXY(HDC hDC)
 
 ChartXY::~ChartXY()
 {
-	m_nXID = -1;
+	//m_nXID = -1;
 }
-void ChartXY::setXID(int id)
+
+void ChartXY::setXID(const SENSOR_TYPE_KEY& id)
 {
 	m_nXID = id;
 }
-int ChartXY::getXID()
+
+SENSOR_TYPE_KEY ChartXY::getXID()
 {
 	return m_nXID;
 }
@@ -342,7 +345,8 @@ void ChartXY::mouseMoveEvent(CMeDPoint msPos)
 					ChartXYData* pData = &(chartData[i]);
 					if (pData)
 					{
-						int id = pData->getID();
+						//int id = pData->getID();
+						SENSOR_TYPE_KEY id = pData->getID();
 						if (getVisible(id))
 						{
 							for (int v = 0; v < pData->getData().size(); ++v)
@@ -379,12 +383,12 @@ void ChartXY::mouseMoveEvent(CMeDPoint msPos)
 					ChartXYData* pData = &(chartData[i]);
 					if (pData)
 					{
-						int id = pData->getID();
+						SENSOR_TYPE_KEY id = pData->getID();
 						string strRow;
 
 						if (getVisible(id))
 						{
-							std::string name = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(id);
+							std::string name = CSensorManager::CreateInstance().QuerySensorNameByID(id);
 							strRow = name + ":";
 							char str[256];
 							int size = static_cast<int>(pData->getData().size());
@@ -569,7 +573,7 @@ void ChartXY::showAll()
 		ChartXYData* pData = &chartData[i];
 		if(pData)
 		{
-			int id = pData->getID();
+			SENSOR_TYPE_KEY id = pData->getID();
 			if(getVisible(id))
 			{
 				const vector<CMeDPoint>& lineData = pData->getData();
@@ -1014,7 +1018,7 @@ void ChartXY::drawLine()
 		ChartXYData* pData = &(chartData[i]);
 		if (pData)
 		{
-			int id = pData->getID();
+			SENSOR_TYPE_KEY id = pData->getID();
 			if (getVisible(id))
 			{
 				CMeColor color = pData->getColor();
@@ -1104,11 +1108,11 @@ void ChartXY::drawLine()
 			ChartXYData* pData = &(chartData[i]);
 			if (pData)
 			{
-				int id = pData->getID();
+				SENSOR_TYPE_KEY id = pData->getID();
 				string strRow;
-				if (getVisible(id)&&pData->getData().size())
+				if (getVisible(id) && pData->getData().size())
 				{
-					std::string name = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(id);
+					std::string name = CSensorManager::CreateInstance().QuerySensorNameByID(id);
 					vecStr.push_back("");
 					vecStr.push_back(name);
 					char str[256];
@@ -1195,13 +1199,13 @@ const ChartManager* ChartXY::getChartMgr()
 {
 	return m_chartMgr;
 }
-void ChartXY::setVisible(int id, bool bShow)
+void ChartXY::setVisible(SENSOR_TYPE_KEY id, bool bShow)
 {
 	m_mapVisible[id] = bShow;
 }
-bool ChartXY::getVisible(int id)
+bool ChartXY::getVisible(SENSOR_TYPE_KEY id)
 {
-	if(m_mapVisible.find(id)!=m_mapVisible.end())
+	if(m_mapVisible.find(id) != m_mapVisible.end())
 	{
 		return m_mapVisible[id];
 	}
@@ -1211,10 +1215,10 @@ bool ChartXY::getVisible(int id)
 void ChartXY::refreshData()
 {
 	m_vecLineData.clear();
-	if(m_nXID==-1)
-	{
-		return;
-	}
+	//if(m_nXID==-1)
+	//{
+	//	return;
+	//}
 	//begin ldh 0610
 	vector<float> xData;
 	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(m_nXID);
@@ -1222,7 +1226,7 @@ void ChartXY::refreshData()
 	{
 		pData->GetSensorData(xData);
 	}
-	std::string name = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(m_nXID);
+	std::string name = CSensorManager::CreateInstance().QuerySensorNameByID(m_nXID);
 	m_strX = CString(name.c_str());
 	//end ldh 0610
 	if(xData.size()==0)
@@ -1260,33 +1264,37 @@ void ChartXY::refreshData()
 				line.setXYData(vecPt);
 				m_vecLineData.push_back(line);
 			}
-			std::string name = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(it.first);
+			std::string name = CSensorManager::CreateInstance().QuerySensorNameByID(it.first);
 			m_strY += _T(" ") + CString(name.c_str());
 		}
 	}
 	//end ldh 0610
 
 }
-void ChartXY::updateData(CGlobalDataManager* dbMgr)
+void ChartXY::updateData()
 {
+#if 0
 	m_dbMgr = &(CGlobalDataManager::CreateInstance());
 	if(!m_dbMgr)
 	{
 		return;
 	}
 	m_allData = m_dbMgr->getAllData();
-	map<int, bool> oldVisible = m_mapVisible;
+#endif
+	boost::unordered_map<SENSOR_TYPE_KEY, bool> oldVisible = m_mapVisible;
 	m_mapVisible.clear();
-	std::vector<std::string> SensorNameArray;
-	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray);
+	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorNameArray;
+	CSensorManager::CreateInstance().GetSensorList(SensorNameArray);
 	for(int i = 0; i < (int)SensorNameArray.size(); ++i)
 	{
 		
-		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
+		SENSOR_TYPE_KEY nSensorID(SensorNameArray[i].nSensorID,SensorNameArray[i].nSensorSerialID);
+		//int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
 		if(oldVisible.find(nSensorID) != oldVisible.end())
 		{
 			m_mapVisible[nSensorID] = oldVisible[nSensorID];
-		}else
+		}
+		else
 		{
 			m_mapVisible[nSensorID] = false;
 		}
@@ -1312,7 +1320,7 @@ void ChartXY::calcXYRange()
 			ChartXYData* pData = &chartData[i];
 			if (pData)
 			{
-				int id = pData->getID();
+				SENSOR_TYPE_KEY id = pData->getID();
 				if (getVisible(id))
 				{
 					const vector<CMeDPoint>& lineData = pData->getData();
@@ -1339,7 +1347,7 @@ void ChartXY::calcXYRange()
 			ChartXYData* pData = &chartData[i];
 			if (pData)
 			{
-				int id = pData->getID();
+				SENSOR_TYPE_KEY id = pData->getID();
 				if (getVisible(id))
 				{
 					const vector<CMeDPoint>& lineData = pData->getData();

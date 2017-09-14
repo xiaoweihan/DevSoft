@@ -1,5 +1,6 @@
 #pragma once
 #include "BaseDialog.h"
+#include "Type.h"
 class GaugeDlg : public CBaseDialog
 {
 	DECLARE_DYNAMIC(GaugeDlg)
@@ -30,8 +31,8 @@ public:
 	void getRange(double& min, double& max);
 	void setWarningValue(double min, double max);
 	void getWarningValue(double& min, double& max);
-	void setShowDataColumn(int ColumnID);
-	int getShowDataColumn();
+	void setShowDataColumn(SENSOR_TYPE_KEY SensorKeyID);
+	SENSOR_TYPE_KEY getShowDataColumn();
 	void setValue(double value);
 	double getValue();
 	void setEnableWarning(bool warning);
@@ -41,7 +42,7 @@ public:
 	int saveData();
 	//读取数据
 	int readData();
-	void updateData(class CGlobalDataManager* dbMgr);
+	void updateData();
 private:
 	//上下限
 	double minRange;
@@ -49,7 +50,8 @@ private:
 	double maxWarningValue;
 	double minWarningValue;
 	//显示数据列的ID号
-	int dataColumnID;
+	//int dataColumnID;
+	SENSOR_TYPE_KEY m_SensorKeyID;
 	bool enableWarning;
 	CString m_strTitle;
 	CString m_strUnit;

@@ -5,6 +5,9 @@
 
 #pragma once
 
+#define _INTSAFE_H_INCLUDED_
+#include <stdint.h>
+
 #ifndef _SECURE_ATL
 #define _SECURE_ATL 1
 #endif
@@ -37,13 +40,7 @@
 
 #include <afxcontrolbars.h>     // 功能区和控件条的 MFC 支持
 
-
-
-
-
 #include <BCGCBProInc.h>
-
-
 
 #ifdef _UNICODE
 #if defined _M_IX86

@@ -1,7 +1,6 @@
 #ifndef _GRID_DEFINE_H
 #define _GRID_DEFINE_H
-#include "stdafx.h"
-#include "GlobalDataManager.h"
+//#include "GlobalDataManager.h"
 #include <vector>
 using std::vector;
 class CCustomLabGridCtrl;

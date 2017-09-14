@@ -29,7 +29,7 @@ public:
 	//¶ÁÈ¡Êý¾Ý
 	int readData();
 
-	void updateData(class CGlobalDataManager* dbMgr) const;
+	void updateData() const;
 
 	void ChartSet();
 public:

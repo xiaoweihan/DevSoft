@@ -6,13 +6,15 @@
 #include <boost/date_time/posix_time/ptime.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include "Log.h"
-#include "SensorIDGenerator.h"
+#include "SensorManager.h"
 #include "SensorDataManager.h"
 #include "SensorData.h"
 #include "Utility.h"
 #include "Msg.h"
 //接收缓冲区的大小(1MB)
 const int MAX_BUFFER_SIZE = (1 << 20);
+//发送指令的缓冲区大小
+const int COMMAND_BUFFER_SIZE = 7;
 //存放传感器名称的数组大小
 const int MAX_SENSOR_NAME_LENGTH = 100;
 
@@ -107,8 +109,24 @@ void CSerialPortService::StartSensorCollect( const std::string& strSensorName )
 	memcpy(pData + 3,strSensorName.c_str(),nSensorNameLength);
 	pData[nSensorNameLength + 3] = 0x00;
 	pData[nSensorNameLength + 4] = Utility::CalCRC8(pData,nTotalLength - 1);
-	
+
 	AsyncWriteData(pData,nTotalLength);
+}
+
+void CSerialPortService::StartSensorCollect(int nSensorTypeID,int nSensorSeqID)
+{
+	BYTE* pData = new BYTE[COMMAND_BUFFER_SIZE];
+	if (nullptr == pData)
+	{
+		return;
+	}
+	memset(pData,0,sizeof(BYTE) * COMMAND_BUFFER_SIZE);
+	pData[0] = 0xAB;
+	pData[1] = (BYTE)nSensorTypeID;
+	pData[2] = (BYTE)nSensorSeqID;
+	pData[COMMAND_BUFFER_SIZE - 1] = 0x00;
+
+	AsyncWriteData(pData,COMMAND_BUFFER_SIZE);
 }
 
 void CSerialPortService::StopSensorCollect( const std::string& strSensorName )
@@ -133,6 +151,22 @@ void CSerialPortService::StopSensorCollect( const std::string& strSensorName )
 	pData[nSensorNameLength + 4] = Utility::CalCRC8(pData,nTotalLength - 1);
 	
 	AsyncWriteData(pData,nTotalLength);
+}
+
+void CSerialPortService::StopSensorCollect(int nSensorTypeID,int nSensorSeqID)
+{
+	BYTE* pData = new BYTE[COMMAND_BUFFER_SIZE];
+	if (nullptr == pData)
+	{
+		return;
+	}
+	memset(pData,0,sizeof(BYTE) * COMMAND_BUFFER_SIZE);
+	pData[0] = 0xAB;
+	pData[1] = (BYTE)nSensorTypeID;
+	pData[2] = (BYTE)nSensorSeqID;
+	pData[COMMAND_BUFFER_SIZE - 1] = 0x01;
+
+	AsyncWriteData(pData,COMMAND_BUFFER_SIZE);
 }
 
 void CSerialPortService::SetSensorFrequence( const std::string& strSensorName,int nMillSecond )
@@ -161,6 +195,27 @@ void CSerialPortService::SetSensorFrequence( const std::string& strSensorName,in
 	pSendBuffer[nMsgLength - 1] = Utility::CalCRC8(pSendBuffer,nMsgLength - 1);
 
 	AsyncWriteData(pSendBuffer,nMsgLength);
+}
+
+void CSerialPortService::SetSensorFrequence(int nSensorTypeID,int nSensorSeqID,int nMillSecond)
+{
+
+	//设置采样周期
+	BYTE* pSendBuffer = new BYTE[COMMAND_BUFFER_SIZE];
+	if (nullptr == pSendBuffer)
+	{
+		return;
+	}
+
+	memset(pSendBuffer,0,sizeof(BYTE) * COMMAND_BUFFER_SIZE);
+	pSendBuffer[0] = 0xAF;
+	pSendBuffer[1] = (BYTE)nSensorTypeID;
+	pSendBuffer[2] = (BYTE)nSensorSeqID;
+	pSendBuffer[COMMAND_BUFFER_SIZE - 2] = (BYTE)((nMillSecond & 0xFF00) >> 8);
+	pSendBuffer[COMMAND_BUFFER_SIZE - 1] = (BYTE)(nMillSecond & 0x00FF);
+
+	
+	AsyncWriteData(pSendBuffer,COMMAND_BUFFER_SIZE);
 }
 
 void CSerialPortService::AsyncWriteData(BYTE* pData, int nDataLength)
@@ -206,9 +261,92 @@ int CSerialPortService::HandlerData(BYTE* pData, int nDataLength)
 	{
 		return 0;
 	}
-	char szSensorName[MAX_SENSOR_NAME_LENGTH] = { 0 };
 	int nIndex = 0;
 
+	while (nIndex < nDataLength)
+	{
+		//上线通知
+		if (pData[nIndex] == 0xBA)
+		{
+			//判断数组不越界
+			if (nIndex + 6 < nDataLength)
+			{
+				//获取传感器类型编号
+				int nSensorTypeID = static_cast<int>(pData[nIndex + 1]);
+				//获取同类传感器序号
+				int nSensorSeqID = static_cast<int>(pData[nIndex + 2]);
+
+				if (nSensorSeqID >= 0 && nSensorTypeID >= 0)
+				{
+					LP_SENSOR_TYPE_KEY pSensorInfo = new SENSOR_TYPE_KEY(nSensorTypeID,nSensorSeqID);
+		
+					//上线
+					if (0x01 == pData[nIndex + 6])
+					{
+						DEBUG_LOG("detect the device online,the SensorType[%d],the SensorSeq[%d].",nSensorTypeID,nSensorSeqID);
+						//添加传感器
+						CSensorManager::CreateInstance().RegisterSensor(nSensorTypeID,nSensorSeqID);
+						//添加对应SensorID的数据
+						CSensorDataManager::CreateInstance().AddSensorData(SENSOR_TYPE_KEY(nSensorTypeID,nSensorSeqID));
+						//通知主窗口
+						::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pSensorInfo,1);
+					}
+					//下线
+					else
+					{
+						DEBUG_LOG("detect the device offline,the SensorType[%d],the SensorSeq[%d].",nSensorTypeID,nSensorSeqID);
+						//删除数据
+						CSensorDataManager::CreateInstance().DelSensorData(SENSOR_TYPE_KEY(nSensorTypeID,nSensorSeqID));
+						//删除传感器
+						CSensorManager::CreateInstance().UnRegisterSensor(nSensorTypeID,nSensorSeqID);
+						//通知主窗口
+						::PostMessage(AfxGetApp()->m_pMainWnd->m_hWnd,WM_NOTIFY_DETECT_DEVICE,(WPARAM)pSensorInfo,0);
+					}
+
+				}
+				//处理数据
+				nIndex += 7;
+				//已经处理的数据递增
+				nHandledBytes += 7;
+				continue;
+			}
+		}
+		//传感器数据
+		else if (0xBD == pData[nIndex])
+		{
+			//获取传感器类型编号
+			int nSensorTypeID = static_cast<int>(pData[nIndex + 1]);
+			//获取同类传感器序号
+			int nSensorSeqID = static_cast<int>(pData[nIndex + 2]);
+			float fValue = 0.0f;
+			memcpy(&fValue, &pData[nIndex + 3],4);
+
+			if (nSensorTypeID >= 0 && nSensorSeqID >= 0)
+			{
+				if (fValue > 0)
+				{
+					DEBUG_LOG("receive the device data[%.2f],the SensorType[%d],the SensorSeq[%d].",fValue,nSensorTypeID,nSensorSeqID);
+					//根据ID获取数据
+					CSensorData* pSensorData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(SENSOR_TYPE_KEY(nSensorTypeID,nSensorSeqID));
+					if (nullptr != pSensorData)
+					{
+						pSensorData->AddSensorData(fValue);
+					}
+				}
+
+			}
+			nIndex += 7;
+			nHandledBytes += 7;
+			continue;
+		}
+		else
+		{
+			++nIndex;
+		}
+	}
+	return nHandledBytes;
+#if 0
+	char szSensorName[MAX_SENSOR_NAME_LENGTH] = { 0 };
 	while (nIndex < nDataLength)
 	{	
 		//传感器上下线通知
@@ -328,7 +466,8 @@ int CSerialPortService::HandlerData(BYTE* pData, int nDataLength)
 		}
 		++nIndex;
 	}
-	return nHandledBytes;
+#endif
+	
 }
 
 void CSerialPortService::WriteHandler(BYTE* pData, int nDataLength, const boost::system::error_code& ec, std::size_t bytes_transferred)

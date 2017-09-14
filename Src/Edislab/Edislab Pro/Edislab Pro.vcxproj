@@ -193,7 +193,6 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <None Include="GlobalDataManager.h" />
     <None Include="ReadMe.txt" />
     <None Include="res\bitmap1.bmp" />
     <None Include="res\Edislab Pro.ico" />
@@ -266,10 +265,6 @@
     <ClInclude Include="GaugeManager.h" />
     <ClInclude Include="Global.h" />
     <ClInclude Include="GridColumnGroupManager.h" />
-    <ClInclude Include="GridCtrlBase.h" />
-    <ClInclude Include="GridDataManager.h" />
-    <ClInclude Include="GridDefine.h" />
-    <ClInclude Include="Lock.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Macro.h" />
     <ClInclude Include="MainFrm.h" />
@@ -332,11 +327,7 @@
     <ClCompile Include="GaugeDlg.cpp" />
     <ClCompile Include="GaugeManager.cpp" />
     <ClCompile Include="Global.cpp" />
-    <ClCompile Include="GlobalDataManager.cpp" />
     <ClCompile Include="GridColumnGroupManager.cpp" />
-    <ClCompile Include="GridCtrlBase.cpp" />
-    <ClCompile Include="GridDataManager.cpp" />
-    <ClCompile Include="Lock.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MainFrm.cpp" />
     <ClCompile Include="Observable.cpp" />
@@ -355,6 +346,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="Type.cpp" />
     <ClCompile Include="Utility.cpp" />
     <ClCompile Include="WidgetLayout.cpp" />
   </ItemGroup>

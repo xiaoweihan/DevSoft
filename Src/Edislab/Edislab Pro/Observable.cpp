@@ -9,7 +9,7 @@
 
 #include "Observer.h"
 #include "Global.h"
-#include "GlobalDataManager.h"
+//#include "GlobalDataManager.h"
 /*************************************************************************************************
 函数名称:CObservable
 功能描述:构造函数

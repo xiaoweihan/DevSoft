@@ -40,9 +40,6 @@
     <Filter Include="Global">
       <UniqueIdentifier>{62fd49f0-42b9-4b2d-a336-37edbfdc9848}</UniqueIdentifier>
     </Filter>
-    <Filter Include="GridCtrl">
-      <UniqueIdentifier>{0cf5a2a8-d687-43d1-9b21-2c7a6c31d6f5}</UniqueIdentifier>
-    </Filter>
     <Filter Include="ObserverModal">
       <UniqueIdentifier>{4e430663-4baf-483e-a281-2c8cb59f9f0a}</UniqueIdentifier>
     </Filter>
@@ -108,9 +105,6 @@
     </None>
     <None Include="res\RibbonDiagramSmall.bmp">
       <Filter>资源文件</Filter>
-    </None>
-    <None Include="GlobalDataManager.h">
-      <Filter>Global</Filter>
     </None>
     <None Include="res\bitmap1.bmp">
       <Filter>资源文件</Filter>
@@ -231,15 +225,6 @@
     <ClInclude Include="Observable.h">
       <Filter>ObserverModal</Filter>
     </ClInclude>
-    <ClInclude Include="GridCtrlBase.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
-    <ClInclude Include="GridDataManager.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
-    <ClInclude Include="GridDefine.h">
-      <Filter>GridCtrl</Filter>
-    </ClInclude>
     <ClInclude Include="DlgDeviceSet.h">
       <Filter>Device</Filter>
     </ClInclude>
@@ -254,9 +239,6 @@
     </ClInclude>
     <ClInclude Include="DlgChartSet.h">
       <Filter>ChartFigure</Filter>
-    </ClInclude>
-    <ClInclude Include="Lock.h">
-      <Filter>Global</Filter>
     </ClInclude>
     <ClInclude Include="Log.h">
       <Filter>Log</Filter>
@@ -290,9 +272,6 @@
     </ClInclude>
     <ClInclude Include="ConverEncode.h">
       <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="CustomGrid.h">
-      <Filter>UIExtend</Filter>
     </ClInclude>
     <ClInclude Include="SensorData.h">
       <Filter>头文件</Filter>
@@ -335,6 +314,9 @@
     </ClInclude>
     <ClInclude Include="SensorTypeTable.h">
       <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CustomGrid.h">
+      <Filter>UIExtend</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -422,12 +404,6 @@
     <ClCompile Include="Observable.cpp">
       <Filter>ObserverModal</Filter>
     </ClCompile>
-    <ClCompile Include="GridCtrlBase.cpp">
-      <Filter>GridCtrl</Filter>
-    </ClCompile>
-    <ClCompile Include="GridDataManager.cpp">
-      <Filter>GridCtrl</Filter>
-    </ClCompile>
     <ClCompile Include="ChartXY.cpp">
       <Filter>ChartFigure</Filter>
     </ClCompile>
@@ -449,12 +425,6 @@
     <ClCompile Include="DlgChartSet.cpp">
       <Filter>ChartFigure</Filter>
     </ClCompile>
-    <ClCompile Include="Lock.cpp">
-      <Filter>Global</Filter>
-    </ClCompile>
-    <ClCompile Include="GlobalDataManager.cpp">
-      <Filter>Global</Filter>
-    </ClCompile>
     <ClCompile Include="Log.cpp">
       <Filter>Log</Filter>
     </ClCompile>
@@ -472,9 +442,6 @@
     </ClCompile>
     <ClCompile Include="ConverEncode.cpp">
       <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="CustomGrid.cpp">
-      <Filter>UIExtend</Filter>
     </ClCompile>
     <ClCompile Include="SensorData.cpp">
       <Filter>源文件</Filter>
@@ -516,6 +483,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="SensorTypeTable.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="CustomGrid.cpp">
+      <Filter>UIExtend</Filter>
+    </ClCompile>
+    <ClCompile Include="Type.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

@@ -11,7 +11,8 @@
 #include <boost/bind.hpp>
 #include "Log.h"
 #include "GridColumnGroupManager.h"
-#include "SensorIDGenerator.h"
+//#include "SensorIDGenerator.h"
+#include "SensorManager.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
 #include "SensorConfig.h"
@@ -47,8 +48,9 @@ static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)
 				strColumnName = strTempColumnName.GetBuffer(0);
 #endif
 				//根据传感器名称获取传感器ID
-				int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
-				if (CSensorIDGenerator::CreateInstance().IsSpecialSensorID(nSensorID))
+				SENSOR_TYPE_KEY SensorKeyID;
+				CSensorManager::CreateInstance().QuerySensorIDByName(strColumnName,SensorKeyID);
+				if (CSensorManager::CreateInstance().IsSpecialSensorID(SensorKeyID))
 				{
 					//采样周期获取
 					const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
@@ -59,10 +61,10 @@ static BOOL CALLBACK GridCallback (BCGPGRID_DISPINFO* pdi, LPARAM lp)
 				}
 				else
 				{
-					if (nSensorID >= 0)
+					if (SensorKeyID.nSensorID >= 0 && SensorKeyID.nSensorSerialID >= 0)
 					{
 						//根据传感器ID获取传感器数据
-						CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
+						CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(SensorKeyID);
 						if (nullptr != pData)
 						{
 							float fValue = 0.0f;
@@ -468,7 +470,7 @@ void CDlgGridContainer::OnPaint()
 void CDlgGridContainer::YieldDataProc( void )
 {
 	//模拟生产数据
-	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(1);
+	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(SENSOR_TYPE_KEY(1,0));
 
 	if (nullptr == pData)
 	{
@@ -826,22 +828,21 @@ void CDlgGridContainer::StuffGridData(void)
 			strColumnName = m_DisplayGrid.GetColumnName(j).GetBuffer(0);
 #endif
 			//根据传感器名称获取传感器ID
-			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(strColumnName);
-			if (CSensorIDGenerator::CreateInstance().IsSpecialSensorID(nSensorID))
+			SENSOR_TYPE_KEY SensorKeyID;
+			CSensorManager::CreateInstance().QuerySensorIDByName(strColumnName,SensorKeyID);
+			if (CSensorManager::CreateInstance().IsSpecialSensorID(SensorKeyID))
 			{
 				//采样周期获取
 				const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
 				double fPeriod = 1.0 / (SampleInfo.fFrequency);
 				m_DisplayGrid.SetColumnData(i,j,fPeriod * i);
-				//CString strContent;
-				//strContent.Format(_T("%.6f"),fPeriod * i);
 			}
 			else
 			{
-				if (nSensorID >= 0)
+				if (SensorKeyID.nSensorID >= 0 && SensorKeyID.nSensorSerialID >= 0)
 				{
 					//根据传感器ID获取传感器数据
-					CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSensorID);
+					CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(SensorKeyID);
 					if (nullptr != pData)
 					{
 						float fValue = 0.0f;

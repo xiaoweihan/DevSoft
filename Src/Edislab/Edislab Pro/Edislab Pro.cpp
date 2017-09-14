@@ -17,7 +17,8 @@
 #include "SensorConfig.h"
 #include "SensorDataManager.h"
 #include "SensorData.h"
-#include "SensorIDGenerator.h"
+//#include "SensorIDGenerator.h"
+#include "SensorManager.h"
 using std::string;
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -199,10 +200,7 @@ void CEdislabProApp::Init( void )
 
 	//初始化打印日志
 	std::string strLogDir = Utility::GetExeDirecory() + std::string("\\log\\");
-
 	boost::filesystem::create_directories(strLogDir);
-
-
 	CLog::CreateInstance().SetLogPath(strLogDir.c_str());
 	CLog::CreateInstance().SetLogNamePrefix("Edislab");
 #ifdef _DEBUG
@@ -221,9 +219,9 @@ void CEdislabProApp::Init( void )
 		ERROR_LOG("LoadSensorConfig failed!");
 	}
 	//在数据添加类中添加数据
-	int nSpecialSensorID = CSensorIDGenerator::CreateInstance().GetSpecialSensorID();
-	CSensorDataManager::CreateInstance().AddSensorData(nSpecialSensorID);
-	CSensorData*pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(nSpecialSensorID);
+	SENSOR_TYPE_KEY SpecialSensorID = CSensorManager::CreateInstance().GetSpecialSensorID();
+	CSensorDataManager::CreateInstance().AddSensorData(SpecialSensorID);
+	CSensorData*pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(SpecialSensorID);
 	if (nullptr != pData)
 	{
 		//获取采样信息

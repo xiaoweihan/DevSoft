@@ -1,7 +1,7 @@
 /*********************************************************
 Copyright(C):
 FileName:SensorTypeTable.h
-Descripton:预支传感器类型表
+Descripton:预置传感器类型表
 Author:xiaowei.han
 Data:2017/09/11
 Others:

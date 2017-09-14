@@ -1,8 +1,9 @@
 #pragma once
+#include <boost/ptr_container/ptr_vector.hpp>
 #include "DoubleEdit.h"
-
 // DlgDeviceSet dialog
 #include "BaseDialog.h"
+#include "Type.h"
 class DlgDeviceSet : public CBaseDialog
 {
 	DECLARE_DYNAMIC(DlgDeviceSet)
@@ -11,8 +12,8 @@ public:
 	DlgDeviceSet(CWnd* pParent = NULL);   // standard constructor
 	virtual ~DlgDeviceSet();
 	//获取要显示的数据列ID
-	int getDataColumnID();
-	void setDataColumnID(int ID);
+	SENSOR_TYPE_KEY getDataColumnID();
+	void setDataColumnID(SENSOR_TYPE_KEY SensorKeyID);
 	//警告启用?
 	bool getWarningState();
 	void setWarningState(bool warning);
@@ -37,8 +38,12 @@ public:
 	double m_warningValue;
 	BOOL m_bWarning;
 	int m_nWarningType;
-	int m_nDataID;
+	SENSOR_TYPE_KEY m_SensorKeyID;
 	CBCGPComboBox m_combWarningTYpe;
 	CBCGPComboBox m_combDataID;
 	afx_msg void OnBnClickedOk();
+	afx_msg void OnClose();
+
+private:
+	boost::ptr_vector<SENSOR_TYPE_KEY> m_ptrDataArray;
 };

@@ -83,7 +83,7 @@ private:
 	//保护全局数据的临界区
 	CLock m_cs;
 
-	bool	m_bHaveData;
+	bool m_bHaveData;
 	//全局数据
 	VECTOR<GROUPDATA> m_allData; //每列存的数据量可能不一样
 };

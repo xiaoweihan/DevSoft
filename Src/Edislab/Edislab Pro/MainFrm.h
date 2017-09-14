@@ -227,7 +227,7 @@ public:
 private:
 	void ShowRibbonCatagory(CBCGPRibbonCategory* pCatagory,bool bShow = false);
 
-	//设备上线的回调
+	//设备上线的回调(wp:设备类型ID lp:设备序列ID)
 	afx_msg LRESULT NotifyDeviceOnOrOff(WPARAM wp,LPARAM lp);
 
 	//通知Grid分组显示改变

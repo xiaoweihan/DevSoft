@@ -5,13 +5,13 @@
 #include "Edislab Pro.h"
 #include "ChartFigureDlg.h"
 #include "DlgChartSet.h"
-#include "GlobalDataManager.h"
 #include "DlgTabPanel.h"
 #include "Msg.h"
 // ChartFigureDlg 对话框
+#define TIMER_CHART_EVENT (1000011)
+#define TIMER_CHART (300)
+
 IMPLEMENT_DYNAMIC(ChartFigureDlg, CBaseDialog)
-#define TIMER_CHART_EVENT 1000011
-#define TIMER_CHART 300
 ChartFigureDlg::ChartFigureDlg(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(ChartFigureDlg::IDD, pParent),
 	m_bActiveFlag(FALSE)
@@ -237,11 +237,11 @@ const ChartManager* ChartFigureDlg::getChartMgr()
 	}
 	return NULL;
 }
-void ChartFigureDlg::updateData(CGlobalDataManager* dbMgr) const
+void ChartFigureDlg::updateData() const
 {
 	if (m_charxy)
 	{
-		return m_charxy->updateData(dbMgr);
+		return m_charxy->updateData();
 	}
 }
 void ChartFigureDlg::ChartSet()
@@ -279,30 +279,30 @@ void ChartFigureDlg::OnChartSet()
 	// TODO: Add your command handler code here
 	DlgChartSet dlgSet(this);
 	//初始化当前值
-	dlgSet.m_nXID = m_charxy->getXID();
+	dlgSet.m_XKeyID = m_charxy->getXID();
 	dlgSet.m_eLineStyle = m_charxy->getLineStyle();
 	dlgSet.m_eMoveStyle = m_charxy->getMoveStyle();
 	dlgSet.m_eChartType = m_charxy->getChartType();
-	std::map<int, bool> mapV = m_charxy->getMapVisible();
+	boost::unordered_map<SENSOR_TYPE_KEY, bool> mapV = m_charxy->getMapVisible();
 	dlgSet.m_setShowID.clear();
-	for(std::map<int, bool>::iterator itr = mapV.begin(); itr!=mapV.end(); ++itr)
+	for(auto itr = mapV.begin(); itr != mapV.end(); ++itr)
 	{
 		if(itr->second)
 		{
 			dlgSet.m_setShowID.insert(itr->first);
 		}
 	}
-	if(IDOK==dlgSet.DoModal())
+	if(IDOK == dlgSet.DoModal())
 	{
-		std::map<int, bool> mapV;
-		SET<int> setV = dlgSet.m_setShowID;
-		for(SET<int>::iterator itr = setV.begin(); itr!=setV.end(); ++itr)
+		boost::unordered_map<SENSOR_TYPE_KEY, bool> mapV;
+		auto setV = dlgSet.m_setShowID;
+		for(auto itr = setV.begin(); itr != setV.end(); ++itr)
 		{
 			mapV[*itr] = true;
 		}
 		m_charxy->setMapVisible(mapV);
 
-		m_charxy->setXID(dlgSet.m_nXID);
+		m_charxy->setXID(dlgSet.m_XKeyID);
 		m_charxy->setMoveStyle(dlgSet.m_eMoveStyle);
 		m_charxy->setChartType(dlgSet.m_eChartType);
 		m_charxy->setLineStyle(dlgSet.m_eLineStyle);
@@ -392,7 +392,7 @@ void ChartFigureDlg::OnTimer(UINT_PTR nIDEvent)
 	// TODO: Add your message handler code here and/or call default
 	if (TIMER_CHART_EVENT == nIDEvent)
 	{
-		updateData(NULL);
+		updateData();
 	}
 	CBaseDialog::OnTimer(nIDEvent);
 }

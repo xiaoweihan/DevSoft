@@ -25,9 +25,10 @@ public:
 	}
 
 	//设置传感器ID
-	void SetSensorID(int nSensorID)
+	void SetSensorID(int nSensorID,int nSensorSerialID)
 	{
 		m_nSensorID = nSensorID;
+		m_nSensorSerialID = nSensorSerialID;
 	}
 
 	//获取传感器数据
@@ -47,5 +48,7 @@ private:
 	int m_nMaxDataLength;
 	//对应传感器的编号
 	int m_nSensorID;
+	//传感器对应的串号
+	int m_nSensorSerialID;
 };
 

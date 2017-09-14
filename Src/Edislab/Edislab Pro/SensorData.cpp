@@ -9,7 +9,8 @@ const int DEFAULT_MAX_LENGTH = 600;
 
 CSensorData::CSensorData(void):
 m_nSensorID(-1),
-m_nMaxDataLength(DEFAULT_MAX_LENGTH)
+m_nMaxDataLength(DEFAULT_MAX_LENGTH),
+m_nSensorSerialID(0)
 {
 	m_SensorDataList.clear();
 }

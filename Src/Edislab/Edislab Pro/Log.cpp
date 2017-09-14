@@ -9,6 +9,7 @@
 #include "Log.h"
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
+#include <io.h>
 #ifdef _WIN32
 #pragma warning(disable:4996)
 #pragma warning(disable:4251)

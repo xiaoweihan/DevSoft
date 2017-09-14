@@ -2,8 +2,10 @@
 #include <vector>
 #include <set>
 #include <map>
+#include <boost/unordered_map.hpp>
 #include "DataDefine.h"
 #include "Global.h"
+#include "Type.h"
 class ChartManager;
 class ChartXYData
 {
@@ -14,12 +16,18 @@ public:
 	const std::vector<CMeDPoint>& getData();
 	void setColor(CMeColor color);
 	CMeColor getColor();
-	void setID(int id);
-	int getID();
+	void setID(const SENSOR_TYPE_KEY& id)
+	{
+		ID = id;
+	}
+	SENSOR_TYPE_KEY getID()
+	{
+		return ID;
+	}
 private:
 	std::vector<CMeDPoint> mData;
 	CMeColor mColor;
-	int ID;
+	SENSOR_TYPE_KEY ID;
 	//bool mVisible;
 };
 
@@ -30,7 +38,8 @@ public:
 	~MarkPoint();
 	void paint();
 };
-enum ChartType{
+enum ChartType
+{
 	E_CHART_LINE,				//线
 	E_CHART_STRIP,				//条状
 	E_CHART_PIE,				//饼状
@@ -44,17 +53,20 @@ enum ChartType{
 	E_CHART_HILO_OC,			//小矿脉开合
 	E_CHART_BUBBLE,				//泡泡
 };
-enum LineStyle{
+enum LineStyle
+{
 	E_LINE_DOT,
 	E_LINE_LINE,
 	E_LINE_DOT_LINE,
 };
-enum MoveStyle{
+enum MoveStyle
+{
 	E_X_SCROLL,
 	E_X_SHOWALL,
 	E_X_HANDLE,
 };
-enum OperateMode {
+enum OperateMode 
+{
 	E_OPE_DRAG,
 	E_OPE_SELECT,
 };
@@ -116,16 +128,17 @@ public:
 	void setChartMgr(ChartManager* mgr);
 	const ChartManager* getChartMgr();
 	//update visible and column
-	void setVisible(int id, bool bShow);
-	bool getVisible(int id);
+	void setVisible(SENSOR_TYPE_KEY id, bool bShow);
+	bool getVisible(SENSOR_TYPE_KEY id);
 
-	std::map<int, bool> getMapVisible() { return m_mapVisible; }
-	void setMapVisible(std::map<int, bool> m) { m_mapVisible = m; }
+	boost::unordered_map<SENSOR_TYPE_KEY, bool> getMapVisible() { return m_mapVisible; }
+	void setMapVisible(const boost::unordered_map<SENSOR_TYPE_KEY, bool>& m) { m_mapVisible = m; }
 
-	void setXID(int id);
-	int getXID();
+	//void setXID(int id);
+	void setXID(const SENSOR_TYPE_KEY& id);
+	SENSOR_TYPE_KEY getXID();
 	//更新数据
-	void updateData(class CGlobalDataManager* dbMgr);
+	void updateData();
 	void refreshData();
 
 	LineStyle getLineStyle() { return m_eLineStyle; }
@@ -192,12 +205,10 @@ private:
 	CDC* m_pMemDC;
 	ChartManager* m_chartMgr;
 	//不显示的列 ID
-	std::map<int, bool> m_mapVisible;
-	int m_nXID;
+	boost::unordered_map<SENSOR_TYPE_KEY, bool> m_mapVisible;
+	SENSOR_TYPE_KEY m_nXID;
 	CString m_strX;
 	CString m_strY;
-	//
-	class CGlobalDataManager* m_dbMgr;
 	std::vector<GROUPDATA> m_allData;
 	//数据值 更改时要重新计算
 	std::vector<ChartXYData> m_vecLineData;

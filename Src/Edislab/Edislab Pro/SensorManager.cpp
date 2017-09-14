@@ -13,10 +13,17 @@ Version:1.0
 #include <boost/thread/lock_factories.hpp>
 #include <algorithm>
 #include <string>
-
+#include <iterator>
+#include "SensorTypeTable.h"
+const std::string DEFAULT_TIME_NAME = "t(s)时间";
 CSensorManager::CSensorManager(void)
 {
 	m_SensorInfoArray.clear();
+	//提前预置办
+	SENSOR_TYPE_INFO_ELEMENT SensorElement;
+	SensorElement.strSensorName = DEFAULT_TIME_NAME;
+	m_SensorInfoArray.push_back(SensorElement);
+
 }
 
 
@@ -58,7 +65,7 @@ bool CSensorManager::RegisterSensor(int nSensorTypeID,int nSensorSerialID)
 {
 	using namespace std;
 	//根据传感器类型的ID查询传感器的名称
-	string strSensorName;
+	string strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(nSensorTypeID);
 	return RegisterSensor(SENSOR_TYPE_INFO_ELEMENT(strSensorName,nSensorTypeID,nSensorSerialID));
 }
 
@@ -97,9 +104,134 @@ bool CSensorManager::UnRegisterSensor(int nSensorTypeID,int nSensorSerialID)
 	return UnRegisterSensor(SENSOR_TYPE_INFO_ELEMENT("",nSensorTypeID,nSensorSerialID));
 }
 
+/*********************************************************
+FunctionName:CreateInstance
+FunctionDesc:创建单实例
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
 CSensorManager& CSensorManager::CreateInstance(void)
 {
 	return s_obj;
+}
+
+/*********************************************************
+FunctionName:QuerySensorIDByName
+FunctionDesc:根据传感器的名称获取传感器ID信息
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
+bool CSensorManager::QuerySensorIDByName(const std::string& strSensorName,SENSOR_TYPE_KEY& SensorKeyID)
+{
+	auto Lock = boost::make_unique_lock(m_Lock);
+
+	auto FindPred = [strSensorName](const SENSOR_TYPE_INFO_ELEMENT& SensorElement)->bool
+	{
+
+		if (strSensorName == SensorElement.strSensorName)
+		{
+			return true;
+		}
+		return false;
+	};
+
+	//查找是否存在
+	auto Iter = std::find_if(m_SensorInfoArray.begin(),m_SensorInfoArray.end(),FindPred);
+
+	if (Iter != m_SensorInfoArray.end())
+	{
+		SensorKeyID.nSensorID = Iter->nSensorID;
+		SensorKeyID.nSensorSerialID = Iter->nSensorSerialID;
+		return true;
+	}
+	return false;
+}
+
+/*********************************************************
+FunctionName:GetSensorList
+FunctionDesc:获取所有传感器信息
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
+void CSensorManager::GetSensorList(std::vector<SENSOR_TYPE_INFO_ELEMENT>& SensorList,bool bInculde /*= false*/)
+{
+	SensorList.clear();
+	auto Lock = boost::make_unique_lock(m_Lock);
+	//是否包含特殊的传感器
+	if (bInculde)
+	{
+		SensorList.assign(m_SensorInfoArray.begin(),m_SensorInfoArray.end());
+	}
+	else
+	{
+		auto FilterPred = [](const SENSOR_TYPE_INFO_ELEMENT& SensorElement)->bool
+		{
+			if (SensorElement.nSensorID >= 0 && SensorElement.nSensorSerialID >= 0)
+			{
+				return true;
+			}
+			return false;
+		};
+		std::copy_if(m_SensorInfoArray.begin(),m_SensorInfoArray.end(),std::back_inserter(SensorList),FilterPred);
+	}
+}
+
+/*********************************************************
+FunctionName:GetSpecialSensorID
+FunctionDesc:
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
+SENSOR_TYPE_KEY CSensorManager::GetSpecialSensorID(void)
+{
+	return SENSOR_TYPE_KEY();
+}
+
+/*********************************************************
+FunctionName:IsSpecialSensorID
+FunctionDesc:
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
+bool CSensorManager::IsSpecialSensorID(const SENSOR_TYPE_KEY& SensorKeyID)
+{
+	if (SensorKeyID.nSensorID < 0 && SensorKeyID.nSensorSerialID < 0)
+	{
+		return true;
+	}
+	return false;
+}
+
+std::string CSensorManager::QuerySensorNameByID(const SENSOR_TYPE_KEY& SensorKeyID)
+{
+	auto Lock = boost::make_unique_lock(m_Lock);
+
+	auto FilterPred = [SensorKeyID](const SENSOR_TYPE_INFO_ELEMENT& SensorElement)->bool
+	{
+		if (SensorElement.nSensorID == SensorKeyID.nSensorID && SensorElement.nSensorSerialID == SensorKeyID.nSensorSerialID)
+		{
+			return true;
+		}
+		return false;
+	};
+	auto Iter = std::find_if(m_SensorInfoArray.begin(),m_SensorInfoArray.end(),FilterPred);
+
+	if (Iter != m_SensorInfoArray.end())
+	{
+		return Iter->strSensorName;
+	}
+
+	return std::string("");
 }
 
 CSensorManager CSensorManager::s_obj;

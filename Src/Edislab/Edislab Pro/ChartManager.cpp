@@ -2,34 +2,36 @@
 #include "Edislab Pro.h"
 #include "ChartManager.h"
 #include "ChartFigureDlg.h"
-#include "GlobalDataManager.h"
+//#include "GlobalDataManager.h"
 using namespace std;
 
 ChartManager::ChartManager(void)
 {
-	CGlobalDataManager::CreateInstance().Attach(this);
+	//CGlobalDataManager::CreateInstance().Attach(this);
 }
 
 
 ChartManager::~ChartManager(void)
 {
-	CGlobalDataManager::CreateInstance().Detach(this);
+	//CGlobalDataManager::CreateInstance().Detach(this);
 }
 
 //更新数据，把全局实验数据更新到画图专用数据中
 void ChartManager::Update(CObservable* pObs, void* pArg)
 {
+#if 0
 	CGlobalDataManager* dbMgr = dynamic_cast<CGlobalDataManager*>(pObs);
 	if(NULL==dbMgr)//不是数据类
 	{
 		return;
 	}
+#endif
 	//更新单表记录的数据
 	for(UINT i= 0; i<m_vecChartDlg.size(); ++i)
 	{
 		if(m_vecChartDlg[i])
 		{
-			m_vecChartDlg[i]->updateData(dbMgr);
+			m_vecChartDlg[i]->updateData();
 		}
 	}
 }

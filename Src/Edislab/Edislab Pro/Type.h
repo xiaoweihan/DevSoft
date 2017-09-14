@@ -6,6 +6,7 @@
 #include <boost/thread/lock_guard.hpp>
 #include <boost/thread/shared_lock_guard.hpp>
 #include <boost/function.hpp>
+#include <boost/functional/hash.hpp>
 #include <algorithm>
 #include "Macro.h"
 class CSplitBar;
@@ -120,7 +121,6 @@ typedef struct _sensor_type_info
 		enumType = SENSOR_ALL;
 	}
 }SENSOR_TYPE_INFO, *LP_SENSOR_TYPE_INFO;
-
 
 //传感器信息定义
 typedef struct _sensor_com_config_element
@@ -266,7 +266,7 @@ typedef struct _sensor_type_info_element
 	{
 		strSensorName = "";
 		nSensorID = -1;
-		nSensorSerialID = 0;
+		nSensorSerialID = -1;
 	}
 	_sensor_type_info_element(const std::string& strSensorName,int nSensorID,int nSensorSerialID)
 	{
@@ -281,6 +281,36 @@ typedef struct _sensor_type_info_element
 	}
 #endif
 }SENSOR_TYPE_INFO_ELEMENT,* LP_SENSOR_TYPE_INFO_ELEMENT;
+
+//传感器对应的Key
+typedef struct _sensor_type_key
+{
+	//传感器编号唯一提前预置好
+	int nSensorID;
+	//传感器的串行号防止多个传感器
+	int nSensorSerialID;
+
+	_sensor_type_key()
+	{
+		nSensorSerialID = -1;
+		nSensorID = -1;
+	}
+
+	_sensor_type_key(int nSensorTypeID,int nSensorSeqID)
+	{
+		nSensorSerialID = nSensorSeqID;
+		nSensorID = nSensorTypeID;
+	}
+
+	bool operator== (const _sensor_type_key& CpValue) const
+	{
+		return ((std::equal_to<int>()(nSensorID,CpValue.nSensorID)) && (std::equal_to<int>()(nSensorSerialID,CpValue.nSensorSerialID)));
+	}
+
+
+}SENSOR_TYPE_KEY,* LP_SENSOR_TYPE_KEY;
+
+size_t hash_value(const SENSOR_TYPE_KEY& Key);
 
 //函数指针定义
 typedef void (*pCommandEntry)(CEdislabProView* pView);

@@ -6,14 +6,15 @@
 #include "GaugeDlg.h"
 #include "DlgDeviceSet.h"
 #include "math.h"
-#include "GlobalDataManager.h"
+//#include "GlobalDataManager.h"
 #include "Global.h"
 #include "DlgTabPanel.h"
 #include "Msg.h"
 #include "GridColumnGroupManager.h"
-#include "SensorIDGenerator.h"
+//#include "SensorIDGenerator.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
+#include "SensorManager.h"
 #include "Utility.h"
 // GaugeDlg dialog
 #pragma warning(disable:4267)
@@ -24,12 +25,13 @@ GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(GaugeDlg::IDD, pParent),
 	m_bActiveFlag(FALSE)
 {
-	dataColumnID = -1;
+	//dataColumnID = -1;
 	enableWarning = false;
 	minRange = 0.0;
 	maxRange = 200.0;
 	maxWarningValue = DBL_MAX;//0X7FFFFFFF;
 	minWarningValue = -DBL_MAX;//-9999999999;
+
 }
 
 GaugeDlg::~GaugeDlg()
@@ -69,7 +71,7 @@ BOOL GaugeDlg::OnInitDialog()
 	CBaseDialog::OnInitDialog();
 	m_wndGauge.GetGauge()->SetRange(minRange,maxRange);
 	m_wndGauge.GetGauge()->SetValue(0.0);
-	updateData(NULL);
+	updateData();
 	Invalidate(TRUE);
 	SetTimer(TIMER_GAUGE_EVENT, TIMER_GAUGE, NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
@@ -192,13 +194,15 @@ void GaugeDlg::getWarningValue(double& min, double& max)
 	min = minWarningValue;
 	max = maxWarningValue;
 }
-void GaugeDlg::setShowDataColumn(int ColumnID)
+void GaugeDlg::setShowDataColumn(SENSOR_TYPE_KEY SensorKeyID)
 {
-	dataColumnID = ColumnID;
+	//dataColumnID = ColumnID;
+	m_SensorKeyID = SensorKeyID;
 }
-int GaugeDlg::getShowDataColumn()
+SENSOR_TYPE_KEY GaugeDlg::getShowDataColumn()
 {
-	return dataColumnID;
+	return m_SensorKeyID;
+	//return dataColumnID;
 }
 void GaugeDlg::setValue(double value)
 {
@@ -246,7 +250,8 @@ void GaugeDlg::OnGaugeSet()
 	// TODO: Add your command handler code here
 	DlgDeviceSet dlgSet(this);
 	//设置初始值
-	dlgSet.setDataColumnID(dataColumnID);
+	//dlgSet.setDataColumnID(dataColumnID);
+	dlgSet.setDataColumnID(m_SensorKeyID);
 	dlgSet.setWarningState(enableWarning);
 	if(enableWarning)
 	{
@@ -256,7 +261,7 @@ void GaugeDlg::OnGaugeSet()
 	if(IDOK == dlgSet.DoModal())
 	{
 		//获取值
-		dataColumnID = dlgSet.getDataColumnID();
+		m_SensorKeyID = dlgSet.getDataColumnID();
 		enableWarning = dlgSet.getWarningState();
 		if(enableWarning)
 		{
@@ -277,39 +282,32 @@ void GaugeDlg::OnGaugeSet()
 			maxWarningValue = DBL_MAX;
 		}
 		//更新
-		updateData(NULL);
+		updateData();
 	}
 }
 void GaugeDlg::NextColumn()
 {
-	std::vector<std::string> SensorNameArray;
-	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray, false);
-	bool bIs = false;
-	bool bFind = false;
-	for (int i = 0; i < (int)SensorNameArray.size(); ++i)
+	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
+	CSensorManager::CreateInstance().GetSensorList(SensorArray);
+	if (SensorArray.empty())
 	{
-		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
-		if (dataColumnID == nSensorID)
+		return;
+	}
+	int i = 0;
+	for (i = 0; i < (int)SensorArray.size(); ++i)
+	{
+		if (m_SensorKeyID.nSensorID == SensorArray[i].nSensorID && m_SensorKeyID.nSensorSerialID == SensorArray[i].nSensorSerialID)
 		{
-			bIs = true;
-		}
-		if (bIs)
-		{
-			dataColumnID = nSensorID;
-			bFind = true;
 			break;
 		}
 	}
-	if (!bFind)
+	//如果没有找到
+	if (i >= SensorArray.size())
 	{
-		for (int i = 0; i < (int)SensorNameArray.size(); ++i)
-		{
-			int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
-			dataColumnID = nSensorID;
-			break;
-		}
+		m_SensorKeyID.nSensorID = SensorArray[0].nSensorID;
+		m_SensorKeyID.nSensorSerialID = SensorArray[0].nSensorSerialID;
 	}
-	updateData(NULL);
+	updateData();
 }
 
 void GaugeDlg::OnGaugeDelete()
@@ -404,16 +402,16 @@ void GaugeDlg::OnPaint()
 		}
 	}
 }
-void GaugeDlg::updateData(CGlobalDataManager* dbMgr)
+void GaugeDlg::updateData()
 {
 	//更新当前值
-	std::string strSensorName = CSensorIDGenerator::CreateInstance().QueryrNameBySensorID(dataColumnID);
+	std::string strSensorName = CSensorManager::CreateInstance().QuerySensorNameByID(m_SensorKeyID);
 	if (m_strTitle != CString(strSensorName.c_str()))
 	{
 		m_strTitle = CString(strSensorName.c_str());
 		OnUpdateGauge();
 	}
-	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(dataColumnID);
+	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(m_SensorKeyID);
 	if (nullptr != pData)
 	{
 		std::vector<float> cData;
@@ -483,11 +481,11 @@ void GaugeDlg::OnTimer(UINT_PTR nIDEvent)
 	//更新数据
 	if (TIMER_GAUGE_EVENT == nIDEvent)
 	{
-		if (dataColumnID < 0)
+		if (m_SensorKeyID.nSensorID < 0 && m_SensorKeyID.nSensorSerialID <= 0)
 		{
 			NextColumn();
 		}
-		updateData(NULL);
+		updateData();
 	}
 	CBaseDialog::OnTimer(nIDEvent);
 }

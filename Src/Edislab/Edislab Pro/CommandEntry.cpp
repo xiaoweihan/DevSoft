@@ -20,7 +20,8 @@
 #include "Global.h"
 #include "SensorConfig.h"
 #include "Log.h"
-#include "SensorIDGenerator.h"
+//#include "SensorIDGenerator.h"
+#include "SensorManager.h"
 #include "SerialPortService.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
@@ -827,8 +828,9 @@ void HandleAcquirePara(CEdislabProView* pView)
 		const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
 		//计算出周期(单位:ms)
 		int nPeriod = (int)(1.0f / (SampleInfo.fFrequency)) * 1000;
+		SENSOR_TYPE_KEY SensorKeyID = CSensorManager::CreateInstance().GetSpecialSensorID();
 		//设置传感器时间数据改变
-		CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(CSensorIDGenerator::CreateInstance().GetSpecialSensorID());
+		CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(SensorKeyID);
 		if (nullptr != pData)
 		{
 			pData->ClearSensorData();
@@ -839,11 +841,11 @@ void HandleAcquirePara(CEdislabProView* pView)
 				pData->AddSensorData(i * fPeriod);
 			}
 		}
-		std::vector<std::string> SensorNameArray;
-		CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray,false);
-		BOOST_FOREACH(auto& V,SensorNameArray)
+		std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
+		CSensorManager::CreateInstance().GetSensorList(SensorArray);
+		BOOST_FOREACH(auto& V,SensorArray)
 		{
-			CSerialPortService::CreateInstance().SetSensorFrequence(V,nPeriod);
+			CSerialPortService::CreateInstance().SetSensorFrequence(V.nSensorID,V.nSensorSerialID,nPeriod);
 		}
 		if (SampleInfo.bLimitTime)
 		{

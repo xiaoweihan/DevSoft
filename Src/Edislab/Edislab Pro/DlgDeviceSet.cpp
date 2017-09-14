@@ -3,10 +3,12 @@
 
 #include "stdafx.h"
 #include "resource.h"
+#include <boost/checked_delete.hpp>
 #include "DlgDeviceSet.h"
-#include "GlobalDataManager.h"
+//#include "GlobalDataManager.h"
 #include "GridColumnGroupManager.h"
-#include "SensorIDGenerator.h"
+//#include "SensorIDGenerator.h"
+#include "SensorManager.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
 #include "Utility.h"
@@ -26,10 +28,12 @@ DlgDeviceSet::DlgDeviceSet(CWnd* pParent /*=NULL*/)
 	m_bWarning = false;
 	m_warningValue = 10;
 	m_nWarningType = 0;
+	m_ptrDataArray.clear();
 }
 
 DlgDeviceSet::~DlgDeviceSet()
 {
+	m_ptrDataArray.clear();
 }
 
 void DlgDeviceSet::DoDataExchange(CDataExchange* pDX)
@@ -47,18 +51,19 @@ BEGIN_MESSAGE_MAP(DlgDeviceSet, CBaseDialog)
 //	ON_NOTIFY(BCN_HOTITEMCHANGE, IDC_CHECK_WARNING, &DlgDeviceSet::OnBnHotItemChangeCheckWarning)
 	ON_BN_CLICKED(IDC_CHECK_WARNING, &DlgDeviceSet::OnBnClickedCheckWarning)
 	ON_BN_CLICKED(IDOK, &DlgDeviceSet::OnBnClickedOk)
+	ON_WM_CLOSE()
 END_MESSAGE_MAP()
 
 
 // DlgDeviceSet message handlers
 //获取要显示的数据列ID
-int DlgDeviceSet::getDataColumnID()
+SENSOR_TYPE_KEY DlgDeviceSet::getDataColumnID()
 {
-	return m_nDataID;
+	return m_SensorKeyID;
 }
-void DlgDeviceSet::setDataColumnID(int ID)
+void DlgDeviceSet::setDataColumnID(SENSOR_TYPE_KEY SensorKeyID)
 {
-	m_nDataID = ID;
+	m_SensorKeyID = SensorKeyID;
 }
 //警告启用?
 bool DlgDeviceSet::getWarningState()
@@ -99,24 +104,33 @@ BOOL DlgDeviceSet::OnInitDialog()
 	index = m_combWarningTYpe.AddString(_T("降到"));
 	m_combWarningTYpe.SetItemData(index, 1);
 	m_combWarningTYpe.SetCurSel(m_nWarningType);
-	std::vector<std::string> SensorNameArray;
-	CSensorIDGenerator::CreateInstance().GetAllSensorName(SensorNameArray,false);
-	for(int i = 0; i < (int)SensorNameArray.size(); ++i)
+	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
+	CSensorManager::CreateInstance().GetSensorList(SensorArray);
+	for(int i = 0; i < (int)SensorArray.size(); ++i)
 	{
-		int index = m_combDataID.AddString(CString(SensorNameArray[i].c_str()));
-		int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
-		m_combDataID.SetItemData(index, nSensorID);
+		int index = m_combDataID.AddString(CString(SensorArray[i].strSensorName.c_str()));
+		//int nSensorID = CSensorIDGenerator::CreateInstance().QuerySensorTypeIDByName(SensorNameArray[i]);
+		LP_SENSOR_TYPE_KEY pData = new SENSOR_TYPE_KEY(SensorArray[i].nSensorID,SensorArray[i].nSensorSerialID);
+
+		if (nullptr != pData)
+		{
+			m_combDataID.SetItemData(index,(DWORD_PTR)pData);
+			m_ptrDataArray.push_back(pData);
+		}
+		
 	}
-
-
 	m_combDataID.SetCurSel(0);
 	for(int i = 0; i < m_combDataID.GetCount(); ++i)
 	{
-		if(m_nDataID == m_combDataID.GetItemData(i))
+		LP_SENSOR_TYPE_KEY pData = (LP_SENSOR_TYPE_KEY)m_combDataID.GetItemData(i);
+		if (nullptr != pData)
 		{
-			m_combDataID.SetCurSel(i);
-			break;
-		}
+			if(*pData == m_SensorKeyID)
+			{
+				m_combDataID.SetCurSel(i);
+				break;
+			}
+		}	
 	}
 	// TODO:  Add extra initialization here
 	return TRUE;  // return TRUE unless you set the focus to a control
@@ -138,17 +152,25 @@ void DlgDeviceSet::OnBnClickedOk()
 	// TODO: Add your control notification handler code here
 	UpdateData(true);
 	//数据ID
-	int nID = -1;
 	int index = m_combDataID.GetCurSel();
-	if(index>=0)
+	if(index >= 0)
 	{
-		nID = m_combDataID.GetItemData(index);
+		LP_SENSOR_TYPE_KEY pData = (LP_SENSOR_TYPE_KEY)m_combDataID.GetItemData(index);
+
+		if (nullptr != pData)
+		{
+			m_SensorKeyID = *pData;
+		}
 	}
-	m_nDataID = nID;
 	//报警类型
 	index = m_combWarningTYpe.GetCurSel();
 	m_nWarningType = m_combWarningTYpe.GetItemData(index);
-	//
-	CBaseDialog::OnOK();
+	PostMessage(WM_CLOSE,0,0);
 }
 #pragma warning(pop)
+
+void DlgDeviceSet::OnClose()
+{
+	// TODO: 在此添加消息处理程序代码和/或调用默认值
+	CBaseDialog::OnClose();
+}

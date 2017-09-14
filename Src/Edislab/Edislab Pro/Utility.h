@@ -49,7 +49,6 @@ namespace Utility
 	p = NULL;  \
 }   
 
-
 //计算数组大小
 #define ARRAY_SIZE(array)     (sizeof(array) / sizeof(array[0]))
 #endif
