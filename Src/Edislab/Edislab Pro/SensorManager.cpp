@@ -68,8 +68,8 @@ bool CSensorManager::RegisterSensor(int nSensorTypeID,int nSensorSerialID)
 {
 	using namespace std;
 	//根据传感器类型的ID查询传感器的名称
-	string strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(nSensorTypeID);
-	return RegisterSensor(SENSOR_TYPE_INFO_ELEMENT(strSensorName,nSensorTypeID,nSensorSerialID));
+	auto strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(nSensorTypeID);
+	return RegisterSensor(SENSOR_TYPE_INFO_ELEMENT(strSensorName.strSensorTypeName,nSensorTypeID,nSensorSerialID));
 }
 
 /*********************************************************

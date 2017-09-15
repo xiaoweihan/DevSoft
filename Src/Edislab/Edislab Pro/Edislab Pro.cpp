@@ -17,7 +17,7 @@
 #include "SensorConfig.h"
 #include "SensorDataManager.h"
 #include "SensorData.h"
-//#include "SensorIDGenerator.h"
+#include "SensorTypeTable.h"
 #include "SensorManager.h"
 using std::string;
 #ifdef _DEBUG
@@ -212,6 +212,12 @@ void CEdislabProApp::Init( void )
 	std::string strDumpFilePath = Utility::GetExeDirecory() + std::string("\\Edislab.dmp");
 	CDumpFileSwitch::CreateInstance().SetDumpFilePath(strDumpFilePath.c_str());
 	CDumpFileSwitch::CreateInstance().OpenSwitch();
+
+	//加载传感器类型配置文件
+	if (!CSensorTypeTable::CreateInstance().LoadSensorTypeListFromFile())
+	{
+		ERROR_LOG("LoadSensorType failed!");
+	}
 
 	//加载传感器配置文件
 	if (!CSensorConfig::CreateInstance().LoadSensorConfig())

@@ -78,6 +78,7 @@ Source:"*.dll";Excludes:"*d.dll,*d100.dll";DestDir:"{app}"
 ;Source:"*.ocx";DestDir:"{app}"
 Source:"UnInstall.ico";DestDir:"{app}"
 Source:"SensorConfig.json";DestDir:"{app}"
+Source:"SensorType.json";DestDir:"{app}"
 Source:"Edislab Pro.ico";DestDir:"{app}";Source:"版本变更内容.txt";DestDir:{app};
 
 [Icons]

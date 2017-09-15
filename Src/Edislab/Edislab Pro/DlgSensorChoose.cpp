@@ -12,6 +12,7 @@
 #include "SensorConfig.h"
 #include "SerialPortService.h"
 #include "GridColumnGroupManager.h"
+#include "SensorDataManager.h"
 // CDlgSensorChoose 对话框
 
 IMPLEMENT_DYNAMIC(CDlgSensorChoose, CBaseDialog)
@@ -194,12 +195,15 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 		{
 			std::string strSensorUnit = iter->second.SensorRangeInfoArray[0].strUnitName;
 
-			std::string strTempSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(iter->second.nSensorID);
+			std::string strTempSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(iter->second.nSensorID).strSensorTypeName;
 
 			std::string strSensorName = strTempSensorName;//strTempSensorName + std::string("[") + strSensorUnit + std::string("]");
 
 			CSensorManager::CreateInstance().RegisterSensor(iter->second.nSensorID,0);
 	
+			//添加对应SensorID的数据
+			CSensorDataManager::CreateInstance().AddSensorData(SENSOR_TYPE_KEY(iter->second.nSensorID,0));
+
 			str.Format(_T("数据列：%s(%s)"), CString(iter->second.strSensorSymbol.c_str()), CString(iter->second.strSensorName.c_str()));
 		
 			// 拼凑添加项描述文字
@@ -278,10 +282,10 @@ void CDlgSensorChoose::OnBnClickedBtnDelete()
 		// 删除传感器信息
 		std::string strSensorUnit = element.SensorRangeInfoArray[0].strUnitName;
 
-		std::string strSensorName = element.strSensorName + std::string("[") + strSensorUnit + std::string("]");
+		std::string strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(element.nSensorID).strSensorTypeName;//element.strSensorName; //+ std::string("[") + strSensorUnit + std::string("]");
 		
+		CSensorDataManager::CreateInstance().DelSensorData(SENSOR_TYPE_KEY(element.nSensorID,0));
 		//根据ID
-		
 		CSensorManager::CreateInstance().UnRegisterSensor(element.nSensorID,0);
 		// 删除表格数据列
 		CString strColumnName(strSensorName.c_str());
@@ -329,8 +333,9 @@ void CDlgSensorChoose::OnBnClickedBtnDeleteAll()
 		// 删除传感器信息
 		std::string strSensorUnit = element.SensorRangeInfoArray[0].strUnitName;
 
-		std::string strSensorName = element.strSensorName + std::string("[") + strSensorUnit + std::string("]");
+		std::string strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(element.nSensorID).strSensorTypeName;//element.strSensorName; //+ std::string("[") + strSensorUnit + std::string("]");
 		CSensorManager::CreateInstance().UnRegisterSensor(element.nSensorID,0);
+		CSensorDataManager::CreateInstance().DelSensorData(SENSOR_TYPE_KEY(element.nSensorID,0));
 		// 删除表格数据列
 		CString strColumnName(strSensorName.c_str());
 		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"), strColumnName);
@@ -344,11 +349,6 @@ void CDlgSensorChoose::OnBnClickedBtnDeleteAll()
 	{
 		pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
 	}
-
-
-
-
-
 	m_mapChooseSensor.clear();
 	m_ListChoosedSensor.CleanUp();
 	m_setChooseSensorID.clear();
@@ -425,7 +425,7 @@ void CDlgSensorChoose::RefreshSensorList()
 		std::string strSensorUnit = sensor.SensorRangeInfoArray[0].strUnitName;
 
 		//根据传感器ID获取传感器名称
-		sensor.strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(sensor.nSensorID);
+		sensor.strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(sensor.nSensorID).strSensorTypeName;
 
 		//std::string strSensorName = sensor.strSensorName + std::string("[") + strSensorUnit + std::string("]");
 

@@ -13,10 +13,17 @@ Version:1.0
 #include <boost/thread/lock_factories.hpp>
 #include <boost/assign.hpp>
 #include <string>
+#include <boost/scope_exit.hpp>
+#include <rapidjson/document.h>
+#include <rapidjson/filereadstream.h>
+#include <rapidjson/encodedstream.h>
+#include <boost/filesystem.hpp>
+#include "Utility.h"
+#include "Log.h"
 CSensorTypeTable::CSensorTypeTable(void)
 {
 	m_SensorTypeMap.clear();
-	InitSensorTypeTable();
+	//InitSensorTypeTable();
 }
 
 
@@ -25,6 +32,7 @@ CSensorTypeTable::~CSensorTypeTable(void)
 	m_SensorTypeMap.clear();
 }
 
+#if 0
 void CSensorTypeTable::InitSensorTypeTable(void)
 {
 	int nSensorID = 0;
@@ -214,24 +222,154 @@ void CSensorTypeTable::InitSensorTypeTable(void)
 	strSensorName = "电流/电压合体传感器";
 	m_SensorTypeMap.emplace(nSensorID,strSensorName);
 }
+#endif
 
 CSensorTypeTable& CSensorTypeTable::CreateInstance(void)
 {
 	return s_obj;
 }
 
-std::string CSensorTypeTable::QuerySensorNameByID(int nSensorTypeID)
+
+CSensorTypeTable::SENSOR_TYPE_VALUE CSensorTypeTable::QuerySensorNameByID(int nSensorTypeID)
 {
+	SENSOR_TYPE_VALUE Result;
+
 	auto Lock = boost::make_unique_lock(m_Lock);
 
 	auto Iter = m_SensorTypeMap.find(nSensorTypeID);
 
 	if (Iter != m_SensorTypeMap.end())
 	{
-		return Iter->second;
+		Result = Iter->second;
 	}
 
-	return "";
+	return Result;
+}
+
+bool CSensorTypeTable::LoadSensorTypeListFromFile(void)
+{
+	using namespace std;
+	using namespace rapidjson;
+	std::string strConfigPath = Utility::GetExeDirecory() + std::string("\\SensorType.json");
+
+	//判断文件是否存在
+	boost::filesystem::path ConfigPath(strConfigPath);
+
+	try
+	{
+		//判断配置文件是否存在
+		if (!boost::filesystem::exists(ConfigPath))
+		{
+			ERROR_LOG("the [%s] is not exist!",strConfigPath.c_str());
+			return false;
+		}
+		//开始进行json文件解析
+		FILE* fp = fopen(strConfigPath.c_str(),"rb");
+
+		if (nullptr == fp)
+		{
+			ERROR_LOG("open [%s] file failed.", strConfigPath.c_str());
+			return false;
+		}
+		BOOST_SCOPE_EXIT(&fp)
+		{
+			if (nullptr != fp)
+			{
+				fclose(fp);
+				fp = nullptr;
+			}
+
+		}BOOST_SCOPE_EXIT_END
+		//获取文件的长度
+		fseek(fp,0,SEEK_END);
+		int nFileLength = (int)ftell(fp);
+		if (nFileLength < 0)
+		{
+			ERROR_LOG("get [%s] file length failed.", strConfigPath.c_str());
+			return false;
+		}
+		//申请内存
+		char* pBuffer =  new char[nFileLength];
+		if (nullptr == pBuffer)
+		{
+			ERROR_LOG("Allocate memory failed.");
+			return false;
+		}
+		BOOST_SCOPE_EXIT(&pBuffer)
+		{
+			if (nullptr != pBuffer)
+			{
+				delete []pBuffer;
+			}
+		}BOOST_SCOPE_EXIT_END
+		ZeroMemory(pBuffer,nFileLength);
+		fseek(fp,0,SEEK_SET);
+		FileReadStream bis(fp,pBuffer,nFileLength);
+		AutoUTFInputStream<unsigned, FileReadStream> eis(bis);
+		Document Parser;      
+		Parser.ParseStream<0, AutoUTF<unsigned> >(eis);
+		if (Parser.HasParseError())  
+		{  
+			ERROR_LOG("Parse json file [%s] failed,the error [%d].", strConfigPath.c_str(),Parser.GetParseError());
+			return false;
+		}  
+
+		//加载传感器类型列表
+		if (!LoadSensorTypeList(Parser))
+		{
+			return false;
+		}
+	}
+	catch (boost::filesystem::filesystem_error& e)
+	{
+		ERROR_LOG("oh,shit,this is something wrong in filesystem,the error is [%s].",e.what());
+
+		return false;
+	}
+	return true;
+}
+
+bool CSensorTypeTable::LoadSensorTypeList(rapidjson::Document& Parser)
+{
+	const rapidjson::Value& SensorTypeArray = Parser["SensorTypeList"];
+
+	if (!SensorTypeArray.IsArray())
+	{
+		return false;
+	}
+
+
+	for (auto Iter = SensorTypeArray.Begin(); Iter != SensorTypeArray.End(); ++Iter)
+	{
+		if (Iter->IsObject())
+		{
+			SENSOR_TYPE_VALUE SensorElement;
+			// 传感器ID
+			if (!Iter->HasMember("SensorTypeID") || !(*Iter)["SensorTypeID"].IsInt())
+			{
+				continue;
+			}
+
+			SensorElement.nSensorTypeID = (*Iter)["SensorTypeID"].GetInt();
+
+			// 传感器名
+			if (!Iter->HasMember("SensorTypeName") || !(*Iter)["SensorTypeName"].IsString())
+			{
+				continue;
+			}
+			SensorElement.strSensorTypeName = Utility::ConverUTF8ToGB2312((*Iter)["SensorTypeName"].GetString());
+
+			// 传感器单位
+			if (!Iter->HasMember("SensorTypeUnit") || !(*Iter)["SensorTypeUnit"].IsString())
+			{
+				continue;
+			}
+			SensorElement.strSensorUnit = (*Iter)["SensorTypeUnit"].GetString();
+
+			m_SensorTypeMap.emplace(SensorElement.nSensorTypeID,SensorElement);
+		}
+	}
+	return true;
 }
 
 CSensorTypeTable CSensorTypeTable::s_obj;

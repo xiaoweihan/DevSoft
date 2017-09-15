@@ -286,7 +286,9 @@ int CSerialPortService::HandlerData(BYTE* pData, int nDataLength)
 				if (nSensorSeqID >= 0 && nSensorTypeID >= 0)
 				{
 					//根据设备ID获取设备名称
-					std::string strSensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(nSensorTypeID);
+					auto SensorName = CSensorTypeTable::CreateInstance().QuerySensorNameByID(nSensorTypeID);
+
+					std::string strSensorName = SensorName.strSensorTypeName;
 
 					//组装设备名称
 					boost::format FT("%1%_%2%");
