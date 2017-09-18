@@ -623,3 +623,14 @@ void CEdislabProView::NotifyGridGroupInfoChange()
 		}
 	}
 }
+
+void CEdislabProView::NotifyRibbonChangeText(int nFlag)
+{
+	CWnd* pWnd = AfxGetMainWnd();
+	if (nullptr == pWnd)
+	{
+		return;
+	}
+	pWnd->PostMessage(WM_NOTIFY_RIBBON_CHANGE,nFlag,0);
+
+}

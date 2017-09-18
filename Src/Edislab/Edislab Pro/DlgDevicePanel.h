@@ -1,7 +1,7 @@
 #pragma once
 #include "BaseDialog.h"
 #include "WidgetLayout.h"
-#include "GaugeManager.h"
+//#include "GaugeManager.h"
 // CDlgDevicePanel 对话框
 
 class CDlgDevicePanel : public CBaseDialog
@@ -22,7 +22,7 @@ public:
 
 private:
 	//数据理器
-	GaugeManager m_dataManager;
+	//GaugeManager m_dataManager;
 	//布局器
 	CWidgetLayout m_WidgetLayout;
 	//窗口

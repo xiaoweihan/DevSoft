@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#if 0
 #include "Edislab Pro.h"
 #include "GaugeDlg.h"
 #include "GaugeManager.h"
@@ -74,3 +75,4 @@ int GaugeManager::readData()
 {
 	return 0;
 }
+#endif

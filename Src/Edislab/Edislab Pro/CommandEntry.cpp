@@ -304,7 +304,7 @@ void CCommandEntry::InitUpdateCommandEntry( void )
 	m_UpdateCommandEntryMap[ID_SELECT_SENSOR] = UpdateHandleChooseDevice;
 	m_UpdateCommandEntryMap[ID_COLLECT_PARAM] = UpdateHandleAcquirePara;
 
-	//m_UpdateCommandEntryMap[ID_START] = UpdateHandleStart;
+	m_UpdateCommandEntryMap[ID_START] = UpdateHandleStart;
 	m_UpdateCommandEntryMap[ID_MANUAL_SELECT] = UpdateHandleManualSelect;
 	m_UpdateCommandEntryMap[ID_AUTO_SELECT] = UpdateHandleAutoSelect;
 
@@ -682,6 +682,7 @@ void HandleStart(CEdislabProView* pView)
 		{
 			CSerialPortService::CreateInstance().StopSensorCollect(V.nSensorID,V.nSensorSerialID);
 		}
+		pView->NotifyRibbonChangeText(0);
 	}
 	else
 	{
@@ -691,6 +692,7 @@ void HandleStart(CEdislabProView* pView)
 		{
 			CSerialPortService::CreateInstance().StartSensorCollect(V.nSensorID,V.nSensorSerialID);
 		}
+		pView->NotifyRibbonChangeText(1);
 	}
 	s_bStartCapture = !s_bStartCapture;
 }
@@ -1789,4 +1791,8 @@ void HandleDeviceNextColumn(CEdislabProView* pView)
 			}
 		}
 	}
+}
+
+void UpdateHandleStart(CEdislabProView* pView,CCmdUI* pCmdUI)
+{
 }

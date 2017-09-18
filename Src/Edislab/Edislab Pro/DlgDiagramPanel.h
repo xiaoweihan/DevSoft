@@ -2,7 +2,7 @@
 
 #include "BaseDialog.h"
 #include "WidgetLayout.h"
-#include "ChartManager.h"
+//#include "ChartManager.h"
 // CDlgDiagramPanel 对话框
 
 class CDlgDiagramPanel : public CBaseDialog
@@ -22,7 +22,7 @@ public:
 	int GetWidgetNum(void) const;
 private:
 	//数据理器
-	ChartManager m_dataManager;
+	//ChartManager m_dataManager;
 	//布局器
 	CWidgetLayout m_WidgetLayout;
 	//窗口

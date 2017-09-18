@@ -227,7 +227,6 @@
     <ClInclude Include="CFont0.h" />
     <ClInclude Include="CommandEntry.h" />
     <ClInclude Include="ChartFigureDlg.h" />
-    <ClInclude Include="ChartManager.h" />
     <ClInclude Include="ChartXY.h" />
     <ClInclude Include="ConcreteSplitAlgorithm.h" />
     <ClInclude Include="ConcreteTabWnd.h" />
@@ -262,15 +261,12 @@
     <ClInclude Include="ErrorCode.h" />
     <ClInclude Include="ErrorCodeManager.h" />
     <ClInclude Include="GaugeDlg.h" />
-    <ClInclude Include="GaugeManager.h" />
     <ClInclude Include="Global.h" />
     <ClInclude Include="GridColumnGroupManager.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Macro.h" />
     <ClInclude Include="MainFrm.h" />
     <ClInclude Include="Msg.h" />
-    <ClInclude Include="Observable.h" />
-    <ClInclude Include="Observer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SensorConfig.h" />
     <ClInclude Include="SensorData.h" />
@@ -291,7 +287,6 @@
     <ClCompile Include="BaseDockingBar.cpp" />
     <ClCompile Include="BaseRibbonBar.cpp" />
     <ClCompile Include="BaseTabWnd.cpp" />
-    <ClCompile Include="ChartManager.cpp" />
     <ClCompile Include="ChartXY.cpp" />
     <ClCompile Include="CommandEntry.cpp" />
     <ClCompile Include="ChartFigureDlg.cpp" />
@@ -324,13 +319,10 @@
     <ClCompile Include="Edislab ProView.cpp" />
     <ClCompile Include="ErrorCodeManager.cpp" />
     <ClCompile Include="GaugeDlg.cpp" />
-    <ClCompile Include="GaugeManager.cpp" />
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="GridColumnGroupManager.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MainFrm.cpp" />
-    <ClCompile Include="Observable.cpp" />
-    <ClCompile Include="Observer.cpp" />
     <ClCompile Include="SensorConfig.cpp" />
     <ClCompile Include="SensorData.cpp" />
     <ClCompile Include="SensorDataManager.cpp" />

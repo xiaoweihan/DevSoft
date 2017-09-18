@@ -6,6 +6,7 @@
 #include "DlgDevicePanel.h"
 #include "GaugeDlg.h"
 #include "Global.h"
+#include <boost/checked_delete.hpp>
 // CDlgDevicePanel ¶Ô»°¿ò
 
 IMPLEMENT_DYNAMIC(CDlgDevicePanel, CBaseDialog)
@@ -72,7 +73,7 @@ void CDlgDevicePanel::CreatePanel( void )
 		pDevicePanel->Create(GaugeDlg::IDD,this);
 		m_vecPanel.push_back(pDevicePanel);
 		m_WidgetLayout.AddWidget(pDevicePanel);
-		m_dataManager.addGaugeDlg(pDevicePanel);
+		//m_dataManager.addGaugeDlg(pDevicePanel);
 	}
 }
 void CDlgDevicePanel::addPanel()
@@ -89,7 +90,7 @@ void CDlgDevicePanel::addPanel()
 		pDevicePanel->Create(GaugeDlg::IDD,this);
 		m_vecPanel.push_back(pDevicePanel);
 		m_WidgetLayout.AddWidget(pDevicePanel);
-		m_dataManager.addGaugeDlg(pDevicePanel);
+		//m_dataManager.addGaugeDlg(pDevicePanel);
 	}
 #endif
 	GaugeDlg* pDevicePanel = new GaugeDlg;
@@ -98,7 +99,7 @@ void CDlgDevicePanel::addPanel()
 		pDevicePanel->Create(GaugeDlg::IDD,this);
 		m_vecPanel.push_back(pDevicePanel);
 		m_WidgetLayout.AddWidget(pDevicePanel);
-		m_dataManager.addGaugeDlg(pDevicePanel);
+		//m_dataManager.addGaugeDlg(pDevicePanel);
 		CRect rc;
 		GetClientRect(&rc);
 		m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
@@ -126,9 +127,8 @@ void CDlgDevicePanel::delPanel(CWnd* pDlg)
 				break;
 			}
 		}
-		m_dataManager.delGaugeDlg(dynamic_cast<GaugeDlg*>(pDlg));
-		delete pDlg;
-		pDlg = NULL;
+		//m_dataManager.delGaugeDlg(dynamic_cast<GaugeDlg*>(pDlg));
+		boost::checked_delete(pDlg);
 	}	
 }
 void CDlgDevicePanel::DestroyPanel( void )

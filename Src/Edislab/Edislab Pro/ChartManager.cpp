@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#if 0
 #include "Edislab Pro.h"
 #include "ChartManager.h"
 #include "ChartFigureDlg.h"
@@ -93,3 +94,4 @@ int ChartManager::readData()
 	//读取数据并创建对应的对话框
 	return 0;
 }
+#endif

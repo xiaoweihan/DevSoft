@@ -5,7 +5,7 @@
 #include "Edislab Pro.h"
 #include "DlgDiagramPanel.h"
 #include "ChartFigureDlg.h"
-
+#include <boost/checked_delete.hpp>
 // CDlgDiagramPanel ¶Ô»°¿ò
 
 IMPLEMENT_DYNAMIC(CDlgDiagramPanel, CBaseDialog)
@@ -73,7 +73,7 @@ void CDlgDiagramPanel::CreatePanel( void )
 		pDiagramPanel->Create(ChartFigureDlg::IDD,this);
 		m_vecPanel.push_back(pDiagramPanel);
 		m_WidgetLayout.AddWidget(pDiagramPanel);
-		m_dataManager.addChartDlg(pDiagramPanel);
+		//m_dataManager.addChartDlg(pDiagramPanel);
 		CRect rc;
 		GetClientRect(&rc);
 		m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
@@ -94,7 +94,7 @@ void CDlgDiagramPanel::addPanel()
 		pDiagramPanel->Create(ChartFigureDlg::IDD,this);
 		m_vecPanel.push_back(pDiagramPanel);
 		m_WidgetLayout.AddWidget(pDiagramPanel);
-		m_dataManager.addChartDlg(pDiagramPanel);
+		//m_dataManager.addChartDlg(pDiagramPanel);
 		CRect rc;
 		GetClientRect(&rc);
 		m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
@@ -122,9 +122,8 @@ void CDlgDiagramPanel::delPanel(CWnd* pDlg)
 			}
 		}
 		m_WidgetLayout.DelWidget(pDlg);
-		m_dataManager.delChartDlg(dynamic_cast<ChartFigureDlg*>(pDlg));
-		delete pDlg;
-		pDlg = NULL;
+		//m_dataManager.delChartDlg(dynamic_cast<ChartFigureDlg*>(pDlg));
+		boost::checked_delete(pDlg);
 	}
 }
 void CDlgDiagramPanel::DestroyPanel( void )

@@ -40,9 +40,6 @@
     <Filter Include="Global">
       <UniqueIdentifier>{62fd49f0-42b9-4b2d-a336-37edbfdc9848}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ObserverModal">
-      <UniqueIdentifier>{4e430663-4baf-483e-a281-2c8cb59f9f0a}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Device">
       <UniqueIdentifier>{e6540318-8b9a-4f54-be10-f8f370770e7e}</UniqueIdentifier>
     </Filter>
@@ -213,17 +210,8 @@
     <ClInclude Include="ChartFigureDlg.h">
       <Filter>ChartFigure</Filter>
     </ClInclude>
-    <ClInclude Include="ChartManager.h">
-      <Filter>ChartFigure</Filter>
-    </ClInclude>
     <ClInclude Include="Global.h">
       <Filter>Global</Filter>
-    </ClInclude>
-    <ClInclude Include="Observer.h">
-      <Filter>ObserverModal</Filter>
-    </ClInclude>
-    <ClInclude Include="Observable.h">
-      <Filter>ObserverModal</Filter>
     </ClInclude>
     <ClInclude Include="DlgDeviceSet.h">
       <Filter>Device</Filter>
@@ -232,9 +220,6 @@
       <Filter>Device</Filter>
     </ClInclude>
     <ClInclude Include="GaugeDlg.h">
-      <Filter>Device</Filter>
-    </ClInclude>
-    <ClInclude Include="GaugeManager.h">
       <Filter>Device</Filter>
     </ClInclude>
     <ClInclude Include="DlgChartSet.h">
@@ -395,16 +380,7 @@
     <ClCompile Include="Global.cpp">
       <Filter>Global</Filter>
     </ClCompile>
-    <ClCompile Include="Observer.cpp">
-      <Filter>ObserverModal</Filter>
-    </ClCompile>
-    <ClCompile Include="Observable.cpp">
-      <Filter>ObserverModal</Filter>
-    </ClCompile>
     <ClCompile Include="ChartXY.cpp">
-      <Filter>ChartFigure</Filter>
-    </ClCompile>
-    <ClCompile Include="ChartManager.cpp">
       <Filter>ChartFigure</Filter>
     </ClCompile>
     <ClCompile Include="DlgDeviceSet.cpp">
@@ -414,9 +390,6 @@
       <Filter>Device</Filter>
     </ClCompile>
     <ClCompile Include="GaugeDlg.cpp">
-      <Filter>Device</Filter>
-    </ClCompile>
-    <ClCompile Include="GaugeManager.cpp">
       <Filter>Device</Filter>
     </ClCompile>
     <ClCompile Include="DlgChartSet.cpp">

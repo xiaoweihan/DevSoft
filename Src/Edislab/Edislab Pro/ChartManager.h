@@ -1,7 +1,6 @@
 #pragma once
+#if 0
 #include <vector>
-#include "Observer.h"
-
 class ChartFigureDlg;
 class ChartXYData;
 class ChartManager:public CObserver
@@ -27,3 +26,4 @@ private:
 	//所有图表对话框
 	std::vector<const ChartFigureDlg*> m_vecChartDlg;
 };
+#endif

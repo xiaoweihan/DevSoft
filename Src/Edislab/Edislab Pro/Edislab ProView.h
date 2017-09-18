@@ -112,6 +112,9 @@ public:
 	//通知相应的控件停止刷新
 	void NotifyControlsStopRefresh();
 
+	//通知Ribbon栏改变
+	void NotifyRibbonChangeText(int nFlag);
+
 	//删除元素
 	void DeleteElement();
 

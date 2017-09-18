@@ -88,6 +88,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CBCGPFrameWnd)
 	ON_UPDATE_COMMAND_UI(ID_MENU_CHINESE, &CMainFrame::OnUpdateMenuChinese)
 	ON_COMMAND(ID_DISPLAY_CURRENT_TIME,&CMainFrame::EnableStatusBar)
 	ON_MESSAGE(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,&CMainFrame::NotifyGridGroupInfoChange)
+	ON_MESSAGE(WM_NOTIFY_RIBBON_CHANGE,&CMainFrame::NotfiyRibbonChanged)
 	ON_WM_SIZE()
 	ON_WM_TIMER()
 	ON_WM_CLOSE()
@@ -2016,6 +2017,73 @@ LRESULT CMainFrame::NotifyGridGroupInfoChange( WPARAM wp,LPARAM lp )
 	{
 		pView->NotifyGridGroupInfoChange();
 	}
+	return 0L;
+}
+
+/*********************************************************
+FunctionName:NotfiyRibbonChanged
+FunctionDesc:通知开始采集Ribbon菜单内容改变
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
+LRESULT CMainFrame::NotfiyRibbonChanged(WPARAM wp,LPARAM lp)
+{
+
+	int nFlag = static_cast<int>(wp);
+
+	//空间句柄合法性判断
+	if (NULL == m_wndRibbonBar.GetSafeHwnd())
+	{
+		return 0L;
+	}
+	//获取Ribbon中的category个数
+	int nCategoryNum = m_wndRibbonBar.GetCategoryCount();
+	if (nCategoryNum < 2)
+	{
+		return 0L;
+	}
+
+	//获取对应的Category
+	CBCGPRibbonCategory* pCategory = m_wndRibbonBar.GetCategory(1);
+	if (nullptr == pCategory)
+	{
+		return 0L;
+	}
+	//获取面板
+	int nPanelNum = pCategory->GetPanelCount();
+
+	if (nPanelNum < 3)
+	{
+		return 0L;
+	}
+	CBCGPRibbonPanel* pPanel = pCategory->GetPanel(2);
+	if (nullptr == pPanel)
+	{
+		return 0L;
+	}
+
+	CBCGPRibbonButton* pButton = (CBCGPRibbonButton*)pPanel->FindByID(ID_START);
+	if (nullptr == pButton)
+	{
+		return 0L;
+	}
+
+	CString strText;
+	//点击了开始
+	if (nFlag == 1)
+	{
+		strText = _T("结束");
+	}
+	//点击了结束
+	else
+	{
+		strText = _T("开始");
+	}
+
+	pButton->SetText(strText);
+	pButton->SetToolTipText(strText);
 	return 0L;
 }
 

@@ -1,4 +1,5 @@
 #pragma once
+#if 0
 #include <vector>
 #include "Observer.h"
 class GaugeDlg;
@@ -21,4 +22,4 @@ private:
 	//所有表盘对话框
 	std::vector<GaugeDlg*> m_vecGaugeDlg;
 };
-
+#endif

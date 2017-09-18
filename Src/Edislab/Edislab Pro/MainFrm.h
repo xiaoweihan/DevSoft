@@ -233,6 +233,9 @@ private:
 	//通知Grid分组显示改变
 	afx_msg LRESULT NotifyGridGroupInfoChange(WPARAM wp,LPARAM lp);
 
+	//通知Ribbon的开始显示为停止
+	afx_msg LRESULT NotfiyRibbonChanged(WPARAM wp,LPARAM lp);
+
 };
 
 
