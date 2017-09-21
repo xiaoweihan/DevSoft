@@ -855,5 +855,4 @@ void CDlgGridContainer::StuffGridData(void)
 
 		}
 	}
-
 }

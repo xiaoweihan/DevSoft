@@ -6,6 +6,7 @@
 #include <boost/date_time/posix_time/ptime.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/format.hpp>
+#include <boost/checked_delete.hpp>
 #include "Log.h"
 #include "SensorManager.h"
 #include "SensorDataManager.h"
@@ -44,8 +45,7 @@ CSerialPortService::~CSerialPortService()
 {
 	if (nullptr != m_pRecvBuffer)
 	{
-		delete[]m_pRecvBuffer;
-		m_pRecvBuffer = nullptr;
+		boost::checked_array_delete(m_pRecvBuffer);
 	}
 	m_nUseBufferBytes = 0;
 }

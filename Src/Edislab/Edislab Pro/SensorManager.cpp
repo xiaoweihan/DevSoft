@@ -15,8 +15,10 @@ Version:1.0
 #include <string>
 #include <iterator>
 #include "SensorTypeTable.h"
+
 const std::string DEFAULT_TIME_NAME = "t(s)时间";
 const int SPECIAL_SENSOR_TYPE_ID = 10000;
+
 CSensorManager::CSensorManager(void)
 {
 	m_SensorInfoArray.clear();
@@ -26,9 +28,7 @@ CSensorManager::CSensorManager(void)
 	SensorElement.nSensorID = SPECIAL_SENSOR_TYPE_ID;
 	SensorElement.nSensorSerialID = 0;
 	m_SensorInfoArray.push_back(SensorElement);
-
 }
-
 
 CSensorManager::~CSensorManager(void)
 {
@@ -175,11 +175,12 @@ void CSensorManager::GetSensorList(std::vector<SENSOR_TYPE_INFO_ELEMENT>& Sensor
 	{
 		auto FilterPred = [](const SENSOR_TYPE_INFO_ELEMENT& SensorElement)->bool
 		{
-			if (SensorElement.nSensorID >= 0 && SensorElement.nSensorSerialID >= 0)
+			//找到特殊的传感器
+			if (SensorElement.nSensorID == SPECIAL_SENSOR_TYPE_ID && SensorElement.nSensorSerialID == 0)
 			{
-				return true;
+				return false;
 			}
-			return false;
+			return true;
 		};
 		std::copy_if(m_SensorInfoArray.begin(),m_SensorInfoArray.end(),std::back_inserter(SensorList),FilterPred);
 	}
@@ -215,6 +216,14 @@ bool CSensorManager::IsSpecialSensorID(const SENSOR_TYPE_KEY& SensorKeyID)
 	return false;
 }
 
+/*********************************************************
+FunctionName:QuerySensorNameByID
+FunctionDesc:
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
 std::string CSensorManager::QuerySensorNameByID(const SENSOR_TYPE_KEY& SensorKeyID)
 {
 	auto Lock = boost::make_unique_lock(m_Lock);

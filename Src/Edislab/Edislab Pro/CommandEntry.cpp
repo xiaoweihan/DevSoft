@@ -20,7 +20,6 @@
 #include "Global.h"
 #include "SensorConfig.h"
 #include "Log.h"
-//#include "SensorIDGenerator.h"
 #include "SensorManager.h"
 #include "SerialPortService.h"
 #include "SensorData.h"
@@ -34,7 +33,7 @@ const int MAX_GRID_NUM = 9;
 const int MAX_DEVICE_NUM = 9;
 const int MAX_DIAGRAM_NUM = 9;
 //是否开始采集
-static bool s_bStartCapture = false;
+//static bool s_bStartCapture = false;
 //处理添加页面
 static void HandleAddPage(CEdislabProView* pView);
 //更新添加页面
@@ -475,10 +474,7 @@ void HandlePageName( CEdislabProView* pView )
 	}
 
 	CString strPageName = pView->GetCurrentPageName();
-
-
 	CDlgPageNameConfig PageNameConfigDlg(strPageName);
-
 	if (IDOK == PageNameConfigDlg.DoModal())
 	{
 		strPageName = PageNameConfigDlg.GetPageName();
@@ -671,7 +667,7 @@ void HandleStart(CEdislabProView* pView)
 	{
 		return;
 	}
-
+#if 0
 	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
 	CSensorManager::CreateInstance().GetSensorList(SensorArray);
 	if (s_bStartCapture)
@@ -682,7 +678,7 @@ void HandleStart(CEdislabProView* pView)
 		{
 			CSerialPortService::CreateInstance().StopSensorCollect(V.nSensorID,V.nSensorSerialID);
 		}
-		pView->NotifyRibbonChangeText(0);
+		//pView->NotifyRibbonChangeText(0);
 	}
 	else
 	{
@@ -692,9 +688,10 @@ void HandleStart(CEdislabProView* pView)
 		{
 			CSerialPortService::CreateInstance().StartSensorCollect(V.nSensorID,V.nSensorSerialID);
 		}
-		pView->NotifyRibbonChangeText(1);
+		//pView->NotifyRibbonChangeText(1);
 	}
 	s_bStartCapture = !s_bStartCapture;
+#endif
 }
 
 //自动识别
@@ -712,8 +709,6 @@ void HandleAutoSelect(CEdislabProView* pView)
 	}
 
 	g_bAutoSelect = TRUE;
-	//COMIPLE.StartCom(pWnd);
-	
 }
 
 //输出实验报告

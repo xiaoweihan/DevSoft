@@ -5,17 +5,18 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "MainFrm.h"
-#include "Edislab ProView.h"
 #include <string>
 #include <boost/checked_delete.hpp>
+#include <boost/foreach.hpp>
+#include "Edislab ProView.h"
 #include "Msg.h"
 #include "Utility.h"
 #include "SerialPortService.h"
 #include "Global.h"
 #include "SensorConfig.h"
 #include "GridColumnGroupManager.h"
-#include "SensorIDGenerator.h"
 #include "Type.h"
+#include "SensorManager.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -462,7 +463,7 @@ void CMainFrame::AddPageElementPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 
 	if (NULL != pCategory)
 	{
-		CBCGPRibbonPanel* pPageElementPanel = pCategory->AddPanel (_T("页面元素"));
+		CBCGPRibbonPanel* pPageElementPanel = pCategory->AddPanel(_T("页面元素"));
 
 		if (NULL != pPageElementPanel)
 		{
@@ -1854,21 +1855,13 @@ void CMainFrame::OnSize(UINT nType, int cx, int cy)
 void CMainFrame::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
-
-
 	if (nIDEvent == TIMER_ID)
 	{
-
 		CTime CurrentTime = CTime::GetCurrentTime();
 		CString strTime = CurrentTime.Format(_T("%Y-%m-%d %H:%M:%S"));
 		int nIndex = m_wndStatusBar.CommandToIndex(ID_DISPLAY_CURRENT_TIME);
 		m_wndStatusBar.SetPaneText(nIndex,strTime,TRUE);
-
-		//刷新Grid
-		//GLOBAL_DATA.SetChanged();
-		//GLOBAL_DATA.Notify();
 	}
-
 	CBCGPFrameWnd::OnTimer(nIDEvent);
 }
 
@@ -1877,7 +1870,16 @@ void CMainFrame::OnClose()
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
 	KillTimer(TIMER_ID);
-
+	//通知传感器停止采集
+	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
+	CSensorManager::CreateInstance().GetSensorList(SensorArray);
+	BOOST_FOREACH(auto& V,SensorArray)
+	{
+		BOOST_FOREACH(auto& V,SensorArray)
+		{
+			CSerialPortService::CreateInstance().StopSensorCollect(V.nSensorID,V.nSensorSerialID);
+		}
+	}
 	CSerialPortService::CreateInstance().StopSerialPortService();
 	CBCGPFrameWnd::OnClose();
 }
@@ -1985,27 +1987,36 @@ LRESULT CMainFrame::NotifyDeviceOnOrOff( WPARAM wp,LPARAM lp )
 	SENSOR_TYPE_INFO_ELEMENT KeyElement(pSensorInfo->strSensorName,pSensorInfo->nSensorID,pSensorInfo->nSensorSerialID);
 	//释放内存
 	boost::checked_delete(pSensorInfo);
+	CEdislabProView* pView = CEdislabProView::GetCurrentView();
+	if (nullptr == pView)
+	{
+		return 0L;
+	}
 	//设备上线
 	if (nOnFlag)
 	{	
+		//通知设备开始采集
+		CSerialPortService::CreateInstance().StartSensorCollect(KeyElement.nSensorID,KeyElement.nSensorSerialID);
 		COLUMN_INFO AddColumnInfo;
 		AddColumnInfo.strColumnName = _T("t(s)时间");
 		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
 		AddColumnInfo.Reset();
 		AddColumnInfo.strColumnName = CString(KeyElement.strSensorName.c_str());
 		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
+
+		//通知grid开始刷新
+		pView->NotifyControlsStartRefresh();
 	}
 	//设备下线
 	else
 	{
 		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"),CString(KeyElement.strSensorName.c_str()));
+	
+		//通知grid停止刷新
+		pView->NotifyControlsStopRefresh();
 	}
-	//获取设备名称
-	CEdislabProView* pView = CEdislabProView::GetCurrentView();
-	if (nullptr != pView)
-	{
-		pView->NotifyDetectDevice(KeyElement.strSensorName,nOnFlag);
-	}
+	//通知刷新Grid
+	pView->NotifyDetectDevice(KeyElement.strSensorName,nOnFlag);
 	return 0L;
 }
 

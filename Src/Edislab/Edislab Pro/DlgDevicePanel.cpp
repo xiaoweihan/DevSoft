@@ -4,9 +4,8 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "DlgDevicePanel.h"
-#include "GaugeDlg.h"
-#include "Global.h"
 #include <boost/checked_delete.hpp>
+#include "GaugeDlg.h"
 // CDlgDevicePanel ¶Ô»°¿ò
 
 IMPLEMENT_DYNAMIC(CDlgDevicePanel, CBaseDialog)
