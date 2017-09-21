@@ -1855,7 +1855,7 @@ void CMainFrame::OnSize(UINT nType, int cx, int cy)
 void CMainFrame::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
-	if (nIDEvent == TIMER_ID)
+	if (TIMER_ID == nIDEvent)
 	{
 		CTime CurrentTime = CTime::GetCurrentTime();
 		CString strTime = CurrentTime.Format(_T("%Y-%m-%d %H:%M:%S"));
