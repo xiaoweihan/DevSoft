@@ -3,10 +3,8 @@
 #define _USE_CTRL_MATH_DEFINES
 #include <math.h>
 #include <boost/foreach.hpp>
-#include "Global.h"
 #include "ChartManager.h"
 #include "GridColumnGroupManager.h"
-//#include "SensorIDGenerator.h"
 #include "SensorManager.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"

@@ -8,7 +8,7 @@
 #ifndef GLOBAL_H
 #define GLOBAL_H
 
-#if 1
+#if 0
 #include <set>
 #include <vector>
 
@@ -18,8 +18,6 @@
 ///************************************************************************/
 //Grid常量定义
 ///************************************************************************/
-const COLORREF UnActiveColor = RGB(200,200,200);
-const COLORREF ActiveColor = RGB(0,0,25);
 #define		DEFUALT_COLUMN_NAME_X	_T("X")
 #define		DEFUALT_COLUMN_NAME_Y	_T("Y")
 #define		CURRENT_GROUP			_T("当前组")
@@ -40,6 +38,7 @@ const COLORREF ActiveColor = RGB(0,0,25);
 #define MAX_COLUMN_NUM			20	//每组最多支持20组
 #define LAB_MAX_COUNT			6
 #define MAX_WIDGET_NUM			9
+
 /******************************************************************************/
 /////////////////////////////////实验数据定义区//////////////////////////////////
 /******************************************************************************/

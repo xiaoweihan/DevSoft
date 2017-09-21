@@ -7,6 +7,7 @@
 #include "DlgChartSet.h"
 #include "DlgTabPanel.h"
 #include "Msg.h"
+#include "Macro.h"
 // ChartFigureDlg ¶Ô»°¿ò
 #define TIMER_CHART_EVENT (1000011)
 #define TIMER_CHART (300)
@@ -159,7 +160,7 @@ void ChartFigureDlg::OnPaint()
 			if (TRUE == m_bActiveFlag)
 			{
 				CPen BoradrPen;
-				BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
+				BoradrPen.CreatePen(PS_SOLID,5,ACTIVE_COLOR);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
 
 				dc.MoveTo(rc.left,rc.top);
@@ -179,7 +180,7 @@ void ChartFigureDlg::OnPaint()
 			}else
 			{
 				CPen BoradrPen;
-				BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
+				BoradrPen.CreatePen(PS_SOLID,5,INACTIVE_COLOR);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
 				dc.MoveTo(rc.left,rc.top);
 				dc.LineTo(rc.right,rc.top);

@@ -11,14 +11,13 @@
 #include <boost/bind.hpp>
 #include "Log.h"
 #include "GridColumnGroupManager.h"
-//#include "SensorIDGenerator.h"
 #include "SensorManager.h"
 #include "SensorData.h"
 #include "SensorDataManager.h"
 #include "SensorConfig.h"
 #include "DlgTabPanel.h"
 #include "Msg.h"
-#include "Global.h"
+#include "Macro.h"
 #include "Utility.h"
 #include "DlgGridOpt.h"
 #include "DlgAddColumn.h"
@@ -425,7 +424,7 @@ void CDlgGridContainer::OnPaint()
 			if (TRUE == m_bActiveFlag)
 			{
 				CPen BoradrPen;
-				BoradrPen.CreatePen(PS_SOLID,5,ActiveColor);
+				BoradrPen.CreatePen(PS_SOLID,5,ACTIVE_COLOR);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
 				
 				dc.MoveTo(rc.left,rc.top);
@@ -446,7 +445,7 @@ void CDlgGridContainer::OnPaint()
 			else
 			{
 				CPen BoradrPen;
-				BoradrPen.CreatePen(PS_SOLID,5,UnActiveColor);
+				BoradrPen.CreatePen(PS_SOLID,5,INACTIVE_COLOR);
 				CPen* pOldPen = dc.SelectObject(&BoradrPen);
 				dc.MoveTo(rc.left,rc.top);
 				dc.LineTo(rc.right,rc.top);

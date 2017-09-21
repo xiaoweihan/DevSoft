@@ -209,7 +209,7 @@ private:
 	SENSOR_TYPE_KEY m_nXID;
 	CString m_strX;
 	CString m_strY;
-	std::vector<GROUPDATA> m_allData;
+	//std::vector<GROUPDATA> m_allData;
 	//数据值 更改时要重新计算
 	std::vector<ChartXYData> m_vecLineData;
 };
