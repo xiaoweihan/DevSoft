@@ -7,7 +7,10 @@
 #include "MainFrm.h"
 #include <string>
 #include <boost/checked_delete.hpp>
+#include <boost/random.hpp>
+#include <boost/random/uniform_real_distribution.hpp>
 #include <boost/foreach.hpp>
+#include <boost/thread.hpp>
 #include "Edislab ProView.h"
 #include "Msg.h"
 #include "Utility.h"
@@ -17,6 +20,8 @@
 #include "GridColumnGroupManager.h"
 #include "Type.h"
 #include "SensorManager.h"
+#include "SensorDataManager.h"
+#include "SensorData.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -27,6 +32,10 @@ const int DEFAULT_COMBOX_WIDTH = 75;
 const int TIMER_GAP = 1000;
 //定时器ID
 const int TIMER_ID = 1;
+
+//用于测试的TIMERID
+const int TIMER_TEST_ID = 2;
+const int TIMER_TEST_GAP = 5000;
 //大图标的长度和宽度
 const int LARGE_ICON_WIDTH = 32;
 const int LARGE_ICON_HEIGHT = 32;
@@ -90,6 +99,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CBCGPFrameWnd)
 	ON_COMMAND(ID_DISPLAY_CURRENT_TIME,&CMainFrame::EnableStatusBar)
 	ON_MESSAGE(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,&CMainFrame::NotifyGridGroupInfoChange)
 	ON_MESSAGE(WM_NOTIFY_RIBBON_CHANGE,&CMainFrame::NotfiyRibbonChanged)
+	ON_MESSAGE(WM_NOTIFY_DISPLAY_PANEL_CHANGE,&CMainFrame::NotifyDisplayPanelChange)
 	ON_WM_SIZE()
 	ON_WM_TIMER()
 	ON_WM_CLOSE()
@@ -108,9 +118,9 @@ static UINT indicators[] =
 
 CMainFrame::CMainFrame():
 m_nCurrentRadioID(0),
-m_pDeviceCategory(NULL),
-m_pDiagramCategory(NULL),
-m_pGridCategory(NULL)
+m_pDeviceCategory(nullptr),
+m_pDiagramCategory(nullptr),
+m_pGridCategory(nullptr)
 {
 	// TODO: 在此添加成员初始化代码
 }
@@ -183,6 +193,8 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	CreateRibbonBar();
 	SetTimer(TIMER_ID,TIMER_GAP,NULL);
 
+	//SetTimer(TIMER_TEST_ID,TIMER_TEST_GAP,NULL);
+
 	const SENSOR_COM_CONFIG_ELEMENT& ComConfig = CSensorConfig::CreateInstance().GetComConfig();
 	COMPROPERTY SensorComOption;
 	SensorComOption.nBaudRate = ComConfig.nBaudRate;
@@ -234,7 +246,7 @@ void CMainFrame::CreateRibbonBar( void )
 	m_MainButton.SetText (_T("\nf"));
 	m_wndRibbonBar.SetMainButton(&m_MainButton,CSize(48, 48));
 	CBCGPRibbonMainPanel* pMainPanel = m_wndRibbonBar.AddMainCategory(_T("文件"),IDB_RIBBON_BUTTON_SMALL,IDB_RIBBON_BUTTON_LARGE);
-	if (NULL != pMainPanel)
+	if (nullptr != pMainPanel)
 	{
 		int nIndex = 0;
 		pMainPanel->Add (new CBCGPRibbonButton (ID_FILE_NEW, _T("新建(&N)"),m_MainCategoryLargeBitmap.ExtractIcon(nIndex),FALSE,m_MainCategorySmallBitmap.ExtractIcon(nIndex)));
@@ -275,7 +287,7 @@ void CMainFrame::AddStartCategory( void )
 
 	int nBaseImageIndex = 0;
 	CBCGPRibbonCategory* pStartCategory = m_wndRibbonBar.AddCategory(_T("开始"),IDB_RIBBON_START_SMALL,IDB_RIBBON_START_LARGE);
-	if (NULL != pStartCategory)
+	if (nullptr != pStartCategory)
 	{
 		//添加传感器与数据面板
 		AddSensorDataPanel(pStartCategory,nBaseImageIndex);
@@ -298,7 +310,7 @@ void CMainFrame::AddExternCategory( void )
 		return;
 	}
 	CBCGPRibbonCategory* pExternCategory = m_wndRibbonBar.AddCategory(_T("扩展"),IDB_RIBBON_START_SMALL,IDB_RIBBON_START_LARGE);
-	if (NULL != pExternCategory)
+	if (nullptr != pExternCategory)
 	{
 		AddOtherSoftWarePanel(pExternCategory);
 	}
@@ -313,7 +325,7 @@ void CMainFrame::AddPageCategory( void )
 	}
 	int nBaseImageIndex = 0;
 	CBCGPRibbonCategory* pExternCategory = m_wndRibbonBar.AddCategory(_T("页面"),IDB_RIBBON_PAGE_ELEMENT_SMALL,IDB_RIBBON_PAGE_ELEMENT_LARGE);
-	if (NULL != pExternCategory)
+	if (nullptr != pExternCategory)
 	{
 		AddPagePanel(pExternCategory,nBaseImageIndex);
 		AddPageElementPanel(pExternCategory,nBaseImageIndex);
@@ -327,12 +339,11 @@ void CMainFrame::HandleRadioClick( UINT nID )
 
 void CMainFrame::AddSensorDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-
-	if (NULL != pCategory)
+	if (nullptr != pCategory)
 	{
 		CBCGPRibbonPanel* pSensorAndDataPanel = pCategory->AddPanel (_T("传感器和数据"));
 
-		if (NULL != pSensorAndDataPanel)
+		if (nullptr != pSensorAndDataPanel)
 		{
 #ifdef HAVE_PICTURE
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_SELECT_SENSOR, _T("选传感器"),m_RibbonStartPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE,m_RibbonStartPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -340,7 +351,7 @@ void CMainFrame::AddSensorDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 #else
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_SELECT_SENSOR, _T("选传感器"),1,1);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("选传感器"));
 				pBtn->SetAlwaysLargeImage();
@@ -349,14 +360,14 @@ void CMainFrame::AddSensorDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 
 			pSensorAndDataPanel->AddSeparator();
 			CBCGPRibbonRadioButton* pRadioBtn = new CBCGPRibbonRadioButton(ID_AUTO_SELECT, _T("自动识别"));
-			if (NULL != pRadioBtn)
+			if (nullptr != pRadioBtn)
 			{
 				pRadioBtn->SetToolTipText(_T("自动识别"));
 				pSensorAndDataPanel->Add(pRadioBtn);
 			}
 			
 			pRadioBtn = new CBCGPRibbonRadioButton(ID_MANUAL_SELECT, _T("手动选择"));
-			if (NULL != pRadioBtn)
+			if (nullptr != pRadioBtn)
 			{
 				pRadioBtn->SetToolTipText(_T("手动选择"));
 				pSensorAndDataPanel->Add(pRadioBtn);
@@ -369,7 +380,7 @@ void CMainFrame::AddSensorDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 #else
 			pBtn = new CBCGPRibbonButton(ID_COLLECT_PARAM, _T("采集参数"),1,1);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("采集参数"));
 				pBtn->SetAlwaysLargeImage ();
@@ -381,7 +392,7 @@ void CMainFrame::AddSensorDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 #else
 			pBtn = new CBCGPRibbonButton(ID_CONFIG_DATA, _T("数据配置"),1,1);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("数据配置"));
 				pBtn->SetAlwaysLargeImage ();
@@ -393,11 +404,11 @@ void CMainFrame::AddSensorDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 
 void CMainFrame::AddStartPageElementPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL != pCategory)
+	if (nullptr != pCategory)
 	{
 		CBCGPRibbonPanel* pPageElementPanel = pCategory->AddPanel (_T("页面元素"));
 
-		if (NULL != pPageElementPanel)
+		if (nullptr != pPageElementPanel)
 		{
 #ifdef HAVE_PICTURE
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ADD_TABLE, _T("添加表格"),m_RibbonStartPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE,m_RibbonStartPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -405,7 +416,7 @@ void CMainFrame::AddStartPageElementPanel( CBCGPRibbonCategory* pCategory,int& n
 #else
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ADD_TABLE, _T("添加表格"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("添加表格"));
 				pBtn->SetAlwaysLargeImage ();
@@ -418,7 +429,7 @@ void CMainFrame::AddStartPageElementPanel( CBCGPRibbonCategory* pCategory,int& n
 #else
 			pBtn = new CBCGPRibbonButton(ID_ADD_IMAGE, _T("添加图"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("添加图"));
 				pBtn->SetAlwaysLargeImage ();
@@ -432,7 +443,7 @@ void CMainFrame::AddStartPageElementPanel( CBCGPRibbonCategory* pCategory,int& n
 #else
 			pBtn = new CBCGPRibbonButton(ID_ADD_DEVICE, _T("添加仪表"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("添加仪表"));
 				pBtn->SetAlwaysLargeImage ();
@@ -446,7 +457,7 @@ void CMainFrame::AddStartPageElementPanel( CBCGPRibbonCategory* pCategory,int& n
 #else
 			pBtn = new CBCGPRibbonButton(ID_DEL_ELEMENT, _T("删除元素"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("删除元素"));
 				pBtn->SetAlwaysLargeImage ();
@@ -459,13 +470,11 @@ void CMainFrame::AddStartPageElementPanel( CBCGPRibbonCategory* pCategory,int& n
 //添加页面元素
 void CMainFrame::AddPageElementPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-
-
-	if (NULL != pCategory)
+	if (nullptr != pCategory)
 	{
 		CBCGPRibbonPanel* pPageElementPanel = pCategory->AddPanel(_T("页面元素"));
 
-		if (NULL != pPageElementPanel)
+		if (nullptr != pPageElementPanel)
 		{
 #ifdef HAVE_PICTURE
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ADD_TABLE, _T("添加表格"),m_RibbonPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE,m_RibbonPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -473,7 +482,7 @@ void CMainFrame::AddPageElementPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 #else
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ADD_TABLE, _T("添加表格"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("添加表格"));
 				pBtn->SetAlwaysLargeImage ();
@@ -486,7 +495,7 @@ void CMainFrame::AddPageElementPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 #else
 			pBtn = new CBCGPRibbonButton(ID_ADD_IMAGE, _T("添加图"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("添加图"));
 				pBtn->SetAlwaysLargeImage ();
@@ -500,7 +509,7 @@ void CMainFrame::AddPageElementPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 #else
 			pBtn = new CBCGPRibbonButton(ID_ADD_DEVICE, _T("添加仪表"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("添加仪表"));
 				pBtn->SetAlwaysLargeImage ();
@@ -514,7 +523,7 @@ void CMainFrame::AddPageElementPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 #else
 			pBtn = new CBCGPRibbonButton(ID_DEL_ELEMENT, _T("删除元素"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("删除元素"));
 				pBtn->SetAlwaysLargeImage ();
@@ -527,11 +536,11 @@ void CMainFrame::AddPageElementPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 void CMainFrame::AddRunTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
 
-	if (NULL != pCategory)
+	if (nullptr != pCategory)
 	{
 		CBCGPRibbonPanel* pRunTestPanel = pCategory->AddPanel (_T("进行实验"));
 
-		if (NULL != pRunTestPanel)
+		if (nullptr != pRunTestPanel)
 		{
 #ifdef HAVE_PICTURE
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_START, _T("开始"), m_RibbonStartPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE,m_RibbonStartPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -539,7 +548,7 @@ void CMainFrame::AddRunTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseImage
 #else
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_START, _T("开始"),5,5);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("开始"));
 				pBtn->SetAlwaysLargeImage ();
@@ -552,7 +561,7 @@ void CMainFrame::AddRunTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseImage
 #else
 			pBtn = new CBCGPRibbonButton(ID_RECORD_POINT, _T("记点"),5,5);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("记点"));
 				pBtn->SetAlwaysLargeImage ();
@@ -566,7 +575,7 @@ void CMainFrame::AddRunTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseImage
 #else
 			pBtn = new CBCGPRibbonButton(ID_ZERO, _T("调零"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("调零"));
 				pBtn->SetAlwaysLargeImage ();
@@ -580,7 +589,7 @@ void CMainFrame::AddRunTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseImage
 #else
 			pBtn = new CBCGPRibbonButton(ID_CALIBRATION, _T("校准"),6,6);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("校准"));
 				pBtn->SetAlwaysLargeImage ();
@@ -593,7 +602,7 @@ void CMainFrame::AddRunTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseImage
 #else
 			pBtn = new CBCGPRibbonButton(ID_CANCEL_ZERO_AND_CALIBRATION, _T("取消调零和校准"),6,6);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("取消调零和校准"));
 				pBtn->SetAlwaysLargeImage ();
@@ -607,11 +616,11 @@ void CMainFrame::AddRunTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseImage
 
 void CMainFrame::AddReplyTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL != pCategory)
+	if (nullptr != pCategory)
 	{
 		CBCGPRibbonPanel* pReplayTestPanel = pCategory->AddPanel (_T("回放实验"));
 
-		if (NULL != pReplayTestPanel)
+		if (nullptr != pReplayTestPanel)
 		{
 #ifdef HAVE_PICTURE
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_START_REPLAY, _T("开始回放"), m_RibbonStartPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE,m_RibbonStartPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -619,7 +628,7 @@ void CMainFrame::AddReplyTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseIma
 #else
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_START_REPLAY, _T("开始回放"),7,7);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("开始回放"));
 				pBtn->SetAlwaysLargeImage ();
@@ -632,7 +641,7 @@ void CMainFrame::AddReplyTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseIma
 #else
 			pBtn = new CBCGPRibbonButton(ID_PAUSE_REPLAY, _T("暂停回放"),5,5);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("暂停回放"));
 				pBtn->SetAlwaysLargeImage ();
@@ -641,7 +650,7 @@ void CMainFrame::AddReplyTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseIma
 
 			//添加回放设置
 			CBCGPRibbonLabel* pLabel = new CBCGPRibbonLabel(_T("回放设置"));
-			if (NULL != pLabel)
+			if (nullptr != pLabel)
 			{
 				pReplayTestPanel->Add(pLabel);
 			}
@@ -649,7 +658,7 @@ void CMainFrame::AddReplyTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseIma
 
 			CBCGPRibbonComboBox* pCombox = new CBCGPRibbonComboBox(ID_SELECT_ARRAY,FALSE,DEFAULT_COMBOX_WIDTH);
 
-			if (NULL != pCombox)
+			if (nullptr != pCombox)
 			{
 				pCombox->SetPrompt(_T("数据组"));
 
@@ -659,7 +668,7 @@ void CMainFrame::AddReplyTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseIma
 			}
 
 			pCombox = new CBCGPRibbonComboBox(ID_SELECT_SPEED,FALSE,DEFAULT_COMBOX_WIDTH);
-			if (NULL != pCombox)
+			if (nullptr != pCombox)
 			{
 
 				pCombox->SetPrompt(_T("速度"));
@@ -712,7 +721,7 @@ void CMainFrame::AddReplyTestPanel( CBCGPRibbonCategory* pCategory,int& nBaseIma
 
 void CMainFrame::OnUpdateRadioButton( CCmdUI* pCmdUI )
 {
-	if (NULL != pCmdUI)
+	if (nullptr != pCmdUI)
 	{
 		pCmdUI->SetRadio(m_nCurrentRadioID == pCmdUI->m_nID);
 	}
@@ -722,22 +731,22 @@ void CMainFrame::OnUpdateRadioButton( CCmdUI* pCmdUI )
 void CMainFrame::AddOtherSoftWarePanel( CBCGPRibbonCategory* pCategory )
 {
 
-	if (NULL != pCategory)
+	if (nullptr != pCategory)
 	{
 		CBCGPRibbonPanel* pOtherSoftWarePanel = pCategory->AddPanel (_T("其它软件"));
 
-		if (NULL != pOtherSoftWarePanel)
+		if (nullptr != pOtherSoftWarePanel)
 		{
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OSCILLOSCOPE,_T("示波器"));
 
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("示波器"));
 				pOtherSoftWarePanel->Add(pBtn);
 			}
 
 			pBtn = new CBCGPRibbonButton(ID_2D_COMPOSE_AND_DECOMPOSE,_T("二维运动合成与分解"));
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("二维运动合成与分解"));
 				pOtherSoftWarePanel->Add(pBtn);
@@ -750,11 +759,11 @@ void CMainFrame::AddOtherSoftWarePanel( CBCGPRibbonCategory* pCategory )
 
 void CMainFrame::AddPagePanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL != pCategory)
+	if (nullptr != pCategory)
 	{
 		CBCGPRibbonPanel* pPagePanel = pCategory->AddPanel (_T("页面"));
 
-		if (NULL != pPagePanel)
+		if (nullptr != pPagePanel)
 		{
 #ifdef HAVE_PICTURE
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ADD_PAGE, _T("添加页面"), m_RibbonPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE,m_RibbonPageLargeBitmap.ExtractIcon(nBaseImageIndex));
@@ -762,7 +771,7 @@ void CMainFrame::AddPagePanel( CBCGPRibbonCategory* pCategory,int& nBaseImageInd
 #else
 			CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ADD_PAGE, _T("添加页面"),1,1);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("添加页面"));
 				pBtn->SetAlwaysLargeImage ();
@@ -775,7 +784,7 @@ void CMainFrame::AddPagePanel( CBCGPRibbonCategory* pCategory,int& nBaseImageInd
 #else
 			pBtn = new CBCGPRibbonButton(ID_DEL_PAGE, _T("删除页面"),2,2);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("删除页面"));
 				pBtn->SetAlwaysLargeImage ();
@@ -788,7 +797,7 @@ void CMainFrame::AddPagePanel( CBCGPRibbonCategory* pCategory,int& nBaseImageInd
 #else
 			pBtn = new CBCGPRibbonButton(ID_SET_PAGE_NAME, _T("页面名称"),4,4);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("页面名称"));
 				pBtn->SetAlwaysLargeImage ();
@@ -802,7 +811,7 @@ void CMainFrame::AddPagePanel( CBCGPRibbonCategory* pCategory,int& nBaseImageInd
 #else
 			pBtn = new CBCGPRibbonButton(ID_GOTO_PAGE, _T("跳转页面"),3,3);
 #endif
-			if (NULL != pBtn)
+			if (nullptr != pBtn)
 			{
 				pBtn->SetToolTipText(_T("跳转页面"));
 				pBtn->SetAlwaysLargeImage ();
@@ -822,7 +831,7 @@ void CMainFrame::AddDeviceCategory( void )
 
 	int nBaseImageIndex = 0;
 	CBCGPRibbonCategory* pDeviceCategory = m_wndRibbonBar.AddCategory(_T("仪表"),IDB_RIBBON_DEVICE_SMALL,IDB_RIBBON_DEVICE_LARGE);
-	if (NULL != pDeviceCategory)
+	if (nullptr != pDeviceCategory)
 	{
 		m_pDeviceCategory = pDeviceCategory;
 		AddOptionPanel(pDeviceCategory,nBaseImageIndex);
@@ -840,7 +849,7 @@ void CMainFrame::AddGridCategory( void )
 
 	int nBaseImageIndex = 0;
 	CBCGPRibbonCategory* pGridCategory = m_wndRibbonBar.AddCategory(_T("表格"),IDB_RIBBON_GRID_SMALL,IDB_RIBBON_GRID_LARGE);
-	if (NULL != pGridCategory)
+	if (nullptr != pGridCategory)
 	{
 		m_pGridCategory = pGridCategory;
 		AddGridOptionPanel(pGridCategory,nBaseImageIndex);
@@ -861,7 +870,7 @@ void CMainFrame::AddDiagramCategory( void )
 
 	int nBaseImageIndex = 0;
 	CBCGPRibbonCategory* pDigramCategory = m_wndRibbonBar.AddCategory(_T("图表"),IDB_RIBBON_DIAGRAM_SMALL,IDB_RIBBON_DIAGRAM_LARGE);
-	if (NULL != pDigramCategory)
+	if (nullptr != pDigramCategory)
 	{
 		m_pDiagramCategory = pDigramCategory;
 		AddDiagramOptionPanel(pDigramCategory,nBaseImageIndex);
@@ -874,14 +883,14 @@ void CMainFrame::AddDiagramCategory( void )
 //选项面板
 void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pOptionPanel = pCategory->AddPanel (_T("选项"));
 
-	if (NULL != pOptionPanel)
+	if (nullptr != pOptionPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_DEVICE_OPTION, _T("选项"), m_RibbonDevicePageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDevicePageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -889,7 +898,7 @@ void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageI
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OPTION, _T("选项"),1,1);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("选项"));
 			pBtn->SetAlwaysLargeImage ();
@@ -902,7 +911,7 @@ void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageI
 #else
 		pBtn = new CBCGPRibbonButton(ID_NUM_STYLE, _T("数值风格"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("数值风格"));
 			pBtn->SetAlwaysLargeImage ();
@@ -915,7 +924,7 @@ void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageI
 #else
 		pBtn = new CBCGPRibbonButton(ID_WATCH_STYLE, _T("表盘风格"),4,4);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("表盘风格"));
 			pBtn->SetAlwaysLargeImage ();
@@ -929,7 +938,7 @@ void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageI
 #else
 		pBtn = new CBCGPRibbonButton(ID_NEXT_DATA_COLUMN, _T("下一数据列"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("下一数据列"));
 			pBtn->SetAlwaysLargeImage ();
@@ -942,7 +951,7 @@ void CMainFrame::AddOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageI
 //校准面板
 void CMainFrame::AddFixedPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
@@ -957,7 +966,7 @@ void CMainFrame::AddFixedPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIn
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ZERO, _T("调零"),0,0);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("调零"));
 			pBtn->SetAlwaysLargeImage ();
@@ -971,7 +980,7 @@ void CMainFrame::AddFixedPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIn
 #else
 		pBtn = new CBCGPRibbonButton(ID_CALIBRATION, _T("校准"),1,1);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("校准"));
 			pBtn->SetAlwaysLargeImage ();
@@ -984,7 +993,7 @@ void CMainFrame::AddFixedPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIn
 #else
 		pBtn = new CBCGPRibbonButton(ID_CANCEL_ZERO_AND_CALIBRATION, _T("取消调零和校准"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("取消调零和校准"));
 			pBtn->SetAlwaysLargeImage ();
@@ -997,14 +1006,14 @@ void CMainFrame::AddFixedPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIn
 //选项面板
 void CMainFrame::AddGridOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pGridOptionPanel = pCategory->AddPanel(_T("选项"));
 
-	if (NULL != pGridOptionPanel)
+	if (nullptr != pGridOptionPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OPTION, _T("选项"), m_RibbonGridPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonGridPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1012,7 +1021,7 @@ void CMainFrame::AddGridOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OPTION, _T("选项"),0,0);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("选项"));
 			pBtn->SetAlwaysLargeImage();
@@ -1026,14 +1035,14 @@ void CMainFrame::AddGridOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 void CMainFrame::AddGridClipBoardPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
 
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pGridClipBoardPanel = pCategory->AddPanel(_T("剪贴板"));
 
-	if (NULL != pGridClipBoardPanel)
+	if (nullptr != pGridClipBoardPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_COPY, _T("复制"), m_RibbonGridPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonGridPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1041,7 +1050,7 @@ void CMainFrame::AddGridClipBoardPanel( CBCGPRibbonCategory* pCategory,int& nBas
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_COPY, _T("复制"),1,1);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("复制"));
 			pBtn->SetAlwaysLargeImage();
@@ -1055,7 +1064,7 @@ void CMainFrame::AddGridClipBoardPanel( CBCGPRibbonCategory* pCategory,int& nBas
 #else
 		pBtn = new CBCGPRibbonButton(ID_PASTE, _T("黏贴"),1,1);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("黏贴"));
 			pBtn->SetAlwaysLargeImage();
@@ -1067,14 +1076,14 @@ void CMainFrame::AddGridClipBoardPanel( CBCGPRibbonCategory* pCategory,int& nBas
 //格子面板
 void CMainFrame::AddGridCellPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pGridCellPanel = pCategory->AddPanel(_T("格子"));
 
-	if (NULL != pGridCellPanel)
+	if (nullptr != pGridCellPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_FIRST_ROW, _T("第一行"), m_RibbonGridPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonGridPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1082,7 +1091,7 @@ void CMainFrame::AddGridCellPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_FIRST_ROW, _T("第一行"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("第一行"));
 			pBtn->SetAlwaysLargeImage();
@@ -1096,7 +1105,7 @@ void CMainFrame::AddGridCellPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 #else
 		pBtn = new CBCGPRibbonButton(ID_LAST_ROW, _T("最后行"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("最后行"));
 			pBtn->SetAlwaysLargeImage();
@@ -1109,7 +1118,7 @@ void CMainFrame::AddGridCellPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 #else
 		pBtn = new CBCGPRibbonButton(ID_INSERT_ROW, _T("插入行"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("插入行"));
 			pBtn->SetAlwaysLargeImage();
@@ -1122,7 +1131,7 @@ void CMainFrame::AddGridCellPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 #else
 		pBtn = new CBCGPRibbonButton(ID_DEL_CELL, _T("删除格子"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("删除格子"));
 			pBtn->SetAlwaysLargeImage();
@@ -1135,14 +1144,14 @@ void CMainFrame::AddGridCellPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 //数据面板
 void CMainFrame::AddGridDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pGridDataPanel = pCategory->AddPanel(_T("数据"));
 
-	if (NULL != pGridDataPanel)
+	if (nullptr != pGridDataPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ADD_DATA_COLUMN, _T("增加数据列"),m_RibbonGridPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonGridPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1150,7 +1159,7 @@ void CMainFrame::AddGridDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_ADD_DATA_COLUMN, _T("增加数据列"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("增加数据列"));
 			pBtn->SetAlwaysLargeImage();
@@ -1164,7 +1173,7 @@ void CMainFrame::AddGridDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 #else
 		pBtn = new CBCGPRibbonButton(ID_YIELD_DATA, _T("生成数据"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("生成数据"));
 			pBtn->SetAlwaysLargeImage();
@@ -1177,7 +1186,7 @@ void CMainFrame::AddGridDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 #else
 		pBtn = new CBCGPRibbonButton(ID_CALCULATE, _T("运算"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("运算"));
 			pBtn->SetAlwaysLargeImage();
@@ -1190,7 +1199,7 @@ void CMainFrame::AddGridDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 #else
 		pBtn = new CBCGPRibbonButton(ID_CLEAR_CHILD_DATA, _T("清除子数据"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("清除子数据"));
 			pBtn->SetAlwaysLargeImage();
@@ -1202,14 +1211,14 @@ void CMainFrame::AddGridDataPanel( CBCGPRibbonCategory* pCategory,int& nBaseImag
 //报告面板
 void CMainFrame::AddGridReportPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pGridReportPanel = pCategory->AddPanel(_T("报告"));
 
-	if (NULL != pGridReportPanel)
+	if (nullptr != pGridReportPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_SAVE_EXCEL, _T("存储为Excel"), m_RibbonGridPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonGridPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1217,7 +1226,7 @@ void CMainFrame::AddGridReportPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_SAVE_EXCEL, _T("存储为Excel"),4,4);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("存储为Excel"));
 			pBtn->SetAlwaysLargeImage();
@@ -1231,7 +1240,7 @@ void CMainFrame::AddGridReportPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 #else
 		pBtn = new CBCGPRibbonButton(ID_PRINT, _T("打印"),4,4);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("打印"));
 			pBtn->SetAlwaysLargeImage();
@@ -1244,7 +1253,7 @@ void CMainFrame::AddGridReportPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 #else
 		pBtn = new CBCGPRibbonButton(ID_PRINT_PREVIEW, _T("打印预览"),4,4);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("打印预览"));
 			pBtn->SetAlwaysLargeImage();
@@ -1256,13 +1265,13 @@ void CMainFrame::AddGridReportPanel( CBCGPRibbonCategory* pCategory,int& nBaseIm
 //增加选项面板
 void CMainFrame::AddDiagramOptionPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 	CBCGPRibbonPanel* pDiagramOptionPanel = pCategory->AddPanel(_T("选项"));
 
-	if (NULL != pDiagramOptionPanel)
+	if (nullptr != pDiagramOptionPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_CHART_OPTION, _T("选项"), m_RibbonDiagramPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDiagramPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1270,7 +1279,7 @@ void CMainFrame::AddDiagramOptionPanel( CBCGPRibbonCategory* pCategory,int& nBas
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_OPTION, _T("选项"),0,0);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("选项"));
 			pBtn->SetAlwaysLargeImage();
@@ -1281,14 +1290,14 @@ void CMainFrame::AddDiagramOptionPanel( CBCGPRibbonCategory* pCategory,int& nBas
 		pDiagramOptionPanel->AddSeparator();
 
 		CBCGPRibbonRadioButton* pRadioBtn = new CBCGPRibbonRadioButton(ID_DRAG_MODE, _T("拖动模式"));
-		if (NULL != pRadioBtn)
+		if (nullptr != pRadioBtn)
 		{
 			pRadioBtn->SetToolTipText(_T("拖动模式"));
 			pDiagramOptionPanel->Add(pRadioBtn);
 		}
 
 		pRadioBtn = new CBCGPRibbonRadioButton(ID_SELECT_MODE, _T("选择模式"));
-		if (NULL != pRadioBtn)
+		if (nullptr != pRadioBtn)
 		{
 			pRadioBtn->SetToolTipText(_T("选择模式"));
 			pDiagramOptionPanel->Add(pRadioBtn);
@@ -1297,21 +1306,21 @@ void CMainFrame::AddDiagramOptionPanel( CBCGPRibbonCategory* pCategory,int& nBas
 		pDiagramOptionPanel->AddSeparator();
 
 		pRadioBtn = new CBCGPRibbonRadioButton(ID_AUTO_SCROLL, _T("自动滚屏"));
-		if (NULL != pRadioBtn)
+		if (nullptr != pRadioBtn)
 		{
 			pRadioBtn->SetToolTipText(_T("自动滚屏"));
 			pDiagramOptionPanel->Add(pRadioBtn);
 		}
 
 		pRadioBtn = new CBCGPRibbonRadioButton(ID_AUTO_ZOOM, _T("自动缩屏"));
-		if (NULL != pRadioBtn)
+		if (nullptr != pRadioBtn)
 		{
 			pRadioBtn->SetToolTipText(_T("自动缩屏"));
 			pDiagramOptionPanel->Add(pRadioBtn);
 		}
 
 		pRadioBtn = new CBCGPRibbonRadioButton(ID_NO_SCROLL, _T("不滚屏"));
-		if (NULL != pRadioBtn)
+		if (nullptr != pRadioBtn)
 		{
 			pRadioBtn->SetToolTipText(_T("不滚屏"));
 			pDiagramOptionPanel->Add(pRadioBtn);
@@ -1320,21 +1329,21 @@ void CMainFrame::AddDiagramOptionPanel( CBCGPRibbonCategory* pCategory,int& nBas
 		pDiagramOptionPanel->AddSeparator();
 
 		pRadioBtn = new CBCGPRibbonRadioButton(ID_LINE, _T("连线"));
-		if (NULL != pRadioBtn)
+		if (nullptr != pRadioBtn)
 		{
 			pRadioBtn->SetToolTipText(_T("连线"));
 			pDiagramOptionPanel->Add(pRadioBtn);
 		}
 
 		pRadioBtn = new CBCGPRibbonRadioButton(ID_POINT, _T("点"));
-		if (NULL != pRadioBtn)
+		if (nullptr != pRadioBtn)
 		{
 			pRadioBtn->SetToolTipText(_T("点"));
 			pDiagramOptionPanel->Add(pRadioBtn);
 		}
 
 		pRadioBtn = new CBCGPRibbonRadioButton(ID_POINT_TO_LINE, _T("点连线"));
-		if (NULL != pRadioBtn)
+		if (nullptr != pRadioBtn)
 		{
 			pRadioBtn->SetToolTipText(_T("点连线"));
 			pDiagramOptionPanel->Add(pRadioBtn);
@@ -1347,14 +1356,14 @@ void CMainFrame::AddDiagramOptionPanel( CBCGPRibbonCategory* pCategory,int& nBas
 //增加缩放面板
 void CMainFrame::AddDiagramZoomPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pDiagramZoomPanel = pCategory->AddPanel(_T("缩放"));
 
-	if (NULL != pDiagramZoomPanel)
+	if (nullptr != pDiagramZoomPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_100_PERCENT, _T("100%"), m_RibbonDiagramPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDiagramPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1362,7 +1371,7 @@ void CMainFrame::AddDiagramZoomPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_100_PERCENT, _T("100%"),1,1);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("100%"));
 			pBtn->SetAlwaysLargeImage();
@@ -1375,7 +1384,7 @@ void CMainFrame::AddDiagramZoomPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 #else
 		pBtn = new CBCGPRibbonButton(ID_ZOOM_IN, _T("放大"),1,1);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("放大"));
 			pBtn->SetAlwaysLargeImage();
@@ -1388,7 +1397,7 @@ void CMainFrame::AddDiagramZoomPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 #else
 		pBtn = new CBCGPRibbonButton(ID_ZOOM_OUT, _T("缩小"),1,1);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("缩小"));
 			pBtn->SetAlwaysLargeImage();
@@ -1400,14 +1409,14 @@ void CMainFrame::AddDiagramZoomPanel( CBCGPRibbonCategory* pCategory,int& nBaseI
 //增加分析面板
 void CMainFrame::AddDiagramAnalyzePanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pDiagramAnalyzePanel = pCategory->AddPanel(_T("分析"));
 
-	if (NULL != pDiagramAnalyzePanel)
+	if (nullptr != pDiagramAnalyzePanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_VIEW, _T("查看"), m_RibbonDiagramPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDiagramPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1415,7 +1424,7 @@ void CMainFrame::AddDiagramAnalyzePanel( CBCGPRibbonCategory* pCategory,int& nBa
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_VIEW, _T("查看"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("查看"));
 			pBtn->SetAlwaysLargeImage();
@@ -1428,7 +1437,7 @@ void CMainFrame::AddDiagramAnalyzePanel( CBCGPRibbonCategory* pCategory,int& nBa
 #else
 		pBtn = new CBCGPRibbonButton(ID_TANGENT, _T("切线"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("切线"));
 			pBtn->SetAlwaysLargeImage();
@@ -1441,7 +1450,7 @@ void CMainFrame::AddDiagramAnalyzePanel( CBCGPRibbonCategory* pCategory,int& nBa
 #else
 		pBtn = new CBCGPRibbonButton(ID_INTEGRAL, _T("积分"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("积分"));
 			pBtn->SetAlwaysLargeImage();
@@ -1454,7 +1463,7 @@ void CMainFrame::AddDiagramAnalyzePanel( CBCGPRibbonCategory* pCategory,int& nBa
 #else
 		pBtn = new CBCGPRibbonButton(ID_STATISTICS, _T("统计"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("统计"));
 			pBtn->SetAlwaysLargeImage();
@@ -1468,7 +1477,7 @@ void CMainFrame::AddDiagramAnalyzePanel( CBCGPRibbonCategory* pCategory,int& nBa
 #else
 		pBtn = new CBCGPRibbonButton(ID_LINEAR_FITTING, _T("直线拟合"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("直线拟合"));
 			pBtn->SetAlwaysLargeImage();
@@ -1481,7 +1490,7 @@ void CMainFrame::AddDiagramAnalyzePanel( CBCGPRibbonCategory* pCategory,int& nBa
 #else
 		pBtn = new CBCGPRibbonButton(ID_FITTING, _T("拟合"),2,2);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("拟合"));
 			pBtn->SetAlwaysLargeImage();
@@ -1493,14 +1502,14 @@ void CMainFrame::AddDiagramAnalyzePanel( CBCGPRibbonCategory* pCategory,int& nBa
 //增加报告面板
 void CMainFrame::AddDiagramReportPanel( CBCGPRibbonCategory* pCategory,int& nBaseImageIndex )
 {
-	if (NULL == pCategory)
+	if (nullptr == pCategory)
 	{
 		return;
 	}
 
 	CBCGPRibbonPanel* pDiagramReportPanel = pCategory->AddPanel(_T("报告"));
 
-	if (NULL != pDiagramReportPanel)
+	if (nullptr != pDiagramReportPanel)
 	{
 #ifdef HAVE_PICTURE
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_SAVE_IMAGE, _T("保存图片"), m_RibbonDiagramPageLargeBitmap.ExtractIcon(nBaseImageIndex),FALSE, m_RibbonDiagramPageSmallBitmap.ExtractIcon(nBaseImageIndex));
@@ -1508,7 +1517,7 @@ void CMainFrame::AddDiagramReportPanel( CBCGPRibbonCategory* pCategory,int& nBas
 #else
 		CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_SAVE_IMAGE, _T("保存图片"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("保存图片"));
 			pBtn->SetAlwaysLargeImage();
@@ -1521,7 +1530,7 @@ void CMainFrame::AddDiagramReportPanel( CBCGPRibbonCategory* pCategory,int& nBas
 #else
 		pBtn = new CBCGPRibbonButton(ID_EXPORT_EXPERIMENT_REPORT, _T("导出到实验报告"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("导出到实验报告"));
 			pBtn->SetAlwaysLargeImage();
@@ -1534,7 +1543,7 @@ void CMainFrame::AddDiagramReportPanel( CBCGPRibbonCategory* pCategory,int& nBas
 #else
 		pBtn = new CBCGPRibbonButton(ID_PRINT, _T("打印"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("打印"));
 			pBtn->SetAlwaysLargeImage();
@@ -1547,7 +1556,7 @@ void CMainFrame::AddDiagramReportPanel( CBCGPRibbonCategory* pCategory,int& nBas
 #else
 		pBtn = new CBCGPRibbonButton(ID_PRINT_PREVIEW, _T("打印预览"),3,3);
 #endif
-		if (NULL != pBtn)
+		if (nullptr != pBtn)
 		{
 			pBtn->SetToolTipText(_T("打印预览"));
 			pBtn->SetAlwaysLargeImage();
@@ -1565,7 +1574,7 @@ void CMainFrame::AddAdditionalContent( void )
 
 	CBCGPRibbonButton* pBtn = new CBCGPRibbonButton(ID_EXPERIMENT_GUIDE, _T("实验指导"));
 
-	if (NULL != pBtn)
+	if (nullptr != pBtn)
 	{
 		pBtn->SetToolTipText(_T("实验指导"));
 		m_wndRibbonBar.AddToTabs(pBtn);
@@ -1575,7 +1584,7 @@ void CMainFrame::AddAdditionalContent( void )
 
 	pBtn = new CBCGPRibbonButton((UINT)-1,_T("语言"));
 
-	if (NULL != pBtn)
+	if (nullptr != pBtn)
 	{
 		pBtn->SetMenu(IDR_MENU_LANGUAGE,TRUE);
 		pBtn->SetToolTipText(_T("语言"));
@@ -1585,7 +1594,7 @@ void CMainFrame::AddAdditionalContent( void )
 
 	pBtn = new CBCGPRibbonButton (ID_APP_ABOUT,_T("关于"));
 
-	if (NULL != pBtn)
+	if (nullptr != pBtn)
 	{
 		pBtn->SetToolTipText(_T("关于"));
 		m_wndRibbonBar.AddToTabs(pBtn);
@@ -1862,6 +1871,66 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
 		int nIndex = m_wndStatusBar.CommandToIndex(ID_DISPLAY_CURRENT_TIME);
 		m_wndStatusBar.SetPaneText(nIndex,strTime,TRUE);
 	}
+
+	if (TIMER_TEST_ID == nIDEvent)
+	{
+		LP_SENSOR_TYPE_INFO_ELEMENT pSensorInfo = new SENSOR_TYPE_INFO_ELEMENT("静力传感器",0,0);
+
+		if (nullptr != pSensorInfo)
+		{
+			CSensorManager::CreateInstance().RegisterSensor(*pSensorInfo);
+			//添加对应SensorID的数据
+			CSensorDataManager::CreateInstance().AddSensorData(SENSOR_TYPE_KEY(pSensorInfo->nSensorID,pSensorInfo->nSensorSerialID));		
+			//通知主窗口
+			PostMessage(WM_NOTIFY_DETECT_DEVICE,(WPARAM)pSensorInfo,1);
+		}
+
+
+		pSensorInfo = new SENSOR_TYPE_INFO_ELEMENT("微力传感器",1,0);
+
+		if (nullptr != pSensorInfo)
+		{
+			CSensorManager::CreateInstance().RegisterSensor(*pSensorInfo);
+			//添加对应SensorID的数据
+			CSensorDataManager::CreateInstance().AddSensorData(SENSOR_TYPE_KEY(pSensorInfo->nSensorID,pSensorInfo->nSensorSerialID));
+			//通知主窗口
+			PostMessage(WM_NOTIFY_DETECT_DEVICE,(WPARAM)pSensorInfo,1);
+		}
+		KillTimer(TIMER_TEST_ID);
+
+
+		//开启一个模拟线程
+		auto ThreadProc = []()
+		{
+			//获取所有传感器的信息
+			std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorList;
+			CSensorManager::CreateInstance().GetSensorList(SensorList);
+
+			boost::random::mt19937 rng((int)time(nullptr));
+
+			boost::random::uniform_real_distribution<float> ui(50.0f,160.0f);
+			while (true)
+			{
+				BOOST_FOREACH(auto& V,SensorList)
+				{
+					//每次模拟60个数据
+					for (int i = 1; i <= 100; ++i)
+					{
+						auto pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(SENSOR_TYPE_KEY(V.nSensorID,V.nSensorSerialID));
+
+						if (nullptr != pData)
+						{
+							pData->AddSensorData(ui(rng));
+						}
+					}
+					boost::this_thread::sleep(boost::posix_time::seconds(2));
+				}
+			}
+		};
+
+		boost::thread F(ThreadProc);
+	}
+
 	CBCGPFrameWnd::OnTimer(nIDEvent);
 }
 
@@ -1958,7 +2027,7 @@ void CMainFrame::ShowRibbonCatagory( CBCGPRibbonCategory* pCatagory,bool bShow /
 	}
 	int nCategoryNum = m_wndRibbonBar.GetCategoryCount();
 
-	if (NULL != pCatagory)
+	if (nullptr != pCatagory)
 	{
 		int nIndex = m_wndRibbonBar.GetCategoryIndex(pCatagory);
 
@@ -2005,7 +2074,11 @@ LRESULT CMainFrame::NotifyDeviceOnOrOff( WPARAM wp,LPARAM lp )
 		CGridColumnGroupManager::CreateInstance().AddDisplayColumnInfo(_T("当前"),AddColumnInfo);
 
 		//通知grid开始刷新
-		pView->NotifyControlsStartRefresh();
+		//pView->NotifyControlsStartRefresh();
+
+		SENSOR_TYPE_KEY KeyID(KeyElement.nSensorID,KeyElement.nSensorSerialID);
+		//通知显示面板改变
+		pView->NotifyDisplayPanelChange(&KeyID,1);
 	}
 	//设备下线
 	else
@@ -2013,7 +2086,11 @@ LRESULT CMainFrame::NotifyDeviceOnOrOff( WPARAM wp,LPARAM lp )
 		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"),CString(KeyElement.strSensorName.c_str()));
 	
 		//通知grid停止刷新
-		pView->NotifyControlsStopRefresh();
+		//pView->NotifyControlsStopRefresh();
+
+		SENSOR_TYPE_KEY KeyID(KeyElement.nSensorID,KeyElement.nSensorSerialID);
+		//通知显示面板改变
+		pView->NotifyDisplayPanelChange(&KeyID,0);
 	}
 	//通知刷新Grid
 	pView->NotifyDetectDevice(KeyElement.strSensorName,nOnFlag);
@@ -2097,4 +2174,33 @@ LRESULT CMainFrame::NotfiyRibbonChanged(WPARAM wp,LPARAM lp)
 	pButton->SetToolTipText(strText);
 	return 0L;
 }
+
+/*********************************************************
+FunctionName:当传感器个数改变，显示控制面板相应的改变
+FunctionDesc:
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
+LRESULT CMainFrame::NotifyDisplayPanelChange(WPARAM wp,LPARAM lp)
+{
+	//获取传感器个数
+	LP_SENSOR_TYPE_KEY pSensor = (LP_SENSOR_TYPE_KEY)wp;
+	int nFlag = (int)lp;
+
+	if (nullptr == pSensor)
+	{
+		return 0L;
+	}
+
+	//获取设备名称
+	CEdislabProView* pView = CEdislabProView::GetCurrentView();
+	if (nullptr != pView)
+	{
+		pView->NotifyDisplayPanelChange(pSensor,nFlag);
+	}
+	return 0L;
+}
+
 

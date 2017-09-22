@@ -240,6 +240,8 @@ void CDlgSensorChoose::OnBnClickedBtnAdd()
 			if (nullptr != pWnd)
 			{
 				pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
+				SENSOR_TYPE_KEY KeyID(iter->second.nSensorID,0);
+				pWnd->SendMessage(WM_NOTIFY_DISPLAY_PANEL_CHANGE,(WPARAM)&KeyID,1);
 			}
 			//end modify by xiaowei.han 2017-7-1
 			// 删除已有的传感器，防止重新添加
@@ -295,6 +297,8 @@ void CDlgSensorChoose::OnBnClickedBtnDelete()
 		if (nullptr != pWnd)
 		{
 			pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
+			SENSOR_TYPE_KEY KeyID(element.nSensorID,0);
+			pWnd->SendMessage(WM_NOTIFY_DISPLAY_PANEL_CHANGE,(WPARAM)&KeyID,0);
 		}
 	}
 }
@@ -303,6 +307,11 @@ void CDlgSensorChoose::OnBnClickedBtnDelete()
 void CDlgSensorChoose::OnBnClickedBtnDeleteAll()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	CWnd* pWnd = AfxGetMainWnd();
+	if (nullptr == pWnd)
+	{
+		return;
+	}
 
 	int nNum = m_ListChoosedSensor.GetCount();
 
@@ -339,16 +348,14 @@ void CDlgSensorChoose::OnBnClickedBtnDeleteAll()
 		// 删除表格数据列
 		CString strColumnName(strSensorName.c_str());
 		CGridColumnGroupManager::CreateInstance().RemoveColumnInfo(_T("当前"), strColumnName);
-	}
 
+		SENSOR_TYPE_KEY KeyID(element.nSensorID,0);
+		pWnd->SendMessage(WM_NOTIFY_DISPLAY_PANEL_CHANGE,(WPARAM)&KeyID,0);
+	}
 
 
 	//通知Grid刷新
-	CWnd* pWnd = AfxGetMainWnd();
-	if (nullptr != pWnd)
-	{
-		pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
-	}
+	pWnd->PostMessage(WM_NOTIFY_GRID_GROUP_INFO_CHANGE,0,0);
 	m_mapChooseSensor.clear();
 	m_ListChoosedSensor.CleanUp();
 	m_setChooseSensorID.clear();
@@ -535,6 +542,7 @@ void CDlgSensorChoose::RefreshChoosedSensorList()
 	BOOST_FOREACH(auto &V , vecStrSensorList)
 	{
 		std::string strSenorName = V.strSensorName;
+#if 0
 		auto nIndexof = strSenorName.find_first_of('[');
 		if (-1 == nIndexof)
 		{
@@ -542,7 +550,8 @@ void CDlgSensorChoose::RefreshChoosedSensorList()
 		}
 
 		strSenorName = strSenorName.substr(0, nIndexof);
-		SENSOR_CONFIG_ELEMENT element = CSensorConfig::CreateInstance().GetSensorInfo(strSenorName);
+#endif
+		SENSOR_CONFIG_ELEMENT element = CSensorConfig::CreateInstance().GetSensorInfo(V.nSensorID);
 		if (-1 == element.nSensorID)
 		{
 			continue;
@@ -554,7 +563,7 @@ void CDlgSensorChoose::RefreshChoosedSensorList()
 		int nNum = (int)m_setChooseSensorID.count(element.nSensorID);
 		if (nNum == 0)
 		{
-			CSensorManager::CreateInstance().RegisterSensor(element.nSensorID,0);
+			//CSensorManager::CreateInstance().RegisterSensor(element.nSensorID,0);
 			str.Format(_T("数据列：%s(%s)"), CString(element.strSensorSymbol.c_str()), CString(element.strSensorName.c_str()));
 
 			// 拼凑添加项描述文字

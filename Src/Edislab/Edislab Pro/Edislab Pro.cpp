@@ -19,6 +19,7 @@
 #include "SensorData.h"
 #include "SensorTypeTable.h"
 #include "SensorManager.h"
+#include "Macro.h"
 using std::string;
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -230,6 +231,7 @@ void CEdislabProApp::Init( void )
 	CSensorData*pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(SpecialSensorID);
 	if (nullptr != pData)
 	{
+#if 0
 		//获取采样信息
 		const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
 		int nSize = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
@@ -237,6 +239,11 @@ void CEdislabProApp::Init( void )
 		for (int i = 0; i < nSize; ++i)
 		{
 			pData->AddSensorData(i * fPeriod);
+		}
+#endif
+		for (int i = 0; i < DEFAULT_ROW_NUM; ++i)
+		{
+			pData->AddSensorData(i * 1.0f);
 		}
 	}
 }

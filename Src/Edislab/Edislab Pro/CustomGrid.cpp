@@ -13,10 +13,11 @@
 #include "SensorManager.h"
 #include "Utility.h"
 #include "Msg.h"
+#include "Macro.h"
 //默认增加列的宽度
 const int DEFAULT_COLUMN_WIDTH = 20;
 //默认的初始行数
-const int DEFAULT_ROW_NUM = 60;
+//const int DEFAULT_ROW_NUM = 60;
 IMPLEMENT_DYNCREATE(CCustomGrid, CBCGPGridCtrl)
 CCustomGrid::CCustomGrid():
 m_pCallBack(nullptr),

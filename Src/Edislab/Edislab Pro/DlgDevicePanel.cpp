@@ -5,7 +5,9 @@
 #include "Edislab Pro.h"
 #include "DlgDevicePanel.h"
 #include <boost/checked_delete.hpp>
+#include <boost/foreach.hpp>
 #include "GaugeDlg.h"
+#include "Macro.h"
 // CDlgDevicePanel 对话框
 
 IMPLEMENT_DYNAMIC(CDlgDevicePanel, CBaseDialog)
@@ -18,12 +20,11 @@ CDlgDevicePanel::CDlgDevicePanel(CWnd* pParent /*=NULL*/)
 
 CDlgDevicePanel::~CDlgDevicePanel()
 {
-	for (UINT i = 0; i < m_vecPanel.size(); ++i)
+	for (auto i = 0; i < (int)m_vecPanel.size(); ++i)
 	{
 		if (NULL != m_vecPanel[i])
 		{
-			delete m_vecPanel[i];
-			m_vecPanel[i] = NULL;
+			boost::checked_delete(m_vecPanel[i]);
 		}
 	}
 	m_vecPanel.clear();
@@ -77,28 +78,12 @@ void CDlgDevicePanel::CreatePanel( void )
 }
 void CDlgDevicePanel::addPanel()
 {
-#if 0
-	if(m_vecPanel.size()>=MAX_WIDGET_NUM)
-	{
-		return;
-	}
-
 	GaugeDlg* pDevicePanel = new GaugeDlg;
-	if (NULL != pDevicePanel)
+	if (nullptr != pDevicePanel)
 	{
 		pDevicePanel->Create(GaugeDlg::IDD,this);
 		m_vecPanel.push_back(pDevicePanel);
 		m_WidgetLayout.AddWidget(pDevicePanel);
-		//m_dataManager.addGaugeDlg(pDevicePanel);
-	}
-#endif
-	GaugeDlg* pDevicePanel = new GaugeDlg;
-	if (NULL != pDevicePanel)
-	{
-		pDevicePanel->Create(GaugeDlg::IDD,this);
-		m_vecPanel.push_back(pDevicePanel);
-		m_WidgetLayout.AddWidget(pDevicePanel);
-		//m_dataManager.addGaugeDlg(pDevicePanel);
 		CRect rc;
 		GetClientRect(&rc);
 		m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
@@ -107,43 +92,30 @@ void CDlgDevicePanel::addPanel()
 }
 void CDlgDevicePanel::delPanel(CWnd* pDlg)
 {
-	if(pDlg)
+	if(nullptr != pDlg)
 	{
 		m_WidgetLayout.DelWidget(pDlg);
 		CRect rc;
 		GetClientRect(&rc);
 		m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
-		for(std::vector<CBaseDialog*>::iterator itr = m_vecPanel.begin();
-			itr!=m_vecPanel.end(); ++itr)
+		for(auto Iter = m_vecPanel.begin();Iter != m_vecPanel.end(); ++Iter)
 		{
-			if(pDlg==*itr)
+			if(pDlg == *Iter)
 			{
 				if (pDlg->GetSafeHwnd() != NULL)
 				{
 					pDlg->DestroyWindow();
 				}
-				m_vecPanel.erase(itr);
+				m_vecPanel.erase(Iter);
 				break;
 			}
 		}
-		//m_dataManager.delGaugeDlg(dynamic_cast<GaugeDlg*>(pDlg));
 		boost::checked_delete(pDlg);
 	}	
 }
 void CDlgDevicePanel::DestroyPanel( void )
 {
-#if 0
-	for (UINT i = 0; i < m_vecPanel.size(); ++i)
-	{
-		if (NULL != m_vecPanel[i])
-		{
-			if (m_vecPanel[i]->GetSafeHwnd() != NULL)
-			{
-				m_vecPanel[i]->DestroyWindow();
-			}
-		}
-	}
-#endif
+
 }
 
 void CDlgDevicePanel::AdjustPanelLayout( int nWidth,int nHeight )
@@ -186,4 +158,109 @@ void CDlgDevicePanel::OnLButtonUp(UINT nFlags, CPoint point)
 int CDlgDevicePanel::GetWidgetNum( void ) const
 {
 	return m_WidgetLayout.GetWidgetNum();
+}
+
+
+void CDlgDevicePanel::NotifyDisplayPanelChange(const LP_SENSOR_TYPE_KEY pSensor,int nFlag)
+{
+	if (nullptr == pSensor)
+	{
+		return;
+	}
+
+	//获取显示面板的个数
+	int nPanelNum = (int)m_vecPanel.size();
+
+	//增加面板
+	if (1 == nFlag)
+	{
+		//超过最大个数
+		if (nPanelNum >= MAX_DEVICE_PANEL_NUM)
+		{
+			return;
+		}
+
+		//如果只有一个面板，查看是否是正常使用的
+		if (1 == nPanelNum)
+		{
+			if (nullptr != m_vecPanel[0])
+			{
+				//获取已经存在的显示传感器的ID
+				SENSOR_TYPE_KEY KeyID = m_vecPanel[0]->getShowDataColumn();
+
+				//非法的传感器ID
+				if (KeyID.nSensorID < 0 && KeyID.nSensorSerialID < 0)
+				{
+					m_vecPanel[0]->setShowDataColumn(SENSOR_TYPE_KEY(pSensor->nSensorID,pSensor->nSensorSerialID));
+				}
+				//如果是合法的传感器，那么就新增一个显示面板
+				else
+				{
+					GaugeDlg* pDevicePanel = new GaugeDlg;
+					if (nullptr != pDevicePanel)
+					{
+						pDevicePanel->setShowDataColumn(*pSensor);
+						pDevicePanel->Create(GaugeDlg::IDD,this);
+						m_vecPanel.push_back(pDevicePanel);
+						m_WidgetLayout.AddWidget(pDevicePanel);
+						CRect rc;
+						GetClientRect(&rc);
+						m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
+					}
+				}
+			}
+		}
+		else
+		{
+			GaugeDlg* pDevicePanel = new GaugeDlg;
+			if (nullptr != pDevicePanel)
+			{
+				pDevicePanel->setShowDataColumn(*pSensor);
+				pDevicePanel->Create(GaugeDlg::IDD,this);
+				m_vecPanel.push_back(pDevicePanel);
+				m_WidgetLayout.AddWidget(pDevicePanel);
+				CRect rc;
+				GetClientRect(&rc);
+				m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
+			}
+		}
+	}
+	//删除面板
+	else
+	{
+		//如果只剩最后一个
+		if (1 == nPanelNum)
+		{
+			if (nullptr != m_vecPanel[0])
+			{
+				m_vecPanel[0]->setShowDataColumn(SENSOR_TYPE_KEY());
+			}
+		}
+		else
+		{	
+			auto FindPred = [&pSensor](const GaugeDlg* pElement)->bool
+			{
+				if (pElement->getShowDataColumn() == *pSensor)
+				{
+					return true;
+				}
+				return false;
+			};
+			//找到对话框
+			auto Iter = std::find_if(m_vecPanel.begin(),m_vecPanel.end(),FindPred);
+			if (Iter != m_vecPanel.end())
+			{
+				m_WidgetLayout.DelWidget(*Iter);
+				if ((*Iter)->GetSafeHwnd() != NULL)
+				{
+					(*Iter)->DestroyWindow();
+				}
+				boost::checked_delete((*Iter));
+				m_vecPanel.erase(Iter);
+				CRect rc;
+				GetClientRect(&rc);
+				m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
+			}
+		}
+	}
 }

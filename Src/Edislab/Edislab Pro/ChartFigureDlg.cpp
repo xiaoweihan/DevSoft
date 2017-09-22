@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "ChartFigureDlg.h"
+#include <boost/checked_delete.hpp>
 #include "DlgChartSet.h"
 #include "DlgTabPanel.h"
 #include "Msg.h"
@@ -11,7 +12,8 @@
 // ChartFigureDlg 对话框
 #define TIMER_CHART_EVENT (1000011)
 #define TIMER_CHART (300)
-
+#define TIMER_AXIS_EVENT (1000)
+#define TIMER_GAP    (500)
 IMPLEMENT_DYNAMIC(ChartFigureDlg, CBaseDialog)
 ChartFigureDlg::ChartFigureDlg(CWnd* pParent /*=NULL*/)
 	: CBaseDialog(ChartFigureDlg::IDD, pParent),
@@ -22,11 +24,7 @@ ChartFigureDlg::ChartFigureDlg(CWnd* pParent /*=NULL*/)
 
 ChartFigureDlg::~ChartFigureDlg()
 {
-	if (m_charxy != NULL)
-	{
-		delete m_charxy;
-		m_charxy = NULL;
-	}
+	boost::checked_delete(m_charxy);
 }
 
 void ChartFigureDlg::DoDataExchange(CDataExchange* pDX)
@@ -66,7 +64,8 @@ BOOL ChartFigureDlg::OnInitDialog()
 	GetClientRect(rect);
 	CSize size(rect.Width(), rect.Height());
 	m_charxy->resize(size);
-	SetTimer(TIMER_CHART_EVENT, TIMER_CHART, NULL);
+	//SetTimer(TIMER_CHART_EVENT, TIMER_CHART, NULL);
+	SetTimer(TIMER_AXIS_EVENT,TIMER_GAP,NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
 				  // 异常: OCX 属性页应返回 FALSE
 }
@@ -74,8 +73,6 @@ void ChartFigureDlg::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
 {
 	CBaseDialog::OnActivate(nState, pWndOther, bMinimized);
 
-	// TODO: 在此处添加消息处理程序代码
-	TRACE("[GaugeDlg] OnActivate!\r\n");
 }
 // ChartFigureDlg 消息处理程序
 void ChartFigureDlg::OnLButtonDown(UINT nFlags, CPoint point)
@@ -93,7 +90,7 @@ void ChartFigureDlg::OnLButtonDown(UINT nFlags, CPoint point)
 	{
 		pWnd->PostMessage(WM_NOTIFY_ACTIVE_WND_TYPE,2,0);
 	}
-	CWnd::OnLButtonDown(nFlags, point);
+	CBaseDialog::OnLButtonDown(nFlags, point);
 }
 
 
@@ -106,7 +103,7 @@ void ChartFigureDlg::OnLButtonUp(UINT nFlags, CPoint point)
 		//Invalidate();
 	}
 	ReleaseCapture();
-	CWnd::OnLButtonUp(nFlags, point);
+	CBaseDialog::OnLButtonUp(nFlags, point);
 }
 
 
@@ -120,7 +117,7 @@ BOOL ChartFigureDlg::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 		m_charxy->wheelEvent(pts, zDelta);
 		Invalidate();
 	}
-	return CWnd::OnMouseWheel(nFlags, zDelta, pt);
+	return CBaseDialog::OnMouseWheel(nFlags, zDelta, pt);
 }
 
 
@@ -132,7 +129,7 @@ void ChartFigureDlg::OnMouseMove(UINT nFlags, CPoint point)
 		m_charxy->mouseMoveEvent(point);
 		//Invalidate();
 	}
-	CWnd::OnMouseMove(nFlags, point);
+	CBaseDialog::OnMouseMove(nFlags, point);
 }
 
 
@@ -204,7 +201,7 @@ void ChartFigureDlg::OnPaint()
 
 void ChartFigureDlg::OnSize(UINT nType, int cx, int cy)
 {
-	CWnd::OnSize(nType, cx, cy);
+	CBaseDialog::OnSize(nType, cx, cy);
 
 	// TODO: 在此处添加消息处理程序代码
 	if (m_charxy)
@@ -217,27 +214,12 @@ void ChartFigureDlg::OnSize(UINT nType, int cx, int cy)
 
 void ChartFigureDlg::OnSizing(UINT fwSide, LPRECT pRect)
 {
-	CWnd::OnSizing(fwSide, pRect);
+	CBaseDialog::OnSizing(fwSide, pRect);
 
 	// TODO: 在此处添加消息处理程序代码
-	Invalidate();
+	//Invalidate();
 }
 
-void ChartFigureDlg::setChartMgr(ChartManager* mgr)
-{
-	if (m_charxy)
-	{
-		m_charxy->setChartMgr(mgr);
-	}
-}
-const ChartManager* ChartFigureDlg::getChartMgr()
-{
-	if (m_charxy)
-	{
-		return m_charxy->getChartMgr();
-	}
-	return NULL;
-}
 void ChartFigureDlg::updateData() const
 {
 	if (m_charxy)
@@ -315,9 +297,6 @@ void ChartFigureDlg::OnChartSet()
 
 void ChartFigureDlg::OnChartDel()
 {
-	// TODO: Add your command handler code here
-	int a;
-	a = 0;
 }
 
 
@@ -395,6 +374,14 @@ void ChartFigureDlg::OnTimer(UINT_PTR nIDEvent)
 	{
 		updateData();
 	}
+	if (TIMER_AXIS_EVENT == nIDEvent)
+	{
+		if (nullptr != m_charxy)
+		{
+			m_charxy->ResfreshAxisTitle();
+			m_charxy->paintEvent();
+		}
+	}
 	CBaseDialog::OnTimer(nIDEvent);
 }
 
@@ -412,3 +399,64 @@ LRESULT ChartFigureDlg::NotifyActive( WPARAM wp,LPARAM lp )
 	}
 	return 0L;
 }
+
+void ChartFigureDlg::SetXAxisSensorID(const SENSOR_TYPE_KEY& XAxisID)
+{
+	if (nullptr == m_charxy)
+	{
+		return;
+	}
+	
+	m_charxy->setXID(XAxisID);
+}
+
+SENSOR_TYPE_KEY ChartFigureDlg::GetXAxisSensorID(void)
+{
+	if (nullptr == m_charxy)
+	{
+		return SENSOR_TYPE_KEY();
+	}
+
+	return m_charxy->getXID();
+}
+
+void ChartFigureDlg::SetYAxisSensorID(const SENSOR_TYPE_KEY& YAxisID)
+{
+	if (nullptr == m_charxy)
+	{
+		return;
+	}
+
+	m_charxy->setVisible(YAxisID,true);
+}
+
+void ChartFigureDlg::RestYAxisSensorID(void)
+{
+	if (nullptr == m_charxy)
+	{
+		return;
+	}
+	m_charxy->ResetYAxisSensor();
+}
+
+bool ChartFigureDlg::IsYAxisSensorIDExist(const SENSOR_TYPE_KEY& YAxisID) const
+{
+	if (nullptr == m_charxy)
+	{
+		return false;
+	}
+
+	return m_charxy->getVisible(YAxisID);
+}
+
+void ChartFigureDlg::NotifyControlsStartRefresh()
+{
+	SetTimer(TIMER_CHART_EVENT,TIMER_CHART,NULL);
+}
+
+void ChartFigureDlg::NotifyControlsStopRefresh()
+{
+	KillTimer(TIMER_CHART_EVENT);
+}
+
+

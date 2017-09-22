@@ -634,3 +634,20 @@ void CEdislabProView::NotifyRibbonChangeText(int nFlag)
 	pWnd->PostMessage(WM_NOTIFY_RIBBON_CHANGE,nFlag,0);
 
 }
+
+void CEdislabProView::NotifyDisplayPanelChange(const LP_SENSOR_TYPE_KEY pSensor,int nFlag)
+{
+	if (NULL != m_TabWnd.GetSafeHwnd())
+	{
+		int nTabWndNum = m_TabWnd.GetTabsNum();
+		CDlgTabPanel* pPanel = nullptr;
+		for (int i = 0; i < nTabWndNum; ++i)
+		{
+			pPanel = dynamic_cast<CDlgTabPanel*>(m_TabWnd.GetTabWnd(i));
+			if (nullptr != pPanel)
+			{
+				pPanel->NotifyDisplayPanelChange(pSensor,nFlag);
+			}
+		}
+	}
+}

@@ -1,7 +1,9 @@
 #pragma once
 // CDlgTabPanel 对话框
 #include "WidgetLayout.h"
+#include "Type.h"
 class CBaseDialog;
+
 class CDlgTabPanel : public CBCGPDialog
 {
 	DECLARE_DYNAMIC(CDlgTabPanel)
@@ -68,6 +70,8 @@ public:
 	void PrepareDisplayElement(void);
 	//通知Grid的分组信息改变
 	void NotifyGridGroupInfoChange();
+	//通知显示面板改变
+	void NotifyDisplayPanelChange(const LP_SENSOR_TYPE_KEY pSensor,int nFlag);
 protected:
 	//创建面板
 	void CreatePanel(void);

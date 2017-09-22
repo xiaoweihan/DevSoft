@@ -1,9 +1,9 @@
 #pragma once
 #include "BaseDialog.h"
 #include "WidgetLayout.h"
-//#include "GaugeManager.h"
+#include "GaugeManager.h"
 // CDlgDevicePanel 对话框
-
+class GaugeDlg;
 class CDlgDevicePanel : public CBaseDialog
 {
 	DECLARE_DYNAMIC(CDlgDevicePanel)
@@ -26,7 +26,7 @@ private:
 	//布局器
 	CWidgetLayout m_WidgetLayout;
 	//窗口
-	std::vector<CBaseDialog*> m_vecPanel;
+	std::vector<GaugeDlg*> m_vecPanel;
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 
@@ -44,4 +44,6 @@ public:
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+	//修改显示面板个数的改变
+	void NotifyDisplayPanelChange(const LP_SENSOR_TYPE_KEY pSensor,int nFlag);
 };

@@ -69,7 +69,6 @@ private:
 	void RefreshRange();
 
 	void RefreshChoosedSensorList();
-
 public:
 	afx_msg void OnBnClickedCheckAutoRecognize();
 	virtual BOOL OnInitDialog();

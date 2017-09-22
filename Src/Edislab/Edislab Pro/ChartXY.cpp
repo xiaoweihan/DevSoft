@@ -69,8 +69,9 @@ ChartXY::ChartXY(HDC hDC)
 	, m_bStatistics(false)
 {
 	m_pDC = CDC::FromHandle(m_hDC);
-	m_pMemDC = NULL;
-	m_chartMgr = NULL;
+	m_pMemDC = nullptr;
+
+#if 0
 	//begin ldh 0610
 	std::vector<COLUMN_GROUP_INFO> ColumnGroupArray;
 	CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
@@ -102,6 +103,7 @@ ChartXY::ChartXY(HDC hDC)
 			break;
 		}
 	}
+#endif
 	//end ldh 0610
 	refreshData();
 }
@@ -522,47 +524,13 @@ void ChartXY::getYRange(double& min, double& max)
 	min = m_minY;
 	max = m_maxY;
 }
-//void ChartXY::addChartData(ChartXYData* data)
-//{
-//	m_chartData.push_back(data);
-//}
-//const ChartXYData* ChartXY::chartData(int index)
-//{
-//	ChartXYData* ret = NULL;
-//	if(index<m_chartData.size())
-//	{
-//		ret = m_chartData[index];
-//	}
-//	return ret;
-//}
-//void ChartXY::removeChartData(int index)
-//{
-//	vector<ChartXYData*>::iterator itr = m_chartData.begin();
-//	int cnt = 0;
-//	for(; itr!=m_chartData.end(); ++itr)
-//	{
-//		if(cnt==index)
-//		{
-//			delete *itr;
-//			m_chartData.erase(itr);
-//			break;
-//		}
-//	}
-//}
-//void ChartXY::removeAllChartData()
-//{
-//	for(int i=0; i<m_chartData.size(); ++i)
-//	{
-//		if(m_chartData[i])
-//			delete m_chartData[i];
-//	}
-//	m_chartData.clear();
-//}
+
 void ChartXY::resize(CSize size)
 {
 	m_size = size;
 	calcRecView();
 }
+
 void ChartXY::showAll()
 {
 	std::vector<ChartXYData>& chartData = m_vecLineData;//m_chartMgr->getChartData();
@@ -730,26 +698,33 @@ int ChartXY::calNumDigit(double num)
 }
 void ChartXY::calcRecView()
 {
-	if(m_pDC)
+	if(nullptr != m_pDC)
 	{
 		m_pDC = CDC::FromHandle(m_hDC);
 		m_recView = CRect(0, 0, m_size.cx, m_size.cy);
-		m_recView.InflateRect(-VIEW_X_EDGE, -VIEW_Y_EDGE, -VIEW_X_EDGE, -VIEW_Y_EDGE);
 
-		CFont font;
-		BOOL bOk = font.CreatePointFont(90, _T("Arial"),m_pDC);
-		CFont* oldFont = m_pDC->SelectObject(&font);
-		CSize chSize = m_pDC->GetTextExtent(_T("8"));
-		int lenCh = chSize.cx;			//painter.fontMetrics().width('8');
-		int heiCh = chSize.cy;			//painter.fontMetrics().height();
-		int left = 8*lenCh;
-		int bottom = 3*heiCh;
-		m_recView.InflateRect(-left, 0, -6*lenCh, -bottom);
-		//释放
-		m_pDC->SelectObject(oldFont);
-		font.DeleteObject();
+		//if (m_size.cx > VIEW_X_EDGE && m_size.cy > VIEW_Y_EDGE)
+		{
+			m_recView.InflateRect(-VIEW_X_EDGE, -VIEW_Y_EDGE, -VIEW_X_EDGE, -VIEW_Y_EDGE);
+
+			CFont font;
+			BOOL bOk = font.CreatePointFont(90, _T("Arial"),m_pDC);
+			CFont* oldFont = m_pDC->SelectObject(&font);
+			CSize chSize = m_pDC->GetTextExtent(_T("8"));
+			int lenCh = chSize.cx;			//painter.fontMetrics().width('8');
+			int heiCh = chSize.cy;			//painter.fontMetrics().height();
+			int left = 8*lenCh;
+			int bottom = 3*heiCh;
+			m_recView.InflateRect(-left, 0, -6*lenCh, -bottom);
+			//释放
+			m_pDC->SelectObject(oldFont);
+			font.DeleteObject();
+		}
+
+
 	}
 }
+
 void ChartXY::drawAxesXY()
 {
 	if(!m_pMemDC)
@@ -998,10 +973,6 @@ void ChartXY::drawLine()
 {
 	calcXYRange();
 	drawAxesXY();
-	if (!m_chartMgr)
-	{
-		//return;
-	}
 	//drawLine
 	CMeDPoint zeroPt = xy2screen(CMeDPoint(0, 0));
 	CPen* oldPen = m_pMemDC->GetCurrentPen();
@@ -1189,14 +1160,6 @@ void ChartXY::drawBubble()
 {
 }
 
-void ChartXY::setChartMgr(ChartManager* mgr)
-{
-	m_chartMgr = mgr;
-}
-const ChartManager* ChartXY::getChartMgr()
-{
-	return m_chartMgr;
-}
 void ChartXY::setVisible(SENSOR_TYPE_KEY id, bool bShow)
 {
 	m_mapVisible[id] = bShow;
@@ -1213,26 +1176,16 @@ bool ChartXY::getVisible(SENSOR_TYPE_KEY id)
 void ChartXY::refreshData()
 {
 	m_vecLineData.clear();
-	//if(m_nXID==-1)
-	//{
-	//	return;
-	//}
-	//begin ldh 0610
 	vector<float> xData;
 	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(m_nXID);
 	if(pData)
 	{
 		pData->GetSensorData(xData);
 	}
-	std::string name = CSensorManager::CreateInstance().QuerySensorNameByID(m_nXID);
-	m_strX = CString(name.c_str());
-	//end ldh 0610
-	if(xData.size()==0)
-	{
-		//return;
-	}
+	//std::string name = CSensorManager::CreateInstance().QuerySensorNameByID(m_nXID);
+	//m_strX = CString(name.c_str());
 	//数据匹配
-	m_strY.Empty();
+	//m_strY.Empty();
 	//begin ldh 0610
 	BOOST_FOREACH(auto it,m_mapVisible)
 	{
@@ -1262,8 +1215,8 @@ void ChartXY::refreshData()
 				line.setXYData(vecPt);
 				m_vecLineData.push_back(line);
 			}
-			std::string name = CSensorManager::CreateInstance().QuerySensorNameByID(it.first);
-			m_strY += _T(" ") + CString(name.c_str());
+			//std::string name = CSensorManager::CreateInstance().QuerySensorNameByID(it.first);
+			//m_strY += _T(" ") + CString(name.c_str());
 		}
 	}
 	//end ldh 0610
@@ -1278,7 +1231,7 @@ void ChartXY::updateData()
 		return;
 	}
 	m_allData = m_dbMgr->getAllData();
-#endif
+
 	boost::unordered_map<SENSOR_TYPE_KEY, bool> oldVisible = m_mapVisible;
 	m_mapVisible.clear();
 	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorNameArray;
@@ -1295,9 +1248,9 @@ void ChartXY::updateData()
 		else
 		{
 			m_mapVisible[nSensorID] = false;
-		}
-		
+		}	
 	}
+#endif
 	//end modify by xiaowei.han
 	refreshData();
 	paintEvent();
@@ -1364,4 +1317,25 @@ void ChartXY::calcXYRange()
 	}
 	
 }
+
+void ChartXY::ResfreshAxisTitle(void)
+{
+	//刷新X轴标题
+	m_strX.Empty();
+	std::string strXAxisTitle = CSensorManager::CreateInstance().QuerySensorNameByID(m_nXID);
+	m_strX = CString(strXAxisTitle.c_str());
+
+	m_strY.Empty();
+	//刷新Y轴标题
+	BOOST_FOREACH(auto it,m_mapVisible)
+	{
+		if(it.second)
+		{
+			std::string strYAxisTitle = CSensorManager::CreateInstance().QuerySensorNameByID(it.first);
+			m_strY += _T(" ") + CString(strYAxisTitle.c_str());
+		}
+	}
+}
+
+
 #pragma warning(pop)

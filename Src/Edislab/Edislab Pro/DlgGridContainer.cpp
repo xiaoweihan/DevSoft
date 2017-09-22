@@ -158,7 +158,7 @@ BOOL CDlgGridContainer::OnInitDialog()
 		CGridColumnGroupManager::CreateInstance().GetGridDisplayInfo(ColumnGroupArray);
 		const SENSOR_RECORD_INFO& SampleInfo = CSensorConfig::CreateInstance().GetSensorRecordInfo();
 		//…Ë÷√µ„ ˝
-		int nTotalRows = (int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
+		int nTotalRows = DEFAULT_ROW_NUM;//(int)(SampleInfo.fFrequency * SampleInfo.fLimitTime);
 		m_DisplayGrid.SetHeaderInfoArray(ColumnGroupArray);
 		m_DisplayGrid.SetCallBack(nullptr/*GridCallback*/);
 		m_DisplayGrid.SetInitDisplayRow(nTotalRows);

@@ -5,6 +5,7 @@
 #include "Edislab Pro.h"
 #include "GaugeDlg.h"
 #include <math.h>
+#include <algorithm>
 #include "DlgDeviceSet.h"
 #include "Macro.h"
 #include "DlgTabPanel.h"
@@ -16,14 +17,12 @@
 #include "Utility.h"
 // GaugeDlg dialog
 #pragma warning(disable:4267)
-IMPLEMENT_DYNAMIC(GaugeDlg, CBaseDialog)
 #define TIMER_GAUGE_EVENT (1000012)
 #define TIMER_GAUGE (1000)
-GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/)
-	: CBaseDialog(GaugeDlg::IDD, pParent),
-	m_bActiveFlag(FALSE)
+IMPLEMENT_DYNAMIC(GaugeDlg, CBaseDialog)
+GaugeDlg::GaugeDlg(CWnd* pParent /*=NULL*/):CBaseDialog(GaugeDlg::IDD, pParent),
+m_bActiveFlag(FALSE)
 {
-	//dataColumnID = -1;
 	enableWarning = false;
 	minRange = 0.0;
 	maxRange = 200.0;
@@ -70,21 +69,29 @@ BOOL GaugeDlg::OnInitDialog()
 	m_wndGauge.GetGauge()->SetRange(minRange,maxRange);
 	m_wndGauge.GetGauge()->SetValue(0.0);
 	updateData();
-	Invalidate(TRUE);
 	SetTimer(TIMER_GAUGE_EVENT, TIMER_GAUGE, NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
 	// EXCEPTION: OCX Property Pages should return FALSE
 }
+
+/*********************************************************
+FunctionName:更新表盘的显示
+FunctionDesc:
+InputParam:
+OutputParam:
+ResultValue:
+Author:xiaowei.han
+*********************************************************/
 void GaugeDlg::OnUpdateGauge() 
 {
 	CBCGPCircularGaugeImpl* pGauge = m_wndGauge.GetGauge();
-	ASSERT_VALID(pGauge);
+	if (nullptr == pGauge)
+	{
+		return;
+	}
 	CRect rc;
 	GetClientRect(rc);
 	double minE = min(rc.Width(), rc.Height());
-	//pGauge->SetFrameSize(minE/30);
-	//pGauge->SetCapSize(minE/12);
-
 	pGauge->RemoveAllColoredRanges();
 
 	//if (m_bRange)
@@ -100,30 +107,27 @@ void GaugeDlg::OnUpdateGauge()
 
 		int nScale = 0;
 		//警告
-		if(enableWarning&&(m_wndGauge.GetGauge()->GetValue()<minWarningValue||m_wndGauge.GetGauge()->GetValue()>maxWarningValue))
+		if(enableWarning && (m_wndGauge.GetGauge()->GetValue()<minWarningValue||m_wndGauge.GetGauge()->GetValue()>maxWarningValue))
 		{
 			pGauge->ModifyPointer(0, CBCGPCircularGaugePointer(
 				CBCGPBrush(CBCGPColor(CBCGPColor::Red), CBCGPColor(CBCGPColor::White), CBCGPBrush::BCGP_GRADIENT_DIAGONAL_LEFT), 
 				CBCGPBrush(CBCGPColor(CBCGPColor::Red))));
-		}else
+		}
+		else
 		{
 			pGauge->ModifyPointer(0, CBCGPCircularGaugePointer(
 				CBCGPBrush(CBCGPColor(CBCGPColor::BurlyWood), CBCGPColor(CBCGPColor::White), CBCGPBrush::BCGP_GRADIENT_DIAGONAL_LEFT), 
 				CBCGPBrush(CBCGPColor(CBCGPColor::BurlyWood))));
-		}
-		
+		}	
 		pGauge->AddColoredRange(minRange, minRange + (maxRange - minRange) / 3, brGreen, brFrame, nScale, width1, width2);
 		pGauge->AddColoredRange(minRange + (maxRange - minRange) / 3, minRange + (maxRange-minRange) * 2 / 3, brYellow, brFrame, nScale, width2);
 		pGauge->AddColoredRange(minRange + (maxRange - minRange) * 2 / 3, maxRange, brRed, brFrame, nScale, width2, width1);
 	}
-
 	pGauge->SetTextLabelFormat(_T("")/*_T("%.0f")*/);
-
-	pGauge->SetTickMarkSize(minE/30, TRUE);
-	pGauge->SetTickMarkSize(minE/60 , FALSE);
-
+	pGauge->SetTickMarkSize(minE / 30, TRUE);
+	pGauge->SetTickMarkSize(minE / 60 , FALSE);
 	pGauge->RemoveAllSubGauges();
-	int fontSize = min(rc.Width(), rc.Height())/10;
+	int fontSize = min(rc.Width(), rc.Height()) / 10;
 	CString valueStr;
 	valueStr.Format(_T("%.2f"), m_wndGauge.GetGauge()->GetValue());
 	valueStr += m_strUnit;
@@ -169,7 +173,6 @@ void GaugeDlg::OnSizing(UINT fwSide, LPRECT pRect)
 {
 	CBaseDialog::OnSizing(fwSide, pRect);
 
-	// TODO: Add your message handler code here
 	Invalidate(TRUE);
 }
 void GaugeDlg::setRange(double min, double max)
@@ -194,44 +197,48 @@ void GaugeDlg::getWarningValue(double& min, double& max)
 }
 void GaugeDlg::setShowDataColumn(SENSOR_TYPE_KEY SensorKeyID)
 {
-	//dataColumnID = ColumnID;
 	m_SensorKeyID = SensorKeyID;
 }
-SENSOR_TYPE_KEY GaugeDlg::getShowDataColumn()
+
+SENSOR_TYPE_KEY GaugeDlg::getShowDataColumn() const
 {
 	return m_SensorKeyID;
-	//return dataColumnID;
 }
+
 void GaugeDlg::setValue(double value)
 {
 	m_wndGauge.GetGauge()->SetValue(value);
 	Invalidate(TRUE);
 }
+
 double GaugeDlg::getValue()
 {
 	return m_wndGauge.GetGauge()->GetValue();
 }
+
 void GaugeDlg::setEnableWarning(bool warning)
 {
 	enableWarning = warning;
 }
+
 bool GaugeDlg::isEnableWarning()
 {
 	return enableWarning;
 }
+
 //保存数据
 int GaugeDlg::saveData()
 {
 	//保存当前窗口的数据
 	return 0;
 }
+
 //读取数据
 int GaugeDlg::readData()
 {
 	//读取当前窗口的数据
 	return 0;
 }
-
 
 void GaugeDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 {
@@ -242,19 +249,17 @@ void GaugeDlg::OnContextMenu(CWnd* pWnd, CPoint point)
 	}	
 }
 
-
 void GaugeDlg::OnGaugeSet()
 {
 	// TODO: Add your command handler code here
 	DlgDeviceSet dlgSet(this);
 	//设置初始值
-	//dlgSet.setDataColumnID(dataColumnID);
 	dlgSet.setDataColumnID(m_SensorKeyID);
 	dlgSet.setWarningState(enableWarning);
 	if(enableWarning)
 	{
-		dlgSet.setWarningType(maxWarningValue<DBL_MAX?0:1);
-		dlgSet.setWarningValue(maxWarningValue<DBL_MAX?maxWarningValue:minWarningValue);
+		dlgSet.setWarningType(maxWarningValue < DBL_MAX ? 0 : 1);
+		dlgSet.setWarningValue(maxWarningValue < DBL_MAX ? maxWarningValue : minWarningValue);
 	}
 	if(IDOK == dlgSet.DoModal())
 	{
@@ -264,11 +269,12 @@ void GaugeDlg::OnGaugeSet()
 		if(enableWarning)
 		{
 			int warningType = dlgSet.getWarningType();
-			if(0==warningType)//max
+			if(0 == warningType)//max
 			{
 				maxWarningValue = dlgSet.getWarningValue();
 				minWarningValue = -DBL_MAX;
-			}else//min
+			}
+			else//min
 			{
 				minWarningValue = dlgSet.getWarningValue();
 				maxWarningValue = DBL_MAX;
@@ -400,6 +406,7 @@ void GaugeDlg::OnPaint()
 		}
 	}
 }
+
 void GaugeDlg::updateData()
 {
 	//更新当前值
@@ -410,12 +417,16 @@ void GaugeDlg::updateData()
 		OnUpdateGauge();
 	}
 	CSensorData* pData = CSensorDataManager::CreateInstance().GetSensorDataBySensorID(m_SensorKeyID);
+	//显示最后一个数据
 	if (nullptr != pData)
 	{
 		std::vector<float> cData;
 		pData->GetSensorData(cData);
 		if(!cData.empty())
 		{
+			//设置值
+			setValue(cData.back());
+#if 0
 			for(UINT v = cData.size() - 1; v >= 0; --v)
 			{
 				if (getValue() != cData[v])
@@ -424,6 +435,7 @@ void GaugeDlg::updateData()
 				}
 				break;
 			}
+#endif
 		}	
 	}
 	//end ldh 0610
@@ -433,10 +445,7 @@ void GaugeDlg::updateData()
 BOOL GaugeDlg::PreTranslateMessage(MSG* pMsg)
 {
 	// TODO: Add your specialized code here and/or call the base class
-
-
 	//begin add by hanxiaowei
-
 	switch (pMsg->message)
 	{
 	case WM_LBUTTONDOWN:
@@ -459,8 +468,6 @@ BOOL GaugeDlg::PreTranslateMessage(MSG* pMsg)
 		break;
 	}
 	//end add by hanxiaowei
-
-
 	if (WM_LBUTTONDOWN == pMsg->message || WM_RBUTTONDOWN == pMsg->message)
 	{
 		CWnd* pWnd = AfxGetMainWnd();
@@ -490,9 +497,7 @@ void GaugeDlg::OnTimer(UINT_PTR nIDEvent)
 
 LRESULT GaugeDlg::NotifyActive( WPARAM wp,LPARAM lp )
 {
-
 	int nActiveFlag = (int)wp;
-
 	if (nActiveFlag)
 	{
 		m_bActiveFlag = TRUE;

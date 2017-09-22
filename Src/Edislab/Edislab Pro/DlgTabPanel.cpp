@@ -207,19 +207,31 @@ void CDlgTabPanel::NotifyGridChangeRows(int nRows)
 void CDlgTabPanel::NotifyControlsStartRefresh()
 {
 	//通知Grid开始刷新
-	CDlgGridPanel* panle = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
-	if(nullptr != panle)
+	CDlgGridPanel* pGridPanel = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
+	if(nullptr != pGridPanel)
 	{
-		panle->NotifyControlsStartRefresh();
+		pGridPanel->NotifyControlsStartRefresh();
+	}
+	//图标控件开始刷新
+	CDlgDiagramPanel* pDiagramPanel = dynamic_cast<CDlgDiagramPanel*>(m_pPanel[DIAGRAM_INDEX]);
+	if(nullptr != pDiagramPanel)
+	{
+		pDiagramPanel->NotifyControlsStartRefresh();
 	}
 }
 
 void CDlgTabPanel::NotifyControlsStopRefresh()
 {
-	CDlgGridPanel* panle = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
-	if(nullptr != panle)
+	CDlgGridPanel* pGridPanel = dynamic_cast<CDlgGridPanel*>(m_pPanel[GRID_INDEX]);
+	if(nullptr != pGridPanel)
 	{
-		panle->NotifyControlsStopRefresh();
+		pGridPanel->NotifyControlsStopRefresh();
+	}
+	//图标控件停止刷新
+	CDlgDiagramPanel* pDiagramPanel = dynamic_cast<CDlgDiagramPanel*>(m_pPanel[DIAGRAM_INDEX]);
+	if(nullptr != pDiagramPanel)
+	{
+		pDiagramPanel->NotifyControlsStopRefresh();
 	}
 }
 
@@ -427,4 +439,20 @@ void CDlgTabPanel::OnPaint()
 	CPaintDC dc(this); // device context for painting
 	// TODO: 在此处添加消息处理程序代码
 	// 不为绘图消息调用 CBCGPDialog::OnPaint()
+}
+
+void CDlgTabPanel::NotifyDisplayPanelChange(const LP_SENSOR_TYPE_KEY pSensor,int nFlag)
+{
+	//通知曲线面板改变
+	CDlgDiagramPanel* pDiagramPanel = dynamic_cast<CDlgDiagramPanel*>(m_pPanel[DIAGRAM_INDEX]);
+	if(nullptr != pDiagramPanel)
+	{
+		pDiagramPanel->NotifyDisplayPanelChange(pSensor,nFlag);
+	}
+	//通知表盘面板改变
+	CDlgDevicePanel* pDevicePanel = dynamic_cast<CDlgDevicePanel*>(m_pPanel[DEVICE_INDEX]);
+	if(nullptr != pDevicePanel)
+	{
+		pDevicePanel->NotifyDisplayPanelChange(pSensor,nFlag);
+	}
 }

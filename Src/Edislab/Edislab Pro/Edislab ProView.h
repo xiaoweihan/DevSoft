@@ -5,7 +5,7 @@
 #pragma once
 #include <string>
 #include "ConcreteTabWnd.h"
-
+#include "Type.h"
 class CDlgTabPanel;
 class CEdislabProDoc;
 class CEdislabProView : public CView
@@ -120,6 +120,9 @@ public:
 
 	//通知Grid的分组信息改变
 	void NotifyGridGroupInfoChange();
+
+	//通知显示面板改变
+	void NotifyDisplayPanelChange(const LP_SENSOR_TYPE_KEY pSensor,int nFlag);
 };
 
 #ifndef _DEBUG  // Edislab ProView.cpp 中的调试版本

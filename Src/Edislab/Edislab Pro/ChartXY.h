@@ -4,9 +4,7 @@
 #include <map>
 #include <boost/unordered_map.hpp>
 #include "DataDefine.h"
-#include "Global.h"
 #include "Type.h"
-class ChartManager;
 class ChartXYData
 {
 public:
@@ -124,22 +122,24 @@ public:
 	//void removeChartData(int index);
 	//void removeAllChartData();
 	int calNumDigit(double num);
-	//数据理器
-	void setChartMgr(ChartManager* mgr);
-	const ChartManager* getChartMgr();
 	//update visible and column
 	void setVisible(SENSOR_TYPE_KEY id, bool bShow);
 	bool getVisible(SENSOR_TYPE_KEY id);
 
 	boost::unordered_map<SENSOR_TYPE_KEY, bool> getMapVisible() { return m_mapVisible; }
 	void setMapVisible(const boost::unordered_map<SENSOR_TYPE_KEY, bool>& m) { m_mapVisible = m; }
-
+	void ResetYAxisSensor()
+	{
+		m_mapVisible.clear();
+	}
 	//void setXID(int id);
 	void setXID(const SENSOR_TYPE_KEY& id);
 	SENSOR_TYPE_KEY getXID();
 	//更新数据
 	void updateData();
 	void refreshData();
+
+	void ResfreshAxisTitle(void);
 
 	LineStyle getLineStyle() { return m_eLineStyle; }
 	void setLineStyle(LineStyle e) { m_eLineStyle = e; }
@@ -203,7 +203,6 @@ private:
 	CDC* m_pDC;
 	CSize m_size;
 	CDC* m_pMemDC;
-	ChartManager* m_chartMgr;
 	//不显示的列 ID
 	boost::unordered_map<SENSOR_TYPE_KEY, bool> m_mapVisible;
 	SENSOR_TYPE_KEY m_nXID;

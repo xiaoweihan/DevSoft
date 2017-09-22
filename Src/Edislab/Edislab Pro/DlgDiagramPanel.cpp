@@ -4,8 +4,12 @@
 #include "stdafx.h"
 #include "Edislab Pro.h"
 #include "DlgDiagramPanel.h"
-#include "ChartFigureDlg.h"
+#include <algorithm>
 #include <boost/checked_delete.hpp>
+#include <boost/foreach.hpp>
+#include "ChartFigureDlg.h"
+#include "Macro.h"
+#include "SensorManager.h"
 // CDlgDiagramPanel 对话框
 
 IMPLEMENT_DYNAMIC(CDlgDiagramPanel, CBaseDialog)
@@ -21,11 +25,7 @@ CDlgDiagramPanel::~CDlgDiagramPanel()
 {
 	for (UINT i = 0; i < m_vecPanel.size(); ++i)
 	{
-		if (NULL != m_vecPanel[i])
-		{
-			delete m_vecPanel[i];
-			m_vecPanel[i] = NULL;
-		}
+		boost::checked_delete(m_vecPanel[i]);
 	}
 	m_vecPanel.clear();
 }
@@ -65,31 +65,10 @@ void CDlgDiagramPanel::OnSize(UINT nType, int cx, int cy)
 	AdjustPanelLayout(cx,cy);
 }
 
-void CDlgDiagramPanel::CreatePanel( void )
-{
-	ChartFigureDlg* pDiagramPanel = new ChartFigureDlg;
-	if (NULL != pDiagramPanel)
-	{
-		pDiagramPanel->Create(ChartFigureDlg::IDD,this);
-		m_vecPanel.push_back(pDiagramPanel);
-		m_WidgetLayout.AddWidget(pDiagramPanel);
-		//m_dataManager.addChartDlg(pDiagramPanel);
-		CRect rc;
-		GetClientRect(&rc);
-		m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
-	}
-}
 void CDlgDiagramPanel::addPanel()
 {
-#if 0
-	if(m_vecPanel.size()>=MAX_WIDGET_NUM)
-	{
-		return;
-	}
-#endif
-
 	ChartFigureDlg* pDiagramPanel = new ChartFigureDlg;
-	if (NULL != pDiagramPanel)
+	if (nullptr != pDiagramPanel)
 	{
 		pDiagramPanel->Create(ChartFigureDlg::IDD,this);
 		m_vecPanel.push_back(pDiagramPanel);
@@ -102,41 +81,32 @@ void CDlgDiagramPanel::addPanel()
 }
 void CDlgDiagramPanel::delPanel(CWnd* pDlg)
 {
-	if(pDlg)
+	if(nullptr != pDlg)
 	{
-		m_WidgetLayout.DelWidget(pDlg);
-		CRect rc;
-		GetClientRect(&rc);
-		m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
-		for(std::vector<CBaseDialog*>::iterator itr = m_vecPanel.begin();
-			itr!=m_vecPanel.end(); ++itr)
+		auto FindPred = [pDlg](const ChartFigureDlg* pElement)->bool
 		{
-			if(pDlg==*itr)
+			if (pDlg == pElement)
 			{
-				if (pDlg->GetSafeHwnd() != NULL)
-				{
-					pDlg->DestroyWindow();
-				}
-				m_vecPanel.erase(itr);
-				break;
+				return true;
 			}
-		}
-		m_WidgetLayout.DelWidget(pDlg);
-		//m_dataManager.delChartDlg(dynamic_cast<ChartFigureDlg*>(pDlg));
-		boost::checked_delete(pDlg);
-	}
-}
-void CDlgDiagramPanel::DestroyPanel( void )
-{
-	for (UINT i = 0; i < m_vecPanel.size(); ++i)
-	{
-		if (NULL != m_vecPanel[i])
-		{
-			if (m_vecPanel[i]->GetSafeHwnd() != NULL)
+			return false;
+		};
+
+		auto Iter = std::find_if(m_vecPanel.begin(),m_vecPanel.end(),FindPred);
+		if (Iter != m_vecPanel.end())
+		{		
+			if ((*Iter)->GetSafeHwnd() != NULL)
 			{
-				m_vecPanel[i]->DestroyWindow();
+				(*Iter)->DestroyWindow();
 			}
-		}
+			m_WidgetLayout.DelWidget(*Iter);
+			boost::checked_delete(*Iter);
+			m_vecPanel.erase(Iter);	
+
+			CRect rc;
+			GetClientRect(&rc);
+			m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
+		}		
 	}
 }
 
@@ -180,4 +150,126 @@ void CDlgDiagramPanel::OnLButtonUp(UINT nFlags, CPoint point)
 int CDlgDiagramPanel::GetWidgetNum( void ) const
 {
 	return m_WidgetLayout.GetWidgetNum();
+}
+
+void CDlgDiagramPanel::NotifyDisplayPanelChange(const LP_SENSOR_TYPE_KEY pSensor,int nFlag)
+{
+	if (nullptr == pSensor)
+	{
+		return;
+	}
+
+	//获取显示面板的个数
+	int nPanelNum = (int)m_vecPanel.size();
+
+	//增加面板
+	if (1 == nFlag)
+	{
+		//超过最大个数
+		if (nPanelNum >= MAX_DIAGRAM_PANEL_NUM)
+		{
+			return;
+		}
+
+		//如果只有一个面板
+		if (1 == nPanelNum)
+		{
+			if (nullptr != m_vecPanel[0])
+			{
+				SENSOR_TYPE_KEY KeyID = m_vecPanel[0]->GetXAxisSensorID();
+				//非法传感器
+				if (!KeyID.IsValid())
+				{
+					m_vecPanel[0]->SetXAxisSensorID(CSensorManager::CreateInstance().GetSpecialSensorID());
+					m_vecPanel[0]->SetYAxisSensorID(*pSensor);
+				}
+				//新增一个面板
+				else
+				{
+					ChartFigureDlg* pDiagramPanel = new ChartFigureDlg;
+					if (nullptr != pDiagramPanel)
+					{		
+						pDiagramPanel->Create(ChartFigureDlg::IDD,this);
+						pDiagramPanel->SetXAxisSensorID(CSensorManager::CreateInstance().GetSpecialSensorID());
+						pDiagramPanel->SetYAxisSensorID(*pSensor);
+						m_vecPanel.push_back(pDiagramPanel);
+						m_WidgetLayout.AddWidget(pDiagramPanel);
+					}
+				}
+			}
+		}
+		else
+		{
+			ChartFigureDlg* pDiagramPanel = new ChartFigureDlg;
+			if (nullptr != pDiagramPanel)
+			{
+				pDiagramPanel->Create(ChartFigureDlg::IDD,this);
+				pDiagramPanel->SetXAxisSensorID(CSensorManager::CreateInstance().GetSpecialSensorID());
+				pDiagramPanel->SetYAxisSensorID(*pSensor);
+				m_vecPanel.push_back(pDiagramPanel);
+				m_WidgetLayout.AddWidget(pDiagramPanel);
+			}
+		}
+	}
+	//删除面板
+	else
+	{
+		if (1 == nPanelNum)
+		{
+			if (nullptr != m_vecPanel[0])
+			{
+				m_vecPanel[0]->SetXAxisSensorID(SENSOR_TYPE_KEY());
+				m_vecPanel[0]->RestYAxisSensorID();
+			}
+		}
+		else
+		{
+
+			auto FindPred = [pSensor](const ChartFigureDlg* pElement)->bool
+			{
+				if (pElement->IsYAxisSensorIDExist(*pSensor))
+				{
+					return true;
+				}
+				return false;
+			};
+
+			auto Iter = std::find_if(m_vecPanel.begin(),m_vecPanel.end(),FindPred);
+			if (Iter != m_vecPanel.end())
+			{		
+				if ((*Iter)->GetSafeHwnd() != NULL)
+				{
+					(*Iter)->DestroyWindow();
+				}
+				m_WidgetLayout.DelWidget(*Iter);
+				boost::checked_delete(*Iter);
+				m_vecPanel.erase(Iter);	
+			}		
+		}	
+	}
+	CRect rc;
+	GetClientRect(&rc);
+	m_WidgetLayout.AdjustLayout(rc.Width(),rc.Height());
+}
+
+void CDlgDiagramPanel::NotifyControlsStartRefresh()
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyControlsStartRefresh();
+		}
+	}
+}
+
+void CDlgDiagramPanel::NotifyControlsStopRefresh()
+{
+	BOOST_FOREACH(auto& pGridWnd,m_vecPanel)
+	{
+		if (pGridWnd != nullptr)
+		{
+			pGridWnd->NotifyControlsStopRefresh();
+		}
+	}
 }

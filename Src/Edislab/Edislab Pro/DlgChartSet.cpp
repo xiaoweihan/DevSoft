@@ -58,7 +58,7 @@ BOOL DlgChartSet::OnInitDialog()
 	CBaseDialog::OnInitDialog();
 
 	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
-	CSensorManager::CreateInstance().GetSensorList(SensorArray);
+	CSensorManager::CreateInstance().GetSensorList(SensorArray,true);
 	for(int i = 0; i < (int)SensorArray.size(); ++i)
 	{
 		int index = m_combX.AddString(CString(SensorArray[i].strSensorName.c_str()));

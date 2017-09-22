@@ -307,6 +307,15 @@ typedef struct _sensor_type_key
 		return ((std::equal_to<int>()(nSensorID,CpValue.nSensorID)) && (std::equal_to<int>()(nSensorSerialID,CpValue.nSensorSerialID)));
 	}
 
+	bool IsValid()
+	{
+		if (nSensorID < 0 && nSensorSerialID < 0)
+		{
+			return false;
+		}
+
+		return true;
+	}
 
 }SENSOR_TYPE_KEY,* LP_SENSOR_TYPE_KEY;
 

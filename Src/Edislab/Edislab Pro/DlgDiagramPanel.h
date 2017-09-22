@@ -1,10 +1,9 @@
 #pragma once
-
 #include "BaseDialog.h"
 #include "WidgetLayout.h"
-//#include "ChartManager.h"
+#include "Type.h"
 // CDlgDiagramPanel 对话框
-
+class ChartFigureDlg;
 class CDlgDiagramPanel : public CBaseDialog
 {
 	DECLARE_DYNAMIC(CDlgDiagramPanel)
@@ -21,21 +20,15 @@ public:
 	//获取Grid的个数
 	int GetWidgetNum(void) const;
 private:
-	//数据理器
-	//ChartManager m_dataManager;
 	//布局器
 	CWidgetLayout m_WidgetLayout;
 	//窗口
-	std::vector<CBaseDialog*> m_vecPanel;
+	std::vector<ChartFigureDlg*> m_vecPanel;
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 
 	DECLARE_MESSAGE_MAP()
 protected:
-	//创建面板
-	void CreatePanel(void);
-	//销毁面板
-	void DestroyPanel(void);
 	//调整面板位置
 	void AdjustPanelLayout(int nWidth,int nHeight);
 public:
@@ -44,4 +37,10 @@ public:
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+	//修改显示面板个数的改变
+	void NotifyDisplayPanelChange(const LP_SENSOR_TYPE_KEY pSensor,int nFlag);
+	//通知相应的控件开始刷新
+	void NotifyControlsStartRefresh();
+	//通知相应的控件停止刷新
+	void NotifyControlsStopRefresh();
 };

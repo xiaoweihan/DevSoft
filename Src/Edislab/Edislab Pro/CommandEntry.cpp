@@ -26,14 +26,10 @@
 #include "SensorDataManager.h"
 #include "ChartFigureDlg.h"
 #include "GaugeDlg.h"
-//最大页面数
-const int MAX_PAGE_NUM = 4;
-//表格的最大个数
-const int MAX_GRID_NUM = 9;
-const int MAX_DEVICE_NUM = 9;
-const int MAX_DIAGRAM_NUM = 9;
+#include "Macro.h"
+
 //是否开始采集
-//static bool s_bStartCapture = false;
+static bool s_bStartCapture = false;
 //处理添加页面
 static void HandleAddPage(CEdislabProView* pView);
 //更新添加页面
@@ -599,7 +595,7 @@ void UpdateHandleAddTable( CEdislabProView* pView,CCmdUI* pCmdUI )
 		return;
 	}
 
-	if (pView->GetGridNum() >= MAX_GRID_NUM)
+	if (pView->GetGridNum() >= MAX_GRID_PANEL_NUM)
 	{
 		pCmdUI->Enable(FALSE);
 	}
@@ -616,7 +612,7 @@ void UpdateHandleAddImage( CEdislabProView* pView,CCmdUI* pCmdUI )
 		return;
 	}
 
-	if (pView->GetDiagramNum() >= MAX_DIAGRAM_NUM)
+	if (pView->GetDiagramNum() >= MAX_DIAGRAM_PANEL_NUM)
 	{
 		pCmdUI->Enable(FALSE);
 	}
@@ -633,7 +629,7 @@ void UpdateHandleAddDevice( CEdislabProView* pView,CCmdUI* pCmdUI )
 		return;
 	}
 
-	if (pView->GetDeviceNum() >= MAX_DEVICE_NUM)
+	if (pView->GetDeviceNum() >= MAX_DEVICE_PANEL_NUM)
 	{
 		pCmdUI->Enable(FALSE);
 	}
@@ -667,28 +663,28 @@ void HandleStart(CEdislabProView* pView)
 	{
 		return;
 	}
-#if 0
-	std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
-	CSensorManager::CreateInstance().GetSensorList(SensorArray);
+#if 1
+	//std::vector<SENSOR_TYPE_INFO_ELEMENT> SensorArray;
+	//CSensorManager::CreateInstance().GetSensorList(SensorArray);
 	if (s_bStartCapture)
 	{
 		//通知所有需要停止刷新的控件停止刷新
 		pView->NotifyControlsStopRefresh();
-		BOOST_FOREACH(auto& V,SensorArray)
-		{
-			CSerialPortService::CreateInstance().StopSensorCollect(V.nSensorID,V.nSensorSerialID);
-		}
-		//pView->NotifyRibbonChangeText(0);
+		//BOOST_FOREACH(auto& V,SensorArray)
+		//{
+		//	CSerialPortService::CreateInstance().StopSensorCollect(V.nSensorID,V.nSensorSerialID);
+		//}
+		pView->NotifyRibbonChangeText(0);
 	}
 	else
 	{
 		//通知所有需要开始刷新的控件开始刷新
 		pView->NotifyControlsStartRefresh();
-		BOOST_FOREACH(auto& V,SensorArray)
-		{
-			CSerialPortService::CreateInstance().StartSensorCollect(V.nSensorID,V.nSensorSerialID);
-		}
-		//pView->NotifyRibbonChangeText(1);
+		//BOOST_FOREACH(auto& V,SensorArray)
+		//{
+		//	CSerialPortService::CreateInstance().StartSensorCollect(V.nSensorID,V.nSensorSerialID);
+		//}
+		pView->NotifyRibbonChangeText(1);
 	}
 	s_bStartCapture = !s_bStartCapture;
 #endif
@@ -1759,7 +1755,7 @@ void HandleDeviceOption(CEdislabProView* pView)
 			if (nullptr != pActiveWnd)
 			{
 				GaugeDlg* dlg = dynamic_cast<GaugeDlg*>(pActiveWnd);
-				if (dlg)
+				if (nullptr != dlg)
 				{
 					dlg->OnGaugeSet();
 				}
@@ -1779,7 +1775,7 @@ void HandleDeviceNextColumn(CEdislabProView* pView)
 			if (nullptr != pActiveWnd)
 			{
 				GaugeDlg* dlg = dynamic_cast<GaugeDlg*>(pActiveWnd);
-				if (dlg)
+				if (nullptr != dlg)
 				{
 					dlg->NextColumn();
 				}

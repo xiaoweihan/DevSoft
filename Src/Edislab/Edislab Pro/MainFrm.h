@@ -236,6 +236,9 @@ private:
 	//通知Ribbon的开始显示为停止
 	afx_msg LRESULT NotfiyRibbonChanged(WPARAM wp,LPARAM lp);
 
+	//当添加传感器的时候，添加仪表控件
+	afx_msg LRESULT NotifyDisplayPanelChange(WPARAM wp,LPARAM lp);
+
 };
 
 

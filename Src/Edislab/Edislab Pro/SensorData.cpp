@@ -4,7 +4,7 @@
 #include <boost/foreach.hpp>
 #include "Log.h"
 //Ä¬ÈÏ¸öÊý
-const int DEFAULT_MAX_LENGTH = 600;
+const int DEFAULT_MAX_LENGTH = 1000;
 
 
 CSensorData::CSensorData(void):
