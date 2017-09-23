@@ -74,7 +74,8 @@ public:
 	ChartXY(HDC hDC);
 	~ChartXY();
 	
-	enum MouseInArea{
+	enum MouseInArea
+	{
 		E_AREA_NULL,
 		E_AREA_X,
 		E_AREA_Y,
