@@ -41,17 +41,6 @@ CMeColor ChartXYData::getColor()
 	return mColor;
 }
 
-#if 0
-void ChartXYData::setID(int id)
-{
-	ID = id;
-}
-int ChartXYData::getID()
-{
-	return ID;
-}
-#endif
-
 ChartXY::ChartXY(HDC hDC)
 	: m_hDC(hDC)
 	, m_minX(0)
@@ -703,7 +692,7 @@ void ChartXY::calcRecView()
 		m_pDC = CDC::FromHandle(m_hDC);
 		m_recView = CRect(0, 0, m_size.cx, m_size.cy);
 
-		//if (m_size.cx > VIEW_X_EDGE && m_size.cy > VIEW_Y_EDGE)
+		//if (m_size.cx > 2 * VIEW_X_EDGE && m_size.cy > 2 * VIEW_Y_EDGE)
 		{
 			m_recView.InflateRect(-VIEW_X_EDGE, -VIEW_Y_EDGE, -VIEW_X_EDGE, -VIEW_Y_EDGE);
 

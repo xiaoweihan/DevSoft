@@ -47,8 +47,10 @@ public:
 	SENSOR_TYPE_VALUE QuerySensorNameByID(int nSensorTypeID);
 	//从配置文件加载传感器类型
 	bool LoadSensorTypeListFromFile(void);
+	//加载默认配置
+	void LoadDefaultSensorType(void);
 private:
-	//void InitSensorTypeTable(void);
+	void InitSensorTypeTable(void);
 	bool LoadSensorTypeList(rapidjson::Document& Parser);
 private:
 	boost::mutex m_Lock;

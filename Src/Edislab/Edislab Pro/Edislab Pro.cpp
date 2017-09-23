@@ -218,6 +218,7 @@ void CEdislabProApp::Init( void )
 	if (!CSensorTypeTable::CreateInstance().LoadSensorTypeListFromFile())
 	{
 		ERROR_LOG("LoadSensorType failed!");
+		CSensorTypeTable::CreateInstance().LoadDefaultSensorType();
 	}
 
 	//加载传感器配置文件

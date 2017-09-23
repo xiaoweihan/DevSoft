@@ -23,7 +23,6 @@ Version:1.0
 CSensorTypeTable::CSensorTypeTable(void)
 {
 	m_SensorTypeMap.clear();
-	//InitSensorTypeTable();
 }
 
 
@@ -32,9 +31,18 @@ CSensorTypeTable::~CSensorTypeTable(void)
 	m_SensorTypeMap.clear();
 }
 
-#if 0
+/*****************************************************************************
+* @函数名称 : InitSensorTypeTable
+* @功能描述 : 初始化默认设置
+* @author : xiaowei.han
+* @date : 
+* @version : ver 1.0
+* @inparam : 
+* @outparam : 
+*****************************************************************************/
 void CSensorTypeTable::InitSensorTypeTable(void)
 {
+#if 0
 	int nSensorID = 0;
 	std::string strSensorName = "静力传感器";
 	m_SensorTypeMap.emplace(nSensorID,strSensorName);
@@ -221,15 +229,24 @@ void CSensorTypeTable::InitSensorTypeTable(void)
 	nSensorID = 45;
 	strSensorName = "电流/电压合体传感器";
 	m_SensorTypeMap.emplace(nSensorID,strSensorName);
-}
 #endif
+}
+
 
 CSensorTypeTable& CSensorTypeTable::CreateInstance(void)
 {
 	return s_obj;
 }
 
-
+/*****************************************************************************
+* @函数名称 : QuerySensorNameByID
+* @功能描述 : 根据传感器类型ID查询传感器类型名称
+* @author : xiaowei.han
+* @date : 
+* @version : ver 1.0
+* @inparam : 
+* @outparam : 
+*****************************************************************************/
 CSensorTypeTable::SENSOR_TYPE_VALUE CSensorTypeTable::QuerySensorNameByID(int nSensorTypeID)
 {
 	SENSOR_TYPE_VALUE Result;
@@ -246,6 +263,15 @@ CSensorTypeTable::SENSOR_TYPE_VALUE CSensorTypeTable::QuerySensorNameByID(int nS
 	return Result;
 }
 
+/*****************************************************************************
+* @函数名称 : LoadSensorTypeListFromFile
+* @功能描述 : 从配置文件加载传感器类型信息
+* @author : xiaowei.han
+* @date : 
+* @version : ver 1.0
+* @inparam : 
+* @outparam : 
+*****************************************************************************/
 bool CSensorTypeTable::LoadSensorTypeListFromFile(void)
 {
 	using namespace std;
@@ -329,6 +355,15 @@ bool CSensorTypeTable::LoadSensorTypeListFromFile(void)
 	return true;
 }
 
+/*****************************************************************************
+* @函数名称 : LoadSensorTypeList
+* @功能描述 : 
+* @author : xiaowei.han
+* @date : 
+* @version : ver 1.0
+* @inparam : 
+* @outparam : 
+*****************************************************************************/
 bool CSensorTypeTable::LoadSensorTypeList(rapidjson::Document& Parser)
 {
 	const rapidjson::Value& SensorTypeArray = Parser["SensorTypeList"];
@@ -370,6 +405,20 @@ bool CSensorTypeTable::LoadSensorTypeList(rapidjson::Document& Parser)
 		}
 	}
 	return true;
+}
+
+/*****************************************************************************
+* @函数名称 : LoadDefaultSensorType
+* @功能描述 : 
+* @author : xiaowei.han
+* @date : 
+* @version : ver 1.0
+* @inparam : 
+* @outparam : 
+*****************************************************************************/
+void CSensorTypeTable::LoadDefaultSensorType(void)
+{
+	InitSensorTypeTable();
 }
 
 CSensorTypeTable CSensorTypeTable::s_obj;
