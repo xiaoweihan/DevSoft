@@ -1,0 +1,234 @@
+{
+    "SensorTypeList": [
+        {
+            "SensorTypeID": 0,
+            "SensorTypeName": "静力传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 1,
+            "SensorTypeName": "微力传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 2,
+            "SensorTypeName": "拉压式电子秤",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 3,
+            "SensorTypeName": "拉压力传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 4,
+            "SensorTypeName": "光电门传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 5,
+            "SensorTypeName": "声振动传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 6,
+            "SensorTypeName": "光照度传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 7,
+            "SensorTypeName": "电流传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 8,
+            "SensorTypeName": "电压传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 9,
+            "SensorTypeName": "微电流传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 10,
+            "SensorTypeName": "普通温度传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 11,
+            "SensorTypeName": "磁感应强度传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 12,
+            "SensorTypeName": "气体压强传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 13,
+            "SensorTypeName": "G-M计数器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 14,
+            "SensorTypeName": "位移（分体）",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 15,
+            "SensorTypeName": "光强度分布传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 16,
+            "SensorTypeName": "位移（单体）器/远程测距传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 17,
+            "SensorTypeName": "加速度传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 18,
+            "SensorTypeName": "高温传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 19,
+            "SensorTypeName": "氧气传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 20,
+            "SensorTypeName": "微气压/呼吸率传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 21,
+            "SensorTypeName": "PH值传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 22,
+            "SensorTypeName": "氧化还原",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 23,
+            "SensorTypeName": "氯离子传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 24,
+            "SensorTypeName": "硝酸根传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 25,
+            "SensorTypeName": "氨根传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 26,
+            "SensorTypeName": "钠离子传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 27,
+            "SensorTypeName": "电导率传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 28,
+            "SensorTypeName": "总盐度传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 29,
+            "SensorTypeName": "溶解氧传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 30,
+            "SensorTypeName": "二氧化碳传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 31,
+            "SensorTypeName": "酒精传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 32,
+            "SensorTypeName": "心率传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 33,
+            "SensorTypeName": "心电图传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 34,
+            "SensorTypeName": "湿度传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 35,
+            "SensorTypeName": "色度计",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 36,
+            "SensorTypeName": "浊度计",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 37,
+            "SensorTypeName": "常开/常闭控制传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 38,
+            "SensorTypeName": "热辐射传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 39,
+            "SensorTypeName": "二氧化硫/氯气/一氧化碳传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 40,
+            "SensorTypeName": "角度传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 41,
+            "SensorTypeName": "氢气/甲烷传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 42,
+            "SensorTypeName": "微电压传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 43,
+            "SensorTypeName": "多量程电流传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 44,
+            "SensorTypeName": "多量程电压传感器",
+            "SensorTypeUnit": "N"
+        },
+        {
+            "SensorTypeID": 45,
+            "SensorTypeName": "电流/电压合体传感器",
+            "SensorTypeUnit": "N"
+        }
+    ]
+}

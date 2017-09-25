@@ -10,7 +10,7 @@
 ;#define DefaultAppCopyright "Copyright(C)2014-2015 Incxxx,Inc"
 #define MutexName "05F14B9D-5AF2-4521-8B3A-37CC74AA2F22"
 #define AppVerSion "1.0.0.0"
-#define SetupVersion "1.0"
+#define SetupVersion "1.1"
 #define AppID "F4B17EA0-36EE-489F-BE5C-9DC8538C3F77"
 #define Architecture "x64"
 [Setup]
